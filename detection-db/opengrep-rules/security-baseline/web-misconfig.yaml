@@ -1,0 +1,49 @@
+# CodeInspectus original MIT security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
+# Security misconfiguration (A05) + identification/auth failures (A07).
+rules:
+  - id: ci-baseline-cors-wildcard-credentials
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      CORS allows any origin together with credentials. A wildcard origin with
+      credentials exposes authenticated responses to any site. Pin an allowlist.
+    metadata:
+      cwe: "CWE-942: Permissive Cross-domain Policy with Untrusted Domains"
+      owasp: "A05:2021 - Security Misconfiguration"
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern: 'cors({ ..., origin: "*", ..., credentials: true, ... })'
+
+  - id: ci-baseline-insecure-cookie
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Session cookie set without httpOnly/secure. Set httpOnly:true and secure:true
+      (and a sane sameSite) for auth/session cookies.
+    metadata:
+      cwe: "CWE-1004: Sensitive Cookie Without 'HttpOnly' Flag"
+      owasp: "A05:2021 - Security Misconfiguration"
+      category: security
+      confidence: LOW
+    patterns:
+      - pattern: '$RES.cookie($NAME, $VAL, { ..., httpOnly: false, ... })'
+
+  - id: ci-baseline-jwt-alg-none
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      This token verification step allows the "none" algorithm. When "none" is
+      accepted, a caller can drop the signature entirely and submit an unsigned,
+      self-issued token that still passes the check (an algorithm-confusion
+      forgery). Restrict verification to the exact signing algorithms you expect
+      and reject anything else.
+    metadata:
+      cwe: "CWE-347: Improper Verification of Cryptographic Signature"
+      owasp: "A07:2021 - Identification and Authentication Failures"
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: '$JWT.verify(..., { ..., algorithms: ["none"], ... })'
+          - pattern: '$JWT.verify(..., { ..., algorithm: "none", ... })'

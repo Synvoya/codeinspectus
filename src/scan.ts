@@ -1,0 +1,184 @@
+/**
+ * Scan orchestrator (PRD §3 data flow):
+ *   run engines (Opengrep/Gitleaks/Trivy) + AI-code checks as subprocesses/analyzers
+ *   → normalize each SARIF into the CWE-keyed schema
+ *   → dedup (global + Trivy⨯Gitleaks secret overlap)
+ *   → compliance-tag each finding
+ *   → sort, threshold, paginate → §5 envelope.
+ *
+ * Read-only: never writes to or deletes the user's files (PRD §11). Scratch SARIF
+ * goes to an OS temp dir that is removed afterwards.
+ */
+
+import { randomUUID } from "node:crypto";
+import { mkdtemp, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve as resolvePath } from "node:path";
+
+import { DEFAULT_MAX_FINDINGS, STANDING_DISCLAIMER } from "./config.js";
+import { SEVERITY_RANK } from "./types.js";
+import type {
+  Finding,
+  ScanResult,
+  EngineRunInfo,
+  Severity,
+  SeveritySummary,
+} from "./types.js";
+import type { ScanInput } from "./schemas.js";
+import { log } from "./logger.js";
+import { saveScan } from "./store.js";
+
+import { runOpengrep } from "./engines/opengrep.js";
+import { runGitleaks } from "./engines/gitleaks.js";
+import { runTrivy, type TrivyScanner } from "./engines/trivy.js";
+import type { EngineOutput } from "./engines/types.js";
+import { runAiChecks } from "./ai-checks/index.js";
+import { normalizeEngineOutput } from "./sarif/normalize.js";
+import { dedupFindings } from "./dedup.js";
+import { tagFindings } from "./compliance/mapper.js";
+import { buildComplianceOverview } from "./compliance/report.js";
+
+function wants(input: ScanInput, scanner: string): boolean {
+  return !input.scanners || input.scanners.length === 0 || input.scanners.includes(scanner as never);
+}
+
+function emptySummary(): SeveritySummary {
+  return { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 };
+}
+
+function summarize(findings: Finding[]): SeveritySummary {
+  const s = emptySummary();
+  for (const f of findings) {
+    s[f.severity]++;
+    s.total++;
+  }
+  return s;
+}
+
+function sortFindings(findings: Finding[]): Finding[] {
+  return [...findings].sort((a, b) => {
+    const sev = SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity];
+    if (sev !== 0) return sev;
+    if (a.location.file !== b.location.file) return a.location.file < b.location.file ? -1 : 1;
+    return a.location.start_line - b.location.start_line;
+  });
+}
+
+export async function runScan(input: ScanInput): Promise<ScanResult> {
+  const startedAt = new Date().toISOString();
+  const t0 = Date.now();
+  const target = resolvePath(input.path);
+
+  // Validate target exists and is a directory/file (read-only check).
+  try {
+    await stat(target);
+  } catch {
+    throw new Error(`Path not found: ${target}. Provide an absolute path to an existing directory or file.`);
+  }
+
+  const warnings: string[] = [];
+  const tmpDir = await mkdtemp(join(tmpdir(), "ci-scan-"));
+
+  try {
+    // Decide which engines/scanners to run from the scanner filter.
+    const runSast = wants(input, "sast");
+    const runSecret = wants(input, "secret");
+    const trivyScanners: TrivyScanner[] = (["vuln", "misconfig", "secret", "license"] as TrivyScanner[]).filter(
+      (s) => wants(input, s),
+    );
+    const runAi = wants(input, "ai");
+
+    // Run everything concurrently.
+    const tasks: Array<Promise<EngineOutput | (EngineOutput & { trivyDbDate?: string })>> = [];
+    if (runSast) tasks.push(runOpengrep(target, tmpDir));
+    if (runSecret) tasks.push(runGitleaks(target, tmpDir));
+    let trivyTask: Promise<EngineOutput & { trivyDbDate?: string }> | undefined;
+    if (trivyScanners.length) {
+      trivyTask = runTrivy(target, tmpDir, trivyScanners);
+      tasks.push(trivyTask);
+    }
+    const aiTask = runAi ? runAiChecks(target) : undefined;
+
+    const [engineOutputs, aiResult] = await Promise.all([
+      Promise.all(tasks),
+      aiTask ?? Promise.resolve(undefined),
+    ]);
+
+    // Normalize engine SARIF → findings; track per-engine raw counts.
+    let allFindings: Finding[] = [];
+    const engineDetails: EngineRunInfo[] = [];
+    let trivyDbDate: string | undefined;
+
+    for (const out of engineOutputs) {
+      const normalized = out.ran ? normalizeEngineOutput(out, target) : [];
+      allFindings.push(...normalized);
+      if ("trivyDbDate" in out && out.trivyDbDate) trivyDbDate = out.trivyDbDate;
+      engineDetails.push({
+        engine: out.engine,
+        version: out.version,
+        available: out.available,
+        ran: out.ran,
+        finding_count: normalized.length,
+        duration_ms: out.durationMs,
+        ...(out.note ? { note: out.note } : {}),
+      });
+      if (!out.ran && out.note) warnings.push(`${out.engine} did not run: ${out.note}`);
+    }
+
+    if (aiResult) {
+      allFindings.push(...aiResult.findings);
+      engineDetails.push(aiResult.info);
+    }
+
+    // Dedup (global + secret overlap), then compliance-tag.
+    const { findings: deduped, stats } = dedupFindings(allFindings);
+    if (stats.merged > 0) log.debug(`dedup merged ${stats.merged} overlapping findings`);
+    await tagFindings(deduped);
+
+    // Sort, threshold, assign ids, paginate.
+    let sorted = sortFindings(deduped);
+    if (input.severity_threshold) {
+      const min = SEVERITY_RANK[input.severity_threshold];
+      sorted = sorted.filter((f) => SEVERITY_RANK[f.severity] >= min);
+    }
+    sorted.forEach((f, i) => {
+      f.id = `CI-${String(i + 1).padStart(4, "0")}`;
+    });
+
+    const summary = summarize(sorted);
+    const totalBeforeLimit = sorted.length;
+    const max = input.max_findings ?? DEFAULT_MAX_FINDINGS;
+    const limited = sorted.slice(0, max);
+    const truncated = limited.length < totalBeforeLimit;
+
+    const enginesRun = engineDetails
+      .filter((e) => e.ran)
+      .map((e) => `${e.engine}@${e.version}`);
+
+    const result: ScanResult = {
+      scan_id: `scan-${randomUUID()}`,
+      target,
+      started_at: startedAt,
+      duration_ms: Date.now() - t0,
+      engines_run: enginesRun,
+      engine_details: engineDetails,
+      offline: true,
+      ...(trivyDbDate ? { trivy_db_date: trivyDbDate } : {}),
+      summary,
+      findings: limited,
+      truncated,
+      total_findings_before_limit: totalBeforeLimit,
+      disclaimer: STANDING_DISCLAIMER,
+      warnings,
+    };
+
+    if (input.include_compliance !== false) {
+      result.compliance_overview = await buildComplianceOverview(sorted);
+    }
+
+    await saveScan(result);
+    return result;
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+}

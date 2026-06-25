@@ -1,0 +1,269 @@
+{
+  "name": "CodeInspectus Detection Database",
+  "version": "0.1.0",
+  "date": "2026-06-21",
+  "description": "CodeInspectus's curated detections (the moat, §9): AI-code / vibe-coding / framework-specific failure modes the generic engines miss. Grows via human-reviewed weekly intake. Generic SAST is intentionally NOT here — that is the engines' job.",
+  "engine_versions": {
+    "opengrep": "1.23.0",
+    "gitleaks": "8.30.1",
+    "trivy": "0.71.2"
+  },
+  "opengrep_rulesets": [
+    {
+      "name": "security-baseline",
+      "source": "codeinspectus-mit",
+      "license": "MIT",
+      "note": "CodeInspectus's ORIGINAL MIT-licensed Opengrep security ruleset (see detection-db/opengrep-rules/security-baseline/LICENSE-PROVENANCE.md). Not derived from the Commons-Clause opengrep-rules or the Semgrep-Rules-License semgrep-rules corpora, so it is clean to bundle and sell. Narrower than the full upstream registry; coverage grows via weekly intake. Pre-launch: legal review of rule provenance."
+    }
+  ],
+  "custom_rules": [
+    {
+      "id": "ci-ai-client-hardcoded-secret",
+      "engine": "codeinspectus-ai",
+      "name": "Hard-coded secret in client-reachable code",
+      "kind": "ai",
+      "cwe": ["CWE-798", "CWE-312"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-secret-in-bundle",
+      "engine": "codeinspectus-ai",
+      "name": "Secret compiled into shipped bundle",
+      "kind": "ai",
+      "cwe": ["CWE-798", "CWE-312"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-public-env-secret",
+      "engine": "codeinspectus-ai",
+      "name": "Secret exposed via client-visible env prefix",
+      "kind": "ai",
+      "cwe": ["CWE-798", "CWE-312"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-supabase-service-role-client",
+      "engine": "codeinspectus-ai",
+      "name": "Supabase service_role key in client-reachable code",
+      "kind": "ai",
+      "cwe": ["CWE-798", "CWE-285"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-rls-using-true",
+      "engine": "codeinspectus-ai",
+      "name": "RLS policy uses USING (true) — table fully open",
+      "kind": "ai",
+      "cwe": ["CWE-863", "CWE-285"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-rls-missing",
+      "engine": "codeinspectus-ai",
+      "name": "Public table created without Row Level Security",
+      "kind": "ai",
+      "cwe": ["CWE-862", "CWE-285"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-rls-inverted-auth",
+      "engine": "codeinspectus-ai",
+      "name": "RLS policy tests aud/role instead of user identity",
+      "kind": "ai",
+      "cwe": ["CWE-863"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-edge-fn-no-auth",
+      "engine": "codeinspectus-ai",
+      "name": "Supabase Edge Function with no auth verification",
+      "kind": "ai",
+      "cwe": ["CWE-862"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-prompt-injection-sink",
+      "engine": "codeinspectus-ai",
+      "name": "Potential prompt-injection sink",
+      "kind": "ai",
+      "cwe": ["CWE-1426"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-sql-injection-string-build",
+      "engine": "opengrep",
+      "name": "SQL injection via string-built query (JS/TS)",
+      "kind": "sast",
+      "cwe": ["CWE-89"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-sql-injection-python",
+      "engine": "opengrep",
+      "name": "SQL injection via string-built query (Python)",
+      "kind": "sast",
+      "cwe": ["CWE-89"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-command-injection",
+      "engine": "opengrep",
+      "name": "Command injection via shell string (JS/TS)",
+      "kind": "sast",
+      "cwe": ["CWE-77"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-command-injection-python",
+      "engine": "opengrep",
+      "name": "Command injection via shell=True (Python)",
+      "kind": "sast",
+      "cwe": ["CWE-77"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-dangerous-eval",
+      "engine": "opengrep",
+      "name": "Dynamic code evaluation of non-literal (JS/TS)",
+      "kind": "sast",
+      "cwe": ["CWE-94"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-eval-python",
+      "engine": "opengrep",
+      "name": "Dynamic eval/exec of non-literal (Python)",
+      "kind": "sast",
+      "cwe": ["CWE-94"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-nosql-injection",
+      "engine": "opengrep",
+      "name": "NoSQL injection from request data",
+      "kind": "sast",
+      "cwe": ["CWE-943"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-path-traversal",
+      "engine": "opengrep",
+      "name": "Path traversal from request input",
+      "kind": "sast",
+      "cwe": ["CWE-22"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-dom-xss-innerhtml",
+      "engine": "opengrep",
+      "name": "DOM XSS via innerHTML/outerHTML write sink",
+      "kind": "sast",
+      "cwe": ["CWE-79"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-ssrf-request-from-input",
+      "engine": "opengrep",
+      "name": "SSRF: outbound request URL from request input",
+      "kind": "sast",
+      "cwe": ["CWE-918"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-weak-hash",
+      "engine": "opengrep",
+      "name": "Weak hash algorithm (MD5/SHA1)",
+      "kind": "sast",
+      "cwe": ["CWE-327"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-weak-cipher",
+      "engine": "opengrep",
+      "name": "Weak/broken cipher (DES/RC4/3DES)",
+      "kind": "sast",
+      "cwe": ["CWE-327"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-weak-hash-python",
+      "engine": "opengrep",
+      "name": "Weak hash algorithm (MD5/SHA1) (Python)",
+      "kind": "sast",
+      "cwe": ["CWE-327"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-insecure-random-security",
+      "engine": "opengrep",
+      "name": "Math.random() for security-sensitive value",
+      "kind": "sast",
+      "cwe": ["CWE-338"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-jwt-alg-none",
+      "engine": "opengrep",
+      "name": "JWT verification accepts alg 'none'",
+      "kind": "sast",
+      "cwe": ["CWE-347"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-cors-wildcard-credentials",
+      "engine": "opengrep",
+      "name": "CORS wildcard origin with credentials",
+      "kind": "sast",
+      "cwe": ["CWE-942"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-insecure-cookie",
+      "engine": "opengrep",
+      "name": "Session cookie without httpOnly/secure",
+      "kind": "sast",
+      "cwe": ["CWE-1004"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-insecure-deserialization-node",
+      "engine": "opengrep",
+      "name": "Insecure deserialization (node unserialize)",
+      "kind": "sast",
+      "cwe": ["CWE-502"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-insecure-deserialization-python",
+      "engine": "opengrep",
+      "name": "Insecure deserialization (untrusted loader)",
+      "kind": "sast",
+      "cwe": ["CWE-502"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "codeinspectus-stripe-live-secret",
+      "engine": "gitleaks",
+      "name": "Stripe live-mode secret key",
+      "kind": "secret",
+      "cwe": ["CWE-798"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "codeinspectus-supabase-service-role",
+      "engine": "gitleaks",
+      "name": "Supabase service_role JWT",
+      "kind": "secret",
+      "cwe": ["CWE-798"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "codeinspectus-anthropic-key",
+      "engine": "gitleaks",
+      "name": "Anthropic API key",
+      "kind": "secret",
+      "cwe": ["CWE-798"],
+      "source": "codeinspectus-custom"
+    }
+  ]
+}

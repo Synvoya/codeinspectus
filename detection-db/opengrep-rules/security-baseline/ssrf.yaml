@@ -1,0 +1,30 @@
+# CodeInspectus original MIT security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
+# Server-side request forgery (OWASP A10).
+rules:
+  - id: ci-baseline-ssrf-request-from-input
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Potential SSRF: an outbound request URL is built from request input. Validate
+      the target against an allowlist of hosts/schemes before fetching.
+    metadata:
+      cwe: "CWE-918: Server-Side Request Forgery (SSRF)"
+      owasp: "A10:2021 - Server-Side Request Forgery"
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: fetch($U + ..., ...)
+          - pattern: fetch(`...${...}...`, ...)
+          - pattern: axios.get($U + ..., ...)
+          - pattern: axios.get(`...${...}...`, ...)
+          - pattern: $H.get($U + ..., ...)
+          - pattern: $H.request($U + ..., ...)
+      - metavariable-pattern:
+          metavariable: $U
+          patterns:
+            - pattern-either:
+                - pattern: req.$ANY.$NAME
+                - pattern: $REQ.query
+                - pattern: $REQ.params
+                - pattern: $REQ.body

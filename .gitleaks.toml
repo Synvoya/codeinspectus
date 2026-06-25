@@ -1,0 +1,22 @@
+# .gitleaks.toml — gitleaks config for scanning THIS repository (pre-commit / CI).
+#
+# NOTE: this is the repo's OWN gitleaks config. It is NOT the CodeInspectus scanner
+# ruleset (that lives in detection-db/gitleaks/codeinspectus.toml and is loaded by the
+# scanner via its own --config). The two never interfere.
+#
+# The fixture app and the eval harness contain INTENTIONAL, FAKE planted secrets used to
+# test detection + redaction (e.g. the eval asserts the scanner finds and redacts them).
+# They are not real credentials. Allowlist them so the repo's own gitleaks/CI does not
+# flag deliberate test data. (GitHub push-protection is separate and may still prompt on
+# first push — allow it there as test data.)
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Intentional planted test secrets in the fixture app + eval harness (fake, not real credentials)."
+paths = [
+  '''fixtures/vulnerable-app/src/config\.ts''',
+  '''evals/run-evals\.ts''',
+  '''fixtures/secret-rls-corpus/''',
+]

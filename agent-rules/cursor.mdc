@@ -1,0 +1,26 @@
+---
+description: CodeInspectus — scan, surface findings, fix only with user consent
+alwaysApply: true
+---
+
+CodeInspectus REPORTS; the user DECIDES; you fix only with consent. The tool is read-only — it
+never edits files. After generating or modifying code:
+
+1. **Scan** — `codeinspectus_scan` on the workspace root (absolute path); local, zero egress;
+   returns CWE-keyed findings + a `remediation` each.
+2. **Surface first** — present the findings to the user before any change: grouped by severity
+   (**criticals first**), each with a plain-language risk explanation, the `file:line`, and the
+   recommended fix from `remediation`. **Never patch silently; never skip to fixing.**
+3. **Consent (granular)** — ask which to fix; per-finding or per-tier (e.g. "fix the 3
+   criticals?"), not a single all-or-nothing approval.
+4. **Fix** — only the approved findings; you apply the edits (CodeInspectus only reads/reports).
+5. **Rescan** — `codeinspectus_rescan`, then report honestly: resolved / still firing / newly
+   introduced. Don't claim a fix worked unless the rescan confirms it.
+6. **Secrets** — for a hardcoded credential, tell the user to **rotate/revoke the exposed key**
+   at the provider (already compromised; you can't rotate it), not just move it to env. Never
+   report "fixed" without surfacing rotation.
+
+Compliance: `codeinspectus_compliance_report` — code-level control coverage only, never
+certification or "% compliant".
+
+Keep secret values redacted (CodeInspectus already redacts them).

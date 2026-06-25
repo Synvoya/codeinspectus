@@ -1,0 +1,1157 @@
+{
+  "_comment": "CWE → compliance control mapping (PRD §10). Code-level control coverage ONLY — never certification. Control IDs marked in _verify need a human/standards confirmation before launch.",
+  "_verify": [
+    "VERIFIED 2026-06-21: NIST CSF 2.0 subcategories PR.DS-01/02, PR.AA-05, PR.PS-06, ID.RA-01 all confirmed verbatim against the official CSF 2.0 Core (nist.gov).",
+    "VERIFIED 2026-06-21: SOC 2 TSC points CC6.1/6.6/6.7, CC7.1 (vuln detection, distinct from CC7.2 anomaly monitoring), CC8.1 all confirmed against the 2017 TSC. Verbatim wording cross-checked via audit-firm references, not the paywalled AICPA PDF.",
+    "CORRECTED 2026-06-21: CIS v8.1 — 16.6 was WRONG (it is the app-vuln severity-rating safeguard, not authorization) -> remapped access/authz to 16.10 (Apply Secure Design Principles). 16.11 mislabeled (Leverage Vetted Modules) -> remapped credential/code defects to 16.12 (Code-Level Security Checks). 2.1 relabeled to Software Inventory (SBOM is not part of 2.1; SBOM ~ 16.4). 16.1/7.1/3.10/3.11 confirmed.",
+    "ISO 27001:2022 Annex A controls (A.8.28 secure coding etc., from PRD §10.1) are grounded. OWASP CWE->category links are grounded, but the numeric MITRE View IDs (1346/1347/1353 etc.) are NOT independently verified — consistent with _note and the OWASP-Web source_citations.",
+    "SME REVIEW STILL RECOMMENDED before launch: which control a given CWE maps to is a judgment call; a compliance SME should sign off on the cwe->control table even though every ID is now confirmed to exist."
+  ],
+  "code_visible_controls": {
+    "NIST_CSF_2.0": [
+      {
+        "id": "PR.DS-01",
+        "name": "Data-at-rest protection"
+      },
+      {
+        "id": "PR.DS-02",
+        "name": "Data-in-transit protection"
+      },
+      {
+        "id": "PR.AA-05",
+        "name": "Access permissions and authorizations"
+      },
+      {
+        "id": "PR.PS-06",
+        "name": "Secure software development practices"
+      },
+      {
+        "id": "ID.RA-01",
+        "name": "Vulnerabilities identified"
+      }
+    ],
+    "ISO27001:2022": [
+      {
+        "id": "A.8.28",
+        "name": "Secure coding"
+      },
+      {
+        "id": "A.8.24",
+        "name": "Use of cryptography"
+      },
+      {
+        "id": "A.8.25",
+        "name": "Secure development lifecycle"
+      },
+      {
+        "id": "A.8.26",
+        "name": "Application security requirements"
+      },
+      {
+        "id": "A.8.27",
+        "name": "Secure system architecture and engineering"
+      },
+      {
+        "id": "A.8.12",
+        "name": "Data leakage prevention"
+      },
+      {
+        "id": "A.8.8",
+        "name": "Management of technical vulnerabilities"
+      }
+    ],
+    "SOC2": [
+      {
+        "id": "CC6.1",
+        "name": "Logical access security"
+      },
+      {
+        "id": "CC6.6",
+        "name": "Boundary protection"
+      },
+      {
+        "id": "CC6.7",
+        "name": "Transmission of sensitive data"
+      },
+      {
+        "id": "CC7.1",
+        "name": "Vulnerability detection"
+      },
+      {
+        "id": "CC8.1",
+        "name": "Change management"
+      }
+    ],
+    "CIS_v8.1": [
+      {
+        "id": "16.1",
+        "name": "Establish and maintain a secure application development process"
+      },
+      {
+        "id": "16.10",
+        "name": "Apply secure design principles in application architectures"
+      },
+      {
+        "id": "16.12",
+        "name": "Implement code-level security checks"
+      },
+      {
+        "id": "7.1",
+        "name": "Establish and maintain a vulnerability management process"
+      },
+      {
+        "id": "3.10",
+        "name": "Encrypt sensitive data in transit"
+      },
+      {
+        "id": "3.11",
+        "name": "Encrypt sensitive data at rest"
+      },
+      {
+        "id": "2.1",
+        "name": "Establish and maintain a software inventory"
+      }
+    ],
+    "EssentialEight": [
+      {
+        "id": "PatchApplications",
+        "name": "Patch Applications (the only meaningfully code-evidenced E8 mitigation)"
+      }
+    ],
+    "OWASP_Web_2021": [
+      {
+        "id": "A01:2021",
+        "name": "Broken Access Control",
+        "cwe_view": 1345
+      },
+      {
+        "id": "A02:2021",
+        "name": "Cryptographic Failures",
+        "cwe_view": 1346
+      },
+      {
+        "id": "A03:2021",
+        "name": "Injection",
+        "cwe_view": 1347
+      },
+      {
+        "id": "A05:2021",
+        "name": "Security Misconfiguration",
+        "cwe_view": 1349
+      },
+      {
+        "id": "A06:2021",
+        "name": "Vulnerable and Outdated Components",
+        "cwe_view": 1352
+      },
+      {
+        "id": "A07:2021",
+        "name": "Identification and Authentication Failures",
+        "cwe_view": 1353
+      },
+      {
+        "id": "A08:2021",
+        "name": "Software and Data Integrity Failures",
+        "cwe_view": 1354
+      },
+      {
+        "id": "A10:2021",
+        "name": "Server-Side Request Forgery (SSRF)",
+        "cwe_view": 1356
+      }
+    ],
+    "OWASP_LLM_2025": [
+      {
+        "id": "LLM01:2025",
+        "name": "Prompt Injection"
+      },
+      {
+        "id": "LLM02:2025",
+        "name": "Sensitive Information Disclosure"
+      },
+      {
+        "id": "LLM05:2025",
+        "name": "Improper Output Handling"
+      },
+      {
+        "id": "LLM06:2025",
+        "name": "Excessive Agency"
+      }
+    ]
+  },
+  "owasp_web_all_views": {
+    "_note": "OWASP Top 10 2021 -> CWE View ID table. These numeric MITRE View IDs (1345-1349, 1352-1356) are NOT independently verified (cwe.mitre.org could not be confirmed in-session; consistent with the PRD and COMPLIANCE-RATIONALE.md). The CWE->OWASP CATEGORY links are firm; the numeric View IDs are retained for reference only and must not be asserted as verified.",
+    "A01:2021": 1345,
+    "A02:2021": 1346,
+    "A03:2021": 1347,
+    "A04:2021": 1348,
+    "A05:2021": 1349,
+    "A06:2021": 1352,
+    "A07:2021": 1353,
+    "A08:2021": 1354,
+    "A09:2021": 1355,
+    "A10:2021": 1356
+  },
+  "cwe_map": {
+    "CWE-798": {
+      "ISO27001:2022": [
+        {
+          "control": "A.8.24",
+          "confidence": "low",
+          "rationale": "Hardcoded credential is a secrets-management issue, not a cryptographic-algorithm one. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Use of cryptography",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        },
+        {
+          "control": "A.8.28",
+          "confidence": "high",
+          "rationale": "Direct secure-coding evidence.",
+          "source_citation": "Secure coding",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        },
+        {
+          "control": "A.8.12",
+          "confidence": "low",
+          "rationale": "Maps to the data-leakage-prevention control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Data leakage prevention",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "NIST_CSF_2.0": [
+        {
+          "control": "PR.AA-05",
+          "confidence": "low",
+          "rationale": "Maps to the access-permissions subcategory as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Access permissions and authorizations",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "SOC2": [
+        {
+          "control": "CC6.1",
+          "confidence": "low",
+          "rationale": "Logical-access control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Logical access security",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "CIS_v8.1": [
+        {
+          "control": "16.12",
+          "confidence": "high",
+          "rationale": "Direct code-level-security-checks evidence.",
+          "source_citation": "Implement code-level security checks",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "owasp_web": [
+        {
+          "control": "A07:2021",
+          "confidence": "medium",
+          "rationale": "Secondary fit - a hardcoded credential relates to authentication failures; category link firm, MITRE numeric View ID not asserted.",
+          "source_citation": "OWASP A07:2021 Identification and Authentication Failures - category link firm; MITRE numeric View ID not independently verified.",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "owasp_llm": [
+        {
+          "control": "LLM02:2025",
+          "confidence": "high",
+          "rationale": "Canonical OWASP LLM Top 10 (2025) category for this weakness.",
+          "source_citation": "OWASP LLM02:2025 Sensitive Information Disclosure (OWASP LLM Top 10 2025).",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "attack": [
+        "T1552.001"
+      ]
+    },
+    "CWE-312": {
+      "ISO27001:2022": [
+        {
+          "control": "A.8.24",
+          "confidence": "high",
+          "rationale": "Direct use-of-cryptography evidence (crypto/cleartext weakness).",
+          "source_citation": "Use of cryptography",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        },
+        {
+          "control": "A.8.12",
+          "confidence": "low",
+          "rationale": "Maps to the data-leakage-prevention control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Data leakage prevention",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "NIST_CSF_2.0": [
+        {
+          "control": "PR.DS-01",
+          "confidence": "medium",
+          "rationale": "Conditional encryption-at-rest/in-transit evidence - applies only when this weakness affects protected data.",
+          "source_citation": "Data-at-rest protection",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "SOC2": [
+        {
+          "control": "CC6.1",
+          "confidence": "low",
+          "rationale": "Logical-access control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Logical access security",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "CIS_v8.1": [
+        {
+          "control": "3.11",
+          "confidence": "medium",
+          "rationale": "Conditional encryption-at-rest/in-transit evidence - applies only when this weakness affects protected data.",
+          "source_citation": "Encrypt sensitive data at rest",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "owasp_web": [
+        {
+          "control": "A02:2021",
+          "confidence": "high",
+          "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+          "source_citation": "OWASP A02:2021 Cryptographic Failures - category link firm; MITRE numeric View ID not independently verified.",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "owasp_llm": [
+        {
+          "control": "LLM02:2025",
+          "confidence": "high",
+          "rationale": "Canonical OWASP LLM Top 10 (2025) category for this weakness.",
+          "source_citation": "OWASP LLM02:2025 Sensitive Information Disclosure (OWASP LLM Top 10 2025).",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "attack": [
+        "T1552"
+      ]
+    },
+    "CWE-285": {
+      "ISO27001:2022": [
+        {
+          "control": "A.8.28",
+          "confidence": "high",
+          "rationale": "Direct secure-coding evidence.",
+          "source_citation": "Secure coding",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        },
+        {
+          "control": "A.8.26",
+          "confidence": "low",
+          "rationale": "Maps to the application-security-requirements control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Application security requirements",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "NIST_CSF_2.0": [
+        {
+          "control": "PR.AA-05",
+          "confidence": "low",
+          "rationale": "Maps to the access-permissions subcategory as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Access permissions and authorizations",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "SOC2": [
+        {
+          "control": "CC6.1",
+          "confidence": "low",
+          "rationale": "Logical-access control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Logical access security",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "CIS_v8.1": [
+        {
+          "control": "16.10",
+          "confidence": "medium",
+          "rationale": "Secure-design-principles control - partial.",
+          "source_citation": "Apply secure design principles in application architectures",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "owasp_web": [
+        {
+          "control": "A01:2021",
+          "confidence": "high",
+          "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+          "source_citation": "OWASP A01:2021 Broken Access Control - category link firm; MITRE numeric View ID not independently verified.",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "attack": [
+        "T1548"
+      ]
+    },
+    "CWE-862": {
+      "ISO27001:2022": [
+        {
+          "control": "A.8.28",
+          "confidence": "high",
+          "rationale": "Direct secure-coding evidence.",
+          "source_citation": "Secure coding",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        },
+        {
+          "control": "A.8.26",
+          "confidence": "low",
+          "rationale": "Maps to the application-security-requirements control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Application security requirements",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "NIST_CSF_2.0": [
+        {
+          "control": "PR.AA-05",
+          "confidence": "low",
+          "rationale": "Maps to the access-permissions subcategory as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Access permissions and authorizations",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "SOC2": [
+        {
+          "control": "CC6.1",
+          "confidence": "low",
+          "rationale": "Logical-access control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Logical access security",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "CIS_v8.1": [
+        {
+          "control": "16.10",
+          "confidence": "medium",
+          "rationale": "Secure-design-principles control - partial.",
+          "source_citation": "Apply secure design principles in application architectures",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "owasp_web": [
+        {
+          "control": "A01:2021",
+          "confidence": "high",
+          "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+          "source_citation": "OWASP A01:2021 Broken Access Control - category link firm; MITRE numeric View ID not independently verified.",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "attack": [
+        "T1190"
+      ]
+    },
+    "CWE-863": {
+      "ISO27001:2022": [
+        {
+          "control": "A.8.28",
+          "confidence": "high",
+          "rationale": "Direct secure-coding evidence.",
+          "source_citation": "Secure coding",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        },
+        {
+          "control": "A.8.26",
+          "confidence": "low",
+          "rationale": "Maps to the application-security-requirements control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Application security requirements",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "NIST_CSF_2.0": [
+        {
+          "control": "PR.AA-05",
+          "confidence": "low",
+          "rationale": "Maps to the access-permissions subcategory as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Access permissions and authorizations",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "SOC2": [
+        {
+          "control": "CC6.1",
+          "confidence": "low",
+          "rationale": "Logical-access control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Logical access security",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "CIS_v8.1": [
+        {
+          "control": "16.10",
+          "confidence": "medium",
+          "rationale": "Secure-design-principles control - partial.",
+          "source_citation": "Apply secure design principles in application architectures",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "owasp_web": [
+        {
+          "control": "A01:2021",
+          "confidence": "high",
+          "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+          "source_citation": "OWASP A01:2021 Broken Access Control - category link firm; MITRE numeric View ID not independently verified.",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "attack": [
+        "T1190"
+      ]
+    },
+    "CWE-89": {
+      "ISO27001:2022": [
+        {
+          "control": "A.8.28",
+          "confidence": "high",
+          "rationale": "Direct secure-coding evidence.",
+          "source_citation": "Secure coding",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "NIST_CSF_2.0": [
+        {
+          "control": "PR.PS-06",
+          "confidence": "low",
+          "rationale": "Maps to the secure-software-development-practices subcategory as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Secure software development practices",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "CIS_v8.1": [
+        {
+          "control": "16.1",
+          "confidence": "medium",
+          "rationale": "Secure-application-development-process control - partial.",
+          "source_citation": "Establish and maintain a secure application development process",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "owasp_web": [
+        {
+          "control": "A03:2021",
+          "confidence": "high",
+          "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+          "source_citation": "OWASP A03:2021 Injection - category link firm; MITRE numeric View ID not independently verified.",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "attack": [
+        "T1190"
+      ]
+    },
+    "CWE-79": {
+      "ISO27001:2022": [
+        {
+          "control": "A.8.28",
+          "confidence": "high",
+          "rationale": "Direct secure-coding evidence.",
+          "source_citation": "Secure coding",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "NIST_CSF_2.0": [
+        {
+          "control": "PR.PS-06",
+          "confidence": "low",
+          "rationale": "Maps to the secure-software-development-practices subcategory as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Secure software development practices",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "CIS_v8.1": [
+        {
+          "control": "16.1",
+          "confidence": "medium",
+          "rationale": "Secure-application-development-process control - partial.",
+          "source_citation": "Establish and maintain a secure application development process",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "owasp_web": [
+        {
+          "control": "A03:2021",
+          "confidence": "high",
+          "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+          "source_citation": "OWASP A03:2021 Injection - category link firm; MITRE numeric View ID not independently verified.",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "attack": [
+        "T1059"
+      ]
+    },
+    "CWE-77": {
+      "ISO27001:2022": [
+        {
+          "control": "A.8.28",
+          "confidence": "high",
+          "rationale": "Direct secure-coding evidence.",
+          "source_citation": "Secure coding",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "NIST_CSF_2.0": [
+        {
+          "control": "PR.PS-06",
+          "confidence": "low",
+          "rationale": "Maps to the secure-software-development-practices subcategory as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Secure software development practices",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "CIS_v8.1": [
+        {
+          "control": "16.1",
+          "confidence": "medium",
+          "rationale": "Secure-application-development-process control - partial.",
+          "source_citation": "Establish and maintain a secure application development process",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "owasp_web": [
+        {
+          "control": "A03:2021",
+          "confidence": "high",
+          "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+          "source_citation": "OWASP A03:2021 Injection - category link firm; MITRE numeric View ID not independently verified.",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "attack": [
+        "T1059"
+      ]
+    },
+    "CWE-94": {
+      "ISO27001:2022": [
+        {
+          "control": "A.8.28",
+          "confidence": "high",
+          "rationale": "Direct secure-coding evidence.",
+          "source_citation": "Secure coding",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "NIST_CSF_2.0": [
+        {
+          "control": "PR.PS-06",
+          "confidence": "low",
+          "rationale": "Maps to the secure-software-development-practices subcategory as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Secure software development practices",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "CIS_v8.1": [
+        {
+          "control": "16.1",
+          "confidence": "medium",
+          "rationale": "Secure-application-development-process control - partial.",
+          "source_citation": "Establish and maintain a secure application development process",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "owasp_web": [
+        {
+          "control": "A03:2021",
+          "confidence": "high",
+          "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+          "source_citation": "OWASP A03:2021 Injection - category link firm; MITRE numeric View ID not independently verified.",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "attack": [
+        "T1059"
+      ]
+    },
+    "CWE-1426": {
+      "ISO27001:2022": [
+        {
+          "control": "A.8.28",
+          "confidence": "high",
+          "rationale": "Direct secure-coding evidence.",
+          "source_citation": "Secure coding",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        },
+        {
+          "control": "A.8.26",
+          "confidence": "low",
+          "rationale": "Maps to the application-security-requirements control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Application security requirements",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "NIST_CSF_2.0": [
+        {
+          "control": "PR.PS-06",
+          "confidence": "low",
+          "rationale": "Maps to the secure-software-development-practices subcategory as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Secure software development practices",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "owasp_llm": [
+        {
+          "control": "LLM05:2025",
+          "confidence": "high",
+          "rationale": "CWE-1426 is improper handling of generative-AI output; LLM05 Improper Output Handling is the correct OWASP LLM category (re-mapped from the prompt-injection control that was cut in CG-10 as a mismatch).",
+          "source_citation": "OWASP LLM05:2025 Improper Output Handling (OWASP LLM Top 10 2025).",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "attack": []
+    },
+    "CWE-327": {
+      "ISO27001:2022": [
+        {
+          "control": "A.8.24",
+          "confidence": "high",
+          "rationale": "Direct use-of-cryptography evidence (crypto/cleartext weakness).",
+          "source_citation": "Use of cryptography",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "NIST_CSF_2.0": [
+        {
+          "control": "PR.DS-01",
+          "confidence": "medium",
+          "rationale": "Conditional encryption-at-rest/in-transit evidence - applies only when this weakness affects protected data.",
+          "source_citation": "Data-at-rest protection",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        },
+        {
+          "control": "PR.DS-02",
+          "confidence": "medium",
+          "rationale": "Conditional encryption-at-rest/in-transit evidence - applies only when this weakness affects protected data.",
+          "source_citation": "Data-in-transit protection",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "CIS_v8.1": [
+        {
+          "control": "3.10",
+          "confidence": "medium",
+          "rationale": "Conditional encryption-at-rest/in-transit evidence - applies only when this weakness affects protected data.",
+          "source_citation": "Encrypt sensitive data in transit",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        },
+        {
+          "control": "3.11",
+          "confidence": "medium",
+          "rationale": "Conditional encryption-at-rest/in-transit evidence - applies only when this weakness affects protected data.",
+          "source_citation": "Encrypt sensitive data at rest",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "owasp_web": [
+        {
+          "control": "A02:2021",
+          "confidence": "high",
+          "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+          "source_citation": "OWASP A02:2021 Cryptographic Failures - category link firm; MITRE numeric View ID not independently verified.",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ]
+    },
+    "CWE-502": {
+      "ISO27001:2022": [
+        {
+          "control": "A.8.28",
+          "confidence": "high",
+          "rationale": "Direct secure-coding evidence.",
+          "source_citation": "Secure coding",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "NIST_CSF_2.0": [
+        {
+          "control": "PR.PS-06",
+          "confidence": "low",
+          "rationale": "Maps to the secure-software-development-practices subcategory as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+          "source_citation": "Secure software development practices",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "owasp_web": [
+        {
+          "control": "A08:2021",
+          "confidence": "high",
+          "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+          "source_citation": "OWASP A08:2021 Software and Data Integrity Failures - category link firm; MITRE numeric View ID not independently verified.",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ]
+    },
+    "CWE-918": {
+      "ISO27001:2022": [
+        {
+          "control": "A.8.28",
+          "confidence": "high",
+          "rationale": "Direct secure-coding evidence.",
+          "source_citation": "Secure coding",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ],
+      "owasp_web": [
+        {
+          "control": "A10:2021",
+          "confidence": "high",
+          "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+          "source_citation": "OWASP A10:2021 Server-Side Request Forgery (SSRF) - category link firm; MITRE numeric View ID not independently verified.",
+          "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+        }
+      ]
+    }
+  },
+  "buckets": {
+    "_comment": "Fallback classification when a CWE has no explicit cwe_map entry.",
+    "credentials": {
+      "cwes": [
+        "CWE-259",
+        "CWE-321",
+        "CWE-322",
+        "CWE-540",
+        "CWE-256"
+      ],
+      "controls": {
+        "ISO27001:2022": [
+          {
+            "control": "A.8.24",
+            "confidence": "low",
+            "rationale": "Same logical class as CWE-798 -> A.8.24: secrets management, not cryptography; aligned to the conservative policy that scored CWE-798 -> A.8.24 low. Partial indicator only - not standalone audit evidence; community review welcome.",
+            "source_citation": "Use of cryptography",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          },
+          {
+            "control": "A.8.12",
+            "confidence": "low",
+            "rationale": "Maps to the data-leakage-prevention control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+            "source_citation": "Data leakage prevention",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "SOC2": [
+          {
+            "control": "CC6.1",
+            "confidence": "low",
+            "rationale": "Logical-access control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+            "source_citation": "Logical access security",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "CIS_v8.1": [
+          {
+            "control": "16.12",
+            "confidence": "high",
+            "rationale": "Direct code-level-security-checks evidence.",
+            "source_citation": "Implement code-level security checks",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "owasp_web": [
+          {
+            "control": "A07:2021",
+            "confidence": "high",
+            "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+            "source_citation": "OWASP A07:2021 Identification and Authentication Failures - category link firm; MITRE numeric View ID not independently verified.",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ]
+      }
+    },
+    "crypto": {
+      "cwes": [
+        "CWE-326",
+        "CWE-328",
+        "CWE-916",
+        "CWE-330",
+        "CWE-295"
+      ],
+      "controls": {
+        "ISO27001:2022": [
+          {
+            "control": "A.8.24",
+            "confidence": "high",
+            "rationale": "Direct use-of-cryptography evidence (crypto/cleartext weakness).",
+            "source_citation": "Use of cryptography",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "NIST_CSF_2.0": [
+          {
+            "control": "PR.DS-01",
+            "confidence": "medium",
+            "rationale": "Conditional encryption-at-rest/in-transit evidence - applies only when this weakness affects protected data.",
+            "source_citation": "Data-at-rest protection",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          },
+          {
+            "control": "PR.DS-02",
+            "confidence": "medium",
+            "rationale": "Conditional encryption-at-rest/in-transit evidence - applies only when this weakness affects protected data.",
+            "source_citation": "Data-in-transit protection",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "SOC2": [
+          {
+            "control": "CC6.7",
+            "confidence": "medium",
+            "rationale": "Conditional protection-in-transmission evidence - applies only when this weakness affects transmitted data.",
+            "source_citation": "Transmission of sensitive data",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "CIS_v8.1": [
+          {
+            "control": "3.10",
+            "confidence": "medium",
+            "rationale": "Conditional encryption-at-rest/in-transit evidence - applies only when this weakness affects protected data.",
+            "source_citation": "Encrypt sensitive data in transit",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          },
+          {
+            "control": "3.11",
+            "confidence": "medium",
+            "rationale": "Conditional encryption-at-rest/in-transit evidence - applies only when this weakness affects protected data.",
+            "source_citation": "Encrypt sensitive data at rest",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "owasp_web": [
+          {
+            "control": "A02:2021",
+            "confidence": "high",
+            "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+            "source_citation": "OWASP A02:2021 Cryptographic Failures - category link firm; MITRE numeric View ID not independently verified.",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ]
+      }
+    },
+    "access": {
+      "cwes": [
+        "CWE-284",
+        "CWE-639",
+        "CWE-732",
+        "CWE-269",
+        "CWE-306"
+      ],
+      "controls": {
+        "ISO27001:2022": [
+          {
+            "control": "A.8.28",
+            "confidence": "high",
+            "rationale": "Direct secure-coding evidence.",
+            "source_citation": "Secure coding",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          },
+          {
+            "control": "A.8.26",
+            "confidence": "low",
+            "rationale": "Maps to the application-security-requirements control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+            "source_citation": "Application security requirements",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "NIST_CSF_2.0": [
+          {
+            "control": "PR.AA-05",
+            "confidence": "low",
+            "rationale": "Maps to the access-permissions subcategory as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+            "source_citation": "Access permissions and authorizations",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "SOC2": [
+          {
+            "control": "CC6.1",
+            "confidence": "low",
+            "rationale": "Logical-access control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+            "source_citation": "Logical access security",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "CIS_v8.1": [
+          {
+            "control": "16.10",
+            "confidence": "medium",
+            "rationale": "Secure-design-principles control - partial.",
+            "source_citation": "Apply secure design principles in application architectures",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "owasp_web": [
+          {
+            "control": "A01:2021",
+            "confidence": "high",
+            "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+            "source_citation": "OWASP A01:2021 Broken Access Control - category link firm; MITRE numeric View ID not independently verified.",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ]
+      }
+    },
+    "injection": {
+      "cwes": [
+        "CWE-78",
+        "CWE-90",
+        "CWE-917",
+        "CWE-643",
+        "CWE-611",
+        "CWE-1336"
+      ],
+      "controls": {
+        "ISO27001:2022": [
+          {
+            "control": "A.8.28",
+            "confidence": "high",
+            "rationale": "Direct secure-coding evidence.",
+            "source_citation": "Secure coding",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "NIST_CSF_2.0": [
+          {
+            "control": "PR.PS-06",
+            "confidence": "low",
+            "rationale": "Maps to the secure-software-development-practices subcategory as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+            "source_citation": "Secure software development practices",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "CIS_v8.1": [
+          {
+            "control": "16.1",
+            "confidence": "medium",
+            "rationale": "Secure-application-development-process control - partial.",
+            "source_citation": "Establish and maintain a secure application development process",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "owasp_web": [
+          {
+            "control": "A03:2021",
+            "confidence": "high",
+            "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+            "source_citation": "OWASP A03:2021 Injection - category link firm; MITRE numeric View ID not independently verified.",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ]
+      }
+    },
+    "misconfig": {
+      "cwes": [
+        "CWE-16",
+        "CWE-1188",
+        "CWE-1004",
+        "CWE-614",
+        "CWE-668"
+      ],
+      "controls": {
+        "ISO27001:2022": [
+          {
+            "control": "A.8.27",
+            "confidence": "low",
+            "rationale": "Maps to the secure-architecture control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+            "source_citation": "Secure system architecture and engineering",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "NIST_CSF_2.0": [
+          {
+            "control": "PR.PS-06",
+            "confidence": "low",
+            "rationale": "Maps to the secure-software-development-practices subcategory as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+            "source_citation": "Secure software development practices",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "CIS_v8.1": [
+          {
+            "control": "16.1",
+            "confidence": "medium",
+            "rationale": "Secure-application-development-process control - partial.",
+            "source_citation": "Establish and maintain a secure application development process",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "owasp_web": [
+          {
+            "control": "A05:2021",
+            "confidence": "high",
+            "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+            "source_citation": "OWASP A05:2021 Security Misconfiguration - category link firm; MITRE numeric View ID not independently verified.",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ]
+      }
+    },
+    "vulnerable_component": {
+      "cwes": [
+        "CWE-1035",
+        "CWE-1395",
+        "CWE-937"
+      ],
+      "controls": {
+        "ISO27001:2022": [
+          {
+            "control": "A.8.8",
+            "confidence": "low",
+            "rationale": "Maps to the technical-vulnerability-management control as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+            "source_citation": "Management of technical vulnerabilities",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "NIST_CSF_2.0": [
+          {
+            "control": "ID.RA-01",
+            "confidence": "low",
+            "rationale": "Maps to the vulnerability-identification subcategory as a code-level indicator. Partial indicator only - not standalone audit evidence; community review welcome.",
+            "source_citation": "Vulnerabilities identified",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "SOC2": [
+          {
+            "control": "CC7.1",
+            "confidence": "high",
+            "rationale": "Vulnerability-detection control - SCA directly detects vulnerable dependencies.",
+            "source_citation": "Vulnerability detection",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "CIS_v8.1": [
+          {
+            "control": "7.1",
+            "confidence": "low",
+            "rationale": "Vulnerability-management-process control. Partial indicator only - not standalone audit evidence; community review welcome.",
+            "source_citation": "Establish and maintain a vulnerability management process",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "EssentialEight": [
+          {
+            "control": "PatchApplications",
+            "confidence": "medium",
+            "rationale": "Patch Applications - the only code-evidenced E8 mitigation (via SCA of outdated vulnerable dependencies); not an Essential Eight assessment.",
+            "source_citation": "Patch Applications (the only meaningfully code-evidenced E8 mitigation)",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ],
+        "owasp_web": [
+          {
+            "control": "A06:2021",
+            "confidence": "high",
+            "rationale": "Canonical OWASP Top 10 (2021) category for this weakness class; category link firm, MITRE numeric View ID not asserted.",
+            "source_citation": "OWASP A06:2021 Vulnerable and Outdated Components - category link firm; MITRE numeric View ID not independently verified.",
+            "reviewer": "Synvoya maintainer (security analyst) - policy-reviewed, AI-drafted + 2-model cross-checked, 2026-06-24"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,32 @@
+# CodeInspectus original MIT security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
+# Cross-site scripting (OWASP A03).
+# NOTE: a React raw-HTML-sink rule is deferred -- the JSX attribute pattern is not
+# reliably expressible as a standalone Opengrep pattern; revisit at weekly intake.
+rules:
+  - id: ci-baseline-dom-xss-innerhtml
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Writing computed (non-literal) markup into the page through one of these HTML
+      sinks lets attacker-controlled input run as script in the DOM (DOM-based XSS).
+      Use textContent for plain text, or pass the value through a trusted sanitizer
+      (such as DOMPurify) before it reaches the DOM.
+    metadata:
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: $EL.innerHTML = $X
+          - pattern: $EL.outerHTML = $X
+          - pattern: $EL.insertAdjacentHTML($POS, $X)
+          - pattern: document.write($X)
+          - pattern: document.writeln($X)
+      # Literal-string assignments/args are author-written constants, not user
+      # input -- exclude them across every sink for consistent false-positive control.
+      - pattern-not: $EL.innerHTML = "..."
+      - pattern-not: $EL.outerHTML = "..."
+      - pattern-not: $EL.insertAdjacentHTML($POS, "...")
+      - pattern-not: document.write("...")
+      - pattern-not: document.writeln("...")

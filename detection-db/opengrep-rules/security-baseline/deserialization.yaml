@@ -1,0 +1,35 @@
+# CodeInspectus original MIT security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
+# Software & data integrity failures / insecure deserialization (OWASP A08).
+rules:
+  - id: ci-baseline-insecure-deserialization-node
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Insecure deserialization: node-serialize unserialize() on untrusted data can
+      execute attacker-controlled code. Use JSON.parse and validate the result.
+    metadata:
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+      owasp: "A08:2021 - Software and Data Integrity Failures"
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: $S.unserialize($X)
+      - pattern-not: $S.unserialize("...")
+
+  - id: ci-baseline-insecure-deserialization-python
+    languages: [python]
+    severity: ERROR
+    message: >
+      Insecure deserialization of untrusted data can execute arbitrary code. Use
+      safe loaders (json, yaml.safe_load) and validate the result.
+    metadata:
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+      owasp: "A08:2021 - Software and Data Integrity Failures"
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: pickle.loads($X)
+          - pattern: yaml.load($X)
+      - pattern-not: yaml.load($X, Loader=yaml.SafeLoader)

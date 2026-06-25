@@ -1,0 +1,33 @@
+# CodeInspectus Gitleaks configuration (PRD §4.2).
+# Extends Gitleaks' built-in default ruleset and adds CodeInspectus-specific
+# secret rules. A user .gitleaks.toml in the scanned repo takes precedence.
+title = "CodeInspectus Gitleaks config"
+
+[extend]
+useDefault = true
+
+# CG-18: globally allowlist the PUBLIC Supabase local-dev demo key (payload iss: supabase-demo)
+# across ALL rules (incl. gitleaks' built-in "jwt" rule). It is published and identical for every
+# local install — not a real credential (same FP class as the Firebase public web key, CG-05).
+[[allowlists]]
+description = "Public Supabase local-dev demo key (iss: supabase-demo) — not a real credential."
+regexTarget = "match"
+regexes = ['''eyJpc3MiOiJzdXBhYmFzZS1kZW1v''']
+
+[[rules]]
+id = "codeinspectus-stripe-live-secret"
+description = "Stripe live-mode secret key (high impact if leaked)"
+regex = '''(?:sk|rk)_live_[A-Za-z0-9]{10,}'''
+keywords = ["sk_live_", "rk_live_"]
+
+[[rules]]
+id = "codeinspectus-supabase-service-role"
+description = "Supabase service_role JWT (bypasses RLS)"
+regex = '''eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'''
+keywords = ["service_role", "supabase"]
+
+[[rules]]
+id = "codeinspectus-anthropic-key"
+description = "Anthropic API key"
+regex = '''sk-ant-[A-Za-z0-9_-]{20,}'''
+keywords = ["sk-ant-"]

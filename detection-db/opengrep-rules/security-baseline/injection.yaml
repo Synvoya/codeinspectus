@@ -1,0 +1,154 @@
+# CodeInspectus original MIT security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
+# Injection classes (OWASP A03): SQLi, command injection, code eval, NoSQL, path traversal.
+rules:
+  - id: ci-baseline-sql-injection-string-build
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Potential SQL injection: a SQL query is built by string concatenation or
+      template interpolation. Use parameterized queries / prepared statements.
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: MEDIUM
+      references:
+        - https://owasp.org/Top10/A03_2021-Injection/
+    patterns:
+      - pattern-either:
+          - pattern: $DB.query("..." + ...)
+          - pattern: $DB.query(`...${...}...`)
+          - pattern: $DB.query(... + ..., ...)
+          - pattern: $DB.execute("..." + ...)
+          - pattern: $DB.execute(`...${...}...`)
+          - pattern: $DB.raw("..." + ...)
+          - pattern: $DB.raw(`...${...}...`)
+
+  - id: ci-baseline-sql-injection-python
+    languages: [python]
+    severity: ERROR
+    message: >
+      Potential SQL injection: a SQL query is built with string formatting/
+      concatenation. Use parameterized queries.
+    metadata:
+      cwe: "CWE-89: SQL Injection"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: $CUR.execute("..." % ...)
+          - pattern: $CUR.execute("..." + ...)
+          - pattern: $CUR.execute(f"...")
+
+  - id: ci-baseline-command-injection
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Potential command injection: untrusted data is passed to a shell-executing
+      API built from a string. Use a process API with an argument array.
+    metadata:
+      cwe: "CWE-77: Improper Neutralization of Special Elements used in a Command ('Command Injection')"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: $CP.exec("..." + ...)
+          - pattern: $CP.exec(`...${...}...`)
+          - pattern: $CP.execSync("..." + ...)
+          - pattern: $CP.execSync(`...${...}...`)
+
+  - id: ci-baseline-command-injection-python
+    languages: [python]
+    severity: ERROR
+    message: >
+      Potential command injection: a shell command is built from non-literal data
+      with shell=True. Pass an argument list and avoid shell=True.
+    metadata:
+      cwe: "CWE-77: Command Injection"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.$F("..." + ..., shell=True)
+          - pattern: subprocess.$F(f"...", shell=True)
+          - pattern: os.system("..." + ...)
+          - pattern: os.system(f"...")
+
+  - id: ci-baseline-dangerous-eval
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Dynamic code evaluation of a non-literal value can lead to code injection.
+      Avoid evaluating runtime-constructed code.
+    metadata:
+      cwe: "CWE-94: Improper Control of Generation of Code ('Code Injection')"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: eval($X)
+          - pattern: new Function(..., $X)
+      - pattern-not: eval("...")
+
+  - id: ci-baseline-eval-python
+    languages: [python]
+    severity: ERROR
+    message: >
+      Dynamic evaluation of non-literal input can lead to code injection. Avoid
+      eval/exec on untrusted data.
+    metadata:
+      cwe: "CWE-94: Code Injection"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: eval($X)
+          - pattern: exec($X)
+      - pattern-not: eval("...")
+      - pattern-not: exec("...")
+
+  - id: ci-baseline-nosql-injection
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Potential NoSQL injection: a query operator is built from request data.
+      Validate/cast inputs and avoid passing raw user objects into queries.
+    metadata:
+      cwe: "CWE-943: Improper Neutralization of Special Elements in Data Query Logic"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: LOW
+    patterns:
+      - pattern-either:
+          - pattern: '$COL.find({ ..., $FIELD: req.$SRC.$NAME, ... })'
+          - pattern: '$COL.find({ $WHERE: req.$SRC.$NAME })'
+
+  - id: ci-baseline-path-traversal
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Potential path traversal: a filesystem path is built from request input.
+      Resolve and validate the path against an allowed base directory.
+    metadata:
+      cwe: "CWE-22: Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')"
+      owasp: "A01:2021 - Broken Access Control"
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: $FS.readFile($P + ..., ...)
+          - pattern: $FS.readFileSync($P + ...)
+          - pattern: $FS.readFile(`...${...}...`, ...)
+          - pattern: $FS.createReadStream($P + ...)
+      - metavariable-pattern:
+          metavariable: $P
+          patterns:
+            - pattern-either:
+                - pattern: req.$ANY.$NAME
+                - pattern: $REQ.query
+                - pattern: $REQ.params

@@ -1,0 +1,54 @@
+{
+  "name": "codeinspectus",
+  "version": "0.1.0",
+  "description": "CodeInspectus, by Synvoya — a local-first, privacy-preserving security MCP server that scans AI-generated code for real vulnerabilities, maps findings to compliance frameworks, and drives a scan → fix → rescan loop. Zero network egress at scan time.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "codeinspectus": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "data",
+    "detection-db",
+    "engines.lock.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && tsup",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "eval": "tsx evals/run-evals.ts",
+    "inspector": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "security",
+    "sast",
+    "secrets",
+    "sca",
+    "sbom",
+    "compliance",
+    "opengrep",
+    "gitleaks",
+    "trivy",
+    "ai-code",
+    "local-first"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.9"
+  }
+}

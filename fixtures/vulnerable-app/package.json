@@ -1,0 +1,10 @@
+{
+  "name": "vulnerable-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FIXTURE — planted issue #4: an outdated, known-vulnerable dependency (lodash 4.17.4). Detected by Trivy (SCA) against package-lock.json.",
+  "dependencies": {
+    "lodash": "4.17.4",
+    "minimist": "1.2.0"
+  }
+}

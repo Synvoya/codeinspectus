@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Engine binaries + Trivy DB cache live in the managed dir, never committed
+~/.codeinspectus/
+bin/
+.cache/
+
+# Secrets — never commit
+.env
+.env.*
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
+*.log
+.idea/
+.vscode/
+
+# Test / scan scratch
+/tmp-scan/
+scan-output/
+*.sarif
+
+# Eval scratch
+evals/.out/

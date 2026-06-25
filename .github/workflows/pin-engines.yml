@@ -1,0 +1,128 @@
+# Pin engine binaries across all target platforms (PRD §0.2 supply-chain pinning).
+#
+# Each matrix job runs on its NATIVE OS runner, downloads + verifies (cosign /
+# checksums, fail-closed) + pins its own platform's engine binaries via
+# `install-engines --pin-only`, and uploads the resulting engines.lock.json. A
+# final job merges the per-platform pins into one lockfile artifact for a human to
+# review and commit.
+#
+# Manual trigger only. This workflow does NOT push or commit — it produces an
+# artifact (engines.lock.merged.json). A maintainer reviews the diff and commits.
+#
+# Why a matrix (vs. pinning all platforms from one machine): pinning is
+# platform-agnostic, but running each job natively lets us ALSO smoke-run the
+# binary on its real OS (`verify-engines`) before trusting the pin.
+name: pin-engines
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  pin:
+    name: pin ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14            # Apple Silicon
+            platform: darwin-arm64
+          - os: macos-13            # Intel
+            platform: darwin-x64
+          - os: ubuntu-24.04
+            platform: linux-x64
+          - os: ubuntu-24.04-arm    # GitHub-hosted arm64 Linux
+            platform: linux-arm64
+          - os: windows-latest
+            platform: win32-x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Assert runner platform matches matrix
+        shell: bash
+        env:
+          EXPECTED_PLATFORM: ${{ matrix.platform }}
+        run: |
+          actual="$(node -e "process.stdout.write(process.platform + '-' + process.arch)")"
+          echo "runner platform: $actual (expected $EXPECTED_PLATFORM)"
+          test "$actual" = "$EXPECTED_PLATFORM"
+
+      - name: Pin + verify this platform (fail-closed)
+        shell: bash
+        run: |
+          node dist/index.js install-engines --pin-only
+          node dist/index.js verify-engines        # smoke: SHA + provenance on the native OS
+
+      - name: Upload per-platform lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: lockfile-${{ matrix.platform }}
+          path: engines.lock.json
+          retention-days: 7
+
+  merge:
+    name: merge platform pins
+    needs: pin
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Download all per-platform lockfiles
+        uses: actions/download-artifact@v4
+        with:
+          path: pins
+
+      - name: Merge per-platform pins into engines.lock.json
+        shell: bash
+        run: |
+          node - <<'EOF'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const base = JSON.parse(fs.readFileSync('engines.lock.json', 'utf8'));
+          const platforms = ['darwin-arm64','darwin-x64','linux-x64','linux-arm64','win32-x64'];
+          for (const plat of platforms) {
+            const f = path.join('pins', `lockfile-${plat}`, 'engines.lock.json');
+            if (!fs.existsSync(f)) { console.log(`! missing artifact for ${plat}`); continue; }
+            const src = JSON.parse(fs.readFileSync(f, 'utf8'));
+            for (const eng of Object.keys(base.engines)) {
+              const sp = src.engines?.[eng]?.platforms?.[plat];
+              if (sp && sp.sha256) {
+                base.engines[eng].platforms[plat].sha256 = sp.sha256;
+                base.engines[eng].platforms[plat].provenance = sp.provenance;
+                console.log(`pinned ${eng} [${plat}] = ${sp.sha256.slice(0,16)}...`);
+              }
+            }
+          }
+          fs.writeFileSync('engines.lock.merged.json', JSON.stringify(base, null, 2) + '\n');
+          console.log('wrote engines.lock.merged.json');
+          EOF
+
+      - name: Show diff vs committed lockfile
+        shell: bash
+        run: diff -u engines.lock.json engines.lock.merged.json || true
+
+      - name: Upload merged lockfile for human review
+        uses: actions/upload-artifact@v4
+        with:
+          name: engines.lock.merged
+          path: engines.lock.merged.json
+          retention-days: 14
+      # NOTE: intentionally no commit/push. A maintainer reviews
+      # engines.lock.merged.json and commits it.

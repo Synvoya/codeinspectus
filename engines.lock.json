@@ -1,0 +1,226 @@
+{
+  "_comment": "SHA256 pins for engine binaries. MANDATORY (PRD §0.2): every binary's SHA256 is verified before execution. Trivy was supply-chain-compromised twice in early 2026 — never trust a mutable tag. Populate sha256 via `codeinspectus install-engines` (current platform) or `install-engines --all-platforms` / `--platform <key>` (cross-platform pinning). The flow downloads from the verified release URL, checks the publisher signature (cosign for opengrep, checksums for gitleaks, checksums+sigstore for trivy), then pins the EXTRACTED binary's SHA256 + provenance. A null sha256 means the binary is NOT yet pinned and CodeInspectus will REFUSE to execute it on that platform.",
+  "schema_version": 1,
+  "generated_at": "2026-06-20T23:32:58.571Z",
+  "sigstore_identities": {
+    "_comment": "Cosign keyless signer identities, resolved from the actual release certificates 2026-06-21 and confirmed with `cosign verify-blob` (Verified OK). Signature verification is MANDATORY and fail-closed for opengrep + trivy.",
+    "issuer": "https://token.actions.githubusercontent.com",
+    "trivy": "https://github.com/aquasecurity/trivy/.github/workflows/reusable-release.yaml@refs/tags/v0.71.2",
+    "opengrep": "https://github.com/opengrep/opengrep/.github/workflows/rolling-release.yml@refs/heads/main"
+  },
+  "engines": {
+    "opengrep": {
+      "version": "1.23.0",
+      "repo": "opengrep/opengrep",
+      "release_base": "https://github.com/opengrep/opengrep/releases/download/v1.23.0",
+      "signature": "cosign",
+      "checksums_asset": null,
+      "platforms": {
+        "darwin-arm64": {
+          "asset": "opengrep_osx_arm64",
+          "archive": "raw",
+          "binary": "opengrep",
+          "sha256": "945739e56fec4aab28da296811f3473a0ff733af3dc2371d150b071430265c5f",
+          "provenance": {
+            "method": "cosign",
+            "verified": true,
+            "at": "2026-06-20T23:32:01.500Z",
+            "identity": "https://github.com/opengrep/opengrep/.github/workflows/rolling-release.yml@refs/heads/main",
+            "issuer": "https://token.actions.githubusercontent.com"
+          }
+        },
+        "darwin-x64": {
+          "asset": "opengrep_osx_x86",
+          "archive": "raw",
+          "binary": "opengrep",
+          "sha256": "2fa99169e34e9f233fd7412d5cdc167114ba752a2510da3ce322b272c15ab755",
+          "provenance": {
+            "method": "cosign",
+            "verified": true,
+            "at": "2026-06-20T23:32:15.289Z",
+            "identity": "https://github.com/opengrep/opengrep/.github/workflows/rolling-release.yml@refs/heads/main",
+            "issuer": "https://token.actions.githubusercontent.com"
+          }
+        },
+        "linux-x64": {
+          "asset": "opengrep_manylinux_x86",
+          "archive": "raw",
+          "binary": "opengrep",
+          "sha256": "1f06548af379ab6080698a609612890ffad2d92dc2172f1e97d38d48096d5ef8",
+          "provenance": {
+            "method": "cosign",
+            "verified": true,
+            "at": "2026-06-20T23:32:30.937Z",
+            "identity": "https://github.com/opengrep/opengrep/.github/workflows/rolling-release.yml@refs/heads/main",
+            "issuer": "https://token.actions.githubusercontent.com"
+          }
+        },
+        "linux-arm64": {
+          "asset": "opengrep_manylinux_aarch64",
+          "archive": "raw",
+          "binary": "opengrep",
+          "sha256": "ddf4935b138a2e825e6860529df1fb031524f7a2da8933ab7b2a16e5939c5178",
+          "provenance": {
+            "method": "cosign",
+            "verified": true,
+            "at": "2026-06-20T23:32:41.719Z",
+            "identity": "https://github.com/opengrep/opengrep/.github/workflows/rolling-release.yml@refs/heads/main",
+            "issuer": "https://token.actions.githubusercontent.com"
+          }
+        },
+        "win32-x64": {
+          "asset": "opengrep_windows_x86.exe",
+          "archive": "raw",
+          "binary": "opengrep",
+          "sha256": "7cbe02d9cc3fb812adce8720fc46515bb6a954a4ceeb3856d3a099d783749aae",
+          "provenance": {
+            "method": "cosign",
+            "verified": true,
+            "at": "2026-06-20T23:32:51.991Z",
+            "identity": "https://github.com/opengrep/opengrep/.github/workflows/rolling-release.yml@refs/heads/main",
+            "issuer": "https://token.actions.githubusercontent.com"
+          }
+        }
+      }
+    },
+    "gitleaks": {
+      "version": "8.30.1",
+      "repo": "gitleaks/gitleaks",
+      "release_base": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1",
+      "signature": "checksums",
+      "checksums_asset": "gitleaks_8.30.1_checksums.txt",
+      "platforms": {
+        "darwin-arm64": {
+          "asset": "gitleaks_8.30.1_darwin_arm64.tar.gz",
+          "archive": "tar.gz",
+          "binary": "gitleaks",
+          "sha256": "ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f",
+          "provenance": {
+            "method": "checksums",
+            "verified": true,
+            "at": "2026-06-20T23:32:04.508Z"
+          }
+        },
+        "darwin-x64": {
+          "asset": "gitleaks_8.30.1_darwin_x64.tar.gz",
+          "archive": "tar.gz",
+          "binary": "gitleaks",
+          "sha256": "cee01fea7173f1b779dff188e1c26ecbcb4027d394acc573b23aaf0be260e291",
+          "provenance": {
+            "method": "checksums",
+            "verified": true,
+            "at": "2026-06-20T23:32:18.567Z"
+          }
+        },
+        "linux-x64": {
+          "asset": "gitleaks_8.30.1_linux_x64.tar.gz",
+          "archive": "tar.gz",
+          "binary": "gitleaks",
+          "sha256": "88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509",
+          "provenance": {
+            "method": "checksums",
+            "verified": true,
+            "at": "2026-06-20T23:32:34.114Z"
+          }
+        },
+        "linux-arm64": {
+          "asset": "gitleaks_8.30.1_linux_arm64.tar.gz",
+          "archive": "tar.gz",
+          "binary": "gitleaks",
+          "sha256": "00e91bbe655bd7c47753e8cfe61cb76ea1a5d7e7702fe161ee40102b46b3823b",
+          "provenance": {
+            "method": "checksums",
+            "verified": true,
+            "at": "2026-06-20T23:32:45.015Z"
+          }
+        },
+        "win32-x64": {
+          "asset": "gitleaks_8.30.1_windows_x64.zip",
+          "archive": "zip",
+          "binary": "gitleaks",
+          "sha256": "17157e2ee8b76fc8b1d8bee607a250e34b8a8023c8bc81822d4b5ee4d78fcb7c",
+          "provenance": {
+            "method": "checksums",
+            "verified": true,
+            "at": "2026-06-20T23:32:55.191Z"
+          }
+        }
+      }
+    },
+    "trivy": {
+      "version": "0.71.2",
+      "repo": "aquasecurity/trivy",
+      "release_base": "https://github.com/aquasecurity/trivy/releases/download/v0.71.2",
+      "signature": "checksums+sigstore",
+      "checksums_asset": "trivy_0.71.2_checksums.txt",
+      "_security_note": "NEVER use v0.69.4, v0.69.5, v0.69.6 (TeamPCP supply-chain compromise, CVE-2026-33634). Verify sigstore before pinning.",
+      "platforms": {
+        "darwin-arm64": {
+          "asset": "trivy_0.71.2_macOS-ARM64.tar.gz",
+          "archive": "tar.gz",
+          "binary": "trivy",
+          "sha256": "7d8bf18455702bdacb585e4041591c7019c39cc5fe14beacd1485e89d619127d",
+          "provenance": {
+            "method": "cosign",
+            "verified": true,
+            "at": "2026-06-20T23:32:07.863Z",
+            "identity": "https://github.com/aquasecurity/trivy/.github/workflows/reusable-release.yaml@refs/tags/v0.71.2",
+            "issuer": "https://token.actions.githubusercontent.com"
+          }
+        },
+        "darwin-x64": {
+          "asset": "trivy_0.71.2_macOS-64bit.tar.gz",
+          "archive": "tar.gz",
+          "binary": "trivy",
+          "sha256": "f83c71055d30baa3bf0c74a5659a8d38d5ac0781c9a65a6841c5696f8b66dfd6",
+          "provenance": {
+            "method": "cosign",
+            "verified": true,
+            "at": "2026-06-20T23:32:26.034Z",
+            "identity": "https://github.com/aquasecurity/trivy/.github/workflows/reusable-release.yaml@refs/tags/v0.71.2",
+            "issuer": "https://token.actions.githubusercontent.com"
+          }
+        },
+        "linux-x64": {
+          "asset": "trivy_0.71.2_Linux-64bit.tar.gz",
+          "archive": "tar.gz",
+          "binary": "trivy",
+          "sha256": "46d2e9f20fc45d131d2c590497d3b598afe6be67a58ce105113e43f1328779bf",
+          "provenance": {
+            "method": "cosign",
+            "verified": true,
+            "at": "2026-06-20T23:32:37.025Z",
+            "identity": "https://github.com/aquasecurity/trivy/.github/workflows/reusable-release.yaml@refs/tags/v0.71.2",
+            "issuer": "https://token.actions.githubusercontent.com"
+          }
+        },
+        "linux-arm64": {
+          "asset": "trivy_0.71.2_Linux-ARM64.tar.gz",
+          "archive": "tar.gz",
+          "binary": "trivy",
+          "sha256": "5dcf6209995ed375f39fe38bed250ac292fe111077d39f864ff270788846c88b",
+          "provenance": {
+            "method": "cosign",
+            "verified": true,
+            "at": "2026-06-20T23:32:47.297Z",
+            "identity": "https://github.com/aquasecurity/trivy/.github/workflows/reusable-release.yaml@refs/tags/v0.71.2",
+            "issuer": "https://token.actions.githubusercontent.com"
+          }
+        },
+        "win32-x64": {
+          "asset": "trivy_0.71.2_windows-64bit.zip",
+          "archive": "zip",
+          "binary": "trivy",
+          "sha256": "b4e76b9c0bc74bd70f2f1269e86c055f9f57a4f25307bbe0847ec43332ad2ef6",
+          "provenance": {
+            "method": "cosign",
+            "verified": true,
+            "at": "2026-06-20T23:32:57.163Z",
+            "identity": "https://github.com/aquasecurity/trivy/.github/workflows/reusable-release.yaml@refs/tags/v0.71.2",
+            "issuer": "https://token.actions.githubusercontent.com"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,70 @@
+# CodeInspectus original MIT security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
+# Cryptographic failures (OWASP A02).
+rules:
+  - id: ci-baseline-weak-hash
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Weak hashing algorithm (MD5/SHA1) used. Use SHA-256+ or a password KDF
+      (bcrypt/scrypt/argon2) for credentials.
+    metadata:
+      cwe: "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
+      owasp: "A02:2021 - Cryptographic Failures"
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: $C.createHash("md5")
+          - pattern: $C.createHash("sha1")
+
+  - id: ci-baseline-weak-cipher
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Weak/broken cipher (DES/RC4/3DES) used. Use AES-GCM or another modern AEAD cipher.
+    metadata:
+      cwe: "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
+      owasp: "A02:2021 - Cryptographic Failures"
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: $C.createCipheriv("des", ...)
+          - pattern: $C.createCipheriv("des-ede3", ...)
+          - pattern: $C.createCipheriv("rc4", ...)
+          - pattern: $C.createCipher(...)
+
+  - id: ci-baseline-insecure-random-security
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Math.random() is not cryptographically secure. For tokens/secrets/IDs use
+      crypto.randomBytes / crypto.randomUUID / webcrypto getRandomValues.
+    metadata:
+      cwe: "CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator (PRNG)"
+      owasp: "A02:2021 - Cryptographic Failures"
+      category: security
+      confidence: LOW
+    patterns:
+      - pattern-either:
+          - pattern: $T = Math.random()
+          - pattern: const $V = Math.random()
+      - metavariable-pattern:
+          metavariable: $V
+          patterns:
+            - pattern-regex: "(?i)(token|secret|key|otp|nonce|salt|password|session|csrf)"
+
+  - id: ci-baseline-weak-hash-python
+    languages: [python]
+    severity: WARNING
+    message: >
+      Weak hashing algorithm (MD5/SHA1) used. Use SHA-256+ or a password KDF.
+    metadata:
+      cwe: "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
+      owasp: "A02:2021 - Cryptographic Failures"
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: hashlib.md5(...)
+          - pattern: hashlib.sha1(...)
