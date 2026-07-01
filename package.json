@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "CodeInspectus, by Synvoya — a local-first, privacy-preserving security MCP server that scans AI-generated code for real vulnerabilities, maps findings to compliance frameworks, and drives a scan → fix → rescan loop. Zero network egress at scan time.",
   "license": "MIT",
+  "author": "Synvoya",
+  "homepage": "https://codeinspectus.com",
+  "repository": { "type": "git", "url": "git+https://github.com/Synvoya/codeinspectus.git" },
+  "bugs": { "url": "https://github.com/Synvoya/codeinspectus/issues" },
   "type": "module",
   "bin": {
     "codeinspectus": "dist/index.js"
