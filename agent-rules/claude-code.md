@@ -14,7 +14,12 @@ CodeInspectus is read-only — it never edits or deletes files.
 3. **Get consent — granular.** Ask the user which findings to fix before changing any code.
    Offer per-finding or per-severity-tier choices (e.g. "Fix the 3 criticals? the 8 highs?"),
    not a single all-or-nothing "approve 14 fixes" — the user must be able to choose.
-4. **Fix — only what was approved.** YOU apply the approved edits using the finding's
+4. **Checkpoint first (git safety), then fix — only what was approved.** BEFORE applying any edit,
+   check the scan's read-only `git_safety` advisory: if `state` is `no_git` or `dirty`, surface its
+   `recommendation` and — **only with the user's approval** — offer to create a rollback point (`git
+   init` + an initial commit, or commit/stash the current changes) so a fix can be undone cleanly.
+   **CodeInspectus never runs git and never writes to the repo; YOU run git, and only if the user
+   approves** (`clean`/`unknown` → say nothing). Then apply the approved edits using each finding's
    `remediation`; CodeInspectus never writes files. Do not fix anything that was not approved.
 5. **Rescan + report honestly.** Call `codeinspectus_rescan` (same path) and tell the user
    what is now `resolved`, what still fires, and whether anything new was introduced. Do not

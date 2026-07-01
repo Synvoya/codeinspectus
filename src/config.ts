@@ -71,6 +71,28 @@ export const ENGINES_LOCKFILE = join(PKG_ROOT, "engines.lock.json");
 export const ENGINE_TIMEOUT_MS = 1000 * 60 * 5; // 5 min hard cap per engine
 export const MAX_BUFFER_BYTES = 1024 * 1024 * 256; // 256 MB stdout cap
 
+// ── Build-output directories ────────────────────────────────────────────────
+// Single source of truth (CG-30): walk-skip, the §6.1 bundle-secret check, and git-aware
+// file routing all share this set. These dirs are git-ignored but SHIPPED to the browser,
+// so the bundle-secret check still fires there. Sensible, NON-exhaustive known list
+// (Next/Vite/Nuxt/SvelteKit/Astro/Jekyll/Eleventy/Storybook/Expo output) — extend as needed.
+// CG-31: name-based build-dir detection is inherently imperfect — ambiguous names that are
+// SOURCE in one framework and OUTPUT in another (notably `public/` — source in Next/CRA,
+// build output in Gatsby/Hugo) are deliberately NOT listed; for those, git-status is the
+// signal (a git-ignored `public/` is handled by the gitignored bucket).
+export const BUILD_DIRS: ReadonlySet<string> = new Set([
+  ".next",
+  "dist",
+  "build",
+  "out",
+  ".nuxt",
+  ".svelte-kit",
+  ".output",
+  "_site", // Jekyll / Eleventy default output
+  "storybook-static", // Storybook static build
+  "web-build", // Expo / React Native web export
+]);
+
 // ── Output defaults ─────────────────────────────────────────────────────────
 export const DEFAULT_MAX_FINDINGS = 200;
 

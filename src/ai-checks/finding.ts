@@ -5,7 +5,7 @@
 
 import type { Finding, Severity, Confidence, Remediation } from "../types.js";
 import { fingerprint as fp } from "../util/hash.js";
-import { redactSnippet } from "../redact.js";
+import { redactSnippet, redactSecretText } from "../redact.js";
 
 export interface AiFindingSpec {
   ruleId: string;
@@ -50,10 +50,12 @@ export function makeAiFinding(spec: AiFindingSpec): Finding {
       file: spec.file,
       start_line: spec.startLine,
       end_line: endLine,
-      // Always redact: an AI-code snippet may contain a secret.
-      snippet: redactSnippet(spec.snippet),
+      // A secret finding's snippet gets the value-agnostic scrub (CG-24); other AI
+      // findings keep their code context with known secrets masked in place.
+      snippet: spec.isSecret ? redactSecretText(spec.snippet, spec.ruleId) : redactSnippet(spec.snippet),
     },
-    message: spec.message,
+    // Mask any known secret embedded in an (author-controlled, value-free) AI message.
+    message: spec.isSecret ? redactSnippet(spec.message) : spec.message,
     remediation: spec.remediation,
     frameworks: [],
     confidence: spec.confidence,

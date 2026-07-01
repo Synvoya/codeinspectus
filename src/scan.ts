@@ -34,6 +34,8 @@ import { runTrivy, type TrivyScanner } from "./engines/trivy.js";
 import type { EngineOutput } from "./engines/types.js";
 import { runAiChecks } from "./ai-checks/index.js";
 import { normalizeEngineOutput } from "./sarif/normalize.js";
+import { routeScanFindings } from "./file-routing.js";
+import { detectGitSafety } from "./git-safety.js";
 import { dedupFindings } from "./dedup.js";
 import { tagFindings } from "./compliance/mapper.js";
 import { buildComplianceOverview } from "./compliance/report.js";
@@ -77,6 +79,9 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   }
 
   const warnings: string[] = [];
+  // CG-41 git-safety rail (READ-ONLY): detect the target's git state concurrently with the
+  // engines. Never mutates git or the repo — only reads (rev-parse / status --porcelain).
+  const gitSafetyProbe = detectGitSafety(target);
   const tmpDir = await mkdtemp(join(tmpdir(), "ci-scan-"));
 
   try {
@@ -130,8 +135,21 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       engineDetails.push(aiResult.info);
     }
 
+    // CG-30 git-aware file routing: classify each finding by WHERE it lives (node_modules /
+    // build output / git-ignored / tracked) and set severity+framing accordingly. Runs
+    // BEFORE dedup so severity-first dedup (CG-24) operates on the corrected severities.
+    const { findings: routed, stats: routeStats } = await routeScanFindings(allFindings, target);
+    if (routeStats.dropped_node_modules || routeStats.dropped_build_noise || routeStats.reframed) {
+      warnings.push(
+        `File routing: reframed ${routeStats.reframed} git-ignored finding(s) as local-hygiene ` +
+          `(lower urgency — present on local disk but not committed); dropped ` +
+          `${routeStats.dropped_node_modules} in node_modules and ${routeStats.dropped_build_noise} ` +
+          `non-bundle finding(s) in build output. The §6.1 client-bundle secret check still fires in build output.`,
+      );
+    }
+
     // Dedup (global + secret overlap), then compliance-tag.
-    const { findings: deduped, stats } = dedupFindings(allFindings);
+    const { findings: deduped, stats } = dedupFindings(routed);
     if (stats.merged > 0) log.debug(`dedup merged ${stats.merged} overlapping findings`);
     await tagFindings(deduped);
 
@@ -155,6 +173,12 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       .filter((e) => e.ran)
       .map((e) => `${e.engine}@${e.version}`);
 
+    // CG-41/CG-42: resolve the read-only git-safety probe. The structured `git_safety` field is
+    // attached below; the human-readable half renders its recommendation under its own
+    // "Before you fix:" line (summarize.ts), deliberately NOT under "Warnings:". Advisory only —
+    // never added to `findings`, so it does not perturb severity counts/totals.
+    const git_safety = await gitSafetyProbe;
+
     const result: ScanResult = {
       scan_id: `scan-${randomUUID()}`,
       target,
@@ -170,6 +194,7 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       total_findings_before_limit: totalBeforeLimit,
       disclaimer: STANDING_DISCLAIMER,
       warnings,
+      git_safety,
     };
 
     if (input.include_compliance !== false) {

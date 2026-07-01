@@ -20,8 +20,10 @@ const CREATE_TABLE_RE =
   /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:["`]?([a-zA-Z0-9_]+)["`]?\s*\.\s*)?["`]?([a-zA-Z0-9_]+)["`]?/gi;
 const ENABLE_RLS_RE =
   /alter\s+table\s+(?:"?public"?\.)?["`]?([a-zA-Z0-9_]+)["`]?\s+enable\s+row\s+level\s+security/gi;
+// CG-25b B-12: capture an optional schema qualifier so a schema-qualified target like
+// storage.objects is recognized (not parsed as table "storage"). group1=schema, 2=table, 3=body.
 const CREATE_POLICY_RE =
-  /create\s+policy\s+[^;]*?\bon\s+(?:"?public"?\.)?["`]?([a-zA-Z0-9_]+)["`]?([^;]*);/gis;
+  /create\s+policy\s+[^;]*?\bon\s+(?:["`]?([a-zA-Z0-9_]+)["`]?\s*\.\s*)?["`]?([a-zA-Z0-9_]+)["`]?([^;]*);/gis;
 const USING_TRUE_RE = /\b(?:using|with\s+check)\s*\(\s*true\s*\)/gi;
 
 // CG-18 dogfood FP: skip RLS-missing on platform-managed schemas (Supabase manages RLS
@@ -70,6 +72,7 @@ function blankSqlComments(sql: string): string {
 }
 
 interface PolicyInfo {
+  schema: string; // "" when unqualified or public
   table: string;
   body: string;
   index: number;
@@ -80,14 +83,15 @@ interface PolicyInfo {
 function parsePolicies(sql: string): PolicyInfo[] {
   const policies: PolicyInfo[] = [];
   for (const m of sql.matchAll(CREATE_POLICY_RE)) {
-    const table = (m[1] ?? "").toLowerCase();
-    const body = m[2] ?? "";
+    const schema = (m[1] ?? "").toLowerCase();
+    const table = (m[2] ?? "").toLowerCase();
+    const body = m[3] ?? "";
     const cmds: string[] = [];
     const forMatch = body.match(/\bfor\s+(select|insert|update|delete|all)\b/i);
     if (forMatch && forMatch[1]) cmds.push(forMatch[1].toLowerCase());
     else cmds.push("all"); // policy with no FOR applies to ALL
     const index = m.index ?? 0;
-    policies.push({ table, body, index, endIndex: index + m[0].length, commands: cmds });
+    policies.push({ schema, table, body, index, endIndex: index + m[0].length, commands: cmds });
   }
   return policies;
 }
@@ -167,6 +171,45 @@ export async function runSupabaseRlsCheck(target: string): Promise<Finding[]> {
       const table = policy.table;
       const command = policy.commands[0] ?? "all";
       const isWrite = command !== "select" || matchedWithCheck;
+
+      // CG-25b B-12: system-schema policies are platform-managed → skip them, EXCEPT
+      // storage.objects — the user-facing bucket-policy table. A permissive policy there
+      // exposes every file in the bucket (the storage arm of CVE-2025-48757). This carves
+      // storage.objects out WITHOUT re-enabling the auth.* etc. system-schema FP (CG-18).
+      if (policy.schema && SYSTEM_SCHEMAS.has(policy.schema)) {
+        if (policy.schema === "storage" && table === "objects") {
+          findings.push(
+            makeAiFinding({
+              ruleId: "ci-ai-storage-rls-public",
+              title: isWrite
+                ? "Permissive RLS write policy on storage.objects — anyone can modify your files"
+                : "Public read policy on storage.objects — anyone can download every stored file",
+              severity: isWrite ? "critical" : "high",
+              cwe: ["CWE-863", "CWE-285"],
+              owasp_web: ["A01:2021"],
+              file: f.rel,
+              startLine: line,
+              snippet: lineText(f.content, line),
+              message: isWrite
+                ? "This Supabase Storage policy on storage.objects evaluates to TRUE for everyone and covers writes, so any client with the anon key can upload, overwrite, or delete files in your buckets — the CVE-2025-48757 failure pattern applied to storage."
+                : "This Supabase Storage policy on storage.objects is world-readable (USING (true)), so any client with the anon key can list and download every file in your buckets (uploads, invoices, ID scans). Confirm the bucket is intended to be fully public.",
+              remediation: {
+                summary:
+                  "Scope the storage.objects policy to the owner/bucket (e.g. bucket_id + auth.uid() = owner); leave it fully public only for genuinely public assets.",
+                steps: [
+                  "Decide which buckets are truly public (e.g. avatars) vs private (uploads, documents).",
+                  "For private buckets, replace USING (true) with an owner/bucket predicate, e.g. (bucket_id = '...' AND auth.uid() = owner).",
+                  "Make the bucket itself private if it should not be world-listable.",
+                ],
+                references: ["CWE-863", "https://supabase.com/docs/guides/storage/security/access-control"],
+              },
+              confidence: "medium",
+            }),
+          );
+        }
+        continue; // storage.objects handled above; all other system-schema policies skipped
+      }
+
       const sensitivity = tableSensitivity(table, tableColumns.get(table));
       const tableLabel = table || "table";
 

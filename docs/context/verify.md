@@ -13,8 +13,7 @@ npm run eval         # drives the built server over MCP stdio
 ```
 Expected: all non-skipped evals PASS. Engine-dependent evals (E16 Opengrep SQLi,
 E17 Trivy SCA) auto-SKIP when the binary/DB is unavailable — that is acceptable,
-a FAIL is not. Current baseline: 17 passed, 0 failed, 0 skipped; E17 skips only
-without the Trivy DB (when the vuln DB has not been fetched).
+a FAIL is not.
 
 ## MCP transport
 ```bash

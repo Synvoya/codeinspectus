@@ -78,6 +78,10 @@ auto-runs the scan → fix → rescan loop.
 All tools are **read-only** — CodeInspectus reads and reports; it never writes to
 or deletes your files. Your agent applies the fixes.
 
+Each scan also reports a read-only **git-safety** state: if there's no git repo or
+uncommitted changes, it recommends creating a checkpoint before fixes — your agent
+runs git only with your approval; the tool never does.
+
 ## Honest claims (please read)
 
 - **"No egress" is precise: zero egress _at scan time_.** Engine binaries and the
@@ -99,6 +103,33 @@ or deletes your files. Your agent applies the fixes.
   code-evidenced — this is **not** an Essential Eight assessment.
 - **Prompt-injection detection is heuristic and immature** — those findings are
   worded "potential …" and marked medium confidence.
+- **Client-side authorization that trusts `user_metadata` is not yet detected.**
+  CodeInspectus does **not** currently flag an authorization decision that trusts
+  client-writable Supabase `user_metadata` — e.g. `if (user.user_metadata.role === 'admin')`.
+  `user_metadata` is editable by the signed-in user themselves (Supabase's
+  `/auth/v1/user` endpoint), so anyone can self-assign `role: 'admin'`; **gate
+  privileged logic on the server-controlled `app_metadata.role` instead.** Detecting
+  this pattern is **planned as the first community-intake rule** — see
+  [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
+  [good-first-issue](docs/good-first-issues/user-metadata-authz-rule.md). What
+  CodeInspectus *does* catch on the related footgun: a Supabase **`service_role` key
+  value** present in client-reachable code (**critical**), and a `service_role` key
+  behind a **client-exposed env prefix** such as `NEXT_PUBLIC_…` (**high**).
+
+## Language support
+
+Plainly, what runs on what. The commodity engines are broad; the **CodeInspectus
+AI-code checks (the moat) are JavaScript/TypeScript-focused today** — more languages
+are planned. So on a Python/Go/Rust/etc. repo you still get full secrets, dependency,
+IaC and SBOM coverage (and Python SAST), but the AI-code-specific checks won't fire.
+This is stated so you don't infer coverage that isn't there.
+
+| Layer | What it covers | Language / ecosystem scope |
+|-------|----------------|----------------------------|
+| **Secrets** — Gitleaks + CodeInspectus client-secret checks | hard-coded credentials, leaked keys | **Any language.** Detection is value/pattern-based, not language-parsed. |
+| **Dependencies (CVEs/SCA), IaC misconfig, SBOM, license** — Trivy | vulnerable deps, infra misconfig, bill of materials | **Many language & package ecosystems and IaC formats** — see [Trivy's docs](https://trivy.dev). |
+| **SAST** — Opengrep + CodeInspectus `security-baseline` | injection, XSS, SSRF, weak crypto, insecure deserialization | **JavaScript, TypeScript, Python.** CodeInspectus ships its own MIT ruleset and runs Opengrep with **no network registry packs**, so SAST coverage is exactly these languages — deliberately narrower than Opengrep's full engine. |
+| **AI-code checks (the moat)** — client-side secret/bundle exposure, Supabase RLS, prompt-injection sinks | the AI-code / vibe-coding failure modes the engines miss | **JavaScript / TypeScript only** (incl. `.jsx/.tsx/.mjs/.cjs`; the client-secret checks also read JS-framework files `.vue/.svelte/.astro/.html`). Supabase RLS analyzes `.sql` (plus `.ts/.js` Edge Functions). **More languages are planned.** |
 
 ## Compliance frameworks (code-visible subset)
 
@@ -140,6 +171,9 @@ npm run eval       # ≥10 evals against fixtures/vulnerable-app
 npm run inspector  # npx @modelcontextprotocol/inspector node dist/index.js
 ```
 
+How this repository is generated (an auditable, allow-list seed) and built end-to-end:
+[`docs/BUILD.md`](docs/BUILD.md).
+
 ## Contributing
 
 CodeInspectus is a **solo, free, open-source** project, built and maintained by
@@ -154,7 +188,7 @@ Two areas where review helps most:
   by the maintainer** — they are **NOT independently verified.** Every mapping is
   tracked through three explicit states: **AI-drafted → maintainer-policy-reviewed →
   community-verified.** Today almost everything sits in the first two; the
-  community-verified count is ~0, and that is reported honestly rather than hidden.
+  community-verified count is **0 of 96**, and that is reported honestly rather than hidden.
   Moving a mapping to *community-verified* takes evidence (a quote from the control's
   primary source + your basis) — the bar and process are in
   [`CONTRIBUTING.md`](CONTRIBUTING.md); the per-mapping rationale and confidence live

@@ -27,7 +27,11 @@ import type { Finding } from "../types.js";
 import { collectFiles, lineOf, lineText } from "./walk.js";
 import { makeAiFinding } from "./finding.js";
 
-const CODE_EXTS = ["ts", "tsx", "js", "jsx", "mjs", "cjs", "py"];
+// JS/TS only: the taint analysis seeds from JS `const/let/var` assignments and JS LLM-SDK
+// call shapes, so Python (and other) sources never match. Listing `py` here would imply
+// coverage the analyzer does not provide (CG-29; CG-23 B-4). Python prompt-injection
+// patterns are validated V2 work — add `py` back only with real Python detection.
+const CODE_EXTS = ["ts", "tsx", "js", "jsx", "mjs", "cjs"];
 
 // Untrusted-input sources (request-shaped; see CONTRACT "known blind spots").
 const SOURCE_RE =

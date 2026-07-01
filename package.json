@@ -23,6 +23,7 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "test": "vitest run",
+    "test:redaction": "node scripts/redaction-e2e.mjs",
     "eval": "tsx evals/run-evals.ts",
     "inspector": "npx @modelcontextprotocol/inspector node dist/index.js"
   },

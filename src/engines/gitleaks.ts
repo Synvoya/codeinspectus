@@ -38,6 +38,10 @@ export async function runGitleaks(target: string, tmpDir: string): Promise<Engin
       "--no-banner",
       "--exit-code",
       "0",
+      // Layer 1 of the redaction guarantee (CG-24 A3-1): Gitleaks replaces the matched
+      // secret with REDACTED in its SARIF report, so the raw value never reaches our
+      // process. The normalizer's value-agnostic scrub is the second, independent layer.
+      "--redact=100",
     ];
     // Prefer a user .gitleaks.toml in the target; else our bundled default.
     const userConfig = join(target, ".gitleaks.toml");

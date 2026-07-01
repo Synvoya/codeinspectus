@@ -10,7 +10,11 @@ read-only (never edits files). When you write or change code:
    recommended fix. **Never fix silently; never skip straight to patching.**
 3. **Consent (granular)** — ask which findings to fix; per-finding or per-tier (e.g. "the 3
    criticals?"), not one blanket approval.
-4. **Fix** — only the approved findings; YOU edit (CodeInspectus only reports).
+4. **Checkpoint first, then fix.** Before editing, if the scan's read-only `git_safety.state` is
+   `no_git` or `dirty`, surface its `recommendation` and — **only with user approval** — offer a
+   rollback point (`git init` + commit, or commit/stash current changes). **The tool never runs git;
+   YOU do, only if approved** (`clean`/`unknown` → stay silent). Then apply only the approved
+   findings' edits (CodeInspectus only reports).
 5. **Rescan** — `codeinspectus_rescan`; report honestly what is resolved / still firing / new.
    Don't claim fixed unless the rescan confirms it.
 6. **Secrets** — a hardcoded credential is already compromised: tell the user to **rotate the

@@ -13,6 +13,9 @@ Two general rules first:
 2. **Under-claim.** If you can't verify something, say so in the PR. "I think" beats a
    confident-and-wrong assertion.
 
+How this repository is generated and built from a clean clone is documented in
+[`docs/BUILD.md`](docs/BUILD.md).
+
 ---
 
 ## How to contribute — fork, branch, PR
@@ -30,6 +33,28 @@ outside contributors; everything lands through a reviewed pull request:
    (next section); for detection rules, follow the checklist under *Other contributions*.
 6. **The maintainer reviews and merges.** The maintainer is the sole reviewer, so the honest
    verb is *reviewed*, never "independently verified" (see the honesty metric).
+
+---
+
+## Running locally (self-verify)
+
+CodeInspectus ships its **full test suite** so you can verify every claim yourself from a clean
+clone — nothing is hidden behind a private CI. Before opening a PR, run all three:
+
+```bash
+npm install
+npm run build      # tsc --noEmit && tsup — must compile clean (zero type errors)
+npm test           # vitest run — unit/regression suite (corpus fixtures, redaction, dedup, routing)
+npm run eval       # drives the built MCP server over stdio against fixtures/vulnerable-app
+```
+
+- `npm test` is the fast inner loop. It runs the real analyzers over the committed
+  `fixtures/secret-rls-corpus` (true-positive **and** false-positive cases) and locks redaction,
+  dedup, SARIF normalization, and file-routing behaviour. It needs **no** engine binaries.
+- `npm run eval` should report **17 passed, 0 failed** with the engines installed. The two
+  engine-dependent evals (Opengrep SQLi, Trivy SCA) **auto-skip** if you haven't run
+  `install-engines` — a **skip is acceptable, a fail is not.**
+- A green `npm test` + `npm run eval` on your machine is the same gate the maintainer applies.
 
 ---
 
@@ -106,22 +131,65 @@ hides AI guesses.
 
 ---
 
+## The 10 guardrails (a PR must respect every one)
+
+These invariants are what make CodeInspectus trustworthy. A change that violates any of them
+will not be merged, however useful it otherwise is:
+
+1. **No engine fork.** Opengrep, Gitleaks, and Trivy are called as pinned subprocesses — never
+   forked or patched.
+2. **SHA-pin + verify before exec.** Every engine binary is SHA256-pinned in
+   `engines.lock.json` and its hash is verified before it runs.
+3. **Fail-closed verification.** An unpinned or mismatched binary is refused, not run. Trust
+   gates fail closed (the publish allow-list works the same way).
+4. **stdout is JSON-RPC only.** All logging goes to stderr via `src/logger.ts`. **No
+   `console.log` anywhere in `src/`** — it corrupts the MCP stream.
+5. **Zero scan-time egress, no telemetry.** Scans do no network I/O; the only networked step is
+   `install-engines`. Never add a phone-home.
+6. **Compliance = code-level coverage only.** Never emit "% compliant", "you pass", or any
+   certification language; always show the code-visible denominator + disclaimer.
+7. **Read-only tools.** The scanner reads and reports; it never writes to or deletes the user's
+   files (SBOM goes to the managed dir). The agent applies fixes.
+8. **Secret redaction.** No raw secret value in any output — type + location + redacted preview.
+9. **Cross-engine secret dedup.** Overlapping secret findings (e.g. Trivy ⨯ Gitleaks) are
+   merged, not double-reported.
+10. **AI-check scope discipline.** The custom AI checks target AI-code / vibe-coding failure
+    modes the engines miss — not homegrown generic SAST (that is Opengrep's job).
+
+---
+
 ## Other contributions
 
 ### Detection rules (`detection-db/**`, `src/ai-checks/**`)
+
+CodeInspectus ships **33 curated detections** today (see `detection-db/manifest.json`): the
+AI-code checks (`ci-ai-*`), the MIT `security-baseline` SAST rules (`ci-baseline-*`), and a few
+custom secret rules (`codeinspectus-*`). The set grows through a **human-reviewed weekly
+intake** — the maintainer triages proposals in batches. There is **no autonomous rule
+generation**: every rule is written and reviewed by a person, with fixtures, before it ships.
+(Have a footgun in mind? Open a **New detection proposal** issue — it asks for the precision
+discipline below up front.)
 
 **Precision is the merge bar.** False positives are the #1 adoption killer for a security
 tool — a scanner that cries wolf gets muted, and then it catches nothing. A rule earns merge
 by being *precise*, not by flagging more.
 
-- **Ship fixtures.** Include a **true-positive** fixture the rule must catch, and — wherever
-  the rule could plausibly over-fire — a **false-positive / near-miss** fixture it must
-  **not** flag. The precision/fixture check is the gate: a rule with no near-miss fixture for
-  a realistic safe case will be sent back.
-- **Rule ids: lowercase-kebab, never renamed once shipped.** New ids follow the existing
-  `ci-baseline-*` / `ci-ai-*` lowercase-kebab convention. A shipped `ruleId` is a **stable
-  fingerprint** — it feeds finding dedup/suppression — so **never rename it**; restructure the
-  rule body instead. Adding sinks/cases to an existing rule is fine (additive = new findings).
+- **Ship fixtures — non-negotiable.** Include a **true-positive** fixture the rule must catch,
+  **and** — wherever the rule could plausibly over-fire — a **false-positive / near-miss**
+  fixture it must **not** flag. **Both directions are required:** a rule with no near-miss
+  fixture for a realistic safe case will be sent back. Wire the fixtures into the vitest corpus
+  so the precision check is a standing regression lock, not a one-time claim.
+- **Rule ids are append-only — never rename or restructure a shipped one.**
+  - **Internal ids** are lowercase-kebab, namespaced: `ci-ai-*` (AI-code checks) /
+    `ci-baseline-*` (SAST baseline) / `codeinspectus-*` (secret rules).
+  - **Display ids** are the uppercase sequential form users see, e.g. `CI-0001`.
+  - A shipped internal `ruleId` is a **stable fingerprint**: it feeds finding dedup/suppression
+    **and rescan continuity** — the `scan → fix → rescan` loop matches findings across runs by
+    fingerprint. Renaming, splitting, or merging an id **silently breaks rescan**: a fixed
+    finding reads as "introduced", a real one as "resolved", with **no error** to warn you.
+  - **Safe vs unsafe:** *adding* a new id, or *adding* sinks/cases to an existing rule
+    (additive — same id, new matches), is safe. *Renaming / merging / splitting* a shipped id is
+    not. If matching must change, change the rule body **under the same id**.
 - **Provenance.** Assert in the PR that your rule is **original or a convergent functional
   idiom** — *not* copied from a no-sell-licensed registry (`opengrep/opengrep-rules`, Commons
   Clause; `semgrep/semgrep-rules`, Semgrep Rules License). Converging on the one canonical

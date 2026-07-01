@@ -29,3 +29,4 @@ scan-output/
 
 # Eval scratch
 evals/.out/
+.gstack/

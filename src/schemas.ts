@@ -98,6 +98,12 @@ export const complianceOverviewSchema = z.object({
   disclaimer: z.string(),
 });
 
+// ── CG-41 git-safety advisory (read-only workspace metadata, never a finding) ─
+export const gitSafetySchema = z.object({
+  state: z.enum(["no_git", "dirty", "clean", "unknown"]),
+  recommendation: z.string().optional(),
+});
+
 // ── scan / rescan output envelope (PRD §5) ──────────────────────────────────
 export const scanResultSchema = z.object({
   scan_id: z.string(),
@@ -115,6 +121,7 @@ export const scanResultSchema = z.object({
   compliance_overview: complianceOverviewSchema.optional(),
   disclaimer: z.string(),
   warnings: z.array(z.string()),
+  git_safety: gitSafetySchema,
 });
 
 // ── Tool INPUT schemas ──────────────────────────────────────────────────────

@@ -80,6 +80,19 @@ export interface SeveritySummary {
   total: number;
 }
 
+/** CG-41 git-safety states for the scan target's working tree. */
+export type GitSafetyState = "no_git" | "dirty" | "clean" | "unknown";
+
+/**
+ * CG-41 read-only workspace advisory: the git state of the scan target plus a plain-language
+ * checkpoint recommendation. Advisory METADATA — never a security finding, never severity-bearing.
+ */
+export interface GitSafety {
+  state: GitSafetyState;
+  /** Checkpoint recommendation — present ONLY when state is no_git or dirty. */
+  recommendation?: string;
+}
+
 export interface EngineRunInfo {
   engine: Engine;
   version: string;
@@ -135,6 +148,8 @@ export interface ScanResult {
   compliance_overview?: ComplianceOverview;
   disclaimer: string;
   warnings: string[];
+  /** CG-41 read-only git-safety advisory for the scan target (never a finding). */
+  git_safety: GitSafety;
 }
 
 export interface RescanResult {

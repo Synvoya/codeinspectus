@@ -39,7 +39,14 @@ export function summarizeScan(r: ScanResult): string {
   const warn = r.warnings.length ? `\n\nWarnings:\n  - ${r.warnings.join("\n  - ")}` : "";
   const eng = engineNotes ? `\n\nEngine status:\n${engineNotes}` : "";
 
-  return `${head}${body}${trunc}${eng}${warn}\n\n${r.disclaimer}`;
+  // CG-42: the read-only git-safety advisory gets its OWN "Before you fix:" line — deliberately
+  // NOT under "Warnings:" (a non-expert reads Warnings as "problems in my code"; this is a pre-fix
+  // safety nudge, not a finding). Present only for no_git / dirty (recommendation is set); silent otherwise.
+  const beforeFix = r.git_safety?.recommendation
+    ? `\n\nBefore you fix:\n  ${r.git_safety.recommendation}`
+    : "";
+
+  return `${head}${body}${trunc}${beforeFix}${eng}${warn}\n\n${r.disclaimer}`;
 }
 
 export function summarizeRescan(r: RescanResult): string {

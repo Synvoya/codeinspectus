@@ -12,7 +12,7 @@ import type { Engine, Finding, Confidence } from "../types.js";
 import type { EngineOutput } from "../engines/types.js";
 import type { SarifLog, SarifRule, SarifResult, SarifProps } from "./types.js";
 import { normalizeSeverity } from "../severity.js";
-import { findSecret, secretPreview, hashSecret, redactSnippet } from "../redact.js";
+import { findSecret, hashSecret, redactSecretText } from "../redact.js";
 import { remediationForCwe } from "../remediation.js";
 import { fingerprint as fp } from "../util/hash.js";
 
@@ -162,19 +162,22 @@ function normalizeResult(
   }
   if (cwes.length === 0) cwes = ["CWE-noinfo"];
 
-  // Secret handling: detect value, hash for dedup, redact snippet.
+  // Secret handling: detect the value for the dedup hash, then scrub EVERY surfaced field
+  // value-agnostically (CG-24 A3-1/A6-2). Redaction must never depend on the value matching
+  // a known pattern — a Gitleaks default-rule / entropy hit must be redacted in BOTH the
+  // snippet and the message, or its raw value leaks via structuredContent / explain_finding.
   let secretValueHash: string | undefined;
   let liveSecret = false;
   let snippet = rawSnippet;
+  let message = messageText;
   if (isSecret) {
     const found = findSecret(`${rawSnippet}\n${messageText}`);
     if (found) {
       secretValueHash = hashSecret(found.value);
       liveSecret = found.live;
-      snippet = redactSnippet(rawSnippet) || `${found.typeName}: ${secretPreview(found.value)}`;
-    } else {
-      snippet = redactSnippet(rawSnippet);
     }
+    snippet = redactSecretText(rawSnippet, ruleId);
+    message = redactSecretText(messageText, ruleId);
   }
 
   const severity = normalizeSeverity({
@@ -188,7 +191,7 @@ function normalizeResult(
     liveSecret,
   });
 
-  const title = deriveTitle(rule?.shortDescription?.text, rule?.name, messageText, rawRuleId, ruleId, isSecret);
+  const title = deriveTitle(rule?.shortDescription?.text, rule?.name, message, rawRuleId, ruleId, isSecret);
 
   const fingerprint = fp([engine, file, startLine, endLine, cwes[0], ruleId, secretValueHash]);
   const remediation = remediationForCwe(cwes);
@@ -203,7 +206,7 @@ function normalizeResult(
     rule_id: ruleId,
     cwe: cwes,
     location: { file, start_line: startLine, end_line: endLine, snippet: snippet || undefined },
-    message: messageText,
+    message,
     remediation,
     frameworks: [],
     confidence: precisionToConfidence(rule?.properties, isSecret),

@@ -1,0 +1,77 @@
+/**
+ * CG-24 A3-1 / A6-2 — value-agnostic redaction at the normalizer.
+ *
+ * The redaction invariant must hold for ANY is_secret finding, regardless of whether
+ * the secret's shape is one of the 11 known SECRET_PATTERNS. A Gitleaks default-rule
+ * hit (generic-api-key, sendgrid, gitlab-pat, entropy) carries the raw value in the
+ * SARIF region snippet (and, adversarially, in the message). After normalization the
+ * raw value must appear in NO field of the finding — snippet, message, or anywhere in
+ * its JSON serialization.
+ */
+
+import { describe, test, expect } from "vitest";
+import { normalizeSarif } from "./normalize.js";
+import type { SarifLog } from "./types.js";
+
+const TARGET = "/repo";
+
+// Secrets whose shapes are NOT in redact.ts SECRET_PATTERNS.
+const SG = "SG.aB3dE5gH7jK9lM1nO2pQ.rS4tU6vW8xY0zA1bC3dE5fG7hI9jK1lM3nO5pQ7rS9tU1";
+const GLPAT = "glpat-AbCdEf1234567890XyZw";
+const ENTROPY = "f3Q8zR1xW9kL2mN7pV4tB6cD0sJ5hG8aQ2wE4rT6yU8";
+
+function gitleaksSarif(): SarifLog {
+  const result = (ruleId: string, desc: string, line: number, secret: string, putInMessage: boolean) => ({
+    ruleId,
+    message: { text: putInMessage ? `${ruleId} detected ${secret} in app.ts` : `${ruleId} has detected a secret in app.ts` },
+    locations: [
+      {
+        physicalLocation: {
+          artifactLocation: { uri: "/repo/app.ts" },
+          region: { startLine: line, endLine: line, snippet: { text: `const v = "${secret}";` } },
+        },
+      },
+    ],
+  });
+  return {
+    runs: [
+      {
+        tool: {
+          driver: {
+            name: "gitleaks",
+            rules: [
+              { id: "generic-api-key", shortDescription: { text: "Generic API Key" } },
+              { id: "gitlab-pat", shortDescription: { text: "GitLab Personal Access Token" } },
+              { id: "sendgrid-api-token", shortDescription: { text: "SendGrid API Token" } },
+            ],
+          },
+        },
+        // SG also planted in the message (adversarial): assert it can't leak there either.
+        results: [
+          result("sendgrid-api-token", "SendGrid", 1, SG, true),
+          result("gitlab-pat", "GitLab", 2, GLPAT, false),
+          result("generic-api-key", "Generic", 3, ENTROPY, false),
+        ],
+      },
+    ],
+  };
+}
+
+describe("normalizeSarif redacts non-allowlisted secrets (CG-24 A3-1/A6-2)", () => {
+  const findings = normalizeSarif(gitleaksSarif(), "gitleaks", TARGET);
+
+  test("every gitleaks result is treated as a secret finding", () => {
+    expect(findings).toHaveLength(3);
+    expect(findings.every((f) => f.is_secret)).toBe(true);
+  });
+
+  for (const raw of [SG, GLPAT, ENTROPY]) {
+    test(`raw value ${raw.slice(0, 8)}… appears in NO field`, () => {
+      for (const f of findings) {
+        expect(f.location.snippet ?? "").not.toContain(raw);
+        expect(f.message).not.toContain(raw);
+        expect(JSON.stringify(f)).not.toContain(raw);
+      }
+    });
+  }
+});

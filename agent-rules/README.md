@@ -4,8 +4,10 @@ Drop-in rules that make your AI coding agent run CodeInspectus's **scan → surf
 consent → fix → rescan** loop (PRD §12): the tool reports the findings, your agent
 **surfaces them to you and asks before changing code**, and fixes only what you approve.
 CodeInspectus is read-only — it never edits or deletes your files; your agent applies any
-fix, with your consent. All clients use the **same MCP server**; only the rule file
-location differs.
+fix, with your consent. Each scan also returns a read-only **git-safety advisory**: if you have
+uncommitted work — or no git repo — your agent will offer, with your approval, to checkpoint first
+so any fix can be rolled back cleanly (CodeInspectus itself never runs git). All clients use the
+**same MCP server**; only the rule file location differs.
 
 ## 1. Register the MCP server (once per machine)
 

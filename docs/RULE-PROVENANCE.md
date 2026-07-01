@@ -15,28 +15,32 @@ _Last refreshed: CG-08 (2026-06-23). Audited against `detection-db/manifest.json
 
 ---
 
-## Reconciled detection count — **31 active CodeInspectus detections**
+## Reconciled detection count — **33 active CodeInspectus detections**
 
-`detection-db/manifest.json` `custom_rules` has **31** entries:
+`detection-db/manifest.json` `custom_rules` has **33** entries:
 
 | Group | Count | Engine | Kind | Where |
 |---|---:|---|---|---|
-| AI-code analyzers | **9** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
+| AI-code analyzers | **11** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
 | Opengrep SAST rules | **19** | `opengrep` | `sast` | `detection-db/opengrep-rules/security-baseline/` |
 | Gitleaks secret rules | **3** | `gitleaks` | `secret` | `detection-db/gitleaks/codeinspectus.toml` |
-| **Total** | **31** | — | — | — |
+| **Total** | **33** | — | — | — |
 
 Verified counts: 19 Opengrep rule ids and 3 Gitleaks rule ids are greppable on disk;
-9 `kind: "ai"` entries in the manifest.
+11 `kind: "ai"` entries in the manifest.
 
-The authoritative current figure is **31**, decomposing as **9 AI analyzers + 19 Opengrep SAST +
-3 Gitleaks** (single source of truth: `detection-db/manifest.json`).
+The authoritative current figure is **33**, decomposing as **11 AI analyzers + 19 Opengrep SAST +
+3 Gitleaks** (single source of truth: `detection-db/manifest.json`). CG-25b added two original
+CodeInspectus detections: `ci-ai-llm-key-browser-exposed` (B-11; `dangerouslyAllowBrowser: true`) and
+`ci-ai-storage-rls-public` (B-12; permissive `USING (true)` on `storage.objects`). Both are
+framework-specific AI-code failure modes (no third-party rule content referenced), consistent with the
+convergent-idiom / original-work framing below.
 
 ---
 
 ## Provenance summary (the headline for counsel)
 
-- **All 31 custom detections are CodeInspectus-original work, licensed MIT.** In
+- **All 33 custom detections are CodeInspectus-original work, licensed MIT.** In
   `manifest.json` every `custom_rules` entry carries `"source": "codeinspectus-custom"`,
   and the Opengrep ruleset carries `"source": "codeinspectus-mit"` / `"license": "MIT"`.
 - **No detection copies copyrightable expression from a third-party corpus.** For the Opengrep
@@ -137,7 +141,7 @@ Gitleaks' own MIT default rules run alongside these three.)
 | `codeinspectus-supabase-service-role` | CWE-798 | Supabase service_role JWT (bypasses RLS) |
 | `codeinspectus-anthropic-key` | CWE-798 | Anthropic API key |
 
-## Inventory — AI-code analyzers (9) — the moat
+## Inventory — AI-code analyzers (11) — the moat
 
 Path: `src/ai-checks/*.ts` (TypeScript). **Origin: CodeInspectus-original · License: MIT ·
 Derived-from: none.**
@@ -148,10 +152,12 @@ Derived-from: none.**
 | `ci-ai-secret-in-bundle` | `client-secrets.ts` | CWE-798 / 312 | Secret compiled into shipped bundle |
 | `ci-ai-public-env-secret` | `client-secrets.ts` | CWE-798 / 312 | Secret exposed via client-visible env prefix |
 | `ci-ai-supabase-service-role-client` | `client-secrets.ts` | CWE-798 / 285 | Supabase service_role key in client-reachable code |
+| `ci-ai-llm-key-browser-exposed` | `client-secrets.ts` | CWE-798 / 312 | LLM SDK client allows browser use (`dangerouslyAllowBrowser: true`) |
 | `ci-ai-rls-using-true` | `supabase-rls.ts` | CWE-863 / 285 | RLS policy uses `USING (true)` — table fully open |
 | `ci-ai-rls-missing` | `supabase-rls.ts` | CWE-862 / 285 | Public table created without Row Level Security |
 | `ci-ai-rls-inverted-auth` | `supabase-rls.ts` | CWE-863 | RLS policy tests aud/role instead of user identity |
 | `ci-ai-edge-fn-no-auth` | `supabase-rls.ts` | CWE-862 | Supabase Edge Function with no auth verification |
+| `ci-ai-storage-rls-public` | `supabase-rls.ts` | CWE-863 / 285 | Permissive `USING (true)` policy on `storage.objects` (public bucket files) |
 | `ci-ai-prompt-injection-sink` | `prompt-injection.ts` | CWE-1426 | Potential prompt-injection sink |
 
 ---

@@ -51,14 +51,18 @@ function dedupKey(f: Finding): string {
 
 /** Decide which of two findings for the same key is the keeper. */
 function preferred(a: Finding, b: Finding): Finding {
+  // Severity wins FIRST — a merge must never lower severity (CG-23 A3-3). Otherwise a
+  // Gitleaks `high` secret (un-classifiable as live once --redact hides the value) would
+  // mask the AI client-secret check's `critical` at the same location.
+  const sevDelta = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
+  if (sevDelta !== 0) return sevDelta > 0 ? a : b;
+  // At equal severity, prefer the engine with richer secret-type metadata (Gitleaks).
   if (a.is_secret && b.is_secret) {
     const ap = SECRET_ENGINE_PREFERENCE[a.engine] ?? 0;
     const bp = SECRET_ENGINE_PREFERENCE[b.engine] ?? 0;
     if (ap !== bp) return ap > bp ? a : b;
   }
-  // Higher severity wins, then higher confidence.
-  const sevDelta = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
-  if (sevDelta !== 0) return sevDelta > 0 ? a : b;
+  // Then higher confidence.
   const confDelta = (CONFIDENCE_RANK[a.confidence] ?? 0) - (CONFIDENCE_RANK[b.confidence] ?? 0);
   if (confDelta !== 0) return confDelta > 0 ? a : b;
   return a;

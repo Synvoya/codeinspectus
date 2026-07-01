@@ -50,6 +50,14 @@
       "source": "codeinspectus-custom"
     },
     {
+      "id": "ci-ai-llm-key-browser-exposed",
+      "engine": "codeinspectus-ai",
+      "name": "LLM SDK client allows browser use (dangerouslyAllowBrowser: true)",
+      "kind": "ai",
+      "cwe": ["CWE-798", "CWE-312"],
+      "source": "codeinspectus-custom"
+    },
+    {
       "id": "ci-ai-rls-using-true",
       "engine": "codeinspectus-ai",
       "name": "RLS policy uses USING (true) — table fully open",
@@ -79,6 +87,14 @@
       "name": "Supabase Edge Function with no auth verification",
       "kind": "ai",
       "cwe": ["CWE-862"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-storage-rls-public",
+      "engine": "codeinspectus-ai",
+      "name": "Permissive RLS policy on storage.objects (public bucket files)",
+      "kind": "ai",
+      "cwe": ["CWE-863", "CWE-285"],
       "source": "codeinspectus-custom"
     },
     {
