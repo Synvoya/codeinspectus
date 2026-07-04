@@ -72,6 +72,6 @@ export async function generateSbom(input: GenerateSbomInput): Promise<SbomResult
     generated: true,
     ...(input.output_path
       ? {}
-      : { note: `Written to the managed dir (read-only mode). Pass output_path to choose a location.` }),
+      : { note: `Written to the managed dir (outside your repo) by default. Pass output_path to choose a location.` }),
   };
 }

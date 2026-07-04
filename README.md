@@ -15,7 +15,9 @@ scanners miss:
 - **Gitleaks** — secrets
 - **Trivy** — dependency CVEs (SCA), IaC misconfig, secrets, license, SBOM
 - **CodeInspectus AI checks** — client-side secret/bundle exposure, Supabase
-  RLS / inverted-auth (the CVE-2025-48757 class), and prompt-injection sinks
+  RLS / inverted-auth (the CVE-2025-48757 class), prompt-injection sinks,
+  client-writable `user_metadata` authorization, and unsanitized model/user output
+  rendered via `dangerouslySetInnerHTML` (XSS / LLM05)
 
 > CodeInspectus bundles the official, **SHA-pinned** engine binaries and calls
 > them as local subprocesses. It does **not** fork them.
@@ -75,8 +77,9 @@ auto-runs the scan → fix → rescan loop.
 | `codeinspectus_generate_sbom` | CycloneDX/SPDX SBOM (written to the managed dir by default). |
 | `codeinspectus_list_rules` | Active detectors, engine versions, detection-DB + Trivy-DB freshness. |
 
-All tools are **read-only** — CodeInspectus reads and reports; it never writes to
-or deletes your files. Your agent applies the fixes.
+CodeInspectus **never writes to or deletes your code or repo** — it reads and reports;
+your agent applies the fixes. (The optional SBOM is written to a managed dir outside
+your project by default — see `codeinspectus_generate_sbom`.)
 
 Each scan also reports a read-only **git-safety** state: if there's no git repo or
 uncommitted changes, it recommends creating a checkpoint before fixes — your agent
@@ -103,18 +106,23 @@ runs git only with your approval; the tool never does.
   code-evidenced — this is **not** an Essential Eight assessment.
 - **Prompt-injection detection is heuristic and immature** — those findings are
   worded "potential …" and marked medium confidence.
-- **Client-side authorization that trusts `user_metadata` is not yet detected.**
-  CodeInspectus does **not** currently flag an authorization decision that trusts
-  client-writable Supabase `user_metadata` — e.g. `if (user.user_metadata.role === 'admin')`.
-  `user_metadata` is editable by the signed-in user themselves (Supabase's
-  `/auth/v1/user` endpoint), so anyone can self-assign `role: 'admin'`; **gate
-  privileged logic on the server-controlled `app_metadata.role` instead.** Detecting
-  this pattern is **planned as the first community-intake rule** — see
-  [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
-  [good-first-issue](docs/good-first-issues/user-metadata-authz-rule.md). What
-  CodeInspectus *does* catch on the related footgun: a Supabase **`service_role` key
-  value** present in client-reachable code (**critical**), and a `service_role` key
-  behind a **client-exposed env prefix** such as `NEXT_PUBLIC_…` (**high**).
+- **Client-side authorization that trusts `user_metadata` is flagged** (`ci-ai-client-metadata-authz`).
+  CodeInspectus detects an authorization decision that reads client-writable Supabase
+  `user_metadata` — e.g. `if (user.user_metadata.role === 'admin')` — at **high** severity,
+  **medium** confidence (CWE-639). `user_metadata` is editable by the signed-in user themselves
+  (Supabase's `/auth/v1/user` endpoint), so anyone can self-assign `role: 'admin'`; **gate
+  privileged logic on the server-controlled `app_metadata.role` instead.** Detection is intrafile
+  (inline + split-variable/destructured); it does **not** yet trace cross-file or whole-object-alias
+  flows (planned) — see the [good-first-issue](docs/good-first-issues/user-metadata-authz-rule.md).
+  It also catches the related footgun: a Supabase **`service_role` key value** in client-reachable
+  code (**critical**), and a `service_role` key behind a **client-exposed env prefix** such as
+  `NEXT_PUBLIC_…` (**high**).
+- **Unsanitized model or user output rendered as raw HTML is flagged** (`ci-ai-llm-output-dangerous-html`).
+  CodeInspectus detects untrusted **request input** or **LLM/model output** flowing into
+  `dangerouslySetInnerHTML` without sanitization — a direct XSS sink (CWE-79/116; OWASP **LLM05** on
+  the model-output path), **high** severity, **medium** confidence; wrapping the value in
+  `DOMPurify.sanitize(...)` silences it. It does **not** yet trace untrusted values arriving via
+  **component props, database rows, or template data** (planned).
 
 ## Language support
 
@@ -129,7 +137,7 @@ This is stated so you don't infer coverage that isn't there.
 | **Secrets** — Gitleaks + CodeInspectus client-secret checks | hard-coded credentials, leaked keys | **Any language.** Detection is value/pattern-based, not language-parsed. |
 | **Dependencies (CVEs/SCA), IaC misconfig, SBOM, license** — Trivy | vulnerable deps, infra misconfig, bill of materials | **Many language & package ecosystems and IaC formats** — see [Trivy's docs](https://trivy.dev). |
 | **SAST** — Opengrep + CodeInspectus `security-baseline` | injection, XSS, SSRF, weak crypto, insecure deserialization | **JavaScript, TypeScript, Python.** CodeInspectus ships its own MIT ruleset and runs Opengrep with **no network registry packs**, so SAST coverage is exactly these languages — deliberately narrower than Opengrep's full engine. |
-| **AI-code checks (the moat)** — client-side secret/bundle exposure, Supabase RLS, prompt-injection sinks | the AI-code / vibe-coding failure modes the engines miss | **JavaScript / TypeScript only** (incl. `.jsx/.tsx/.mjs/.cjs`; the client-secret checks also read JS-framework files `.vue/.svelte/.astro/.html`). Supabase RLS analyzes `.sql` (plus `.ts/.js` Edge Functions). **More languages are planned.** |
+| **AI-code checks (the moat)** — client-side secret/bundle exposure, Supabase RLS, prompt-injection sinks, client-writable `user_metadata` authz, unsanitized-output XSS | the AI-code / vibe-coding failure modes the engines miss | **JavaScript / TypeScript only** (incl. `.jsx/.tsx/.mjs/.cjs`; the client-secret checks also read JS-framework files `.vue/.svelte/.astro/.html`). Supabase RLS analyzes `.sql` (plus `.ts/.js` Edge Functions). **More languages are planned.** |
 
 ## Compliance frameworks (code-visible subset)
 

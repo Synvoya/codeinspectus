@@ -8,6 +8,13 @@ This is the **first community-intake detection** for CodeInspectus. It is fully 
 new contributor can pick it up end-to-end. Read [`CONTRIBUTING.md`](../../CONTRIBUTING.md)
 first — especially the **fixture/precision gate** and the **rule-id invariants**.
 
+> **Shipped (CG-50).** This rule now ships as `ci-ai-client-metadata-authz` (severity **high**,
+> confidence **medium**, **CWE-639** primary + CWE-284/CWE-863, OWASP A01:2021). Inline **and**
+> split-variable/destructured (intrafile taint) both landed. Corpus + vitest lock live at
+> `fixtures/metadata-authz-corpus/` + `src/ai-checks/metadata-authz.test.ts`. This doc is kept as
+> the design record; the open follow-ups are the V2 extensions called out below (cross-file taint,
+> whole-object metadata alias).
+
 ---
 
 ## The footgun
@@ -62,9 +69,14 @@ positives heavily and would get the scanner muted — precision is the whole gam
 1. **Source field:** `user_metadata` **or** `raw_user_meta_data` — and crucially **NOT**
    `app_metadata` / `raw_app_meta_data` (the correct, server-only field is the clean negative).
 2. **A role/permission-ish key:** `role`, `roles`, `is_admin`, `isAdmin`, `admin`, `permission`,
-   `permissions`, `claims`, `tier`, `plan` (tune this list with fixtures).
-3. **A comparison / guard context:** inside an `if (...)`, a ternary, a `&&`/`||` guard, or a
-   `=== / !== / .includes(...)` — i.e. it gates control flow, not just renders a value.
+   `permissions`, `claims`, `is_staff`, `is_superuser`. **Shipped decision:** `tier` / `plan` are
+   NOT in this auto-fire set — they are entitlement fields (feature gates). They fire only via the
+   privileged-literal arm below, so the common `plan === 'pro'` feature gate stays silent.
+3. **A comparison / guard context:** inside an `if (...)`, a ternary, or a `=== / !== / .includes(...)`
+   — i.e. it gates control flow, not just renders a value. **Shipped arm B:** ANY field compared to
+   a *privileged literal* (`admin`, `superadmin`, `owner`, `root`, `staff`, …) fires regardless of
+   field name, catching an authz check keyed off an arbitrary field. (`&&`/`||` are deliberately NOT
+   guard signals — they false-positive on default-value expressions like `role || 'guest'`.)
 
 ### What the rule **cannot** know (so it must under-claim)
 Static analysis can see "a client-writable field is being compared in a guard." It **cannot**
@@ -72,13 +84,15 @@ reliably tell whether the gated branch is a real **security boundary** (`deleteA
 something cosmetic (an admin badge) or a **client-side feature gate** (`plan === 'pro'` to show
 UI). So:
 
-- Ship the finding at **`confidence: medium`** (or low), **never critical**.
+- Ship the finding at **`confidence: medium`**, severity **high** (a privilege-escalation bypass) —
+  the honest hedge lives in the wording, not a dropped severity. **Never critical** (static analysis
+  can't prove the gated branch is a real boundary).
 - Use **confirm wording**, following the §6.3 "scope honestly" discipline already used for
-  prompt-injection and the inverted-auth heuristic — e.g.:
-  *"This authorization check reads client-writable `user_metadata`, which the user can modify via
-  `/auth/v1/user`. If this gates privileged access, use the server-only `app_metadata` instead.
-  Verify this is intentional."*
-- Suggested CWEs: `CWE-862`, `CWE-863`, `CWE-284`; OWASP `A01:2021`.
+  prompt-injection and the inverted-auth heuristic — the shipped message ends
+  *"Verify whether this check protects a real boundary."*
+- **Shipped CWEs:** `CWE-639` (Authorization Bypass Through User-Controlled Key) primary — the most
+  precise fit, since the authz check EXISTS but trusts a user-controlled key — plus `CWE-284` /
+  `CWE-863`; OWASP `A01:2021`.
 
 ---
 
@@ -86,13 +100,16 @@ UI). So:
 
 - **Inline form** (`if (user.user_metadata.role === 'admin')`): reliably matchable with a
   regex/metavariable pattern using the three discriminators. Start here.
-- **Split-variable form** (`const role = user.user_metadata.role; … if (role === 'admin')`):
-  needs **intrafile cross-function taint**, which **is in scope** for CodeInspectus (Opengrep
-  `--taint-intrafile`; see PRD §1.4). Expressing a taint **sink that is a comparison** is fiddly
-  but doable — attempt it, and if it's not clean, ship the inline form first and **document the
-  split-variable case as a known gap** rather than pretending it's covered.
+- **Split-variable form** (`const role = user.user_metadata.role; … if (role === 'admin')`) and the
+  **destructured form** (`const { role } = user.user_metadata; …`): **SHIPPED** via a lightweight
+  intrafile taint pass (a metadata field read seeds a tainted var carrying its origin field; a later
+  comparison / `.includes()` / `if()` on that var fires). Passed the frozen FP fixtures clean, so it
+  was NOT degraded to inline-only.
 - **Cross-file form** (role read in one module, checked in another): **out of scope for v1** (no
-  cross-file taint). Say so in the rule's docs; don't silently imply coverage.
+  cross-file taint) — a documented false-negative, not silently implied as covered.
+- **Whole-object alias** (`const m = user.user_metadata; if (m.role === 'admin')`): **documented
+  false-negative for v1** (the taint pass tracks per-field reads/destructures, not a whole-object
+  alias). A good V2 follow-up.
 
 ---
 
@@ -104,7 +121,7 @@ directions. For this rule, the corpus must include at least these five cases:
 | # | Case | Fixture shape | Rule must… |
 |---|------|---------------|-----------|
 | 1 | **TP — inline** | `if (user.user_metadata.role === 'admin') { …privileged… }` | **fire** (medium) |
-| 2 | **TP — split variable** | `const r = user.user_metadata.role; if (r === 'admin') {…}` | **fire** (medium) *if you implement intrafile taint; otherwise document as a known gap* |
+| 2 | **TP — split variable** | `const r = user.user_metadata.role; if (r === 'admin') {…}` | **fire** (medium) — **shipped** via intrafile taint (+ a destructured variant) |
 | 3 | **FP — feature gate** | `if (user.user_metadata.plan === 'pro') { showProUI() }` (cosmetic, no security boundary) | **stay silent** (or be explicitly out of the role-ish key set) |
 | 4 | **FP — display read** | `const name = user.user_metadata.full_name` / `user.user_metadata.avatar_url` | **stay silent** |
 | 5 | **TN — correct field** | `if (user.app_metadata.role === 'admin') {…}` | **stay silent** |

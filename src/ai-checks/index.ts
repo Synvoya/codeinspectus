@@ -10,6 +10,8 @@ import { log } from "../logger.js";
 import { runClientSecretsCheck } from "./client-secrets.js";
 import { runSupabaseRlsCheck } from "./supabase-rls.js";
 import { runPromptInjectionCheck } from "./prompt-injection.js";
+import { runClientMetadataAuthzCheck } from "./metadata-authz.js";
+import { runLlmDangerousHtmlCheck } from "./llm-dangerous-html.js";
 
 export async function runAiChecks(
   target: string,
@@ -19,6 +21,8 @@ export async function runAiChecks(
     runClientSecretsCheck(target),
     runSupabaseRlsCheck(target),
     runPromptInjectionCheck(target),
+    runClientMetadataAuthzCheck(target),
+    runLlmDangerousHtmlCheck(target),
   ]);
 
   const findings: Finding[] = [];

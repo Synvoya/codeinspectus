@@ -106,6 +106,22 @@
       "source": "codeinspectus-custom"
     },
     {
+      "id": "ci-ai-client-metadata-authz",
+      "engine": "codeinspectus-ai",
+      "name": "Authorization decision trusts client-writable user_metadata",
+      "kind": "ai",
+      "cwe": ["CWE-639", "CWE-284", "CWE-863"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-llm-output-dangerous-html",
+      "engine": "codeinspectus-ai",
+      "name": "Untrusted or model output rendered as raw HTML (React __html sink)",
+      "kind": "ai",
+      "cwe": ["CWE-79", "CWE-116"],
+      "source": "codeinspectus-custom"
+    },
+    {
       "id": "ci-baseline-sql-injection-string-build",
       "engine": "opengrep",
       "name": "SQL injection via string-built query (JS/TS)",

@@ -3,8 +3,8 @@ description: CodeInspectus — scan, surface findings, fix only with user consen
 alwaysApply: true
 ---
 
-CodeInspectus REPORTS; the user DECIDES; you fix only with consent. The tool is read-only — it
-never edits files. After generating or modifying code:
+CodeInspectus REPORTS; the user DECIDES; you fix only with consent. The tool never writes to your
+code or repo — it never edits your files. After generating or modifying code:
 
 1. **Scan** — `codeinspectus_scan` on the workspace root (absolute path); local, zero egress;
    returns CWE-keyed findings + a `remediation` each.

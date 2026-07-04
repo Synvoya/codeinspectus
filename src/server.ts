@@ -61,7 +61,7 @@ export function createServer(): McpServer {
         "Gitleaks secrets, Trivy SCA/IaC/license) plus CodeInspectus's AI-code-specific " +
         "checks (client-side secret exposure, Supabase RLS/inverted-auth, prompt-injection " +
         "sinks). Returns CWE-keyed findings with fix recommendations and compliance tags. " +
-        "Fully offline — zero network egress at scan time. Read-only; never modifies files.",
+        "Fully offline — zero network egress at scan time. Never writes to your code or repo.",
       inputSchema: scanInput.shape,
       outputSchema: scanResultSchema.shape,
       annotations: { title: "CodeInspectus Scan", ...READ_ONLY },
@@ -85,7 +85,7 @@ export function createServer(): McpServer {
       description:
         "Re-run a scan after fixes were applied and diff against a prior scan_id (or the " +
         "most recent scan of the same path). Reports which findings are resolved, which " +
-        "remain, and which were newly introduced. Use this to verify fixes. Read-only.",
+        "remain, and which were newly introduced. Use this to verify fixes. Never writes to your code or repo.",
       inputSchema: rescanInput.shape,
       outputSchema: rescanResultSchema.shape,
       annotations: { title: "CodeInspectus Rescan", ...READ_ONLY },

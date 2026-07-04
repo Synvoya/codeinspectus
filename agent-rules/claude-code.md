@@ -2,7 +2,7 @@
 
 After you generate or substantially modify code in this repo, run the CodeInspectus
 loop. **Principle: CodeInspectus REPORTS; the user DECIDES; you fix only with consent.**
-CodeInspectus is read-only — it never edits or deletes files.
+CodeInspectus never writes to your code or repo — it never edits or deletes your files.
 
 1. **Scan.** Call `codeinspectus_scan` with the absolute repo path. It runs locally with
    zero network egress and returns CWE-keyed findings, each with a `remediation`.

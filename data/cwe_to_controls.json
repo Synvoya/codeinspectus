@@ -544,6 +544,47 @@
         "T1190"
       ]
     },
+    "CWE-116": {
+      "ISO27001:2022": [
+        {
+          "control": "A.8.28",
+          "confidence": "medium",
+          "rationale": "Improper output encoding/escaping — secure-coding evidence for the output-neutralization control; sibling of CWE-79.",
+          "source_citation": "Secure coding",
+          "reviewer": "AI-drafted, NOT expert-verified (CG-51, 2026-07-04) — pending maintainer policy review"
+        }
+      ],
+      "NIST_CSF_2.0": [
+        {
+          "control": "PR.PS-06",
+          "confidence": "low",
+          "rationale": "Secure-software-development-practices code-level indicator (output encoding). Partial indicator only — community review welcome.",
+          "source_citation": "Secure software development practices",
+          "reviewer": "AI-drafted, NOT expert-verified (CG-51, 2026-07-04) — pending maintainer policy review"
+        }
+      ],
+      "CIS_v8.1": [
+        {
+          "control": "16.1",
+          "confidence": "low",
+          "rationale": "Secure-application-development-process control — partial (output encoding).",
+          "source_citation": "Establish and maintain a secure application development process",
+          "reviewer": "AI-drafted, NOT expert-verified (CG-51, 2026-07-04) — pending maintainer policy review"
+        }
+      ],
+      "owasp_web": [
+        {
+          "control": "A03:2021",
+          "confidence": "high",
+          "rationale": "OWASP A03:2021 Injection — canonical category for XSS via improper output encoding; category link firm.",
+          "source_citation": "OWASP A03:2021 Injection — category link firm; MITRE numeric View ID not independently verified.",
+          "reviewer": "AI-drafted, NOT expert-verified (CG-51, 2026-07-04) — pending maintainer policy review"
+        }
+      ],
+      "attack": [
+        "T1059"
+      ]
+    },
     "CWE-79": {
       "ISO27001:2022": [
         {

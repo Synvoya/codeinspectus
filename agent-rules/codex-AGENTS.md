@@ -1,7 +1,7 @@
 ## Security: CodeInspectus loop
 
-**Principle: CodeInspectus REPORTS; the user DECIDES; you fix only with consent.** The tool is
-read-only (never edits files). When you write or change code:
+**Principle: CodeInspectus REPORTS; the user DECIDES; you fix only with consent.** The tool never
+writes to your code or repo (it never edits your files). When you write or change code:
 
 1. **Scan** — `codeinspectus_scan` (absolute repo path); local, zero-egress; returns CWE-keyed
    findings, each with a `remediation`.
