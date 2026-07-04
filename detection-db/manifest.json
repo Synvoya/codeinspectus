@@ -1,7 +1,7 @@
 {
   "name": "CodeInspectus Detection Database",
-  "version": "0.1.0",
-  "date": "2026-06-21",
+  "version": "0.2.0",
+  "date": "2026-07-04",
   "description": "CodeInspectus's curated detections (the moat, §9): AI-code / vibe-coding / framework-specific failure modes the generic engines miss. Grows via human-reviewed weekly intake. Generic SAST is intentionally NOT here — that is the engines' job.",
   "engine_versions": {
     "opengrep": "1.23.0",

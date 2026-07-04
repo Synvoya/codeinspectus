@@ -48,6 +48,17 @@ const READ_ONLY = {
   openWorldHint: false,
 } as const;
 
+// generate_sbom WRITES an SBOM file (to the managed dir ~/.codeinspectus/sbom/ by default, or a
+// user-chosen output_path), so it is NOT read-only. It is non-destructive: it creates/overwrites a
+// build artifact and touches no user data. readOnlyHint MUST be false — declaring true would be an
+// inaccurate honesty-surface claim (the same reason bare "read-only" was reworded, CG-52).
+const MANAGED_WRITE = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
 export function createServer(): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
 
@@ -171,7 +182,7 @@ export function createServer(): McpServer {
         "Offline.",
       inputSchema: generateSbomInput.shape,
       outputSchema: sbomOutput.shape,
-      annotations: { title: "CodeInspectus Generate SBOM", ...READ_ONLY },
+      annotations: { title: "CodeInspectus Generate SBOM", ...MANAGED_WRITE },
     },
     async (args: GenerateSbomInput): Promise<ToolResult> => {
       try {
