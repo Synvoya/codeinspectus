@@ -4,6 +4,16 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [0.2.1] — 2026-07-06
+
+### Fixed
+- Release provenance: 0.2.1 is published from the public repository, so the npm package's gitHead and the v0.2.1 git tag both resolve to a public commit. (0.1.0 and 0.2.0 were published from a private build repo; their gitHead values point at commits not reachable from this repository and cannot be retroactively corrected.)
+
+### Added
+- MCP Registry metadata: `mcpName` in package.json and a root `server.json`, making CodeInspectus installable/listable via the official Model Context Protocol registry.
+
+No detection or scanner behavior changes in this release.
+
 ## [0.2.0] — 2026-07-04
 
 ### Added
