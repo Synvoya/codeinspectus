@@ -216,6 +216,10 @@ Workflow: **fork → branch → PR**; the maintainer reviews and merges (externa
 contributors don't push directly). — *Synvoya (the maintainer, a cybersecurity
 practitioner)*
 
+## Changelog
+
+Per-version release notes live in [`CHANGELOG.md`](CHANGELOG.md). Current: **v0.2.0**.
+
 ## Licenses
 
 CodeInspectus: MIT. Bundled engines: Opengrep (LGPL-2.1), Gitleaks (MIT, CLI
