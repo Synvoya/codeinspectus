@@ -1,11 +1,19 @@
 # CodeInspectus, by Synvoya
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](package.json)
+![MCP-ready](https://img.shields.io/badge/MCP-ready-blue.svg)
+![Local-first](https://img.shields.io/badge/local--first-yes-brightgreen.svg)
+![No telemetry](https://img.shields.io/badge/telemetry-none-brightgreen.svg)
+
 **A local-first, privacy-preserving security MCP server.** Any AI coding agent
 (Claude Code, Cursor, Codex, Windsurf, Cline, Aider) can invoke CodeInspectus to
 scan AI-generated / "vibe-coded" code for real vulnerabilities, map findings to
 compliance frameworks as honest code-level coverage, and drive a **scan → fix →
 rescan** loop — fully on your machine, with **no account** and **zero network
 egress at scan time**.
+
+![CodeInspectus demo](assets/codeinspectus-demo.gif)
 
 CodeInspectus orchestrates three best-in-class OSS engines behind one normalized,
 CWE-keyed schema, and adds its own **AI-code-specific checks** that generic
@@ -21,6 +29,16 @@ scanners miss:
 
 > CodeInspectus bundles the official, **SHA-pinned** engine binaries and calls
 > them as local subprocesses. It does **not** fork them.
+
+## Why CodeInspectus?
+
+AI-generated apps often ship with security mistakes that generic scanners miss: exposed
+client-side secrets, weak Supabase auth patterns, unsafe HTML rendering, prompt-injection
+sinks, and insecure agent/tool integrations.
+
+CodeInspectus combines proven local scanners with AI-app-specific rules, then exposes the
+workflow through an MCP server so coding agents can scan, explain, and help fix issues
+before shipping.
 
 ## Install
 
@@ -163,6 +181,12 @@ agent → codeinspectus_scan → [Opengrep | Gitleaks | Trivy] + AI checks
 ALL LOCAL. NO NETWORK EGRESS AT SCAN TIME.
 ```
 
+## Example reports
+
+- [Next.js + Supabase SaaS app](examples/reports/nextjs-supabase.md)
+- [AI chatbot / RAG app](examples/reports/ai-chatbot-rag.md)
+- [Node/React app](examples/reports/node-react.md)
+
 ## Trademark
 
 "CodeInspectus" is the name of this free, open-source project (npm `codeinspectus`,
@@ -215,6 +239,18 @@ honesty metric. If something reads as over-claiming, that is a bug — please op
 Workflow: **fork → branch → PR**; the maintainer reviews and merges (external
 contributors don't push directly). — *Synvoya (the maintainer, a cybersecurity
 practitioner)*
+
+## Good first contributions
+
+- Add a fixture for the unsafe raw inner-HTML sink (`ci-ai-llm-output-dangerous-html`) from component props.
+- Improve detection for Supabase `user_metadata.role` authorization checks.
+- Add detection for exposed `NEXT_PUBLIC_OPENAI_API_KEY` and similar client-side AI keys.
+- Add a rule for user-controlled URLs passed into server-side `fetch()`.
+- Add a rule for model output passed into `eval`, `Function`, shell commands, or unsafe tool calls.
+- Add a check for missing auth guards in Next.js `/api/admin/*` routes.
+- Verify one CWE to OWASP Top 10 mapping.
+- Verify one CWE to SOC 2 / ISO 27001 mapping.
+- Add a vulnerable fixture and expected finding snapshot for an existing rule.
 
 ## Changelog
 
