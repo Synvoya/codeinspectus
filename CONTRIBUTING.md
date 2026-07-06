@@ -58,6 +58,23 @@ npm run eval       # drives the built MCP server over stdio against fixtures/vul
 
 ---
 
+## Pushing a branch — the demo GIF and `http.postBuffer`
+
+This repo tracks a ~1.95 MB animated demo (`assets/codeinspectus-demo.gif`) that the README
+embeds. Pushing a branch to your fork over **HTTPS** has to upload that object, and git's default
+`http.postBuffer` (~1 MB) is smaller than it — so the push can fail with `the remote end hung up
+unexpectedly` (or `send-pack: unexpected disconnect while reading sideband packet`). It's a
+transport buffer limit, not a repo-size problem.
+
+If you hit it, raise the buffer for this clone and re-push — or push over **SSH**, which isn't
+subject to `http.postBuffer`:
+
+```bash
+git config --local http.postBuffer 524288000   # 500 MB; per-clone, so a fresh clone needs it again
+```
+
+---
+
 ## Compliance-mapping changes (the part with extra rules)
 
 The CWE→control mappings in `data/cwe_to_controls.json` are **AI-drafted and
@@ -162,7 +179,7 @@ will not be merged, however useful it otherwise is:
 
 ### Detection rules (`detection-db/**`, `src/ai-checks/**`)
 
-CodeInspectus ships **33 curated detections** today (see `detection-db/manifest.json`): the
+CodeInspectus ships **35 curated detections** today (see `detection-db/manifest.json`): the
 AI-code checks (`ci-ai-*`), the MIT `security-baseline` SAST rules (`ci-baseline-*`), and a few
 custom secret rules (`codeinspectus-*`). The set grows through a **human-reviewed weekly
 intake** — the maintainer triages proposals in batches. There is **no autonomous rule
