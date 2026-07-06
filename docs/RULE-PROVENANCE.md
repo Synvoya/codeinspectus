@@ -10,37 +10,47 @@
 > versions. Where this document and any other doc disagree on a count or a version, the
 > two files above win and this document is the one to correct.
 
-_Last refreshed: CG-08 (2026-06-23). Audited against `detection-db/manifest.json`,
-`engines.lock.json`, `detection-db/**`, and `src/ai-checks/**`._
+_Last refreshed: CG-63 (2026-07-06) — detection count reconciled 33→35 to record the two
+`ci-ai-*` analyzers added in CG-50/51 under the same self-diligence frame (see the AI-code
+analyzers note below); **no re-audit of the existing rules was performed this session**. Prior
+full provenance pass: CG-08 (2026-06-23) audit + the CG-39 sweep, against
+`detection-db/manifest.json`, `engines.lock.json`, `detection-db/**`, and `src/ai-checks/**`._
 
 ---
 
-## Reconciled detection count — **33 active CodeInspectus detections**
+## Reconciled detection count — **35 active CodeInspectus detections**
 
-`detection-db/manifest.json` `custom_rules` has **33** entries:
+`detection-db/manifest.json` `custom_rules` has **35** entries:
 
 | Group | Count | Engine | Kind | Where |
 |---|---:|---|---|---|
-| AI-code analyzers | **11** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
+| AI-code analyzers | **13** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
 | Opengrep SAST rules | **19** | `opengrep` | `sast` | `detection-db/opengrep-rules/security-baseline/` |
 | Gitleaks secret rules | **3** | `gitleaks` | `secret` | `detection-db/gitleaks/codeinspectus.toml` |
-| **Total** | **33** | — | — | — |
+| **Total** | **35** | — | — | — |
 
 Verified counts: 19 Opengrep rule ids and 3 Gitleaks rule ids are greppable on disk;
-11 `kind: "ai"` entries in the manifest.
+13 `kind: "ai"` entries in the manifest.
 
-The authoritative current figure is **33**, decomposing as **11 AI analyzers + 19 Opengrep SAST +
+The authoritative current figure is **35**, decomposing as **13 AI analyzers + 19 Opengrep SAST +
 3 Gitleaks** (single source of truth: `detection-db/manifest.json`). CG-25b added two original
 CodeInspectus detections: `ci-ai-llm-key-browser-exposed` (B-11; `dangerouslyAllowBrowser: true`) and
-`ci-ai-storage-rls-public` (B-12; permissive `USING (true)` on `storage.objects`). Both are
-framework-specific AI-code failure modes (no third-party rule content referenced), consistent with the
-convergent-idiom / original-work framing below.
+`ci-ai-storage-rls-public` (B-12; permissive `USING (true)` on `storage.objects`). CG-50/51 then added
+two more original **`ci-ai-*`** moat analyzers — `ci-ai-client-metadata-authz` (CWE-639; an
+authorization decision that trusts client-writable Supabase `user_metadata`) and
+`ci-ai-llm-output-dangerous-html` (CWE-79/116; untrusted or model output rendered into a React
+raw-HTML `__html` sink) — authored contract-first from the maintainer's spec, original TypeScript with
+**no registry equivalent to derive from**. All four are framework-specific AI-code failure modes (no
+third-party rule content referenced), carried under the **same documented self-diligence** as the rest
+of the ci-ai-* moat (the CG-09 / CG-39 framing below, extended to these two by category — original
+authorship, nothing derived to audit — **not** a fresh independent review); the human legal gate stays
+**de-risked, not closed**.
 
 ---
 
 ## Provenance summary (the headline for counsel)
 
-- **All 33 custom detections are CodeInspectus-original work, licensed MIT.** In
+- **All 35 custom detections are CodeInspectus-original work, licensed MIT.** In
   `manifest.json` every `custom_rules` entry carries `"source": "codeinspectus-custom"`,
   and the Opengrep ruleset carries `"source": "codeinspectus-mit"` / `"license": "MIT"`.
 - **No detection copies copyrightable expression from a third-party corpus.** For the Opengrep
@@ -141,7 +151,7 @@ Gitleaks' own MIT default rules run alongside these three.)
 | `codeinspectus-supabase-service-role` | CWE-798 | Supabase service_role JWT (bypasses RLS) |
 | `codeinspectus-anthropic-key` | CWE-798 | Anthropic API key |
 
-## Inventory — AI-code analyzers (11) — the moat
+## Inventory — AI-code analyzers (13) — the moat
 
 Path: `src/ai-checks/*.ts` (TypeScript). **Origin: CodeInspectus-original · License: MIT ·
 Derived-from: none.**
@@ -159,6 +169,8 @@ Derived-from: none.**
 | `ci-ai-edge-fn-no-auth` | `supabase-rls.ts` | CWE-862 | Supabase Edge Function with no auth verification |
 | `ci-ai-storage-rls-public` | `supabase-rls.ts` | CWE-863 / 285 | Permissive `USING (true)` policy on `storage.objects` (public bucket files) |
 | `ci-ai-prompt-injection-sink` | `prompt-injection.ts` | CWE-1426 | Potential prompt-injection sink |
+| `ci-ai-client-metadata-authz` | `metadata-authz.ts` | CWE-639 / 284 | Authorization decision trusts client-writable Supabase `user_metadata` |
+| `ci-ai-llm-output-dangerous-html` | `llm-dangerous-html.ts` | CWE-79 / 116 | Untrusted or model output rendered into a React raw-HTML `__html` sink |
 
 ---
 
