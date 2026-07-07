@@ -5,6 +5,7 @@
 ![MCP-ready](https://img.shields.io/badge/MCP-ready-blue.svg)
 ![Local-first](https://img.shields.io/badge/local--first-yes-brightgreen.svg)
 ![No telemetry](https://img.shields.io/badge/telemetry-none-brightgreen.svg)
+[![codeinspectus MCP server](https://glama.ai/mcp/servers/Synvoya/codeinspectus/badges/score.svg)](https://glama.ai/mcp/servers/Synvoya/codeinspectus)
 
 **A local-first, privacy-preserving security MCP server.** Any AI coding agent
 (Claude Code, Cursor, Codex, Windsurf, Cline, Aider) can invoke CodeInspectus to
