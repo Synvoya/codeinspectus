@@ -6,9 +6,9 @@
  */
 
 import { describe, test, expect } from "vitest";
-import { summarizeScan } from "./summarize.js";
+import { summarizeScan, summarizeRescan } from "./summarize.js";
 import { NO_GIT_RECOMMENDATION, DIRTY_RECOMMENDATION } from "./git-safety.js";
-import type { ScanResult, GitSafety } from "./types.js";
+import type { ScanResult, GitSafety, RescanResult, Finding } from "./types.js";
 
 function mkResult(over: Partial<ScanResult> = {}): ScanResult {
   return {
@@ -63,5 +63,67 @@ describe("summarizeScan — git-safety advisory placement (CG-42)", () => {
   test("unknown → no 'Before you fix:' line (degrade silently)", () => {
     const out = summarizeScan(mkResult({ git_safety: { state: "unknown" }, warnings: [] }));
     expect(out).not.toContain("Before you fix:");
+  });
+});
+
+// ── CG-75 / Claim 1: rescan text must surface not_rechecked honestly ─────────
+function mkFinding(fp: string): Finding {
+  return {
+    id: "CI-0001",
+    fingerprint: fp,
+    title: "SQL injection",
+    severity: "high",
+    engine: "opengrep",
+    engines: ["opengrep"],
+    rule_id: "R",
+    cwe: ["CWE-89"],
+    location: { file: "a.ts", start_line: 1, end_line: 1 },
+    message: "m",
+    remediation: { summary: "s", steps: [], references: [] },
+    frameworks: [],
+    confidence: "high",
+  };
+}
+
+function mkRescan(over: Partial<RescanResult> = {}): RescanResult {
+  return {
+    scan_id: "scan-1",
+    prior_scan_id: "scan-0",
+    target: "/repo",
+    resolved: [],
+    remaining: [],
+    introduced: [],
+    not_rechecked: [],
+    summary: { resolved: 0, remaining: 0, introduced: 0, not_rechecked: 0 },
+    partial: false,
+    disclaimer: "This is not an audit or certification.",
+    ...over,
+  };
+}
+
+describe("summarizeRescan — not_rechecked surfaced in human text (CG-75 Claim 1)", () => {
+  test("not_rechecked findings appear under a dedicated NOT-confirmed-resolved section with count + note", () => {
+    const out = summarizeRescan(
+      mkRescan({
+        not_rechecked: [mkFinding("t")],
+        summary: { resolved: 0, remaining: 0, introduced: 0, not_rechecked: 1 },
+        partial: true,
+        not_rechecked_note: "1 finding(s) could not be re-checked and are NOT confirmed resolved — the trivy engine did not run in the rescan.",
+      }),
+    );
+    // count on the header line
+    expect(out).toMatch(/Not re-?checked:\s*1/i);
+    // an explicit "not confirmed resolved" caveat
+    expect(out).toMatch(/NOT confirmed resolved/i);
+    // the offending finding is listed
+    expect(out).toContain("SQL injection");
+    // the reason note is present
+    expect(out).toMatch(/trivy engine did not run/i);
+  });
+
+  test("clean like-for-like rescan → no not_rechecked section", () => {
+    const out = summarizeRescan(mkRescan({ remaining: [mkFinding("a")], summary: { resolved: 0, remaining: 1, introduced: 0, not_rechecked: 0 } }));
+    expect(out).not.toMatch(/could not be re-?checked/i);
+    expect(out).not.toMatch(/NOT confirmed resolved/i);
   });
 });

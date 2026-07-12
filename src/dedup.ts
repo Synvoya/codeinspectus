@@ -27,7 +27,7 @@ const SECRET_ENGINE_PREFERENCE: Record<string, number> = {
   opengrep: 0,
 };
 
-function dedupKey(f: Finding): string {
+export function dedupKey(f: Finding): string {
   const range = `${f.location.file}:${f.location.start_line}-${f.location.end_line}`;
   if (f.is_secret) {
     // Secret overlap (PRD §4.4): dedup on (normalized path + line range + secret
@@ -65,6 +65,13 @@ function preferred(a: Finding, b: Finding): Finding {
   // Then higher confidence.
   const confDelta = (CONFIDENCE_RANK[a.confidence] ?? 0) - (CONFIDENCE_RANK[b.confidence] ?? 0);
   if (confDelta !== 0) return confDelta > 0 ? a : b;
+  // Final DETERMINISTIC tiebreak (CG-75 / Claim 1): when severity, secret-engine preference and
+  // confidence all tie — e.g. two Gitleaks rules matching one secret at the same location — pick
+  // by fingerprint so the SAME representative is kept regardless of engine output order. Without
+  // this the surviving fingerprint (which includes rule_id) flips run-to-run and a like-for-like
+  // rescan falsely reports the finding resolved+introduced. Severity still wins first (above), so
+  // this never lowers severity.
+  if (a.fingerprint !== b.fingerprint) return a.fingerprint < b.fingerprint ? a : b;
   return a;
 }
 

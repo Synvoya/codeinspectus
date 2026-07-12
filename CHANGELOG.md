@@ -4,6 +4,27 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [0.3.0] — 2026-07-12
+
+Rescan now reports "resolved" only when it can prove it, plus honesty fixes to install docs and stored-scan handling.
+
+### Changed
+- **Rescan no longer over-claims "resolved."** A prior finding is reported resolved only when CodeInspectus can prove it was re-checked and is gone — the producing engine actually ran, results weren't truncated, and the original scan's scope was reproduced. When it can't confirm (an engine didn't run, results hit a limit, or the prior scan predates captured scope), the finding is reported as **`not_rechecked`** — an honest "couldn't confirm," never a false all-clear. A genuine fix still shows as resolved.
+- **Severity threshold on rescan is now display-only.** It affects what's shown, not what's compared — so filtering to "medium and up" can no longer make a still-present lower-severity finding look resolved.
+
+### Fixed
+- Rescans could report a still-present finding as "resolved" when the re-scan used a narrower filter, an engine quietly didn't run, or a co-located secret's identity shifted between runs. All three paths are closed; rescan now matches findings on stable identity, not just a run-specific fingerprint.
+
+### Docs
+- Install prerequisites now stated up front: **Node.js 18+** and **cosign** on your PATH (cosign verifies the Opengrep and Trivy downloads; the install fails closed without it — Gitleaks needs none).
+- Refined the write-scope wording from 0.2.0: CodeInspectus never edits or deletes your source code or repository; scan history and engines live under `~/.codeinspectus`, and an SBOM is written to a managed directory by default, or a path you choose.
+
+### Internal
+- Hardened stored-scan handling against path traversal and added validation of loaded scan files. Added continuous integration (build, tests, engine-verified evals) with dependency-pinned workflows. No change to what gets detected — the 35-rule detection set is unchanged.
+
+### Known limitations (stated plainly)
+- A rescan run with a smaller `max_findings` than the original may report some findings as `not_rechecked` rather than resolved — by design, so a truncated re-scan never produces a false all-clear.
+
 ## [0.2.1] — 2026-07-06
 
 ### Fixed

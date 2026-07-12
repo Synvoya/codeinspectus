@@ -195,6 +195,14 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       disclaimer: STANDING_DISCLAIMER,
       warnings,
       git_safety,
+      // CG-75: capture the effective config so a bare rescan is like-for-like and rescan can
+      // prove re-checkability. An empty/absent scanners request means "all" — store it as
+      // undefined (not []) to keep that meaning unambiguous for reuse.
+      scan_config: {
+        ...(input.scanners && input.scanners.length ? { scanners: input.scanners } : {}),
+        ...(input.severity_threshold ? { severity_threshold: input.severity_threshold } : {}),
+        max_findings: max,
+      },
     };
 
     if (input.include_compliance !== false) {

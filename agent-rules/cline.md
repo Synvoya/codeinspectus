@@ -1,7 +1,7 @@
 # CodeInspectus security loop (Cline custom instructions)
 
 **Principle: CodeInspectus REPORTS; the user DECIDES; you fix only with consent.** The tool never
-writes to your code or repo — it never edits your files. After you generate or modify code:
+edits or deletes your source code or repository — the only file it writes is an optional SBOM (managed dir by default, or a path you choose), with data under `~/.codeinspectus`. After you generate or modify code:
 
 1. **Scan** — `codeinspectus_scan` on the project root (absolute path). Local, zero egress;
    returns CWE-keyed findings, each with a `remediation`.

@@ -15,6 +15,19 @@ export const confidenceEnum = z.enum(["high", "medium", "low"]);
 export const engineEnum = z.enum(["opengrep", "gitleaks", "trivy", "codeinspectus-ai"]);
 export const scannerEnum = z.enum(["sast", "secret", "vuln", "misconfig", "license", "ai"]);
 
+// ── scan_id hardening (CG-75 / Claim 2) ─────────────────────────────────────
+// scan_ids are generated as `scan-${randomUUID()}` (UUIDv4, lowercase hex) — see
+// src/scan.ts. Constrain EVERY tool input that accepts one to that exact shape so
+// traversal ("../"), absolute paths, and arbitrary strings are rejected at the Zod
+// boundary. Defense-in-depth with the store's path-containment check (src/store.ts).
+const SCAN_ID_RE = /^scan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const scanIdSchema = z
+  .string()
+  .regex(
+    SCAN_ID_RE,
+    "scan_id must be a CodeInspectus-generated id of the form 'scan-<uuid>' (e.g. scan-7a264fd8-0d50-43e4-bcf1-75f401a90f88).",
+  );
+
 export const FRAMEWORKS = [
   "NIST_CSF_2.0",
   "ISO27001:2022",
@@ -122,6 +135,26 @@ export const scanResultSchema = z.object({
   disclaimer: z.string(),
   warnings: z.array(z.string()),
   git_safety: gitSafetySchema,
+  // CG-75: effective scan config, captured so a bare rescan is like-for-like and rescan can
+  // prove re-checkability. Optional so pre-CG-75 stored scans still validate on load.
+  scan_config: z
+    .object({
+      scanners: z.array(scannerEnum).optional(),
+      severity_threshold: severityEnum.optional(),
+      max_findings: z.number().int(),
+    })
+    .optional(),
+});
+
+// Store-tolerant LOAD schema (CG-75 / Claim 2c). Persisted scans on disk may predate
+// fields added in later versions — `git_safety` (CG-41). Fresh scan OUTPUT is still
+// strictly validated by scanResultSchema (the honesty surface is unchanged); this schema
+// governs ONLY what the store accepts when reading previously-persisted JSON, so a rescan
+// of an older scan validates instead of crashing. (Any field that is optional on
+// scanResultSchema — including the CG-75 scan-config fields once they are added — is
+// inherited leniently here.)
+export const storedScanResultSchema = scanResultSchema.extend({
+  git_safety: gitSafetySchema.optional(),
 });
 
 // ── Tool INPUT schemas ──────────────────────────────────────────────────────
@@ -150,8 +183,7 @@ export const scanInput = z.object({
 
 export const rescanInput = z.object({
   path: z.string().describe("Absolute path to the repository or directory to rescan."),
-  prior_scan_id: z
-    .string()
+  prior_scan_id: scanIdSchema
     .optional()
     .describe("scan_id of a previous scan to diff against. Defaults to the most recent scan of this path."),
   severity_threshold: severityEnum.optional(),
@@ -160,14 +192,14 @@ export const rescanInput = z.object({
 });
 
 export const complianceReportInput = z.object({
-  scan_id: z.string().describe("scan_id returned by a prior codeinspectus_scan call."),
+  scan_id: scanIdSchema.describe("scan_id returned by a prior codeinspectus_scan call."),
   framework: frameworkEnum
     .optional()
     .describe("Restrict the report to one framework. Default: all frameworks."),
 });
 
 export const explainFindingInput = z.object({
-  scan_id: z.string().describe("scan_id the finding belongs to."),
+  scan_id: scanIdSchema.describe("scan_id the finding belongs to."),
   finding_id: z.string().describe("The finding id (e.g. CI-0007) to explain in depth."),
 });
 
@@ -195,11 +227,19 @@ export const rescanResultSchema = z.object({
   resolved: z.array(findingSchema),
   remaining: z.array(findingSchema),
   introduced: z.array(findingSchema),
+  // CG-75: prior findings whose resolution could NOT be proven — indeterminate, never
+  // reported as resolved. Surfaced as its own category alongside resolved/remaining/introduced.
+  not_rechecked: z.array(findingSchema),
   summary: z.object({
     resolved: z.number().int(),
     remaining: z.number().int(),
     introduced: z.number().int(),
+    not_rechecked: z.number().int(),
   }),
+  /** True when the comparison is partial (not_rechecked non-empty). */
+  partial: z.boolean(),
+  /** Reason(s) findings could not be confirmed resolved; present iff partial. */
+  not_rechecked_note: z.string().optional(),
   disclaimer: z.string(),
 });
 

@@ -1,7 +1,8 @@
 # CodeInspectus security loop (Windsurf rule)
 
-CodeInspectus REPORTS; the user DECIDES; you fix only with consent. The tool never writes to
-your code or repo (it never edits your files). After generating or editing code:
+CodeInspectus REPORTS; the user DECIDES; you fix only with consent. The tool never edits or deletes
+your source code or repository — the only file it writes is an optional SBOM (managed dir by
+default, or a path you choose), with data under `~/.codeinspectus`. After generating or editing code:
 
 1. **Scan** — `codeinspectus_scan` on the workspace root (absolute path); local, zero-egress;
    returns CWE-keyed findings + a `remediation` each.

@@ -150,6 +150,23 @@ export interface ScanResult {
   warnings: string[];
   /** CG-41 read-only git-safety advisory for the scan target (never a finding). */
   git_safety: GitSafety;
+  /**
+   * CG-75: the effective scan configuration, captured so a bare rescan can reproduce the
+   * original scope like-for-like AND so rescan can prove whether a prior finding was even
+   * re-checkable. Absent on pre-CG-75 scans — rescan then degrades those prior findings to
+   * `not_rechecked` (never `resolved`), because like-for-like scope cannot be proven.
+   */
+  scan_config?: ScanConfig;
+}
+
+/** CG-75 captured scan config (per-engine ran/failed status lives in engine_details). */
+export interface ScanConfig {
+  /** Scanner classes requested; undefined = all classes. */
+  scanners?: ScannerKind[];
+  /** Severity floor applied; undefined = info (all severities). */
+  severity_threshold?: Severity;
+  /** The effective max_findings cap actually applied. */
+  max_findings: number;
 }
 
 export interface RescanResult {
@@ -159,10 +176,22 @@ export interface RescanResult {
   resolved: Finding[];
   remaining: Finding[];
   introduced: Finding[];
+  /**
+   * CG-75: prior findings whose resolution could NOT be proven — the producing engine did
+   * not run in the rescan, the finding fell outside the rescan's scanner/threshold scope,
+   * a scan was truncated, or the prior scan predates captured config. Indeterminate:
+   * NOT confirmed resolved and NOT silently dropped.
+   */
+  not_rechecked: Finding[];
   summary: {
     resolved: number;
     remaining: number;
     introduced: number;
+    not_rechecked: number;
   };
+  /** True when not_rechecked is non-empty — the comparison is partial, not like-for-like. */
+  partial: boolean;
+  /** Human-readable reason(s) the not_rechecked findings could not be confirmed; present iff partial. */
+  not_rechecked_note?: string;
   disclaimer: string;
 }

@@ -10,8 +10,8 @@
 # artifact (engines.lock.merged.json). A maintainer reviews the diff and commits.
 #
 # Why a matrix (vs. pinning all platforms from one machine): pinning is
-# platform-agnostic, but running each job natively lets us ALSO smoke-run the
-# binary on its real OS (`verify-engines`) before trusting the pin.
+# platform-agnostic, but running each job on its NATIVE OS downloads + verifies
+# (cosign / checksums, fail-closed) the real per-platform asset before pinning it.
 name: pin-engines
 
 on:
@@ -39,15 +39,15 @@ jobs:
           - os: windows-latest
             platform: win32-x64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: npm
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
 
       - run: npm ci
       - run: npm run build
@@ -61,14 +61,17 @@ jobs:
           echo "runner platform: $actual (expected $EXPECTED_PLATFORM)"
           test "$actual" = "$EXPECTED_PLATFORM"
 
-      - name: Pin + verify this platform (fail-closed)
+      - name: Pin this platform (fail-closed)
         shell: bash
         run: |
+          # --pin-only downloads each asset, cosign/checksum-verifies it (fail-closed),
+          # extracts the binary and records its SHA256 + provenance — all on the native OS.
+          # It installs NO runnable binary, so `verify-engines` (which resolves an installed
+          # binary) must not follow it here — that mismatch was the CG-71 latent bug.
           node dist/index.js install-engines --pin-only
-          node dist/index.js verify-engines        # smoke: SHA + provenance on the native OS
 
       - name: Upload per-platform lockfile
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: lockfile-${{ matrix.platform }}
           path: engines.lock.json
@@ -79,13 +82,13 @@ jobs:
     needs: pin
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
 
       - name: Download all per-platform lockfiles
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: pins
 
@@ -119,7 +122,7 @@ jobs:
         run: diff -u engines.lock.json engines.lock.merged.json || true
 
       - name: Upload merged lockfile for human review
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: engines.lock.merged
           path: engines.lock.merged.json

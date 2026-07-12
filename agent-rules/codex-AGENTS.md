@@ -1,7 +1,7 @@
 ## Security: CodeInspectus loop
 
 **Principle: CodeInspectus REPORTS; the user DECIDES; you fix only with consent.** The tool never
-writes to your code or repo (it never edits your files). When you write or change code:
+edits or deletes your source code or repository — the only file it writes is an optional SBOM (managed dir by default, or a path you choose), with data under `~/.codeinspectus`. When you write or change code:
 
 1. **Scan** — `codeinspectus_scan` (absolute repo path); local, zero-egress; returns CWE-keyed
    findings, each with a `remediation`.

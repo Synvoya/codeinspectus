@@ -50,11 +50,21 @@ export function summarizeScan(r: ScanResult): string {
 }
 
 export function summarizeRescan(r: RescanResult): string {
+  // CG-75: findings the rescan could not re-check get their OWN section and are explicitly
+  // NOT presented as resolved — a false "you fixed it" on a live security finding is the exact
+  // failure this guards against. Surfaced in both this text and structuredContent.
+  const notRechecked = r.not_rechecked.length
+    ? `\n\nCould not re-check — NOT confirmed resolved:\n${topLines(r.not_rechecked, 10)}` +
+      (r.not_rechecked_note ? `\n  ⚠ ${r.not_rechecked_note}` : "")
+    : "";
+
   return (
     `CodeInspectus rescan of ${r.target} (vs ${r.prior_scan_id})\n` +
-    `Resolved: ${r.summary.resolved} | Remaining: ${r.summary.remaining} | Newly introduced: ${r.summary.introduced}` +
+    `Resolved: ${r.summary.resolved} | Remaining: ${r.summary.remaining} | ` +
+    `Newly introduced: ${r.summary.introduced} | Not re-checked: ${r.summary.not_rechecked}` +
     (r.introduced.length ? `\n\nNewly introduced:\n${topLines(r.introduced, 10)}` : "") +
     (r.remaining.length ? `\n\nStill present:\n${topLines(r.remaining, 10)}` : "") +
+    notRechecked +
     `\n\n${r.disclaimer}`
   );
 }

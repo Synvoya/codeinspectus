@@ -2,7 +2,7 @@
 
 After you generate or substantially modify code in this repo, run the CodeInspectus
 loop. **Principle: CodeInspectus REPORTS; the user DECIDES; you fix only with consent.**
-CodeInspectus never writes to your code or repo — it never edits or deletes your files.
+CodeInspectus never edits or deletes your source code or repository — the only file it writes is an optional SBOM (managed directory by default, or a path you choose), and engine data + scan history stay under `~/.codeinspectus`.
 
 1. **Scan.** Call `codeinspectus_scan` with the absolute repo path. It runs locally with
    zero network egress and returns CWE-keyed findings, each with a `remediation`.

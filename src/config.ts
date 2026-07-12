@@ -23,7 +23,7 @@ import { dirname } from "node:path";
 export const MCP_SPEC_VERSION = "2025-11-25";
 
 export const SERVER_NAME = "codeinspectus";
-export const SERVER_VERSION = "0.2.1";
+export const SERVER_VERSION = "0.3.0";
 
 // ── Bundled engine versions (SHA-pinned in engines.lock.json) ───────────────
 export const ENGINE_VERSIONS = {

@@ -1,0 +1,137 @@
+# CodeInspectus CI — automatic checks on every pull request and push to master (CG-77).
+#
+# Rationale (CG-71 Claim 5): the repo had NO automatic PR/push CI — only the
+# manual pin-engines.yml. This adds it, in two tiers that match the tool's own
+# engine-gated design (evals E16/E17 self-skip when the security engines are absent):
+#
+#   always-run (no engines) — MUST stay green on every PR regardless of engines.
+#     Pure-TS surface only: typecheck, build, unit tests, the MCP stdio transport
+#     smoke, the eval harness (E01-E15 run; E16 Opengrep + E17 Trivy self-skip),
+#     and an npm-pack contents gate (runtime-only payload; no src/fixtures leak).
+#     Redaction is covered here by eval E03; the gitleaks-backed redaction-e2e is
+#     engine-dependent and runs in the engine job below.
+#
+#   engine (linux/amd64) — fetches + cosign/checksum-verifies + SHA-pins the three
+#     engine binaries and pulls the Trivy vuln DB, then runs the FULL eval (E16 +
+#     E17 now execute -> 17/17), the gitleaks-backed redaction-e2e, and a real
+#     fixture scan. Proven feasible in CG-77 recon: every engine has a non-null
+#     linux-x64 pin and a fresh verified install reproduces the committed SHAs.
+#
+# Network egress used by the engine job (GitHub-hosted runners have UNRESTRICTED
+# egress, so no allow-list is enforced here; listed for the record / future
+# hardening — a too-tight allow-list would fail-close the job it protects):
+#   github.com, objects.githubusercontent.com   engine release assets + .sig/.cert/
+#                                                .sigstore.json/checksums; action code
+#   *.sigstore.dev (fulcio/rekor/tuf-repo-cdn)   cosign keyless verify-blob (tlog + TUF root)
+#   mirror.gcr.io, ghcr.io                       Trivy vuln-DB OCI pull (install-time only)
+#   registry.npmjs.org                           npm ci
+#
+# Third-party actions are pinned to a commit SHA (mirrors the project's engine
+# SHA-pin ethos). No run: step consumes untrusted github.event.* input.
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  always:
+    name: always-run (no engines)
+    runs-on: ubuntu-latest
+    steps:
+      # audit mode — logs egress for a future block-mode allowlist (CG-78); does not restrict.
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Typecheck (tsc --noEmit)
+        run: npm run typecheck
+      - name: Build (tsc --noEmit && tsup)
+        run: npm run build
+      - name: Unit tests (vitest, full)
+        run: npm test
+      - name: MCP stdio transport smoke (boots, lists 6 tools, stdout pure JSON-RPC)
+        run: node scripts/smoke-stdio.mjs
+      - name: Eval — E01-E15 (engine evals E16/E17 self-skip with no engines)
+        run: npm run eval
+      - name: npm pack — runtime-only payload (no src/fixtures/evals/scripts/docs)
+        run: |
+          npm pack --dry-run --json | node -e '
+            const files = JSON.parse(require("fs").readFileSync(0, "utf8"))[0].files.map((f) => f.path);
+            const leak = files.filter((f) => /^(src|fixtures|evals|scripts|docs)\//.test(f));
+            console.log("packed top-level:", [...new Set(files.map((f) => f.split("/")[0]))].sort().join(", "));
+            if (leak.length) { console.error("LEAK — non-runtime paths packed:", leak.join(", ")); process.exit(1); }
+            console.log("OK — runtime-only,", files.length, "files");
+          '
+
+  engine:
+    name: engine (linux/amd64)
+    runs-on: ubuntu-latest
+    steps:
+      # audit mode — logs egress for a future block-mode allowlist (CG-78); does not restrict.
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install cosign (mandatory, fail-closed, for opengrep + trivy verify)
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+      - run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Assert runner is linux/amd64 (lockfile platform linux-x64)
+        run: |
+          actual="$(node -e "process.stdout.write(process.platform + '-' + process.arch)")"
+          echo "runner platform: $actual"
+          test "$actual" = "linux-x64"
+      - name: Install engines — fetch + cosign/checksum-verify + SHA-pin + Trivy DB
+        run: node dist/index.js install-engines
+      - name: Assert freshly-verified SHAs == committed engines.lock.json pins
+        shell: bash
+        run: |
+          # install-engines rewrites only generated_at + provenance.at timestamps; every
+          # sha256 pin must be byte-identical to what is committed. A changed pin means an
+          # upstream asset moved under a fixed version tag -> fail closed (supply-chain).
+          if git diff -- engines.lock.json | grep -qE '^[+-][[:space:]]*"sha256"'; then
+            echo "FAIL: an engine SHA256 pin changed after a fresh verified install:"
+            git diff -- engines.lock.json | grep -E '^[+-][[:space:]]*"sha256"'
+            exit 1
+          fi
+          echo "OK: all engine SHA256 pins unchanged (only install timestamps differ)."
+      - name: Verify installed binaries against the lockfile (native OS)
+        run: node dist/index.js verify-engines
+      - name: Eval — full suite; REQUIRE E16 Opengrep + E17 Trivy to RUN (0 skipped)
+        shell: bash
+        run: |
+          # The engine tier EXISTS to prove Opengrep + Trivy actually execute. A skip
+          # here is a FAILURE, not acceptable degradation: if the Trivy DB pull silently
+          # failed (populateTrivyDb logs + returns undefined, so install-engines still
+          # exits 0) or an engine did not run, E16/E17 self-skip and the eval harness
+          # exits 0 — a false green. Asserting 0 skipped turns that into a RED instead.
+          out="${RUNNER_TEMP:-/tmp}/eval.out"
+          set -o pipefail
+          npm run eval | tee "$out"
+          grep -qE '0 failed, 0 skipped' "$out" || {
+            echo "FAIL: engine tier requires 0 skipped — E16 Opengrep + E17 Trivy must RUN, not skip (check the Trivy DB pull from mirror.gcr.io / ghcr.io)."
+            exit 1
+          }
+      - name: Redaction e2e — gitleaks-detected non-pattern secrets stay redacted
+        run: npm run test:redaction
+      - name: Real scan smoke on the fixture app (direct runScan path)
+        run: npx tsx scripts/dev-scan.ts "$PWD/fixtures/vulnerable-app"

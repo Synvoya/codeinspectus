@@ -43,6 +43,12 @@ before shipping.
 
 ## Install
 
+**Prerequisites:** **Node.js ≥18**, and [**cosign**](https://github.com/sigstore/cosign)
+on your `PATH` for `install-engines`. Signature verification is **fail-closed**: **Opengrep**
+and **Trivy** will **not** pin without cosign — `install-engines` exits non-zero for them —
+so install it first (`brew install cosign`). **Gitleaks** verifies by checksum and needs no
+cosign.
+
 ```bash
 # Register once per machine with your agent (see "Client registration"), then:
 npx codeinspectus install-engines
@@ -93,12 +99,13 @@ auto-runs the scan → fix → rescan loop.
 | `codeinspectus_rescan` | Re-scan after fixes; diffs vs a prior scan → resolved / remaining / introduced. |
 | `codeinspectus_compliance_report` | Per-framework **code-level control coverage** (not certification). |
 | `codeinspectus_explain_finding` | Deep explanation + full remediation for one finding. |
-| `codeinspectus_generate_sbom` | CycloneDX/SPDX SBOM (written to the managed dir by default). |
+| `codeinspectus_generate_sbom` | CycloneDX/SPDX SBOM (written to the managed dir by default, or a path you choose). |
 | `codeinspectus_list_rules` | Active detectors, engine versions, detection-DB + Trivy-DB freshness. |
 
-CodeInspectus **never writes to or deletes your code or repo** — it reads and reports;
-your agent applies the fixes. (The optional SBOM is written to a managed dir outside
-your project by default — see `codeinspectus_generate_sbom`.)
+CodeInspectus **never edits or deletes your source code or repository** — it reads and
+reports; your agent applies the fixes. It stores engine data and scan history under
+`~/.codeinspectus`; the only file it writes is an optional SBOM — to a managed directory
+by default, or a path you choose (see `codeinspectus_generate_sbom`).
 
 Each scan also reports a read-only **git-safety** state: if there's no git repo or
 uncommitted changes, it recommends creating a checkpoint before fixes — your agent
@@ -255,7 +262,7 @@ practitioner)*
 
 ## Changelog
 
-Per-version release notes live in [`CHANGELOG.md`](CHANGELOG.md). Current: **v0.2.0**.
+Per-version release notes live in [`CHANGELOG.md`](CHANGELOG.md). Current: **v0.3.0**.
 
 ## Licenses
 
