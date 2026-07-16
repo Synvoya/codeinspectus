@@ -294,7 +294,7 @@ practitioner)*
 
 ## Changelog
 
-Per-version release notes live in [`CHANGELOG.md`](CHANGELOG.md). Current: **v0.3.0**.
+Per-version release notes live in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Licenses
 
