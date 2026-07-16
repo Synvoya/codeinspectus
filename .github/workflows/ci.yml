@@ -17,6 +17,11 @@
 #     fixture scan. Proven feasible in CG-77 recon: every engine has a non-null
 #     linux-x64 pin and a fresh verified install reproduces the committed SHAs.
 #
+#   runtime-portability — repeats the native engine verification, complete eval,
+#     redaction e2e, and fixture scan on Windows x64, macOS Intel, and Linux ARM64.
+#     Unit tests and the MCP stdio smoke also run natively so platform-specific
+#     path, process, binary-resolution, and transport regressions fail CI.
+#
 # Network egress used by the engine job (GitHub-hosted runners have UNRESTRICTED
 # egress, so no allow-list is enforced here; listed for the record / future
 # hardening — a too-tight allow-list would fail-close the job it protects):
@@ -51,8 +56,8 @@ jobs:
       - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 20
           cache: npm
@@ -85,8 +90,8 @@ jobs:
       - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 20
           cache: npm
@@ -135,3 +140,71 @@ jobs:
         run: npm run test:redaction
       - name: Real scan smoke on the fixture app (direct runScan path)
         run: npx tsx scripts/dev-scan.ts "$PWD/fixtures/vulnerable-app"
+
+  runtime-portability:
+    name: runtime (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win32-x64
+          - os: macos-15-intel
+            platform: darwin-x64
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
+    steps:
+      # audit mode is supported on GitHub-hosted Linux, Windows, and macOS.
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install cosign (mandatory, fail-closed, for opengrep + trivy verify)
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+      - run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Unit tests (native platform)
+        run: npm test
+      - name: MCP stdio transport smoke (native platform)
+        run: node scripts/smoke-stdio.mjs
+      - name: Assert native runner platform
+        shell: bash
+        env:
+          EXPECTED_PLATFORM: ${{ matrix.platform }}
+        run: |
+          actual="$(node -e "process.stdout.write(process.platform + '-' + process.arch)")"
+          echo "runner platform: $actual (expected $EXPECTED_PLATFORM)"
+          test "$actual" = "$EXPECTED_PLATFORM"
+      - name: Install engines — fetch + cosign/checksum-verify + SHA-pin + Trivy DB
+        run: node dist/index.js install-engines
+      - name: Assert freshly-verified SHAs == committed engines.lock.json pins
+        shell: bash
+        run: |
+          if git diff -- engines.lock.json | grep -qE '^[+-][[:space:]]*"sha256"'; then
+            echo "FAIL: an engine SHA256 pin changed after a fresh verified install:"
+            git diff -- engines.lock.json | grep -E '^[+-][[:space:]]*"sha256"'
+            exit 1
+          fi
+          echo "OK: all engine SHA256 pins unchanged (only install timestamps differ)."
+      - name: Verify installed binaries against the lockfile (native OS)
+        run: node dist/index.js verify-engines
+      - name: Eval — full suite; REQUIRE E16 Opengrep + E17 Trivy to RUN (0 skipped)
+        shell: bash
+        run: |
+          out=".codeinspectus-eval.out"
+          set -o pipefail
+          npm run eval | tee "$out"
+          grep -qE '0 failed, 0 skipped' "$out" || {
+            echo "FAIL: portability tier requires 0 skipped — E16 Opengrep + E17 Trivy must RUN."
+            exit 1
+          }
+      - name: Redaction e2e — gitleaks-detected non-pattern secrets stay redacted
+        run: npm run test:redaction
+      - name: Real scan smoke on the fixture app (native platform)
+        run: npx tsx scripts/dev-scan.ts fixtures/vulnerable-app

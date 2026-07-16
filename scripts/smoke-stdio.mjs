@@ -59,7 +59,21 @@ async function waitFor(id, timeoutMs = 8000) {
   });
   const init = await waitFor(1);
   if (!init.result?.serverInfo?.name) throw new Error("bad initialize result");
+  const instructions = init.result?.instructions;
+  if (typeof instructions !== "string") throw new Error("initialize returned no server instructions");
+  const decisionPrefix = instructions.slice(0, 512);
+  for (const expected of [
+    "Present findings before editing",
+    "granular user approval",
+    "codeinspectus_rescan",
+    "never claim fixed unless confirmed",
+  ]) {
+    if (!decisionPrefix.includes(expected)) {
+      throw new Error(`first 512 instruction characters missing: ${expected}`);
+    }
+  }
   console.error("✓ initialize:", init.result.serverInfo.name, init.result.serverInfo.version);
+  console.error("✓ server instructions: safe scan → consent → fix → rescan workflow advertised");
 
   send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
 

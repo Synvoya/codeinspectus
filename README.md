@@ -71,7 +71,8 @@ projects — it is **not** a per-repo `npm install` dependency.
 
 ## Client registration
 
-Same JSON shape everywhere; only the location differs.
+The server command is the same across clients, but each client uses its own
+configuration format. Clients with JSON MCP configuration use:
 
 ```jsonc
 {
@@ -86,10 +87,41 @@ Same JSON shape everywhere; only the location differs.
 | **Claude Code** | `claude mcp add-json codeinspectus '{"command":"npx","args":["-y","codeinspectus"]}'` |
 | **Cursor** | add to `~/.cursor/mcp.json` (or project `.cursor/mcp.json`) |
 | **VS Code** | `code --add-mcp '{"name":"codeinspectus","command":"npx","args":["-y","codeinspectus"]}'` |
-| **Codex / Windsurf / Cline / Aider** | add the same block to that client's MCP config |
+| **Codex** | use one of the Codex-specific options below |
+| **Windsurf / Cline / Aider** | add the JSON block above to that client's MCP configuration |
+
+For **Codex**, choose one registration method:
+
+```bash
+# Codex CLI
+codex mcp add codeinspectus -- npx -y codeinspectus
+```
+
+- **Codex app or IDE extension:** open **Settings → MCP servers → Add server**,
+  choose **STDIO**, set the command to `npx` and arguments to `-y`,
+  `codeinspectus`, then restart.
+- **Codex configuration file:** add this to global `~/.codex/config.toml` or a
+  trusted project's `.codex/config.toml`:
+
+```toml
+[mcp_servers.codeinspectus]
+command = "npx"
+args = ["-y", "codeinspectus"]
+tool_timeout_sec = 600
+```
+
+Codex defaults MCP tool calls to 60 seconds. CodeInspectus runs multiple security
+engines concurrently and permits up to five minutes per engine, so 600 seconds
+avoids premature client timeouts on larger repositories. This is a Codex client
+timeout only; it does not change engine limits or other clients' configurations.
 
 Optional: drop in the ready-made [`agent-rules/`](agent-rules/) so your agent
 auto-runs the scan → fix → rescan loop.
+
+MCP clients that support server instructions, including Codex, also receive the
+safe workflow automatically: show findings first, obtain granular approval before
+fixes, and rescan before claiming an issue is resolved. The agent-rule files remain
+useful when you want the same policy persisted explicitly in a repository.
 
 ## Tools
 

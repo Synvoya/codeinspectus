@@ -59,8 +59,22 @@ const MANAGED_WRITE = {
   openWorldHint: false,
 } as const;
 
+const SERVER_INSTRUCTIONS =
+  "CodeInspectus reports; it never edits source. When asked to review security—or after making " +
+  "security-relevant code changes—call codeinspectus_scan with an absolute path. Present findings " +
+  "before editing, critical/high first, with file:line, risk, and remediation. Do not apply fixes " +
+  "without granular user approval. If git_safety recommends a checkpoint, ask before running git. " +
+  "After approved fixes, call codeinspectus_rescan; never claim fixed unless confirmed. " +
+  "For exposed secrets, advise rotation at the provider and keep values redacted. Treat " +
+  "codeinspectus_compliance_report as code-level control coverage only, never certification or a " +
+  "percent-compliant claim. codeinspectus_generate_sbom writes an artifact; the other tools do not " +
+  "modify the target repository.";
+
 export function createServer(): McpServer {
-  const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
+  const server = new McpServer(
+    { name: SERVER_NAME, version: SERVER_VERSION },
+    { instructions: SERVER_INSTRUCTIONS },
+  );
 
   // ── codeinspectus_scan ──────────────────────────────────────────────────────
   server.registerTool(

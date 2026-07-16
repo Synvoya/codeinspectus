@@ -11,7 +11,8 @@ so any fix can be rolled back cleanly (CodeInspectus itself never runs git). All
 
 ## 1. Register the MCP server (once per machine)
 
-Identical JSON shape everywhere:
+The server command is shared across clients, but the configuration format is
+client-specific. JSON-based MCP clients use:
 
 ```jsonc
 {
@@ -26,7 +27,22 @@ Identical JSON shape everywhere:
 | Claude Code | `claude mcp add-json codeinspectus '{"command":"npx","args":["-y","codeinspectus"]}'` |
 | Cursor | `~/.cursor/mcp.json` (or project `.cursor/mcp.json`) |
 | VS Code | `code --add-mcp '{"name":"codeinspectus","command":"npx","args":["-y","codeinspectus"]}'` |
-| Codex / Windsurf / Cline / Aider | that client's MCP config — same shape |
+| Codex | `codex mcp add codeinspectus -- npx -y codeinspectus`, or use Codex settings / TOML below |
+| Windsurf / Cline / Aider | that client's JSON MCP configuration |
+
+Codex can also be configured through **Settings → MCP servers → Add server**
+(STDIO; command `npx`; arguments `-y`, `codeinspectus`) or with:
+
+```toml
+[mcp_servers.codeinspectus]
+command = "npx"
+args = ["-y", "codeinspectus"]
+tool_timeout_sec = 600
+```
+
+Codex defaults MCP tool calls to 60 seconds. CodeInspectus allows each security
+engine up to five minutes, so 600 seconds prevents premature client timeouts on
+larger repositories. This Codex-only setting does not alter other clients.
 
 First run: `npx codeinspectus install-engines` once to fetch + SHA-pin the engine
 binaries and the offline Trivy DB (the only network step; install-time only).

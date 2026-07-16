@@ -4,6 +4,33 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [0.3.1] — 2026-07-16
+
+Codex integration and cross-platform release hardening. No detection or scanner
+behavior changes; the 35-rule detection set is unchanged.
+
+### Added
+- **MCP-level agent workflow instructions.** Clients now receive the recommended
+  scan → explain → consent → fix → rescan workflow during initialization, including
+  granular fix consent, git-safety guidance, secret-rotation reminders, and the rule
+  that a finding is never called fixed until a rescan confirms it.
+- **Native portability CI.** Windows x64, macOS Intel, and Linux ARM64 now build,
+  run unit tests and the MCP transport smoke, install and verify the pinned engines,
+  require all 17 evals to execute, run the redaction e2e, and scan the fixture app.
+
+### Fixed
+- **Accurate Codex setup documentation.** Codex now uses its CLI command, settings
+  UI, or `config.toml` instead of the Claude JSON example. The documented
+  `tool_timeout_sec = 600` prevents Codex's 60-second default from ending legitimate
+  large-repository scans early. Existing Claude setup remains unchanged.
+- **GitHub Actions Node.js deprecation warnings.** Checkout, Node setup, and artifact
+  actions now use immutable Node 24-based release SHAs. The retired `macos-13`
+  Intel runner label is replaced with `macos-15-intel`.
+
+### Internal
+- The MCP stdio smoke now requires non-empty server instructions and checks that the
+  critical consent/rescan guidance is present in the initialization handshake.
+
 ## [0.3.0] — 2026-07-12
 
 Rescan now reports "resolved" only when it can prove it, plus honesty fixes to install docs and stored-scan handling.
