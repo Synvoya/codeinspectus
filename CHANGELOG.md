@@ -6,8 +6,8 @@ AI-drafted and practitioner-reviewed — see the honesty notes in the [README](R
 
 ## [0.3.1] — 2026-07-16
 
-Codex integration and cross-platform release hardening. No detection or scanner
-behavior changes; the 35-rule detection set is unchanged.
+Codex integration and cross-platform release hardening. No detection-rule
+changes; the 35-rule detection set is unchanged.
 
 ### Added
 - **MCP-level agent workflow instructions.** Clients now receive the recommended
@@ -19,6 +19,9 @@ behavior changes; the 35-rule detection set is unchanged.
   require all 17 evals to execute, run the redaction e2e, and scan the fixture app.
 
 ### Fixed
+- **Windows SARIF paths.** Absolute paths emitted by Opengrep are now normalized
+  against Windows backslash targets, so findings retain repository-relative file
+  locations across every supported runtime.
 - **Accurate Codex setup documentation.** Codex now uses its CLI command, settings
   UI, or `config.toml` instead of the Claude JSON example. The documented
   `tool_timeout_sec = 600` prevents Codex's 60-second default from ending legitimate

@@ -7,7 +7,6 @@
  * and OWASP crosswalks are added later by the compliance mapper.
  */
 
-import { relative, isAbsolute, sep } from "node:path";
 import type { Engine, Finding, Confidence } from "../types.js";
 import type { EngineOutput } from "../engines/types.js";
 import type { SarifLog, SarifRule, SarifResult, SarifProps } from "./types.js";
@@ -41,9 +40,20 @@ function normalizePath(uri: string | undefined, target: string): string {
     }
   }
   p = p.replace(/\\/g, "/");
-  if (isAbsolute(p) && (p === target || p.startsWith(target + sep) || p.startsWith(target + "/"))) {
-    const rel = relative(target, p).replace(/\\/g, "/");
-    return rel || ".";
+  // URL.pathname represents a Windows file URI as /C:/path. Strip only that
+  // synthetic leading slash; a real POSIX absolute path must keep its root.
+  if (/^\/[A-Za-z]:\//.test(p)) p = p.slice(1);
+
+  const normalizedTarget = target.replace(/\\/g, "/");
+  const windowsStyle = /^(?:[A-Za-z]:\/|\/\/)/;
+  const caseInsensitive = windowsStyle.test(p) && windowsStyle.test(normalizedTarget);
+  const comparablePath = caseInsensitive ? p.toLowerCase() : p;
+  const comparableTarget = caseInsensitive ? normalizedTarget.toLowerCase() : normalizedTarget;
+  if (comparablePath === comparableTarget) return ".";
+
+  const targetPrefix = comparableTarget.endsWith("/") ? comparableTarget : comparableTarget + "/";
+  if (comparablePath.startsWith(targetPrefix)) {
+    return p.slice(targetPrefix.length);
   }
   return p;
 }

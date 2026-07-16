@@ -75,3 +75,47 @@ describe("normalizeSarif redacts non-allowlisted secrets (CG-24 A3-1/A6-2)", () 
     });
   }
 });
+
+describe("normalizeSarif path portability", () => {
+  test("makes a Windows absolute SARIF path relative to a backslash target", () => {
+    const target = "D:\\a\\codeinspectus-dev\\codeinspectus-dev\\fixtures\\vulnerable-app";
+    const sarif: SarifLog = {
+      runs: [
+        {
+          tool: {
+            driver: {
+              name: "opengrep",
+              rules: [
+                {
+                  id: "ci-baseline-sql-injection-string-build",
+                  properties: { cwe: "CWE-89" },
+                },
+              ],
+            },
+          },
+          results: [
+            {
+              ruleId: "ci-baseline-sql-injection-string-build",
+              message: { text: "Potential SQL injection (CWE-89)" },
+              locations: [
+                {
+                  physicalLocation: {
+                    artifactLocation: {
+                      uri: "D:\\a\\codeinspectus-dev\\codeinspectus-dev\\fixtures\\vulnerable-app\\src\\db.ts",
+                    },
+                    region: { startLine: 11, endLine: 11 },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const [finding] = normalizeSarif(sarif, "opengrep", target);
+    expect(finding?.location.file).toBe("src/db.ts");
+    expect(finding?.location.start_line).toBe(11);
+    expect(finding?.cwe).toContain("CWE-89");
+  });
+});
