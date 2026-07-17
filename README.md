@@ -6,6 +6,7 @@
 ![Local-first](https://img.shields.io/badge/local--first-yes-brightgreen.svg)
 ![No telemetry](https://img.shields.io/badge/telemetry-none-brightgreen.svg)
 [![codeinspectus MCP server](https://glama.ai/mcp/servers/Synvoya/codeinspectus/badges/score.svg)](https://glama.ai/mcp/servers/Synvoya/codeinspectus)
+[![GitHub stars](https://img.shields.io/github/stars/Synvoya/codeinspectus?style=social)](https://github.com/Synvoya/codeinspectus)
 
 **A local-first, privacy-preserving security MCP server.** Any AI coding agent
 (Claude Code, Cursor, Codex, Windsurf, Cline, Aider) can invoke CodeInspectus to
@@ -15,6 +16,16 @@ rescan** loop — fully on your machine, with **no account** and **zero network
 egress at scan time**.
 
 ![CodeInspectus demo](assets/codeinspectus-demo.gif)
+
+**Reproduce the proof:** the shipped intentionally vulnerable fixture produces
+**18 normalized findings across all four engines** with v0.3.1 (4 critical, 8 high,
+5 medium, 1 low). Inspect the [fixture](fixtures/vulnerable-app), read the
+[full scanner-derived report](examples/reports/vulnerable-app-v0.3.1.md), or run the
+[17-case eval suite](evals/run-evals.ts). Dependency findings can change as the local
+Trivy database updates; the report records the exact engine and database versions used.
+
+If CodeInspectus is useful, [star the repository](https://github.com/Synvoya/codeinspectus)
+so other AI-app builders can find it.
 
 CodeInspectus orchestrates three best-in-class OSS engines behind one normalized,
 CWE-keyed schema, and adds its own **AI-code-specific checks** that generic
@@ -223,9 +234,7 @@ ALL LOCAL. NO NETWORK EGRESS AT SCAN TIME.
 
 ## Example reports
 
-- [Next.js + Supabase SaaS app](examples/reports/nextjs-supabase.md)
-- [AI chatbot / RAG app](examples/reports/ai-chatbot-rag.md)
-- [Node/React app](examples/reports/node-react.md)
+- [Reproducible v0.3.1 scan of the shipped vulnerable fixture](examples/reports/vulnerable-app-v0.3.1.md)
 
 ## Trademark
 
@@ -282,15 +291,13 @@ practitioner)*
 
 ## Good first contributions
 
-- Add a fixture for the unsafe raw inner-HTML sink (`ci-ai-llm-output-dangerous-html`) from component props.
-- Improve detection for Supabase `user_metadata.role` authorization checks.
-- Add detection for exposed `NEXT_PUBLIC_OPENAI_API_KEY` and similar client-side AI keys.
-- Add a rule for user-controlled URLs passed into server-side `fetch()`.
-- Add a rule for model output passed into `eval`, `Function`, shell commands, or unsafe tool calls.
-- Add a check for missing auth guards in Next.js `/api/admin/*` routes.
-- Verify one CWE to OWASP Top 10 mapping.
-- Verify one CWE to SOC 2 / ISO 27001 mapping.
-- Add a vulnerable fixture and expected finding snapshot for an existing rule.
+- [Trace tainted component props into `dangerouslySetInnerHTML`](https://github.com/Synvoya/codeinspectus/issues/1)
+- [Detect model output passed to dynamic execution or shell sinks](https://github.com/Synvoya/codeinspectus/issues/2)
+- [Detect unguarded Next.js admin API routes](https://github.com/Synvoya/codeinspectus/issues/3)
+- [Community-verify one CWE to OWASP Top 10 mapping](https://github.com/Synvoya/codeinspectus/issues/4)
+- [Community-verify one CWE to SOC 2 or ISO 27001](https://github.com/Synvoya/codeinspectus/issues/5)
+
+[Browse all good first issues](https://github.com/Synvoya/codeinspectus/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22).
 
 ## Changelog
 
