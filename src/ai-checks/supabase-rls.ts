@@ -11,20 +11,9 @@
  */
 
 import type { Finding, Severity, Confidence } from "../types.js";
-import { collectFiles, lineOf, lineText } from "./walk.js";
+import { collectFiles, lineText } from "./walk.js";
 import { makeAiFinding } from "./finding.js";
-
-// CG-18: capture an optional schema so system-schema tables (auth.*, storage.*, …) can be
-// skipped — they are platform-managed, not the app's public API surface (dogfood FP).
-const CREATE_TABLE_RE =
-  /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:["`]?([a-zA-Z0-9_]+)["`]?\s*\.\s*)?["`]?([a-zA-Z0-9_]+)["`]?/gi;
-const ENABLE_RLS_RE =
-  /alter\s+table\s+(?:"?public"?\.)?["`]?([a-zA-Z0-9_]+)["`]?\s+enable\s+row\s+level\s+security/gi;
-// CG-25b B-12: capture an optional schema qualifier so a schema-qualified target like
-// storage.objects is recognized (not parsed as table "storage"). group1=schema, 2=table, 3=body.
-const CREATE_POLICY_RE =
-  /create\s+policy\s+[^;]*?\bon\s+(?:["`]?([a-zA-Z0-9_]+)["`]?\s*\.\s*)?["`]?([a-zA-Z0-9_]+)["`]?([^;]*);/gis;
-const USING_TRUE_RE = /\b(?:using|with\s+check)\s*\(\s*true\s*\)/gi;
+import { reduceRlsEffectiveState } from "./supabase-migration-state.js";
 
 // CG-18 dogfood FP: skip RLS-missing on platform-managed schemas (Supabase manages RLS
 // for these) and on test/example fixture migrations (not a real app's exposed tables).
@@ -47,9 +36,6 @@ const CATALOG_TABLES = new Set([
   "products", "product", "prices", "price", "plans", "plan", "categories", "category",
   "tags", "tag", "currencies", "countries", "regions", "languages", "locales",
 ]);
-const TABLE_COLS_RE =
-  /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:"?public"?\.)?["`]?([a-zA-Z0-9_]+)["`]?\s*\(([\s\S]*?)\)\s*;/gi;
-
 type Sensitivity = "strong" | "catalog" | "unknown";
 
 /** Classify a table's data sensitivity from its column-definition text. */
@@ -60,40 +46,14 @@ function tableSensitivity(table: string, cols: string | undefined): Sensitivity 
   return "unknown";
 }
 
-/**
- * Blank out SQL comments (-- line and block) while preserving length and
- * newlines, so regex matches never fire inside comments but line numbers
- * computed against the result still map to the original source.
- */
-function blankSqlComments(sql: string): string {
-  let out = sql.replace(/--[^\n]*/g, (m) => " ".repeat(m.length));
-  out = out.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
-  return out;
+function snapshotConfidence(confidence: Confidence, isSnapshot: boolean): Confidence {
+  if (!isSnapshot) return confidence;
+  return confidence === "high" ? "medium" : "low";
 }
 
-interface PolicyInfo {
-  schema: string; // "" when unqualified or public
-  table: string;
-  body: string;
-  index: number;
-  endIndex: number; // absolute end of the CREATE POLICY ... ; statement
-  commands: string[]; // select/insert/update/delete/all
-}
-
-function parsePolicies(sql: string): PolicyInfo[] {
-  const policies: PolicyInfo[] = [];
-  for (const m of sql.matchAll(CREATE_POLICY_RE)) {
-    const schema = (m[1] ?? "").toLowerCase();
-    const table = (m[2] ?? "").toLowerCase();
-    const body = m[3] ?? "";
-    const cmds: string[] = [];
-    const forMatch = body.match(/\bfor\s+(select|insert|update|delete|all)\b/i);
-    if (forMatch && forMatch[1]) cmds.push(forMatch[1].toLowerCase());
-    else cmds.push("all"); // policy with no FOR applies to ALL
-    const index = m.index ?? 0;
-    policies.push({ schema, table, body, index, endIndex: index + m[0].length, commands: cmds });
-  }
-  return policies;
+function snapshotMessage(message: string, isSnapshot: boolean, subject: string): string {
+  if (!isSnapshot) return message;
+  return `${subject} found in standalone SQL. If this file represents deployed state, ${message.charAt(0).toLowerCase()}${message.slice(1)} However, effective deployment state could not be verified.`;
 }
 
 export async function runSupabaseRlsCheck(target: string): Promise<Finding[]> {
@@ -112,227 +72,209 @@ export async function runSupabaseRlsCheck(target: string): Promise<Finding[]> {
     sqlFiles.some((f) => /\bauth\.(uid|users|jwt|role)\b/i.test(f.content));
   if (!looksLikeSupabase) return findings;
 
-  for (const f of sqlFiles) {
-    // Match against a comment-blanked copy (line numbers preserved); use the
-    // original f.content only for snippet text.
-    const sql = blankSqlComments(f.content);
+  for (const state of reduceRlsEffectiveState(sqlFiles)) {
+    const isSnapshot = state.kind === "snapshot";
 
-    // Tables created in public.
-    const created = new Map<string, number>(); // table → line
-    for (const m of sql.matchAll(CREATE_TABLE_RE)) {
-      const schema = (m[1] ?? "").toLowerCase();
-      const t = (m[2] ?? "").toLowerCase();
-      if (schema && SYSTEM_SCHEMAS.has(schema)) continue; // platform-managed schema
-      if (t) created.set(t, lineOf(sql, m.index ?? 0));
-    }
-    // Tables with RLS enabled.
-    const rlsEnabled = new Set<string>();
-    for (const m of sql.matchAll(ENABLE_RLS_RE)) {
-      const t = (m[1] ?? "").toLowerCase();
-      if (t) rlsEnabled.add(t);
-    }
-    const policies = parsePolicies(sql);
-
-    // Per-table column text (for the CG-04 sensitivity heuristic), built from the
-    // comment-blanked SQL so commented-out columns don't count.
-    const tableColumns = new Map<string, string>();
-    for (const m of sql.matchAll(TABLE_COLS_RE)) {
-      const t = (m[1] ?? "").toLowerCase();
-      if (t) tableColumns.set(t, m[2] ?? "");
-    }
-
-    // (a) Permissive RLS: USING (true) / WITH CHECK (true). The pattern is always
-    // detected; CG-04 TIERS the severity by what the table protects, so a sensitive
-    // / per-user table stays CRITICAL (the CVE-2025-48757 class) while a genuine
-    // public catalog drops to low with human-confirm wording. A permissive policy
-    // covering WRITES outranks SELECT-only regardless of table.
-    for (const m of sql.matchAll(USING_TRUE_RE)) {
-      const mi = m.index ?? 0;
-      const line = lineOf(sql, mi);
-      const matchedWithCheck = m[0].toLowerCase().startsWith("with");
-      const policy = policies.find((p) => mi >= p.index && mi < p.endIndex);
-      // Skip a USING/WITH CHECK (true) that isn't inside a real CREATE POLICY (e.g.
-      // it appears as a quoted argument to a helper function) — matching there
-      // produces a bogus finding on a non-existent table (CG-04 dogfooding FP).
-      if (!policy) continue;
-      // Skip policies granted ONLY to privileged roles (e.g. TO service_role):
-      // service_role bypasses RLS, so a permissive policy scoped to it is a no-op
-      // for the anon/authenticated client and not a real exposure (CG-04 FP).
-      const toMatch = policy.body.match(/\bto\s+([a-z_]+(?:\s*,\s*[a-z_]+)*)/i);
+    // (a) Only policies active at the end of this sequence/snapshot are evaluated.
+    for (const policy of state.policies.values()) {
       if (
-        toMatch &&
-        !(toMatch[1] ?? "")
-          .toLowerCase()
-          .split(/\s*,\s*/)
-          .some((r) => r === "anon" || r === "authenticated" || r === "public")
+        policy.roles.length > 0 &&
+        !policy.roles.some((role) =>
+          ["anon", "authenticated", "public"].includes(role.toLowerCase()),
+        )
       ) {
         continue;
       }
-      const table = policy.table;
-      const command = policy.commands[0] ?? "all";
-      const isWrite = command !== "select" || matchedWithCheck;
+      const tableState = state.tables.get(policy.tableKey);
+      for (const clause of policy.permissiveClauses) {
+        const table = policy.table;
+        const command = policy.commands[0] ?? "all";
+        const isWrite = command !== "select" || clause.matchedWithCheck;
+        const location = clause.source;
 
-      // CG-25b B-12: system-schema policies are platform-managed → skip them, EXCEPT
-      // storage.objects — the user-facing bucket-policy table. A permissive policy there
-      // exposes every file in the bucket (the storage arm of CVE-2025-48757). This carves
-      // storage.objects out WITHOUT re-enabling the auth.* etc. system-schema FP (CG-18).
-      if (policy.schema && SYSTEM_SCHEMAS.has(policy.schema)) {
-        if (policy.schema === "storage" && table === "objects") {
-          findings.push(
-            makeAiFinding({
-              ruleId: "ci-ai-storage-rls-public",
-              title: isWrite
-                ? "Permissive RLS write policy on storage.objects — anyone can modify your files"
-                : "Public read policy on storage.objects — anyone can download every stored file",
-              severity: isWrite ? "critical" : "high",
-              cwe: ["CWE-863", "CWE-285"],
-              owasp_web: ["A01:2021"],
-              file: f.rel,
-              startLine: line,
-              snippet: lineText(f.content, line),
-              message: isWrite
-                ? "This Supabase Storage policy on storage.objects evaluates to TRUE for everyone and covers writes, so any client with the anon key can upload, overwrite, or delete files in your buckets — the CVE-2025-48757 failure pattern applied to storage."
-                : "This Supabase Storage policy on storage.objects is world-readable (USING (true)), so any client with the anon key can list and download every file in your buckets (uploads, invoices, ID scans). Confirm the bucket is intended to be fully public.",
-              remediation: {
-                summary:
-                  "Scope the storage.objects policy to the owner/bucket (e.g. bucket_id + auth.uid() = owner); leave it fully public only for genuinely public assets.",
-                steps: [
-                  "Decide which buckets are truly public (e.g. avatars) vs private (uploads, documents).",
-                  "For private buckets, replace USING (true) with an owner/bucket predicate, e.g. (bucket_id = '...' AND auth.uid() = owner).",
-                  "Make the bucket itself private if it should not be world-listable.",
-                ],
-                references: ["CWE-863", "https://supabase.com/docs/guides/storage/security/access-control"],
-              },
-              confidence: "medium",
-            }),
-          );
+        // CG-25b B-12: platform-managed schemas stay skipped except storage.objects.
+        if (SYSTEM_SCHEMAS.has(policy.schema)) {
+          if (policy.schema === "storage" && table === "objects") {
+            const baseMessage = isWrite
+              ? "This Supabase Storage policy on storage.objects evaluates to TRUE for everyone and covers writes, so any client with the anon key can upload, overwrite, or delete files in your buckets — the CVE-2025-48757 failure pattern applied to storage."
+              : "This Supabase Storage policy on storage.objects is world-readable (USING (true)), so any client with the anon key can list and download every file in your buckets (uploads, invoices, ID scans). Confirm the bucket is intended to be fully public.";
+            findings.push(
+              makeAiFinding({
+                ruleId: "ci-ai-storage-rls-public",
+                title: isWrite
+                  ? "Permissive RLS write policy on storage.objects — anyone can modify your files"
+                  : "Public read policy on storage.objects — anyone can download every stored file",
+                severity: isWrite ? "critical" : "high",
+                cwe: ["CWE-863", "CWE-285"],
+                owasp_web: ["A01:2021"],
+                file: location.file,
+                startLine: location.line,
+                snippet: lineText(location.content, location.line),
+                message: snapshotMessage(
+                  baseMessage,
+                  isSnapshot,
+                  "Permissive storage policy declaration",
+                ),
+                remediation: {
+                  summary:
+                    "Scope the storage.objects policy to the owner/bucket (e.g. bucket_id + auth.uid() = owner); leave it fully public only for genuinely public assets.",
+                  steps: [
+                    "Decide which buckets are truly public (e.g. avatars) vs private (uploads, documents).",
+                    "For private buckets, replace USING (true) with an owner/bucket predicate, e.g. (bucket_id = '...' AND auth.uid() = owner).",
+                    "Make the bucket itself private if it should not be world-listable.",
+                  ],
+                  references: [
+                    "CWE-863",
+                    "https://supabase.com/docs/guides/storage/security/access-control",
+                  ],
+                },
+                confidence: snapshotConfidence("medium", isSnapshot),
+              }),
+            );
+          }
+          continue;
         }
-        continue; // storage.objects handled above; all other system-schema policies skipped
-      }
 
-      const sensitivity = tableSensitivity(table, tableColumns.get(table));
-      const tableLabel = table || "table";
-
-      let severity: Severity;
-      let title: string;
-      let message: string;
-      let confidence: Confidence;
-      if (isWrite) {
-        severity = "critical";
-        title = `Permissive RLS write policy on '${tableLabel}' — anyone can write`;
-        message =
-          "This Row Level Security policy applies to writes (INSERT/UPDATE/DELETE/ALL) and evaluates to TRUE for everyone, so any client with the anon key can insert, modify, or delete rows. This is the CVE-2025-48757 failure pattern.";
-        confidence = "high";
-      } else if (sensitivity === "strong") {
-        severity = "critical";
-        title = `Permissive RLS read policy on sensitive table '${tableLabel}' — USING (true) exposes per-user/PII data`;
-        message =
-          "This SELECT policy evaluates to TRUE for everyone, so any client with the anon key can read every row. The table has per-user ownership or PII columns, so this exposes private data — the CVE-2025-48757 failure pattern.";
-        confidence = "high";
-      } else if (sensitivity === "catalog") {
-        severity = "low";
-        title = `Public read policy on catalog-like table '${tableLabel}' — confirm intended`;
-        message =
-          "This SELECT policy is world-readable (USING (true)). The table has no ownership/PII columns and a catalog-like name, so public read may be intentional (e.g. a product/price catalog). Potential public exposure — confirm this table is intended to be world-readable.";
-        confidence = "medium";
-      } else {
-        severity = "medium";
-        title = `World-readable RLS policy on '${tableLabel}' — verify intended`;
-        message =
-          "This SELECT policy evaluates to TRUE for everyone, so any client with the anon key can read every row. No per-user ownership or PII columns were detected, but confirm this table is intended to be world-readable.";
-        confidence = "medium";
-      }
-
-      findings.push(
-        makeAiFinding({
-          ruleId: "ci-ai-rls-using-true",
-          title,
-          severity,
-          cwe: ["CWE-863", "CWE-285"],
-          owasp_web: ["A01:2021"],
-          file: f.rel,
-          startLine: line,
-          snippet: lineText(f.content, line),
-          message,
-          remediation: {
-            summary:
-              "If this table is not meant to be world-readable/writable, replace USING (true) with a real ownership predicate, e.g. USING (auth.uid() = user_id). If it is an intentional public catalog, you can confirm and ignore.",
-            steps: [
-              "Decide whether the table is meant to be public (catalog) or per-user/private.",
-              "If private: rewrite as USING (auth.uid() = user_id) (and WITH CHECK for writes).",
-              "Add separate policies per command (SELECT/INSERT/UPDATE/DELETE) as needed.",
-            ],
-            references: ["CWE-863", "https://supabase.com/docs/guides/database/postgres/row-level-security"],
-          },
-          confidence,
-        }),
-      );
-    }
-
-    // (b) public table created without RLS enabled. Skip on test/example fixture
-    // migrations — not a real app's exposed tables (dogfood FP, CG-18).
-    const isTestFixture = TEST_FIXTURE_PATH_RE.test(f.rel);
-    for (const [table, line] of created) {
-      if (isTestFixture) break;
-      if (!rlsEnabled.has(table)) {
+        const sensitivity = tableSensitivity(table, tableState?.columns);
+        const tableLabel = table || "table";
+        let severity: Severity;
+        let title: string;
+        let message: string;
+        let confidence: Confidence;
+        if (isWrite) {
+          severity = "critical";
+          title = `Permissive RLS write policy on '${tableLabel}' — anyone can write`;
+          message =
+            "This Row Level Security policy applies to writes (INSERT/UPDATE/DELETE/ALL) and evaluates to TRUE for everyone, so any client with the anon key can insert, modify, or delete rows. This is the CVE-2025-48757 failure pattern.";
+          confidence = "high";
+        } else if (sensitivity === "strong") {
+          severity = "critical";
+          title = `Permissive RLS read policy on sensitive table '${tableLabel}' — USING (true) exposes per-user/PII data`;
+          message =
+            "This SELECT policy evaluates to TRUE for everyone, so any client with the anon key can read every row. The table has per-user ownership or PII columns, so this exposes private data — the CVE-2025-48757 failure pattern.";
+          confidence = "high";
+        } else if (sensitivity === "catalog") {
+          severity = "low";
+          title = `Public read policy on catalog-like table '${tableLabel}' — confirm intended`;
+          message =
+            "This SELECT policy is world-readable (USING (true)). The table has no ownership/PII columns and a catalog-like name, so public read may be intentional (e.g. a product/price catalog). Potential public exposure — confirm this table is intended to be world-readable.";
+          confidence = "medium";
+        } else {
+          severity = "medium";
+          title = `World-readable RLS policy on '${tableLabel}' — verify intended`;
+          message =
+            "This SELECT policy evaluates to TRUE for everyone, so any client with the anon key can read every row. No per-user ownership or PII columns were detected, but confirm this table is intended to be world-readable.";
+          confidence = "medium";
+        }
         findings.push(
           makeAiFinding({
-            ruleId: "ci-ai-rls-missing",
-            title: `Table '${table}' created without Row Level Security`,
-            severity: "high",
-            cwe: ["CWE-862", "CWE-285"],
+            ruleId: "ci-ai-rls-using-true",
+            title,
+            severity,
+            cwe: ["CWE-863", "CWE-285"],
             owasp_web: ["A01:2021"],
-            file: f.rel,
-            startLine: line,
-            snippet: lineText(f.content, line),
-            message: `Table '${table}' is created in the public schema but never has ENABLE ROW LEVEL SECURITY. Without RLS, the Supabase auto-generated API exposes the whole table to any client with the anon key.`,
+            file: location.file,
+            startLine: location.line,
+            snippet: lineText(location.content, location.line),
+            message: snapshotMessage(message, isSnapshot, "Permissive policy declaration"),
             remediation: {
-              summary: `Enable RLS on '${table}' and add per-operation policies.`,
+              summary:
+                "If this table is not meant to be world-readable/writable, replace USING (true) with a real ownership predicate, e.g. USING (auth.uid() = user_id). If it is an intentional public catalog, you can confirm and ignore.",
               steps: [
-                `ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;`,
-                "Add SELECT/INSERT/UPDATE/DELETE policies with real ownership predicates.",
+                "Decide whether the table is meant to be public (catalog) or per-user/private.",
+                "If private: rewrite as USING (auth.uid() = user_id) (and WITH CHECK for writes).",
+                "Add separate policies per command (SELECT/INSERT/UPDATE/DELETE) as needed.",
               ],
-              references: ["CWE-862", "https://supabase.com/docs/guides/database/postgres/row-level-security"],
+              references: [
+                "CWE-863",
+                "https://supabase.com/docs/guides/database/postgres/row-level-security",
+              ],
             },
-            confidence: "medium",
+            confidence: snapshotConfidence(confidence, isSnapshot),
           }),
         );
       }
-    }
 
-    // (c) [REMOVED in CG-03 dogfooding] "write-open" — flagged a table that has a
-    // SELECT policy but no INSERT/UPDATE/DELETE policy. That logic was inverted:
-    // with RLS enabled and no write policy, Postgres DENIES all writes (only the
-    // table owner / service_role bypass RLS). "No write policy" is therefore
-    // secure-by-default, not CWE-862. The rule produced only false positives on
-    // real read-mostly tables (catalogs, webhook-synced data) — removed.
-
-    // (e) inverted-auth heuristic: policy compares aud/role rather than auth.uid().
-    for (const p of policies) {
-      const usesUid = /auth\.uid\s*\(\s*\)/i.test(p.body);
-      const usesAudOrRole = /auth\.(jwt\s*\(\s*\)\s*->>?\s*'?(aud|role)'?|role\s*\(\s*\))/i.test(p.body);
-      if (usesAudOrRole && !usesUid && !/\btrue\b/i.test(p.body)) {
-        const line = lineOf(sql, p.index);
+      // (e) Inverted-auth evaluates only the final active policy definition.
+      const invertedPattern =
+        /auth\.(jwt\s*\(\s*\)\s*->>?\s*'?(aud|role)'?|role\s*\(\s*\))/i;
+      const isInverted = (clause: string | undefined): boolean =>
+        Boolean(
+          clause &&
+            invertedPattern.test(clause) &&
+            !/auth\.uid\s*\(\s*\)/i.test(clause) &&
+            !/\btrue\b/i.test(clause),
+        );
+      const invertedUsing = isInverted(policy.usingClause);
+      const invertedCheck = isInverted(policy.withCheckClause);
+      if (invertedUsing || invertedCheck) {
+        const location = invertedUsing
+          ? (policy.usingSource ?? policy.source)
+          : (policy.withCheckSource ?? policy.source);
+        const message = `This RLS policy keys off the JWT aud/role claim rather than auth.uid(). That often grants access to any authenticated user instead of the row's owner. Verify this is intentional.`;
         findings.push(
           makeAiFinding({
             ruleId: "ci-ai-rls-inverted-auth",
-            title: `Policy on '${p.table}' may test the wrong condition (aud/role, not user identity)`,
+            title: `Policy on '${policy.table}' may test the wrong condition (aud/role, not user identity)`,
             severity: "medium",
             cwe: ["CWE-863"],
             owasp_web: ["A01:2021"],
-            file: f.rel,
-            startLine: line,
-            snippet: lineText(f.content, line),
-            message: `This RLS policy keys off the JWT aud/role claim rather than auth.uid(). That often grants access to any authenticated user instead of the row's owner. Verify this is intentional.`,
+            file: location.file,
+            startLine: location.line,
+            snippet: lineText(location.content, location.line),
+            message: snapshotMessage(message, isSnapshot, "RLS policy declaration"),
             remediation: {
               summary: "Verify the policy tests the row owner (auth.uid()), not a broad claim like aud/role.",
               steps: ["Confirm the predicate ties rows to the acting user via auth.uid()."],
               references: ["CWE-863"],
             },
-            confidence: "medium",
+            confidence: snapshotConfidence("medium", isSnapshot),
           }),
         );
       }
+    }
+
+    // (b) Tables that exist without RLS at the end of the sequence/snapshot.
+    for (const table of state.tables.values()) {
+      if (!table.created || table.rlsEnabled || SYSTEM_SCHEMAS.has(table.schema)) continue;
+      if (TEST_FIXTURE_PATH_RE.test(table.created.file)) continue;
+      const disabledLater = table.lastRlsChange?.enabled === false;
+      const location = disabledLater ? table.lastRlsChange!.source : table.created;
+      const title = disabledLater
+        ? `Table '${table.table}' has Row Level Security disabled in final migration state`
+        : `Table '${table.table}' created without Row Level Security`;
+      const baseMessage = disabledLater
+        ? `The ALTER TABLE ... DISABLE ROW LEVEL SECURITY statement at ${location.file}:${location.line} explicitly disables RLS on '${table.table}'. In the final migration state, the Supabase auto-generated API can expose the whole table to clients with the anon key.`
+        : `Table '${table.table}' is created in the public schema but never has ENABLE ROW LEVEL SECURITY. Without RLS, the Supabase auto-generated API exposes the whole table to any client with the anon key.`;
+      findings.push(
+        makeAiFinding({
+          ruleId: "ci-ai-rls-missing",
+          title,
+          severity: "high",
+          cwe: ["CWE-862", "CWE-285"],
+          owasp_web: ["A01:2021"],
+          file: location.file,
+          startLine: location.line,
+          snippet: lineText(location.content, location.line),
+          message: snapshotMessage(
+            baseMessage,
+            isSnapshot,
+            disabledLater ? "RLS-disabling statement" : "Table declaration",
+          ),
+          remediation: {
+            summary: `Enable RLS on '${table.table}' and add per-operation policies.`,
+            steps: [
+              `ALTER TABLE ${table.table} ENABLE ROW LEVEL SECURITY;`,
+              "Add SELECT/INSERT/UPDATE/DELETE policies with real ownership predicates.",
+            ],
+            references: [
+              "CWE-862",
+              "https://supabase.com/docs/guides/database/postgres/row-level-security",
+            ],
+          },
+          confidence: snapshotConfidence("medium", isSnapshot),
+        }),
+      );
     }
   }
 

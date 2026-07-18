@@ -40,6 +40,7 @@ import {
   type Provenance,
 } from "./engines/lockfile.js";
 import { hasCosign, verifyCertSig, verifyBundle } from "./engines/signature.js";
+import { recordTrivyDbContentDigest } from "./provenance.js";
 
 const ENGINE_ORDER: EngineName[] = ["opengrep", "gitleaks", "trivy"];
 
@@ -258,6 +259,8 @@ async function populateTrivyDb(): Promise<string | undefined> {
     err(`  ! Trivy DB download failed (exit ${r.code}): ${r.stderr.trim().slice(0, 400)}`);
     return undefined;
   }
+  const dbDigest = await recordTrivyDbContentDigest();
+  out(`  ✓ Trivy vulnerability DB content signature recorded (${dbDigest.slice(0, 23)}…).`);
   try {
     const meta = JSON.parse(
       await readFile(join(MANAGED_TRIVY_CACHE, "db", "metadata.json"), "utf8"),

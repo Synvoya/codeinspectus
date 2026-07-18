@@ -7,13 +7,14 @@
  * and OWASP crosswalks are added later by the compliance mapper.
  */
 
-import type { Engine, Finding, Confidence } from "../types.js";
+import type { Engine, Finding, Confidence, FindingKind } from "../types.js";
 import type { EngineOutput } from "../engines/types.js";
 import type { SarifLog, SarifRule, SarifResult, SarifProps } from "./types.js";
 import { normalizeSeverity } from "../severity.js";
 import { findSecret, hashSecret, redactSecretText } from "../redact.js";
 import { remediationForCwe } from "../remediation.js";
 import { fingerprint as fp } from "../util/hash.js";
+import { externalFindingComponents } from "../provenance.js";
 
 const CWE_RE = /CWE[-_ ]?(\d{1,5})/gi;
 
@@ -109,6 +110,23 @@ function isSecretFinding(engine: Engine, rule: SarifRule | undefined, ruleId: st
   return Boolean(findSecret(snippet));
 }
 
+/** Trivy provenance classification is structural: rule name/tags only, never CVE/message parsing. */
+export function findingKindForSarif(
+  engine: Engine,
+  rule: SarifRule | undefined,
+  isSecret: boolean,
+): FindingKind {
+  if (isSecret) return "secret";
+  if (engine === "opengrep") return "sast";
+  if (engine !== "trivy") return "other";
+  const name = (rule?.name ?? "").toLowerCase();
+  const tags = (rule?.properties?.tags ?? []).map((tag) => tag.toLowerCase());
+  if (name === "languagespecificpackagevulnerability" || tags.includes("vulnerability")) return "vulnerability";
+  if (name === "license" || tags.includes("license")) return "license";
+  if (name === "misconfiguration" || tags.includes("misconfiguration")) return "misconfiguration";
+  return "other";
+}
+
 export function normalizeEngineOutput(output: EngineOutput, target: string): Finding[] {
   if (!output.sarif) return [];
   return normalizeSarif(output.sarif, output.engine, target);
@@ -148,6 +166,7 @@ function normalizeResult(
     result.message?.text ?? rule?.shortDescription?.text ?? rule?.fullDescription?.text ?? ruleId;
 
   const isSecret = isSecretFinding(engine, rule, ruleId, `${rawSnippet} ${messageText}`);
+  const findingKind = findingKindForSarif(engine, rule, isSecret);
 
   // CWE extraction. Gitleaks (and bare secrets) have no CWE → assign CWE-798.
   let cwes = extractCwes(
@@ -220,6 +239,8 @@ function normalizeResult(
     remediation,
     frameworks: [],
     confidence: precisionToConfidence(rule?.properties, isSecret),
+    producer_components: externalFindingComponents(engine, findingKind),
+    finding_kind: findingKind,
   };
   if (isSecret) {
     finding.is_secret = true;

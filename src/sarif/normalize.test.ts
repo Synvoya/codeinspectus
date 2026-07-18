@@ -119,3 +119,26 @@ describe("normalizeSarif path portability", () => {
     expect(finding?.cwe).toContain("CWE-89");
   });
 });
+
+describe("Trivy finding_kind and provenance attribution are structural", () => {
+  test.each([
+    ["LanguageSpecificPackageVulnerability", ["vulnerability", "security"], "vulnerability", true],
+    ["License", ["license", "security"], "license", false],
+    ["Misconfiguration", ["misconfiguration", "security"], "misconfiguration", false],
+  ] as const)("%s maps to %s components without message/CVE parsing", (name, tags, expectedKind, needsDb) => {
+    const sarif: SarifLog = {
+      runs: [{
+        tool: { driver: { name: "trivy", rules: [{ id: `rule-${expectedKind}`, name, properties: { tags: [...tags] } }] } },
+        results: [{
+          ruleId: `rule-${expectedKind}`,
+          message: { text: "opaque finding text" },
+          locations: [{ physicalLocation: { artifactLocation: { uri: "/repo/package-lock.json" }, region: { startLine: 1 } } }],
+        }],
+      }],
+    };
+    const [finding] = normalizeSarif(sarif, "trivy", TARGET);
+    expect(finding?.finding_kind).toBe(expectedKind);
+    expect(finding?.producer_components).toContain("trivy:checks");
+    expect(finding?.producer_components?.includes("trivy:vulnerability-db")).toBe(needsDb);
+  });
+});

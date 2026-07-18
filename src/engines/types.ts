@@ -1,4 +1,4 @@
-import type { Engine } from "../types.js";
+import type { Engine, SecretSuppressionMetadata } from "../types.js";
 import type { SarifLog } from "../sarif/types.js";
 
 export interface EngineOutput {
@@ -10,4 +10,8 @@ export interface EngineOutput {
   durationMs: number;
   /** Actionable note when the engine could not run. */
   note?: string;
+  /** Gitleaks-only redacted metadata about target-controlled suppression surfaces. */
+  secretSuppression?: SecretSuppressionMetadata;
+  /** Detector-component signatures captured before execution for rescan equivalence proof. */
+  componentSignatures?: Record<string, string>;
 }

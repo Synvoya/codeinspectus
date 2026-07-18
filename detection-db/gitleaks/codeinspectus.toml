@@ -1,6 +1,7 @@
 # CodeInspectus Gitleaks configuration (PRD §4.2).
 # Extends Gitleaks' built-in default ruleset and adds CodeInspectus-specific
-# secret rules. A user .gitleaks.toml in the scanned repo takes precedence.
+# secret rules. CodeInspectus always passes this config explicitly; a target
+# .gitleaks.toml is detected and disclosed but is not applied.
 title = "CodeInspectus Gitleaks config"
 
 [extend]

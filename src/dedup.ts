@@ -83,6 +83,11 @@ function unionCwes(a: Finding, b: Finding): string[] {
   return [...new Set<string>([...a.cwe, ...b.cwe])].filter((c) => c !== "CWE-noinfo");
 }
 
+function unionProducerComponents(a: Finding, b: Finding): string[] | undefined {
+  const components = [...new Set([...(a.producer_components ?? []), ...(b.producer_components ?? [])])].sort();
+  return components.length ? components : undefined;
+}
+
 export interface DedupStats {
   before: number;
   after: number;
@@ -101,10 +106,12 @@ export function dedupFindings(findings: Finding[]): { findings: Finding[]; stats
     const keep = preferred(existing, f);
     const other = keep === existing ? f : existing;
     const mergedCwe = unionCwes(keep, other);
+    const producerComponents = unionProducerComponents(existing, f);
     const merged: Finding = {
       ...keep,
       engines: mergeEngines(existing, f),
       cwe: mergedCwe.length ? mergedCwe : keep.cwe,
+      ...(producerComponents ? { producer_components: producerComponents } : {}),
     };
     map.set(key, merged);
   }

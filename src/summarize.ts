@@ -21,7 +21,8 @@ export function summarizeScan(r: ScanResult): string {
     `CodeInspectus scan of ${r.target}\n` +
     `${s.total} findings — ${s.critical} critical, ${s.high} high, ${s.medium} medium, ${s.low} low, ${s.info} info.\n` +
     `Engines: ${r.engines_run.join(", ")} | offline: ${r.offline}` +
-    (r.trivy_db_date ? ` | trivy DB: ${r.trivy_db_date}` : "");
+    (r.trivy_db_date ? ` | trivy DB: ${r.trivy_db_date}` : "") +
+    (r.secret_coverage === "unverified" ? " | secret coverage: UNVERIFIED" : "");
 
   const engineNotes = r.engine_details
     .filter((e) => !e.ran && e.note)

@@ -5,6 +5,7 @@
  * is PROVABLE. When the rescan could not have re-detected it — the producing engine did not run,
  * a narrower scanner/threshold scope, a truncated result, or a pre-CG-75 prior without captured
  * config — the finding is `not_rechecked` (indeterminate), never a false "you fixed it".
+ * Batch 2 additionally requires identical per-finding detector-component signatures.
  */
 
 import { runScan } from "./scan.js";
@@ -77,6 +78,22 @@ export function diffRescan(prior: ScanResult, fresh: ScanResult): RescanResult {
     if (missing.length) {
       not_rechecked.push(f);
       reasons.add(`${missing.join(", ")} did not run in the rescan`);
+      continue;
+    }
+    const requiredComponents = f.producer_components;
+    if (!requiredComponents?.length || !prior.component_signatures) {
+      not_rechecked.push(f);
+      reasons.add("the prior scan did not record which detector components produced this finding");
+      continue;
+    }
+    const changedComponents = requiredComponents.filter((component) => {
+      const priorSignature = prior.component_signatures?.[component];
+      const freshSignature = fresh.component_signatures?.[component];
+      return !priorSignature || !freshSignature || priorSignature !== freshSignature;
+    });
+    if (changedComponents.length) {
+      not_rechecked.push(f);
+      reasons.add("we can't tell whether you fixed this; the checks changed");
       continue;
     }
     // CG-76: NO threshold gate here. diffRescan operates on the COMPLETE fresh finding set

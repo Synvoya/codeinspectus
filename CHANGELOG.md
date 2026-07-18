@@ -4,6 +4,44 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [0.3.2] — 2026-07-18
+
+Correctness release for effective Supabase RLS state, secret-scan coverage honesty,
+and cross-version rescan proof.
+
+### Fixed
+- **Superseded RLS policies are no longer reported as active.** Ordered migration
+  sequences now reduce CREATE, ALTER, DROP, enable, and disable operations to final
+  effective state. Earlier releases could report a policy that a later migration had
+  dropped or safely replaced, and could miss some later final-state changes.
+- **Rescan no longer treats detector changes as user fixes.** Every finding now records
+  its producing detector components. A vanished finding is `resolved` only when those
+  components are present with identical signatures; otherwise it is `not_rechecked`.
+  The first rescan of a pre-0.3.2 scan is therefore conservative: present findings stay
+  `remaining`, while vanished findings report that CodeInspectus cannot tell whether the
+  user fixed them because the checks changed.
+- **Target Gitleaks config can no longer silently replace bundled checks.** CodeInspectus
+  always uses its bundled config and ignores target `.gitleaks.toml` files and inline
+  `gitleaks:allow` comments, disclosing both behaviors in scan output.
+
+### Added
+- **Component-scoped provenance.** Signatures cover the shared RLS reducer, independent
+  AI analyzers, normalization pipeline, engine binaries, invocation flags, the Opengrep
+  ruleset, bundled Gitleaks config, Trivy checks, and the Trivy vulnerability DB. Trivy
+  DB content is hashed once at install time, never during an offline scan.
+- **Secret-coverage status.** A target `.gitleaksignore` remains effective in Gitleaks
+  8.30.1 and cannot be neutralized. CodeInspectus continues the useful portion of the
+  secret scan but marks `secret_coverage: "unverified"` and warns that coverage is partial.
+
+### Known limitations
+- Both paths where final RLS state is off report `high`; sensitivity tiering is pending
+  independent validation (CG-83).
+- RLS reduction does not compose separate migration directories or standalone SQL
+  snapshots, and does not model SQL larger than 2 MiB, dynamic SQL, or dashboard-only
+  database changes.
+- `.gitleaksignore` can still suppress individual Gitleaks findings. CodeInspectus detects
+  and discloses the file but does not claim an unremovable secret-detection floor.
+
 ## [0.3.1] — 2026-07-16
 
 Codex integration and cross-platform release hardening. No detection-rule

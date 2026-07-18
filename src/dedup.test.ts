@@ -75,3 +75,23 @@ describe("dedup determinism — same-location secret merge is order-independent 
     expect(dedupFindings([low, crit]).findings[0]!.severity).toBe("critical");
   });
 });
+
+describe("dedup provenance attribution", () => {
+  test("unions producer component ids even when the representative comes from one engine", () => {
+    const gitleaks = {
+      ...secretFinding("gitleaks", "high"),
+      producer_components: ["codeinspectus:pipeline", "gitleaks:config"],
+    };
+    const ai = {
+      ...secretFinding("codeinspectus-ai", "critical"),
+      producer_components: ["codeinspectus:pipeline", "ai:client-secrets"],
+    };
+    const [merged] = dedupFindings([gitleaks, ai]).findings;
+    expect(merged?.engine).toBe("codeinspectus-ai");
+    expect(merged?.producer_components).toEqual([
+      "ai:client-secrets",
+      "codeinspectus:pipeline",
+      "gitleaks:config",
+    ]);
+  });
+});

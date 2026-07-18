@@ -3,7 +3,7 @@
   "name": "io.github.Synvoya/codeinspectus",
   "title": "CodeInspectus",
   "description": "Local-first MCP security scanner for AI-generated web apps.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "websiteUrl": "https://codeinspectus.com",
   "repository": {
     "url": "https://github.com/Synvoya/codeinspectus",
@@ -13,7 +13,7 @@
     {
       "registryType": "npm",
       "identifier": "codeinspectus",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "registryBaseUrl": "https://registry.npmjs.org",
       "transport": { "type": "stdio" }
     }

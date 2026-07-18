@@ -23,7 +23,7 @@ import { dirname } from "node:path";
 export const MCP_SPEC_VERSION = "2025-11-25";
 
 export const SERVER_NAME = "codeinspectus";
-export const SERVER_VERSION = "0.3.1";
+export const SERVER_VERSION = "0.3.2";
 
 // ── Bundled engine versions (SHA-pinned in engines.lock.json) ───────────────
 export const ENGINE_VERSIONS = {
@@ -46,6 +46,8 @@ export const MANAGED_TRIVY_CACHE = join(MANAGED_ROOT, "trivy-cache");
 export const MANAGED_SCANS = join(MANAGED_ROOT, "scans");
 export const MANAGED_PROVENANCE = join(MANAGED_ROOT, "provenance");
 export const MANAGED_TRIVY_DB_META = join(MANAGED_TRIVY_CACHE, "db", "metadata.json");
+export const MANAGED_TRIVY_DB = join(MANAGED_TRIVY_CACHE, "db", "trivy.db");
+export const MANAGED_TRIVY_DB_PROVENANCE = join(MANAGED_PROVENANCE, "trivy", "vulnerability-db.json");
 
 // ── Package-root-relative asset resolution ──────────────────────────────────
 // At runtime the bundle lives at <pkg>/dist/index.js; data/ and detection-db/

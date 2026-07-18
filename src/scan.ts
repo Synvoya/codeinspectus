@@ -23,6 +23,7 @@ import type {
   EngineRunInfo,
   Severity,
   SeveritySummary,
+  SecretSuppressionMetadata,
 } from "./types.js";
 import type { ScanInput } from "./schemas.js";
 import { log } from "./logger.js";
@@ -39,6 +40,8 @@ import { detectGitSafety } from "./git-safety.js";
 import { dedupFindings } from "./dedup.js";
 import { tagFindings } from "./compliance/mapper.js";
 import { buildComplianceOverview } from "./compliance/report.js";
+import { hasUnverifiedSecretCoverage, secretSuppressionWarnings } from "./gitleaks-suppression.js";
+import { PIPELINE_COMPONENT, staticComponentSignatures } from "./provenance.js";
 
 function wants(input: ScanInput, scanner: string): boolean {
   return !input.scanners || input.scanners.length === 0 || input.scanners.includes(scanner as never);
@@ -113,11 +116,24 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
     let allFindings: Finding[] = [];
     const engineDetails: EngineRunInfo[] = [];
     let trivyDbDate: string | undefined;
+    let secretCoverage: "verified" | "unverified" | undefined;
+    let secretSuppression: SecretSuppressionMetadata | undefined;
+    const componentSignatures: Record<string, string> = staticComponentSignatures([PIPELINE_COMPONENT]);
 
     for (const out of engineOutputs) {
       const normalized = out.ran ? normalizeEngineOutput(out, target) : [];
       allFindings.push(...normalized);
       if ("trivyDbDate" in out && out.trivyDbDate) trivyDbDate = out.trivyDbDate;
+      if (out.engine === "gitleaks" && out.secretSuppression) {
+        secretCoverage = out.ran && !hasUnverifiedSecretCoverage(out.secretSuppression)
+          ? "verified"
+          : "unverified";
+        if (out.secretSuppression.channels.length) {
+          secretSuppression = out.secretSuppression;
+          warnings.push(...secretSuppressionWarnings(out.secretSuppression));
+        }
+      }
+      Object.assign(componentSignatures, out.componentSignatures ?? {});
       engineDetails.push({
         engine: out.engine,
         version: out.version,
@@ -132,6 +148,7 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
 
     if (aiResult) {
       allFindings.push(...aiResult.findings);
+      Object.assign(componentSignatures, aiResult.componentSignatures);
       engineDetails.push(aiResult.info);
     }
 
@@ -194,6 +211,9 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       total_findings_before_limit: totalBeforeLimit,
       disclaimer: STANDING_DISCLAIMER,
       warnings,
+      ...(secretCoverage ? { secret_coverage: secretCoverage } : {}),
+      ...(secretSuppression ? { secret_suppression: secretSuppression } : {}),
+      component_signatures: componentSignatures,
       git_safety,
       // CG-75: capture the effective config so a bare rescan is like-for-like and rescan can
       // prove re-checkability. An empty/absent scanners request means "all" — store it as

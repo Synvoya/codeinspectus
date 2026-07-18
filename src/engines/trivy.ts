@@ -15,6 +15,7 @@ import { execBinary } from "./exec.js";
 import { log } from "../logger.js";
 import type { EngineOutput } from "./types.js";
 import type { SarifLog } from "../sarif/types.js";
+import { invocationSignature, readTrivyDbContentDigest, signature } from "../provenance.js";
 
 const OFFLINE_FLAGS = [
   "--skip-db-update",
@@ -35,22 +36,21 @@ export async function runTrivy(
   try {
     const bin = await resolveEngine("trivy");
     version = bin.version;
-    await mkdir(MANAGED_TRIVY_CACHE, { recursive: true });
-
     const sarifPath = join(tmpDir, "trivy.sarif");
-    const args = [
-      "fs",
-      "--scanners",
-      scanners.join(","),
-      "--format",
-      "sarif",
-      "--output",
-      sarifPath,
-      ...OFFLINE_FLAGS,
-      "--cache-dir",
-      MANAGED_TRIVY_CACHE,
-      target,
-    ];
+    const args = buildTrivyArgs(target, sarifPath, scanners);
+    const dbSignature = await readTrivyDbContentDigest();
+    const componentSignatures: Record<string, string> = {
+      "trivy:binary": `sha256:${bin.sha256}`,
+      // Trivy's built-in secret/license/misconfiguration checks ship with the verified binary.
+      "trivy:checks": signature(`trivy:checks\0${bin.sha256}`),
+      "trivy:invocation": invocationSignature("trivy", args.map((arg) =>
+        arg === sarifPath ? "<managed-temp>"
+          : arg === MANAGED_TRIVY_CACHE ? "<managed-cache>"
+            : arg === target ? "<target>"
+              : arg)),
+      ...(dbSignature ? { "trivy:vulnerability-db": dbSignature } : {}),
+    };
+    await mkdir(MANAGED_TRIVY_CACHE, { recursive: true });
 
     const res = await execBinary(bin.path, args, { cwd: target, offline: true });
     const trivyDbDate = await readTrivyDbDate();
@@ -76,12 +76,29 @@ export async function runTrivy(
       sarif,
       durationMs: Date.now() - t0,
       trivyDbDate,
+      componentSignatures,
     };
   } catch (err) {
     if (err instanceof EngineUnavailableError) return note(version, t0, err.message);
     log.warn("trivy wrapper error", err);
     return note(version, t0, err instanceof Error ? err.message : String(err));
   }
+}
+
+export function buildTrivyArgs(target: string, sarifPath: string, scanners: TrivyScanner[]): string[] {
+  return [
+    "fs",
+    "--scanners",
+    scanners.join(","),
+    "--format",
+    "sarif",
+    "--output",
+    sarifPath,
+    ...OFFLINE_FLAGS,
+    "--cache-dir",
+    MANAGED_TRIVY_CACHE,
+    target,
+  ];
 }
 
 /** SBOM generation (PRD §8). Separate invocation; writes the SBOM to outputPath. */

@@ -78,6 +78,8 @@ export const findingSchema = z.object({
   confidence: confidenceEnum,
   is_secret: z.boolean().optional(),
   secret_value_hash: z.string().optional(),
+  producer_components: z.array(z.string()).optional(),
+  finding_kind: z.enum(["vulnerability", "license", "misconfiguration", "secret", "sast", "ai", "other"]).optional(),
 });
 
 export const summarySchema = z.object({
@@ -117,6 +119,17 @@ export const gitSafetySchema = z.object({
   recommendation: z.string().optional(),
 });
 
+const secretSuppressionSchema = z.object({
+  channels: z.array(
+    z.object({
+      channel: z.enum(["target_config", "gitleaks_ignore", "inline_allow"]),
+      count: z.number().int().nonnegative(),
+      paths: z.array(z.string()),
+      handling: z.enum(["ignored_by_codeinspectus", "coverage_unverified"]),
+    }),
+  ),
+});
+
 // ── scan / rescan output envelope (PRD §5) ──────────────────────────────────
 export const scanResultSchema = z.object({
   scan_id: z.string(),
@@ -134,6 +147,9 @@ export const scanResultSchema = z.object({
   compliance_overview: complianceOverviewSchema.optional(),
   disclaimer: z.string(),
   warnings: z.array(z.string()),
+  secret_coverage: z.enum(["verified", "unverified"]).optional(),
+  secret_suppression: secretSuppressionSchema.optional(),
+  component_signatures: z.record(z.string()).optional(),
   git_safety: gitSafetySchema,
   // CG-75: effective scan config, captured so a bare rescan is like-for-like and rescan can
   // prove re-checkability. Optional so pre-CG-75 stored scans still validate on load.

@@ -24,6 +24,9 @@ export type Engine =
 
 export type ScannerKind = "sast" | "secret" | "vuln" | "misconfig" | "license" | "ai";
 
+/** Structural detector category. Trivy vulnerability attribution never relies on CVE/message regexes. */
+export type FindingKind = "vulnerability" | "license" | "misconfiguration" | "secret" | "sast" | "ai" | "other";
+
 export interface FindingLocation {
   file: string;
   start_line: number;
@@ -69,6 +72,10 @@ export interface Finding {
   is_secret?: boolean;
   /** SHA256 of the matched secret value — dedup key for the Trivy⨯Gitleaks overlap. */
   secret_value_hash?: string;
+  /** Detector components required to reproduce this finding; unioned across dedup producers. */
+  producer_components?: string[];
+  /** Structural finding category used for component-scoped provenance (not display severity). */
+  finding_kind?: FindingKind;
 }
 
 export interface SeveritySummary {
@@ -91,6 +98,18 @@ export interface GitSafety {
   state: GitSafetyState;
   /** Checkpoint recommendation — present ONLY when state is no_git or dirty. */
   recommendation?: string;
+}
+
+/** Gitleaks suppression surfaces detected in the target without retaining config or secret content. */
+export interface SecretSuppressionChannel {
+  channel: "target_config" | "gitleaks_ignore" | "inline_allow";
+  count: number;
+  paths: string[];
+  handling: "ignored_by_codeinspectus" | "coverage_unverified";
+}
+
+export interface SecretSuppressionMetadata {
+  channels: SecretSuppressionChannel[];
 }
 
 export interface EngineRunInfo {
@@ -148,6 +167,12 @@ export interface ScanResult {
   compliance_overview?: ComplianceOverview;
   disclaimer: string;
   warnings: string[];
+  /** Secret-scanner coverage status. Unverified when Gitleaks did not run or .gitleaksignore exists. */
+  secret_coverage?: "verified" | "unverified";
+  /** Redacted metadata only: channel names, counts, and relative file paths. */
+  secret_suppression?: SecretSuppressionMetadata;
+  /** Component id -> content/semantic signature. Optional only for legacy stored scans. */
+  component_signatures?: Record<string, string>;
   /** CG-41 read-only git-safety advisory for the scan target (never a finding). */
   git_safety: GitSafety;
   /**

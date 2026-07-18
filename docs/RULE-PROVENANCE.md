@@ -163,7 +163,7 @@ Derived-from: none.**
 | `ci-ai-public-env-secret` | `client-secrets.ts` | CWE-798 / 312 | Secret exposed via client-visible env prefix |
 | `ci-ai-supabase-service-role-client` | `client-secrets.ts` | CWE-798 / 285 | Supabase service_role key in client-reachable code |
 | `ci-ai-llm-key-browser-exposed` | `client-secrets.ts` | CWE-798 / 312 | LLM SDK client allows browser use (`dangerouslyAllowBrowser: true`) |
-| `ci-ai-rls-using-true` | `supabase-rls.ts` | CWE-863 / 285 | RLS policy uses `USING (true)` — table fully open |
+| `ci-ai-rls-using-true` | `supabase-rls.ts` | CWE-863 / 285 | Final effective RLS policy state is fully open with `USING (true)` — predicate matches every row |
 | `ci-ai-rls-missing` | `supabase-rls.ts` | CWE-862 / 285 | Public table created without Row Level Security |
 | `ci-ai-rls-inverted-auth` | `supabase-rls.ts` | CWE-863 | RLS policy tests aud/role instead of user identity |
 | `ci-ai-edge-fn-no-auth` | `supabase-rls.ts` | CWE-862 | Supabase Edge Function with no auth verification |

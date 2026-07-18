@@ -39,6 +39,8 @@ function mkFinding(over: Partial<Finding> = {}): Finding {
     remediation: { summary: "s", steps: [], references: [] },
     frameworks: [],
     confidence: "high",
+    producer_components: ["codeinspectus:pipeline", `test:${over.engine ?? "opengrep"}`],
+    finding_kind: over.engine === "trivy" ? "vulnerability" : "other",
     ...over,
   };
 }
@@ -63,6 +65,13 @@ function mkScan(over: Partial<ScanResult> = {}): ScanResult {
     disclaimer: "d",
     warnings: [],
     git_safety: { state: "clean" },
+    component_signatures: {
+      "codeinspectus:pipeline": "pipeline-v1",
+      "test:opengrep": "opengrep-v1",
+      "test:gitleaks": "gitleaks-v1",
+      "test:trivy": "trivy-v1",
+      "test:codeinspectus-ai": "ai-v1",
+    },
     // CG-75: a captured config marks the scan as provable-scope (present on CG-75+ scans).
     scan_config: { max_findings: 200 },
     ...over,
