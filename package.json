@@ -44,7 +44,16 @@
     "gitleaks",
     "trivy",
     "ai-code",
-    "local-first"
+    "local-first",
+    "mcp-server",
+    "claude-code",
+    "cursor",
+    "codex",
+    "vibe-coding",
+    "supabase",
+    "owasp",
+    "appsec",
+    "application-security"
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

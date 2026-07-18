@@ -2,9 +2,11 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](package.json)
+[![npm downloads](https://img.shields.io/npm/dm/codeinspectus)](https://www.npmjs.com/package/codeinspectus)
 ![MCP-ready](https://img.shields.io/badge/MCP-ready-blue.svg)
 ![Local-first](https://img.shields.io/badge/local--first-yes-brightgreen.svg)
 ![No telemetry](https://img.shields.io/badge/telemetry-none-brightgreen.svg)
+[![Official MCP Registry](https://img.shields.io/badge/Official_MCP_Registry-listed-blue.svg)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.Synvoya%2Fcodeinspectus)
 [![codeinspectus MCP server](https://glama.ai/mcp/servers/Synvoya/codeinspectus/badges/score.svg)](https://glama.ai/mcp/servers/Synvoya/codeinspectus)
 [![GitHub stars](https://img.shields.io/github/stars/Synvoya/codeinspectus?style=social)](https://github.com/Synvoya/codeinspectus)
 
