@@ -150,6 +150,11 @@ export interface ComplianceOverview {
   disclaimer: string;
 }
 
+export interface TrivyDbProvenance {
+  state: "unrecorded";
+  instruction: string;
+}
+
 export interface ScanResult {
   scan_id: string;
   target: string;
@@ -173,6 +178,8 @@ export interface ScanResult {
   secret_suppression?: SecretSuppressionMetadata;
   /** Component id -> content/semantic signature. Optional only for legacy stored scans. */
   component_signatures?: Record<string, string>;
+  /** Actionable advisory when a completed Trivy vuln scan lacks install-time DB provenance. */
+  trivy_db_provenance?: TrivyDbProvenance;
   /** CG-41 read-only git-safety advisory for the scan target (never a finding). */
   git_safety: GitSafety;
   /**

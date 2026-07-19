@@ -73,6 +73,12 @@ signature/checksum, computes each binary's SHA256, and records it in
 `engines.lock.json`. It also fetches the offline Trivy vulnerability-DB snapshot
 into `~/.codeinspectus/`. After this, **scans perform zero network I/O.**
 
+If a Trivy DB was installed before 0.3.2, scan output tells your agent that CVE rescan
+tracking is not yet enabled. The agent should run `npx codeinspectus install-engines`
+once; this re-fetches the DB through the verified install path and records its provenance.
+Until then, vanished CVEs conservatively report `not_rechecked`; current scan findings
+remain complete and unaffected.
+
 Re-verify your pinned binaries any time:
 
 ```bash

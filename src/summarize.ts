@@ -4,6 +4,7 @@
  */
 
 import type { ScanResult, RescanResult, Finding } from "./types.js";
+import { TRIVY_DB_PROVENANCE_MESSAGE } from "./trivy-db-provenance.js";
 
 function topLines(findings: Finding[], n: number): string {
   return findings
@@ -47,7 +48,11 @@ export function summarizeScan(r: ScanResult): string {
     ? `\n\nBefore you fix:\n  ${r.git_safety.recommendation}`
     : "";
 
-  return `${head}${body}${trunc}${beforeFix}${eng}${warn}\n\n${r.disclaimer}`;
+  const dbProvenance = r.trivy_db_provenance?.state === "unrecorded"
+    ? `\n\nCVE rescan tracking:\n  ${TRIVY_DB_PROVENANCE_MESSAGE}`
+    : "";
+
+  return `${head}${body}${trunc}${dbProvenance}${beforeFix}${eng}${warn}\n\n${r.disclaimer}`;
 }
 
 export function summarizeRescan(r: RescanResult): string {

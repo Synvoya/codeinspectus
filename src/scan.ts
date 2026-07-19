@@ -42,6 +42,7 @@ import { tagFindings } from "./compliance/mapper.js";
 import { buildComplianceOverview } from "./compliance/report.js";
 import { hasUnverifiedSecretCoverage, secretSuppressionWarnings } from "./gitleaks-suppression.js";
 import { PIPELINE_COMPONENT, staticComponentSignatures } from "./provenance.js";
+import { trivyDbProvenanceSignal } from "./trivy-db-provenance.js";
 
 function wants(input: ScanInput, scanner: string): boolean {
   return !input.scanners || input.scanners.length === 0 || input.scanners.includes(scanner as never);
@@ -118,12 +119,16 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
     let trivyDbDate: string | undefined;
     let secretCoverage: "verified" | "unverified" | undefined;
     let secretSuppression: SecretSuppressionMetadata | undefined;
+    let trivyVulnerabilityScanRan = false;
     const componentSignatures: Record<string, string> = staticComponentSignatures([PIPELINE_COMPONENT]);
 
     for (const out of engineOutputs) {
       const normalized = out.ran ? normalizeEngineOutput(out, target) : [];
       allFindings.push(...normalized);
       if ("trivyDbDate" in out && out.trivyDbDate) trivyDbDate = out.trivyDbDate;
+      if (out.engine === "trivy" && out.ran && trivyScanners.includes("vuln")) {
+        trivyVulnerabilityScanRan = true;
+      }
       if (out.engine === "gitleaks" && out.secretSuppression) {
         secretCoverage = out.ran && !hasUnverifiedSecretCoverage(out.secretSuppression)
           ? "verified"
@@ -195,6 +200,10 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
     // "Before you fix:" line (summarize.ts), deliberately NOT under "Warnings:". Advisory only —
     // never added to `findings`, so it does not perturb severity counts/totals.
     const git_safety = await gitSafetyProbe;
+    const trivyDbProvenance = trivyDbProvenanceSignal(
+      trivyVulnerabilityScanRan,
+      componentSignatures,
+    );
 
     const result: ScanResult = {
       scan_id: `scan-${randomUUID()}`,
@@ -214,6 +223,7 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       ...(secretCoverage ? { secret_coverage: secretCoverage } : {}),
       ...(secretSuppression ? { secret_suppression: secretSuppression } : {}),
       component_signatures: componentSignatures,
+      ...(trivyDbProvenance ? { trivy_db_provenance: trivyDbProvenance } : {}),
       git_safety,
       // CG-75: capture the effective config so a bare rescan is like-for-like and rescan can
       // prove re-checkability. An empty/absent scanners request means "all" — store it as

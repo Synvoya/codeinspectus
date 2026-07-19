@@ -23,6 +23,9 @@ and cross-version rescan proof.
 - **Target Gitleaks config can no longer silently replace bundled checks.** CodeInspectus
   always uses its bundled config and ignores target `.gitleaks.toml` files and inline
   `gitleaks:allow` comments, disclosing both behaviors in scan output.
+- Machines whose Trivy DB predates 0.3.2 report vanished CVEs as `not_rechecked` until
+  `install-engines` is run once to record DB provenance; scan output now surfaces this
+  expected state and the next `install-engines` run self-heals it.
 
 ### Added
 - **Component-scoped provenance.** Signatures cover the shared RLS reducer, independent

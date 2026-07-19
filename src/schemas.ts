@@ -150,6 +150,12 @@ export const scanResultSchema = z.object({
   secret_coverage: z.enum(["verified", "unverified"]).optional(),
   secret_suppression: secretSuppressionSchema.optional(),
   component_signatures: z.record(z.string()).optional(),
+  trivy_db_provenance: z
+    .object({
+      state: z.literal("unrecorded"),
+      instruction: z.string(),
+    })
+    .optional(),
   git_safety: gitSafetySchema,
   // CG-75: effective scan config, captured so a bare rescan is like-for-like and rescan can
   // prove re-checkability. Optional so pre-CG-75 stored scans still validate on load.
