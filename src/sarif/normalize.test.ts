@@ -120,6 +120,41 @@ describe("normalizeSarif path portability", () => {
   });
 });
 
+describe("Opengrep SAST classification", () => {
+  test("CORS credentials wording remains a SAST finding, not a hard-coded secret", () => {
+    const sarif: SarifLog = {
+      runs: [{
+        tool: {
+          driver: {
+            name: "opengrep",
+            rules: [{
+              id: "ci-baseline-cors-arbitrary-origin-credentials",
+              properties: { cwe: "CWE-942", confidence: "HIGH" },
+            }],
+          },
+        },
+        results: [{
+          ruleId: "ci-baseline-cors-arbitrary-origin-credentials",
+          message: { text: "CORS accepts an arbitrary origin while credentials are enabled." },
+          locations: [{
+            physicalLocation: {
+              artifactLocation: { uri: "/repo/server.ts" },
+              region: { startLine: 4, endLine: 4, snippet: { text: "cors({ origin: true, credentials: true })" } },
+            },
+          }],
+        }],
+      }],
+    };
+
+    const [finding] = normalizeSarif(sarif, "opengrep", TARGET);
+    expect(finding?.finding_kind).toBe("sast");
+    expect(finding?.is_secret).toBeUndefined();
+    expect(finding?.title).toContain("CORS accepts an arbitrary origin");
+    expect(finding?.owasp_api).toEqual(["API8:2023"]);
+    expect(finding?.confidence).toBe("high");
+  });
+});
+
 describe("Trivy finding_kind and provenance attribution are structural", () => {
   test.each([
     ["LanguageSpecificPackageVulnerability", ["vulnerability", "security"], "vulnerability", true],

@@ -12,8 +12,11 @@ resemblance that remains is the **forced functional form** of each check -- e.g.
 shape for DOM-XSS -- which is the only practical way to express the check and is
 therefore **unprotectable**. These are the canonical API tokens + standard
 false-positive guards that predate the Semgrep/Opengrep registries. Concordant with the
-CG-09 structural audit (`docs/RULE-ORIGINALITY-AUDIT.md`): 0 of 19 rules show copied
-protectable expression.
+CG-09 structural audit (`docs/RULE-ORIGINALITY-AUDIT.md`): 0 of the historical 19 rules show
+copied protectable expression. The twentieth rule,
+`ci-baseline-cors-arbitrary-origin-credentials`, is covered by the audit's 2026-07-26
+addendum: its paired arbitrary-origin-plus-credentials contract differs from the closest
+registry taint rule; only canonical CORS/header API tokens converge.
 
 **Not copied or derived from** the restricted corpora a paid/hosted tier must avoid:
 - `opengrep/opengrep-rules` (LGPL-2.1 **+ Commons Clause** — "no Sell" condition), or

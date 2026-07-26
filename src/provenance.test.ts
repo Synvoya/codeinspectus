@@ -68,6 +68,30 @@ describe("component signatures", () => {
       "ai:prompt-injection",
       "ai:client-metadata-authz",
       "ai:llm-dangerous-html",
+      "ai:client-error-leak",
+      "ai:sensitive-api-response",
+      "ai:unvalidated-request-write",
+      "ai:sensitive-log",
+      "ai:security-header-config",
+      "ai:csp-config",
+      "ai:session-cookie-config",
+      "ai:supabase-captcha-integration",
     ]));
+  });
+
+  test("each API-boundary rule has a dedicated rescan component", () => {
+    expect(aiFindingComponents("ci-ai-client-error-leak")).toContain("ai:client-error-leak");
+    expect(aiFindingComponents("ci-ai-sensitive-api-response")).toContain("ai:sensitive-api-response");
+    expect(aiFindingComponents("ci-ai-unvalidated-request-write")).toContain("ai:unvalidated-request-write");
+    expect(aiFindingComponents("ci-ai-sensitive-log")).toContain("ai:sensitive-log");
+  });
+
+  test("each Enhancement 2 rule has a dedicated rescan component", () => {
+    expect(aiFindingComponents("ci-ai-security-header-disabled")).toContain("ai:security-header-config");
+    expect(aiFindingComponents("ci-ai-unsafe-production-csp")).toContain("ai:csp-config");
+    expect(aiFindingComponents("ci-ai-insecure-session-cookie")).toContain("ai:session-cookie-config");
+    expect(aiFindingComponents("ci-ai-supabase-captcha-token-missing")).toContain(
+      "ai:supabase-captcha-integration",
+    );
   });
 });

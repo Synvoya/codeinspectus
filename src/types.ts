@@ -60,6 +60,8 @@ export interface Finding {
   /** Canonical key. Always at least one CWE. */
   cwe: string[];
   owasp_web?: string[];
+  /** OWASP API Security Top 10 category tags (direct finding context; not certification). */
+  owasp_api?: string[];
   owasp_llm?: string[];
   /** MITRE ATT&CK is context only, never a coverage score (PRD §10.1). */
   attack_techniques?: string[];
@@ -155,6 +157,30 @@ export interface TrivyDbProvenance {
   instruction: string;
 }
 
+/** Repository-visible evidence state for runtime security controls (Project CI Enhancement 2). */
+export type SecurityControlEvidenceState =
+  | "verified_in_repository"
+  | "insecure_configuration_found"
+  | "not_verifiable_from_repository";
+
+export interface SecurityControlEvidenceLocation {
+  file: string;
+  start_line: number;
+  end_line: number;
+}
+
+/**
+ * Evidence metadata, not a finding and never severity-bearing. Only the
+ * `insecure_configuration_found` state may also produce vulnerability findings.
+ */
+export interface SecurityControlEvidence {
+  control_id: string;
+  state: SecurityControlEvidenceState;
+  providers: string[];
+  evidence_locations: SecurityControlEvidenceLocation[];
+  limitation: string;
+}
+
 export interface ScanResult {
   scan_id: string;
   target: string;
@@ -178,6 +204,8 @@ export interface ScanResult {
   secret_suppression?: SecretSuppressionMetadata;
   /** Component id -> content/semantic signature. Optional only for legacy stored scans. */
   component_signatures?: Record<string, string>;
+  /** Code-visible runtime-control evidence. Metadata only; never affects posture scores. */
+  security_control_evidence?: SecurityControlEvidence[];
   /** Actionable advisory when a completed Trivy vuln scan lacks install-time DB provenance. */
   trivy_db_provenance?: TrivyDbProvenance;
   /** CG-41 read-only git-safety advisory for the scan target (never a finding). */

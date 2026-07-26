@@ -223,6 +223,9 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       ...(secretCoverage ? { secret_coverage: secretCoverage } : {}),
       ...(secretSuppression ? { secret_suppression: secretSuppression } : {}),
       component_signatures: componentSignatures,
+      ...(aiResult?.securityControlEvidence.length
+        ? { security_control_evidence: aiResult.securityControlEvidence }
+        : {}),
       ...(trivyDbProvenance ? { trivy_db_provenance: trivyDbProvenance } : {}),
       git_safety,
       // CG-75: capture the effective config so a bare rescan is like-for-like and rescan can

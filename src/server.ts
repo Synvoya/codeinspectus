@@ -85,7 +85,9 @@ export function createServer(): McpServer {
         "Run a full local security scan of a path: bundled engines (Opengrep SAST, " +
         "Gitleaks secrets, Trivy SCA/IaC/license) plus CodeInspectus's AI-code-specific " +
         "checks (client-side secret exposure, Supabase RLS/inverted-auth, prompt-injection " +
-        "sinks). Returns CWE-keyed findings with fix recommendations and compliance tags. " +
+        "sinks, API-boundary failures, and explicit runtime-control misconfiguration). " +
+        "Returns CWE-keyed findings with fix recommendations, compliance tags, and three-state " +
+        "repository evidence for supported runtime controls. " +
         "Fully offline — zero network egress at scan time. Never writes to your code or repo.",
       inputSchema: scanInput.shape,
       outputSchema: scanResultSchema.shape,

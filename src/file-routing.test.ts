@@ -56,6 +56,7 @@ describe("bucketFor — classification by path", () => {
     }
     expect(BUILD_DIRS.has(".svelte-kit")).toBe(true);
     expect(BUILD_DIRS.has(".nuxt")).toBe(true);
+    expect(BUILD_DIRS.has("_next")).toBe(true);
   });
 
   test("git-ignored source/backup → gitignored", () => {

@@ -12,8 +12,8 @@ npm run build        # tsc --noEmit && tsup — zero type errors
 npm run eval         # drives the built server over MCP stdio
 ```
 Expected: all non-skipped evals PASS. Engine-dependent evals (E16 Opengrep SQLi,
-E17 Trivy SCA) auto-SKIP when the binary/DB is unavailable — that is acceptable,
-a FAIL is not.
+E17 Trivy SCA, E18 Opengrep CORS precision) auto-SKIP when the binary/DB is
+unavailable — that is acceptable, a FAIL is not.
 
 ## MCP transport
 ```bash
@@ -35,6 +35,16 @@ missing RLS (CWE-862), public-env secret, prompt-injection sink (CWE-1426),
 SQLi via Opengrep (CWE-89), and — with the Trivy DB present — the lodash/minimist
 vulnerable dependency. Safe equivalents (accounts table, parameterized query,
 publishable key) must NOT be flagged.
+
+Also run the Enhancement 1 precision corpora:
+```bash
+npx tsx scripts/dev-scan.ts "$(pwd)/fixtures/api-boundary-corpus" ai
+npx tsx scripts/dev-scan.ts "$(pwd)/fixtures/cors-corpus" sast
+npx tsx scripts/dev-scan.ts "$(pwd)/fixtures/security-controls-corpus/tp/captcha" ai
+```
+Expected: 18 API-boundary findings, all under `tp/`; 9 CORS findings (3 invalid
+wildcard configurations + 6 arbitrary-origin exposures), with every `fp/` file silent;
+and 3 evidence-gated Supabase CAPTCHA integration findings with no raw token/secret values.
 
 ## Guardrail spot-checks
 - No `console.log` anywhere in `src/` (stdout must be pure JSON-RPC).

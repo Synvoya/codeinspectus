@@ -109,6 +109,52 @@ describe("diffRescan — component provenance", () => {
     });
   });
 
+  test("adding API-boundary components does not invalidate an unchanged existing AI finding", () => {
+    const priorComponents = { [PIPELINE]: "p1", "codeinspectus-ai:invocation": "i1", "ai:client-metadata-authz": "m1" };
+    const freshComponents = {
+      ...priorComponents,
+      "ai:client-error-leak": "e1",
+      "ai:sensitive-api-response": "r1",
+      "ai:unvalidated-request-write": "w1",
+      "ai:sensitive-log": "l1",
+    };
+    const existing = finding("metadata", "codeinspectus-ai", Object.keys(priorComponents));
+    expect(diffRescan(scan([existing], priorComponents), scan([], freshComponents)).summary).toMatchObject({
+      resolved: 1,
+      not_rechecked: 0,
+    });
+  });
+
+  test.each([
+    "ai:client-error-leak",
+    "ai:sensitive-api-response",
+    "ai:unvalidated-request-write",
+    "ai:sensitive-log",
+  ])("changed %s component + vanished finding is not_rechecked", (component) => {
+    const priorComponents = { [PIPELINE]: "p1", [component]: "v1" };
+    const freshComponents = { ...priorComponents, [component]: "v2" };
+    const prior = finding(component, "codeinspectus-ai", [PIPELINE, component]);
+    expect(diffRescan(scan([prior], priorComponents), scan([], freshComponents)).summary).toMatchObject({
+      resolved: 0,
+      not_rechecked: 1,
+    });
+  });
+
+  test.each([
+    "ai:security-header-config",
+    "ai:csp-config",
+    "ai:session-cookie-config",
+    "ai:supabase-captcha-integration",
+  ])("changed Enhancement 2 %s component + vanished finding is not_rechecked", (component) => {
+    const priorComponents = { [PIPELINE]: "p1", [component]: "v1" };
+    const freshComponents = { ...priorComponents, [component]: "v2" };
+    const prior = finding(component, "codeinspectus-ai", [PIPELINE, component]);
+    expect(diffRescan(scan([prior], priorComponents), scan([], freshComponents)).summary).toMatchObject({
+      resolved: 0,
+      not_rechecked: 1,
+    });
+  });
+
   test.each([
     ["opengrep ruleset", "opengrep:ruleset", "opengrep"],
     ["Gitleaks config", "gitleaks:config", "gitleaks"],

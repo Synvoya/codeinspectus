@@ -69,6 +69,7 @@ export const findingSchema = z.object({
   rule_id: z.string(),
   cwe: z.array(z.string()),
   owasp_web: z.array(z.string()).optional(),
+  owasp_api: z.array(z.string()).optional(),
   owasp_llm: z.array(z.string()).optional(),
   attack_techniques: z.array(z.string()).optional(),
   location: locationSchema,
@@ -130,6 +131,24 @@ const secretSuppressionSchema = z.object({
   ),
 });
 
+export const securityControlEvidenceSchema = z.object({
+  control_id: z.string(),
+  state: z.enum([
+    "verified_in_repository",
+    "insecure_configuration_found",
+    "not_verifiable_from_repository",
+  ]),
+  providers: z.array(z.string()),
+  evidence_locations: z.array(
+    z.object({
+      file: z.string(),
+      start_line: z.number().int().positive(),
+      end_line: z.number().int().positive(),
+    }),
+  ),
+  limitation: z.string(),
+});
+
 // ── scan / rescan output envelope (PRD §5) ──────────────────────────────────
 export const scanResultSchema = z.object({
   scan_id: z.string(),
@@ -150,6 +169,7 @@ export const scanResultSchema = z.object({
   secret_coverage: z.enum(["verified", "unverified"]).optional(),
   secret_suppression: secretSuppressionSchema.optional(),
   component_signatures: z.record(z.string()).optional(),
+  security_control_evidence: z.array(securityControlEvidenceSchema).optional(),
   trivy_db_provenance: z
     .object({
       state: z.literal("unrecorded"),
@@ -311,6 +331,8 @@ export const ruleInfoSchema = z.object({
   name: z.string(),
   kind: scannerEnum,
   cwe: z.array(z.string()),
+  owasp_web: z.array(z.string()).optional(),
+  owasp_api: z.array(z.string()).optional(),
   source: z.enum(["builtin-engine", "codeinspectus-custom"]),
 });
 

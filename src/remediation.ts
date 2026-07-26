@@ -100,6 +100,15 @@ const CWE_REMEDIATION: Record<string, Remediation> = {
     ],
     references: ["CWE-1426", "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"],
   },
+  "CWE-942": {
+    summary: "Allow credentialed cross-origin responses only for an explicit, trusted origin allowlist.",
+    steps: [
+      "Do not reflect or unconditionally approve the request Origin.",
+      "Compare the Origin against an explicit allowlist before returning it.",
+      "Disable credentialed CORS unless cross-origin cookies or HTTP authentication are required.",
+    ],
+    references: ["CWE-942", "https://fetch.spec.whatwg.org/#cors-protocol-and-credentials"],
+  },
 };
 
 const GENERIC: Remediation = {

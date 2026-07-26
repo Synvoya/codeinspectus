@@ -1,0 +1,3 @@
+[auth.captcha]
+enabled = false
+provider = "turnstile"

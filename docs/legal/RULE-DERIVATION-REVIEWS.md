@@ -16,6 +16,10 @@ _Created CG-13 (2026-06-25). Scope: the two HIGH-overlap rules of the 19 —
 `ci-baseline-jwt-alg-none` and `ci-baseline-dom-xss-innerhtml`. The other 17 rules are
 lower-overlap and covered by the CG-09 audit (7 likely-original, 10 generic-convergence)._
 
+_Current-inventory note (2026-07-26): the ruleset now has 20 rules. The added
+`ci-baseline-cors-arbitrary-origin-credentials` rule is classified likely-original in the
+addendum to `docs/RULE-ORIGINALITY-AUDIT.md`; it is not a third HIGH-overlap rule._
+
 ---
 
 ## The question under review

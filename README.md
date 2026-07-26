@@ -23,7 +23,7 @@ egress at scan time**.
 **18 normalized findings across all four engines** with v0.3.1 (4 critical, 8 high,
 5 medium, 1 low). Inspect the [fixture](fixtures/vulnerable-app), read the
 [full scanner-derived report](examples/reports/vulnerable-app-v0.3.1.md), or run the
-[17-case eval suite](evals/run-evals.ts). Dependency findings can change as the local
+[19-case eval suite](evals/run-evals.ts). Dependency findings can change as the local
 Trivy database updates; the report records the exact engine and database versions used.
 
 If CodeInspectus is useful, [star the repository](https://github.com/Synvoya/codeinspectus)
@@ -39,7 +39,9 @@ scanners miss:
 - **CodeInspectus AI checks** — client-side secret/bundle exposure, Supabase
   RLS / inverted-auth (the CVE-2025-48757 class), prompt-injection sinks,
   client-writable `user_metadata` authorization, and unsanitized model/user output
-  rendered via `dangerouslySetInnerHTML` (XSS / LLM05)
+  rendered via `dangerouslySetInnerHTML` (XSS / LLM05), plus explicit API-boundary
+  leaks, raw request-to-database writes, sensitive logging, and evidence-gated
+  security-header/CSP/session-cookie/Supabase-CAPTCHA configuration checks
 
 > CodeInspectus bundles the official, **SHA-pinned** engine binaries and calls
 > them as local subprocesses. It does **not** fork them.
@@ -146,7 +148,7 @@ useful when you want the same policy persisted explicitly in a repository.
 
 | Tool | Purpose |
 |------|---------|
-| `codeinspectus_scan` | Full local scan of a path (engines + AI checks). Returns CWE-keyed findings, remediations, framework tags. |
+| `codeinspectus_scan` | Full local scan of a path (engines + AI checks). Returns CWE-keyed findings, remediations, framework tags, and three-state repository evidence for supported runtime controls. |
 | `codeinspectus_rescan` | Re-scan after fixes; diffs vs a prior scan → resolved / remaining / introduced. |
 | `codeinspectus_compliance_report` | Per-framework **code-level control coverage** (not certification). |
 | `codeinspectus_explain_finding` | Deep explanation + full remediation for one finding. |
@@ -200,6 +202,30 @@ runs git only with your approval; the tool never does.
   the model-output path), **high** severity, **medium** confidence; wrapping the value in
   `DOMPurify.sanitize(...)` silences it. It does **not** yet trace untrusted values arriving via
   **component props, database rows, or template data** (planned).
+- **Server/API-boundary checks are narrow and code-visible.** Four JavaScript/TypeScript
+  analyzers flag client-visible raw/internal error details (`CWE-209`), explicit credential
+  fields in response objects (`CWE-201`), whole request objects passed directly to common
+  Prisma/Supabase/Mongoose writes without visible validation or allow-listing (`CWE-915`),
+  and explicit credentials/headers/cookies or auth/payment request bodies sent to logs
+  (`CWE-532`). They use intrafile dataflow and prefer silence when validation, a public-error
+  mapper, or an explicit field projection is visible. Build output and minified vendor files are
+  outside these source checks. They do not claim generic response minimization, complete
+  business-authorization review, or runtime/gateway verification.
+- **Runtime security controls use three evidence states, never absence-as-vulnerability.**
+  Supported header/CSP/cookie/CAPTCHA controls report `verified_in_repository`,
+  `insecure_configuration_found`, or `not_verifiable_from_repository`. Only an explicit
+  insecure repository configuration becomes a finding; missing headers, dashboard-only
+  CAPTCHA, dynamic/conflicting layers, and hosted/gateway configuration remain metadata with
+  no posture penalty. “Verified” means only that recognized source configuration passed the
+  rule’s narrow literal check; it is not runtime or complete policy proof. Current findings
+  cover security headers explicitly disabled or
+  neutralized, production CSP with bare wildcard or `'unsafe-eval'` script sources,
+  auth/session cookies with explicit insecure attributes, and checked-in Supabase CAPTCHA
+  enablement paired with a recognized signup, password/OTP/SSO/Web3 signin, or password-reset
+  call missing `captchaToken`. The CAPTCHA finding
+  describes an integration failure that Supabase should reject—not a bot-protection bypass.
+  CodeInspectus still does not prove deployed headers, gateway rate limits, complete CSP
+  quality, runtime overrides, or behavioral authentication.
 
 ## Language support
 
@@ -213,8 +239,8 @@ This is stated so you don't infer coverage that isn't there.
 |-------|----------------|----------------------------|
 | **Secrets** — Gitleaks + CodeInspectus client-secret checks | hard-coded credentials, leaked keys | **Any language.** Detection is value/pattern-based, not language-parsed. |
 | **Dependencies (CVEs/SCA), IaC misconfig, SBOM, license** — Trivy | vulnerable deps, infra misconfig, bill of materials | **Many language & package ecosystems and IaC formats** — see [Trivy's docs](https://trivy.dev). |
-| **SAST** — Opengrep + CodeInspectus `security-baseline` | injection, XSS, SSRF, weak crypto, insecure deserialization | **JavaScript, TypeScript, Python.** CodeInspectus ships its own MIT ruleset and runs Opengrep with **no network registry packs**, so SAST coverage is exactly these languages — deliberately narrower than Opengrep's full engine. |
-| **AI-code checks (the moat)** — client-side secret/bundle exposure, Supabase RLS, prompt-injection sinks, client-writable `user_metadata` authz, unsanitized-output XSS | the AI-code / vibe-coding failure modes the engines miss | **JavaScript / TypeScript only** (incl. `.jsx/.tsx/.mjs/.cjs`; the client-secret checks also read JS-framework files `.vue/.svelte/.astro/.html`). Supabase RLS analyzes `.sql` (plus `.ts/.js` Edge Functions). **More languages are planned.** |
+| **SAST** — Opengrep + CodeInspectus `security-baseline` | injection, XSS, SSRF, weak crypto, insecure deserialization, explicit CORS misconfiguration | **JavaScript, TypeScript, Python.** CodeInspectus ships its own MIT ruleset and runs Opengrep with **no network registry packs**, so SAST coverage is exactly these languages — deliberately narrower than Opengrep's full engine. |
+| **AI-code checks (the moat)** — client-side secret/bundle exposure, Supabase RLS, prompt-injection sinks, client-writable `user_metadata` authz, unsanitized-output XSS, API response/error leaks, unsafe request writes, sensitive logging, explicit runtime-control misconfiguration | the AI-code / vibe-coding failure modes the engines miss | **JavaScript / TypeScript only** (incl. `.jsx/.tsx/.mjs/.cjs`; the client-secret checks also read JS-framework files `.vue/.svelte/.astro/.html`). Supabase RLS analyzes `.sql` (plus `.ts/.js` Edge Functions); runtime-control evidence also reads recognized `.json`, `.toml`, nginx `.conf`, and Cloudflare `_headers` configuration. **More languages are planned.** |
 
 ## Compliance frameworks (code-visible subset)
 
@@ -222,6 +248,10 @@ NIST CSF 2.0 · ISO/IEC 27001:2022 · SOC 2 · CIS Controls v8.1 · Essential Ei
 (Patch Applications only) · OWASP Top 10 (2021) · OWASP LLM Top 10 (2025).
 MITRE ATT&CK techniques are shown as related-adversary context only, never as a
 coverage score.
+
+Relevant findings can also carry OWASP API Security Top 10 (2023) category tags.
+Those tags describe the detected failure pattern; they are not an OWASP API review,
+coverage score, compliance claim, or certification.
 
 > **Compliance mappings are AI-drafted, reviewed by a cybersecurity practitioner
 > (Synvoya) — code-level coverage only, not an audit or certification. Community review
@@ -236,7 +266,7 @@ coverage score.
 ```
 agent → codeinspectus_scan → [Opengrep | Gitleaks | Trivy] + AI checks
       → SARIF normalize → dedup (incl. Trivy⨯Gitleaks secret overlap)
-      → CWE-keyed findings → compliance map → compact JSON + summary
+      → CWE-keyed findings + runtime-control evidence → compliance map → compact JSON + summary
 ALL LOCAL. NO NETWORK EGRESS AT SCAN TIME.
 ```
 

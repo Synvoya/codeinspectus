@@ -4,6 +4,58 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [Unreleased]
+
+## [0.4.0] — 2026-07-26
+
+### Added
+- **Project CI Enhancement 1:** four conservative JavaScript/TypeScript API-boundary
+  detections for client-visible internal error details, explicit sensitive API-response
+  fields, whole unvalidated request objects passed to Prisma/Supabase/Mongoose writes, and
+  sensitive request data passed to logs. Each ships with dedicated component provenance,
+  CWE plus OWASP Web/API mappings, remediation, redacted snippets, rescan continuity, and
+  dual-direction precision fixtures.
+- **Credentialed arbitrary-origin CORS detection** for `cors` middleware approval/reflection
+  and direct allow-origin header reflection, with safe allowlist/pinned-origin fixtures.
+- **Project CI Enhancement 2:** four evidence-gated configuration detections for security
+  response headers explicitly disabled/neutralized, production CSP with bare wildcard or
+  `'unsafe-eval'` script sources, auth/session cookies with explicitly insecure attributes,
+  and Supabase CAPTCHA-enabled auth calls that omit `captchaToken`.
+- **Three-state runtime-control evidence** on scan results:
+  `verified_in_repository`, `insecure_configuration_found`, or
+  `not_verifiable_from_repository`. Only explicit insecure repository configuration enters
+  findings; missing/hosted/ambiguous controls remain metadata with no posture penalty.
+- Literal configuration fixtures for Next.js last-match header ordering, Vercel, Helmet,
+  nginx, Cloudflare Pages `_headers`, cross-layer conflicts,
+  development/report-only CSP, cookie near misses, and Supabase hosted/disabled CAPTCHA.
+
+### Changed
+- Corrected the existing wildcard-plus-credentials CORS explanation: browsers reject
+  credentialed response sharing for that invalid combination; it does not itself expose an
+  authenticated response. Its severity is now medium, below the high-severity arbitrary-origin
+  credential exposure rule.
+- Extended credentialed-CORS precision to separately declared `cors` options while keeping
+  realistic `indexOf`/allow-list callbacks silent.
+- Hardened API-boundary source analysis against commented examples and minified vendor code;
+  added Fastify response/request-log forms, Prisma transaction clients, and lowercase Mongoose
+  `*Model` variables while keeping boolean-only sensitive-data presence logging silent.
+- Corrected `ci-baseline-insecure-cookie` wording to its actual narrow behavior (explicit
+  `httpOnly: false`); the new AI cookie rule covers `secure: false` and
+  `SameSite=None` without `Secure`.
+- Detection database `0.4.0` now contains **44 curated detections**: 21 AI analyzers,
+  20 Opengrep SAST rules, and 3 custom Gitleaks rules. The CodeInspectus AI engine signature
+  is `1.2.0`, and the eval suite now contains 21 cases.
+- Refreshed permitted transitive patch versions for `fast-uri` and Hono before publication,
+  clearing all high/critical advisories from the production dependency tree.
+
+### Known limitations
+- New API-boundary analysis is JavaScript/TypeScript source-only and intrafile; build output and
+  minified vendor files are excluded. It intentionally prefers silence for ambiguous validation,
+  business authorization, runtime middleware, and cross-file dataflow.
+- Missing security headers, hosted CAPTCHA state, gateway rate limits, runtime overrides,
+  and behavioral auth remain unverified. CodeInspectus reports these as
+  `not_verifiable_from_repository`, never as vulnerabilities or proof of protection.
+
 ## [0.3.2] — 2026-07-18
 
 Correctness release for effective Supabase RLS state, secret-scan coverage honesty,

@@ -13,6 +13,7 @@ export interface AiFindingSpec {
   severity: Severity;
   cwe: string[];
   owasp_web?: string[];
+  owasp_api?: string[];
   owasp_llm?: string[];
   attack_techniques?: string[];
   file: string;
@@ -61,6 +62,7 @@ export function makeAiFinding(spec: AiFindingSpec): Finding {
     confidence: spec.confidence,
   };
   if (spec.owasp_web) finding.owasp_web = spec.owasp_web;
+  if (spec.owasp_api) finding.owasp_api = spec.owasp_api;
   if (spec.owasp_llm) finding.owasp_llm = spec.owasp_llm;
   if (spec.attack_techniques) finding.attack_techniques = spec.attack_techniques;
   if (spec.isSecret) {

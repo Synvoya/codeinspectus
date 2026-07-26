@@ -17,6 +17,12 @@ import { fingerprint as fp } from "../util/hash.js";
 import { externalFindingComponents } from "../provenance.js";
 
 const CWE_RE = /CWE[-_ ]?(\d{1,5})/gi;
+const OWASP_WEB_RE = /OWASP[-_ ]?(A\d{2}:\d{4})/gi;
+
+const OWASP_API_BY_RULE: Record<string, string[]> = {
+  "ci-baseline-cors-wildcard-credentials": ["API8:2023"],
+  "ci-baseline-cors-arbitrary-origin-credentials": ["API8:2023"],
+};
 
 function extractCwes(...sources: Array<string | string[] | undefined>): string[] {
   const out = new Set<string>();
@@ -25,6 +31,18 @@ function extractCwes(...sources: Array<string | string[] | undefined>): string[]
     const text = Array.isArray(src) ? src.join(" ") : src;
     for (const m of text.matchAll(CWE_RE)) {
       out.add(`CWE-${m[1]}`);
+    }
+  }
+  return [...out];
+}
+
+function extractOwaspWeb(...sources: Array<string | string[] | undefined>): string[] {
+  const out = new Set<string>();
+  for (const source of sources) {
+    if (!source) continue;
+    const text = Array.isArray(source) ? source.join(" ") : source;
+    for (const match of text.matchAll(OWASP_WEB_RE)) {
+      if (match[1]) out.add(match[1]);
     }
   }
   return [...out];
@@ -72,9 +90,12 @@ function ruleFor(result: SarifResult, rules: SarifRule[]): SarifRule | undefined
 
 function precisionToConfidence(props: SarifProps | undefined, isSecret: boolean): Confidence {
   if (isSecret) return "high";
-  const prec = (props?.precision ?? "").toLowerCase();
+  const explicit = typeof props?.confidence === "string" ? props.confidence : "";
+  const tagConfidence = (props?.tags ?? []).find((tag) => /\b(?:high|medium|low)\s+confidence\b/i.test(tag)) ?? "";
+  const prec = `${props?.precision ?? ""} ${explicit} ${tagConfidence}`.toLowerCase();
   if (prec === "very-high" || prec === "high") return "high";
-  if (prec === "low") return "low";
+  if (/\b(?:very-high|high)(?:\s+confidence)?\b/.test(prec)) return "high";
+  if (/\blow(?:\s+confidence)?\b/.test(prec)) return "low";
   return "medium";
 }
 
@@ -103,6 +124,10 @@ function deriveTitle(
 
 function isSecretFinding(engine: Engine, rule: SarifRule | undefined, ruleId: string, snippet: string): boolean {
   if (engine === "gitleaks") return true;
+  // This bundled Opengrep surface is SAST-only. A rule can discuss credentialed
+  // requests (for example CORS `credentials: true`) without detecting a credential
+  // value. Treating that word as a secret signal misclassifies the finding.
+  if (engine === "opengrep") return Boolean(findSecret(snippet));
   const hay = `${ruleId} ${rule?.name ?? ""} ${(rule?.properties?.tags ?? []).join(" ")}`.toLowerCase();
   if (hay.includes("secret") || hay.includes("credential") || hay.includes("api-key") || hay.includes("apikey")) {
     return true;
@@ -224,6 +249,8 @@ function normalizeResult(
 
   const fingerprint = fp([engine, file, startLine, endLine, cwes[0], ruleId, secretValueHash]);
   const remediation = remediationForCwe(cwes);
+  const owaspWeb = extractOwaspWeb(rule?.properties?.tags, result.properties?.tags);
+  const owaspApi = OWASP_API_BY_RULE[ruleId] ?? [];
 
   const finding: Finding = {
     id: fingerprint, // reassigned to CI-#### after dedup
@@ -242,6 +269,8 @@ function normalizeResult(
     producer_components: externalFindingComponents(engine, findingKind),
     finding_kind: findingKind,
   };
+  if (owaspWeb.length) finding.owasp_web = owaspWeb;
+  if (owaspApi.length) finding.owasp_api = owaspApi;
   if (isSecret) {
     finding.is_secret = true;
     if (secretValueHash) finding.secret_value_hash = secretValueHash;

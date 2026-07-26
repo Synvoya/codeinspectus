@@ -64,6 +64,40 @@ describe("summarizeScan — git-safety advisory placement (CG-42)", () => {
     const out = summarizeScan(mkResult({ git_safety: { state: "unknown" }, warnings: [] }));
     expect(out).not.toContain("Before you fix:");
   });
+
+  test("three-state security-control evidence is summarized as metadata without absence framing", () => {
+    const out = summarizeScan(
+      mkResult({
+        security_control_evidence: [
+          {
+            control_id: "a",
+            state: "verified_in_repository",
+            providers: ["nextjs"],
+            evidence_locations: [],
+            limitation: "l",
+          },
+          {
+            control_id: "b",
+            state: "insecure_configuration_found",
+            providers: ["helmet"],
+            evidence_locations: [],
+            limitation: "l",
+          },
+          {
+            control_id: "c",
+            state: "not_verifiable_from_repository",
+            providers: [],
+            evidence_locations: [],
+            limitation: "l",
+          },
+        ],
+      }),
+    );
+    expect(out).toContain("Runtime-control evidence (metadata; no absence penalty):");
+    expect(out).toContain("1 verified in repository");
+    expect(out).toContain("1 explicit insecure configuration");
+    expect(out).toContain("1 not verifiable from repository");
+  });
 });
 
 // ── CG-75 / Claim 1: rescan text must surface not_rechecked honestly ─────────

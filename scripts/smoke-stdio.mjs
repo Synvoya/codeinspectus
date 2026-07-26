@@ -99,7 +99,11 @@ async function waitFor(id, timeoutMs = 8000) {
     method: "tools/call",
     params: { name: "codeinspectus_scan", arguments: { path: process.cwd() } },
   });
-  const scan = await waitFor(3);
+  // A full-project scan invokes all managed engines and can legitimately take
+  // longer than the lightweight initialize/tools-list requests, especially on
+  // cold CI runners. Keep the short default for protocol calls, but give the
+  // scanner a bounded, engine-appropriate window.
+  const scan = await waitFor(3, 30_000);
   const sc = scan.result?.structuredContent;
   if (!sc || typeof sc.scan_id !== "string") throw new Error("scan returned no structuredContent");
   console.error("✓ codeinspectus_scan structuredContent.scan_id:", sc.scan_id);

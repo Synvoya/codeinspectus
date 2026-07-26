@@ -39,3 +39,15 @@ expectations in the test file are the public spec).
   output rendered via `dangerouslySetInnerHTML` without sanitization; CWE-79/116, OWASP LLM05). 5 TP
   (arm A untrusted inline/split, arm B model output inline/split/other-SDK) + 4 FP (DOMPurify-sanitized,
   constant/trusted, plain-text render, non-`__html` noise). Locked by `src/ai-checks/llm-dangerous-html.test.ts`.
+- `api-boundary-corpus/` — four server/API checks: client-visible internal errors, explicit
+  sensitive response fields, unvalidated whole-request database writes, and sensitive logging.
+  18 TP + 12 safe near misses covering public-error mapping, Zod/Joi validation, explicit field
+  projection, redacted/ordinary logging, comments, and minified vendor code. Locked by
+  `src/ai-checks/api-boundary.test.ts`.
+- `cors-corpus/` — corrected wildcard-plus-credentials behavior and credentialed arbitrary-origin
+  reflection. 3 invalid wildcard configurations + 6 true exposure patterns + 7 safe near misses.
+  Locked by eval E18 against the real Opengrep binary.
+- `security-controls-corpus/` — explicit insecure header/CSP/session-cookie configuration and
+  evidence-gated Supabase CAPTCHA integration. Includes safe configurations, development/report-only
+  near misses, hosted unknowns, nginx/Next.js effective-order cases, and unresolved cross-layer
+  conflicts. Locked by `src/ai-checks/security-controls.test.ts` plus evals E20/E21.

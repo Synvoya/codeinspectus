@@ -179,7 +179,7 @@ will not be merged, however useful it otherwise is:
 
 ### Detection rules (`detection-db/**`, `src/ai-checks/**`)
 
-CodeInspectus ships **35 curated detections** today (see `detection-db/manifest.json`): the
+CodeInspectus ships **44 curated detections** today (see `detection-db/manifest.json`): the
 AI-code checks (`ci-ai-*`), the MIT `security-baseline` SAST rules (`ci-baseline-*`), and a few
 custom secret rules (`codeinspectus-*`). The set grows through a **human-reviewed weekly
 intake** — the maintainer triages proposals in batches. There is **no autonomous rule

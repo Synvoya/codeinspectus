@@ -10,29 +10,31 @@
 > versions. Where this document and any other doc disagree on a count or a version, the
 > two files above win and this document is the one to correct.
 
-_Last refreshed: CG-63 (2026-07-06) — detection count reconciled 33→35 to record the two
-`ci-ai-*` analyzers added in CG-50/51 under the same self-diligence frame (see the AI-code
-analyzers note below); **no re-audit of the existing rules was performed this session**. Prior
+_Last refreshed: Project CI Enhancement 2 (2026-07-26) — recorded four original
+repository-evidence AI analyzers for explicit header/CSP/cookie/CAPTCHA configuration.
+Enhancement 1 recorded four original API-boundary AI analyzers and one original CORS rule,
+and compared the CORS rule with the closest current Semgrep registry analog. **No re-audit
+of the existing rules was performed this session**. Prior
 full provenance pass: CG-08 (2026-06-23) audit + the CG-39 sweep, against
 `detection-db/manifest.json`, `engines.lock.json`, `detection-db/**`, and `src/ai-checks/**`._
 
 ---
 
-## Reconciled detection count — **35 active CodeInspectus detections**
+## Reconciled detection count — **44 active CodeInspectus detections**
 
-`detection-db/manifest.json` `custom_rules` has **35** entries:
+`detection-db/manifest.json` `custom_rules` has **44** entries:
 
 | Group | Count | Engine | Kind | Where |
 |---|---:|---|---|---|
-| AI-code analyzers | **13** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
-| Opengrep SAST rules | **19** | `opengrep` | `sast` | `detection-db/opengrep-rules/security-baseline/` |
+| AI-code analyzers | **21** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
+| Opengrep SAST rules | **20** | `opengrep` | `sast` | `detection-db/opengrep-rules/security-baseline/` |
 | Gitleaks secret rules | **3** | `gitleaks` | `secret` | `detection-db/gitleaks/codeinspectus.toml` |
-| **Total** | **35** | — | — | — |
+| **Total** | **44** | — | — | — |
 
-Verified counts: 19 Opengrep rule ids and 3 Gitleaks rule ids are greppable on disk;
-13 `kind: "ai"` entries in the manifest.
+Verified counts: 20 Opengrep rule ids and 3 Gitleaks rule ids are greppable on disk;
+21 `kind: "ai"` entries in the manifest.
 
-The authoritative current figure is **35**, decomposing as **13 AI analyzers + 19 Opengrep SAST +
+The authoritative current figure is **44**, decomposing as **21 AI analyzers + 20 Opengrep SAST +
 3 Gitleaks** (single source of truth: `detection-db/manifest.json`). CG-25b added two original
 CodeInspectus detections: `ci-ai-llm-key-browser-exposed` (B-11; `dangerouslyAllowBrowser: true`) and
 `ci-ai-storage-rls-public` (B-12; permissive `USING (true)` on `storage.objects`). CG-50/51 then added
@@ -43,14 +45,27 @@ raw-HTML `__html` sink) — authored contract-first from the maintainer's spec, 
 **no registry equivalent to derive from**. All four are framework-specific AI-code failure modes (no
 third-party rule content referenced), carried under the **same documented self-diligence** as the rest
 of the ci-ai-* moat (the CG-09 / CG-39 framing below, extended to these two by category — original
-authorship, nothing derived to audit — **not** a fresh independent review); the human legal gate stays
-**de-risked, not closed**.
+authorship, nothing derived to audit — **not** a fresh independent review). Project CI Enhancement 1
+adds four independently authored TypeScript analyzers (`ci-ai-client-error-leak`,
+`ci-ai-sensitive-api-response`, `ci-ai-unvalidated-request-write`, `ci-ai-sensitive-log`) from the
+maintainer's detector contract, plus `ci-baseline-cors-arbitrary-origin-credentials`. The new CORS
+rule is a paired configuration check: it requires both arbitrary-origin approval/reflection and
+credentialed sharing. A post-authoring comparison with the closest current Semgrep analog found a
+different taint-mode rule that tracks request input to an allow-origin header (CWE-346) without
+requiring credentialed CORS; shared header/API tokens are canonical functional idioms. No message or
+subpattern expression was copied. Project CI Enhancement 2 adds four independently authored
+TypeScript evidence analyzers (`ci-ai-security-header-disabled`,
+`ci-ai-unsafe-production-csp`, `ci-ai-insecure-session-cookie`, and
+`ci-ai-supabase-captcha-token-missing`). They were authored from the maintainer's
+three-state evidence contract and current primary framework documentation, not from a
+third-party detection corpus. No registry rule expression was referenced or copied. The
+human legal gate stays **de-risked, not closed**.
 
 ---
 
 ## Provenance summary (the headline for counsel)
 
-- **All 35 custom detections are CodeInspectus-original work, licensed MIT.** In
+- **All 44 custom detections are CodeInspectus-original work, licensed MIT.** In
   `manifest.json` every `custom_rules` entry carries `"source": "codeinspectus-custom"`,
   and the Opengrep ruleset carries `"source": "codeinspectus-mit"` / `"license": "MIT"`.
 - **No detection copies copyrightable expression from a third-party corpus.** For the Opengrep
@@ -60,7 +75,8 @@ authorship, nothing derived to audit — **not** a fresh independent review); th
   authored, and the residual resemblance is the **forced functional form** of each check (e.g.
   `algorithms: ["none"]`, the `$EL.innerHTML = $X` sink shape) -- an unprotectable **convergent
   idiom** (merger / scenes a faire) that predates the registries. Concordant with the CG-09
-  structural audit (`docs/RULE-ORIGINALITY-AUDIT.md`: 0 of 19 show copied expression). The two
+  structural audit (`docs/RULE-ORIGINALITY-AUDIT.md`: 0 of the historical 19 show copied expression,
+  with the twentieth rule covered by its 2026-07-26 addendum). The two
   highest-overlap rules (`ci-baseline-jwt-alg-none`, `ci-baseline-dom-xss-innerhtml`) were classed
   **CONVERGENT-IDIOM by three concordant reviews** (CG-09 audit + GPT-5.5 + Gemini Pro; see
   `docs/legal/RULE-DERIVATION-REVIEWS.md`) and were reworded + completeness-fixed in CG-13. The
@@ -110,7 +126,7 @@ come from the MIT/Apache-2.0 engines, not from CodeInspectus's corpus, and are c
 
 ---
 
-## Inventory — Opengrep SAST rules (19)
+## Inventory — Opengrep SAST rules (20)
 
 Path: `detection-db/opengrep-rules/security-baseline/`. **Origin: independently authored,
 MIT.** Convergent functional idioms; the public registry was referenced during authoring,
@@ -135,6 +151,7 @@ MIT.** Convergent functional idioms; the public registry was referenced during a
 | `ci-baseline-path-traversal` | `injection.yaml` | js,ts | CWE-22 | Filesystem path from request input |
 | `ci-baseline-ssrf-request-from-input` | `ssrf.yaml` | js,ts | CWE-918 | Outbound request URL from request input |
 | `ci-baseline-cors-wildcard-credentials` | `web-misconfig.yaml` | js,ts | CWE-942 | CORS wildcard origin with credentials |
+| `ci-baseline-cors-arbitrary-origin-credentials` | `web-misconfig.yaml` | js,ts | CWE-942 | Credentialed CORS unconditionally accepts or reflects arbitrary origins |
 | `ci-baseline-insecure-cookie` | `web-misconfig.yaml` | js,ts | CWE-1004 | Session cookie without httpOnly/secure |
 | `ci-baseline-jwt-alg-none` | `web-misconfig.yaml` | js,ts | CWE-347 | JWT verification accepts alg `none` |
 | `ci-baseline-dom-xss-innerhtml` | `xss.yaml` | js,ts | CWE-79 | DOM XSS via innerHTML/outerHTML sink |
@@ -151,7 +168,7 @@ Gitleaks' own MIT default rules run alongside these three.)
 | `codeinspectus-supabase-service-role` | CWE-798 | Supabase service_role JWT (bypasses RLS) |
 | `codeinspectus-anthropic-key` | CWE-798 | Anthropic API key |
 
-## Inventory — AI-code analyzers (13) — the moat
+## Inventory — AI-code analyzers (21) — the moat
 
 Path: `src/ai-checks/*.ts` (TypeScript). **Origin: CodeInspectus-original · License: MIT ·
 Derived-from: none.**
@@ -171,6 +188,14 @@ Derived-from: none.**
 | `ci-ai-prompt-injection-sink` | `prompt-injection.ts` | CWE-1426 | Potential prompt-injection sink |
 | `ci-ai-client-metadata-authz` | `metadata-authz.ts` | CWE-639 / 284 | Authorization decision trusts client-writable Supabase `user_metadata` |
 | `ci-ai-llm-output-dangerous-html` | `llm-dangerous-html.ts` | CWE-79 / 116 | Untrusted or model output rendered into a React raw-HTML `__html` sink |
+| `ci-ai-client-error-leak` | `api-boundary.ts` | CWE-209 | Raw/internal error detail returned to an API client |
+| `ci-ai-sensitive-api-response` | `api-boundary.ts` | CWE-201 | Explicit credential or password field returned in an API response |
+| `ci-ai-unvalidated-request-write` | `api-boundary.ts` | CWE-915 | Whole request object reaches a common database write without visible validation/allow-listing |
+| `ci-ai-sensitive-log` | `api-boundary.ts` | CWE-532 | Explicit credential/header/cookie or auth/payment request body reaches a log sink |
+| `ci-ai-security-header-disabled` | `security-controls.ts` | CWE-693 | A recognized response layer explicitly disables, removes, or neutralizes a security header |
+| `ci-ai-unsafe-production-csp` | `security-controls.ts` | CWE-693 | Enforced production script policy includes bare wildcard or `'unsafe-eval'` |
+| `ci-ai-insecure-session-cookie` | `security-controls.ts` | CWE-1004 / 614 | Auth/session cookie explicitly uses insecure attributes |
+| `ci-ai-supabase-captcha-token-missing` | `security-controls.ts` | CWE-693 | Checked-in CAPTCHA enablement paired with a recognized Supabase auth call missing `captchaToken` |
 
 ---
 
@@ -179,7 +204,7 @@ Derived-from: none.**
 The legal-provenance gate is a **human sign-off**; CG-08 does not grant it. Outstanding
 items for the reviewer, ranked by where attention is best spent:
 
-1. **Opengrep SAST originality (primary risk -- now de-risked).** These 19 rules resemble the
+1. **Opengrep SAST originality (primary risk -- now de-risked).** These 20 rules resemble the
    upstream registry *in form*. The CG-09 structural audit + two independent model reviews
    (GPT-5.5, Gemini Pro) all found **convergent idiom, no copied expression** (the registry was
    referenced, not copied); see `docs/legal/RULE-DERIVATION-REVIEWS.md`. **Remaining action:** a

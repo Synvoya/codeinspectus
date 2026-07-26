@@ -23,6 +23,14 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   "ai:prompt-injection": "1:prompt-sink-analysis",
   "ai:client-metadata-authz": "1:client-metadata-authz",
   "ai:llm-dangerous-html": "1:dangerous-html-flow",
+  "ai:client-error-leak": "1:client-response-error-detail",
+  "ai:sensitive-api-response": "1:explicit-sensitive-response-fields",
+  "ai:unvalidated-request-write": "1:request-object-write-flow",
+  "ai:sensitive-log": "1:sensitive-log-flow",
+  "ai:security-header-config": "1:explicit-effective-header-disablement",
+  "ai:csp-config": "1:production-script-source-policy",
+  "ai:session-cookie-config": "1:explicit-auth-cookie-attributes",
+  "ai:supabase-captcha-integration": "1:enabled-config-auth-call-token",
 };
 
 const AI_RULE_COMPONENT: Record<string, string> = {
@@ -39,6 +47,14 @@ const AI_RULE_COMPONENT: Record<string, string> = {
   "ci-ai-prompt-injection-sink": "ai:prompt-injection",
   "ci-ai-client-metadata-authz": "ai:client-metadata-authz",
   "ci-ai-llm-output-dangerous-html": "ai:llm-dangerous-html",
+  "ci-ai-client-error-leak": "ai:client-error-leak",
+  "ci-ai-sensitive-api-response": "ai:sensitive-api-response",
+  "ci-ai-unvalidated-request-write": "ai:unvalidated-request-write",
+  "ci-ai-sensitive-log": "ai:sensitive-log",
+  "ci-ai-security-header-disabled": "ai:security-header-config",
+  "ci-ai-unsafe-production-csp": "ai:csp-config",
+  "ci-ai-insecure-session-cookie": "ai:session-cookie-config",
+  "ci-ai-supabase-captcha-token-missing": "ai:supabase-captcha-integration",
 };
 
 export function signature(value: string | Buffer): string {

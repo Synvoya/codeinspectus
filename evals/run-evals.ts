@@ -14,6 +14,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { resolve } from "node:path";
 
 const FIXTURE = resolve(process.cwd(), "fixtures/vulnerable-app");
+const CORS_FIXTURE = resolve(process.cwd(), "fixtures/cors-corpus");
+const API_BOUNDARY_FIXTURE = resolve(process.cwd(), "fixtures/api-boundary-corpus");
+const SECURITY_CONTROLS_FIXTURE = resolve(process.cwd(), "fixtures/security-controls-corpus");
 // INTENTIONAL FAKE TEST DATA (planted fixture value; the evals below assert it is
 // detected and redacted) -- not a real credential; allowlisted in /.gitleaks.toml.
 const RAW_SECRET = "sk_live_51Mz9KQb2eRxW7vYpL3nHsD8tA6cF0gJ4uXiZ2oP1rE5wB9mNqK7";
@@ -234,8 +237,10 @@ async function main() {
       id: "E14 list_rules exposes the AI-code moat rules + DB version",
       fn: async () => {
         const lr = (await client.callTool("codeinspectus_list_rules", {})).structuredContent;
-        assert(lr.custom_rule_count >= 10, `expected >=10 custom rules, got ${lr.custom_rule_count}`);
+        assert(lr.custom_rule_count === 44, `expected 44 custom rules, got ${lr.custom_rule_count}`);
         assert(lr.custom_rules.some((r: any) => r.id === "ci-ai-rls-using-true"), "missing ci-ai-rls-using-true in list_rules");
+        const boundary = lr.custom_rules.find((r: any) => r.id === "ci-ai-client-error-leak");
+        assert(boundary?.owasp_web?.includes("A05:2021") && boundary?.owasp_api?.includes("API8:2023"), "new rules must expose OWASP Web/API mappings");
         assert(typeof lr.detection_db_version === "string", "missing detection_db_version");
       },
     },
@@ -268,6 +273,102 @@ async function main() {
         );
         assert(!!dep, "no Trivy SCA finding for lodash/minimist");
         assert(dep.frameworks.some((t: any) => t.framework === "EssentialEight"), "vuln dep should map to Essential Eight Patch Applications");
+      },
+    },
+    {
+      id: "E18 [engine] CORS rules distinguish invalid wildcard from credentialed arbitrary-origin exposure",
+      engineDep: "opengrep",
+      fn: async () => {
+        const corsScan = (await client.callTool("codeinspectus_scan", { path: CORS_FIXTURE, scanners: ["sast"] })).structuredContent;
+        const corsFindings: any[] = corsScan.findings;
+        const wildcard = corsFindings.filter((x) => x.rule_id === "ci-baseline-cors-wildcard-credentials");
+        const arbitrary = corsFindings.filter((x) => x.rule_id === "ci-baseline-cors-arbitrary-origin-credentials");
+        assert(wildcard.length === 3, `expected three invalid wildcard findings, got ${wildcard.length}`);
+        assert(/browsers reject/i.test(wildcard[0].message), "wildcard rule must explain browser rejection, not claim data exposure");
+        assert(wildcard.every((x) => x.severity === "medium"), "invalid wildcard combination should be medium, below actual arbitrary-origin exposure");
+        assert(wildcard.every((x) => x.owasp_web?.includes("A05:2021") && x.owasp_api?.includes("API8:2023")), "wildcard CORS findings need OWASP Web/API mappings");
+        assert(arbitrary.length === 6, `expected six arbitrary-origin findings, got ${arbitrary.length}`);
+        assert(arbitrary.every((x) => x.severity === "high"), "credentialed arbitrary-origin exposure should remain high");
+        assert(arbitrary.every((x) => x.confidence === "high"), "credentialed arbitrary-origin exposure should retain high rule confidence");
+        assert(arbitrary.every((x) => x.finding_kind === "sast" && !x.is_secret), "CORS findings must remain SAST, not secrets");
+        assert(arbitrary.every((x) => x.owasp_web?.includes("A05:2021") && x.owasp_api?.includes("API8:2023")), "CORS findings need OWASP Web/API mappings");
+        assert(arbitrary.every((x) => /allowlist/i.test(x.remediation.summary + " " + x.remediation.steps.join(" "))), "CORS remediation must require an origin allowlist");
+        assert(arbitrary.every((x) => x.location.file.startsWith("tp/")), "safe CORS near-miss produced a finding");
+      },
+    },
+    {
+      id: "E19 API-boundary rules survive the full MCP scan envelope with redaction and provenance",
+      fn: async () => {
+        const boundaryScan = (await client.callTool("codeinspectus_scan", { path: API_BOUNDARY_FIXTURE, scanners: ["ai"] })).structuredContent;
+        const boundaryFindings: any[] = boundaryScan.findings;
+        const counts = (ruleId: string) => boundaryFindings.filter((x) => x.rule_id === ruleId).length;
+        assert(boundaryFindings.length === 18, `expected 18 API-boundary findings, got ${boundaryFindings.length}`);
+        assert(counts("ci-ai-client-error-leak") === 8, "expected eight internal-error findings");
+        assert(counts("ci-ai-sensitive-api-response") === 1, "expected one sensitive-response finding");
+        assert(counts("ci-ai-unvalidated-request-write") === 6, "expected six unsafe-write findings");
+        assert(counts("ci-ai-sensitive-log") === 3, "expected three sensitive-log findings");
+        assert(boundaryFindings.every((x) => x.location.file.startsWith("tp/")), "API-boundary safe near-miss produced a finding");
+        assert(boundaryFindings.every((x) => x.owasp_api?.length > 0), "API-boundary finding missing OWASP API mapping");
+        assert(boundaryFindings.every((x) => x.producer_components?.some((component: string) => component.startsWith("ai:"))), "API-boundary finding missing detector provenance");
+        const serialized = JSON.stringify(boundaryScan);
+        assert(!serialized.includes("provider failure") && !serialized.includes("database unavailable"), "API-boundary output leaked planted internal detail");
+        assert(boundaryScan.engine_details.some((x: any) => x.engine === "codeinspectus-ai" && x.version === "1.2.0"), "AI engine version was not bumped");
+      },
+    },
+    {
+      id: "E20 Enhancement 2 explicit header/CSP/cookie/CAPTCHA configurations emit only evidence-gated findings",
+      fn: async () => {
+        const scenarios = [
+          ["tp/headers-next", "ci-ai-security-header-disabled", 1, "http.header.strict-transport-security"],
+          ["tp/headers-route-mixed", "ci-ai-security-header-disabled", 1, "http.header.strict-transport-security"],
+          ["tp/csp-vercel", "ci-ai-unsafe-production-csp", 1, "http.header.content-security-policy"],
+          ["tp/cookies", "ci-ai-insecure-session-cookie", 3, "http.cookie.session-security"],
+          ["tp/cookies-mixed", "ci-ai-insecure-session-cookie", 1, "http.cookie.session-security"],
+          ["tp/captcha", "ci-ai-supabase-captcha-token-missing", 3, "supabase.auth.captcha-token"],
+          ["tp/captcha-mixed", "ci-ai-supabase-captcha-token-missing", 1, "supabase.auth.captcha-token"],
+        ] as const;
+        for (const [rel, ruleId, count, controlId] of scenarios) {
+          const result = (await client.callTool("codeinspectus_scan", {
+            path: resolve(SECURITY_CONTROLS_FIXTURE, rel),
+            scanners: ["ai"],
+          })).structuredContent;
+          assert(result.findings.filter((x: any) => x.rule_id === ruleId).length === count, `${rel}: expected ${count} ${ruleId} finding(s)`);
+          const evidence = result.security_control_evidence.find((x: any) => x.control_id === controlId);
+          assert(evidence?.state === "insecure_configuration_found", `${rel}: insecure evidence state missing`);
+          assert(result.findings.every((x: any) => x.owasp_web?.includes("A05:2021") && x.owasp_api?.includes("API8:2023")), `${rel}: finding missing OWASP context`);
+        }
+      },
+    },
+    {
+      id: "E21 Enhancement 2 safe, hosted-unknown, and conflicting runtime controls remain non-findings",
+      fn: async () => {
+        const safe = (await client.callTool("codeinspectus_scan", {
+          path: resolve(SECURITY_CONTROLS_FIXTURE, "safe/next"),
+          scanners: ["ai"],
+        })).structuredContent;
+        assert(safe.findings.length === 0, "safe Next.js headers produced a finding");
+        assert(safe.security_control_evidence.filter((x: any) => x.control_id.startsWith("http.header.")).every((x: any) => x.state === "verified_in_repository"), "safe Next.js header evidence was not verified");
+
+        const hostedUnknown = (await client.callTool("codeinspectus_scan", {
+          path: resolve(SECURITY_CONTROLS_FIXTURE, "near-miss/captcha-hosted-unknown"),
+          scanners: ["ai"],
+        })).structuredContent;
+        assert(hostedUnknown.findings.length === 0, "dashboard-only/hosted CAPTCHA absence produced a finding");
+        assert(hostedUnknown.security_control_evidence.find((x: any) => x.control_id === "supabase.auth.captcha-token")?.state === "not_verifiable_from_repository", "hosted CAPTCHA state must remain not verifiable");
+
+        const nonProduction = (await client.callTool("codeinspectus_scan", {
+          path: resolve(SECURITY_CONTROLS_FIXTURE, "near-miss/non-production-paths"),
+          scanners: ["ai"],
+        })).structuredContent;
+        assert(nonProduction.findings.length === 0, "test/example/development configuration produced a finding");
+        assert(nonProduction.security_control_evidence.every((x: any) => x.state === "not_verifiable_from_repository"), "non-production paths must not contribute runtime-control evidence");
+
+        const conflict = (await client.callTool("codeinspectus_scan", {
+          path: resolve(SECURITY_CONTROLS_FIXTURE, "conflict/headers"),
+          scanners: ["ai"],
+        })).structuredContent;
+        assert(conflict.findings.length === 0, "conflicting repository layers produced a vulnerability finding");
+        assert(conflict.security_control_evidence.find((x: any) => x.control_id === "http.header.strict-transport-security")?.state === "not_verifiable_from_repository", "conflicting HSTS layers must resolve to not verifiable");
       },
     },
   ];

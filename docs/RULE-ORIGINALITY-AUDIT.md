@@ -8,6 +8,10 @@
 > summarized in [`legal/RULE-DERIVATION-REVIEWS.md`](legal/RULE-DERIVATION-REVIEWS.md); see also
 > [`RULE-PROVENANCE.md`](RULE-PROVENANCE.md).
 
+> **Current-inventory note (2026-07-26):** the ruleset now has 20 rules. The original
+> 19-rule audit below is preserved as historical evidence; the new
+> `ci-baseline-cors-arbitrary-origin-credentials` rule is covered by the addendum at the end.
+
 _Structural comparison performed 2026-06-23. Investigation-only — no rule files or shipping
 artifacts were changed by this audit._
 
@@ -147,3 +151,22 @@ is convergent functional idiom (merger / scenes a faire)*. The two highest-overl
 
 _Evidence base: the 19 rule bodies in `detection-db/opengrep-rules/security-baseline/` vs the
 registry files listed above, fetched 2026-06-23. No registry content copied into the repo._
+
+## 2026-07-26 addendum — credentialed arbitrary-origin CORS
+
+`ci-baseline-cors-arbitrary-origin-credentials` was independently authored from the
+Project CI Enhancement 1 contract and the Fetch/CORS behavior, without using registry
+rule content. After authoring, the closest current Semgrep analog was fetched from
+`javascript/express/security/cors-misconfiguration.yaml` and compared structurally.
+
+- **CodeInspectus rule:** syntactic paired-configuration check. It requires arbitrary-origin
+  approval/reflection and credentialed CORS, covering `cors` middleware callbacks/config and
+  direct allow-origin plus allow-credentials headers. CWE-942; OWASP A05/API8.
+- **Registry analog:** broad taint-mode flow from Express request fields into an
+  `Access-Control-Allow-Origin` header. It does not require credentialed CORS and uses
+  CWE-346/A07.
+- **Overlap:** canonical Express response-header APIs and the standard allow-origin header
+  name only. Messages, metadata, detector mode, preconditions, and pattern composition differ.
+
+**Classification: likely-original.** No copied protectable expression found. The standing
+human legal-review gate remains de-risked, not closed.

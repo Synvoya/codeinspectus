@@ -15,8 +15,10 @@ Local-first MCP security scanner for AI-generated web apps.
 CodeInspectus helps developers and coding agents scan AI-generated web apps for common
 security mistakes before shipping. It combines local scanners with AI-app-specific checks
 for exposed secrets, unsafe HTML rendering, Supabase auth footguns, prompt-injection sinks,
-dependency risk, and container issues. It runs locally, requires no account, and exposes an
-MCP server for agent workflows.
+server/API data leaks, unsafe request writes, explicit runtime-control misconfiguration,
+dependency risk, and container issues. Supported runtime controls use three repository-evidence
+states; missing hosted configuration is never guessed. It runs locally, requires no account,
+and exposes an MCP server for agent workflows.
 
 ## Tags
 

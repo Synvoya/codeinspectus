@@ -52,7 +52,24 @@ export function summarizeScan(r: ScanResult): string {
     ? `\n\nCVE rescan tracking:\n  ${TRIVY_DB_PROVENANCE_MESSAGE}`
     : "";
 
-  return `${head}${body}${trunc}${dbProvenance}${beforeFix}${eng}${warn}\n\n${r.disclaimer}`;
+  const controlEvidence = r.security_control_evidence?.length
+    ? (() => {
+        const counts = {
+          verified_in_repository: 0,
+          insecure_configuration_found: 0,
+          not_verifiable_from_repository: 0,
+        };
+        for (const record of r.security_control_evidence!) counts[record.state]++;
+        return (
+          "\n\nRuntime-control evidence (metadata; no absence penalty):\n" +
+          `  ${counts.verified_in_repository} verified in repository | ` +
+          `${counts.insecure_configuration_found} explicit insecure configuration | ` +
+          `${counts.not_verifiable_from_repository} not verifiable from repository`
+        );
+      })()
+    : "";
+
+  return `${head}${body}${trunc}${controlEvidence}${dbProvenance}${beforeFix}${eng}${warn}\n\n${r.disclaimer}`;
 }
 
 export function summarizeRescan(r: RescanResult): string {

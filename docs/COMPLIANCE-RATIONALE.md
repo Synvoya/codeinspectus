@@ -77,6 +77,42 @@ defensible and CG-08 does not pretend they are:
 
 Reviewer for every row below: **AI-drafted, unverified.**
 
+### Project CI Enhancement 1 — direct finding-category mappings
+
+These mappings are carried directly on the five new/corrected finding contracts. They do
+**not** add controls to `data/cwe_to_controls.json`, change any compliance-report denominator,
+or establish an OWASP API coverage score.
+
+| Failure pattern | Primary CWE | OWASP Web 2021 | OWASP API 2023 | Basis |
+|---|---|---|---|---|
+| Internal error details returned to a client | CWE-209 | A05 | API8 | Explicit error/stack/provider/query/path exposure is a security misconfiguration and information leak. |
+| Explicit credential fields returned by an API | CWE-201 | A01 | API3 | The detector flags an exposed object property, not generic response over-sharing. |
+| Whole unvalidated request object passed to a database write | CWE-915 | A01 | API3 | The request can set unintended object properties; authorization for privileged fields remains a separate requirement. |
+| Sensitive request data written to logs | CWE-532 | A09 | API8 | The failure is explicit credential/header/cookie/body logging, not a generic logging-quality judgment. |
+| Credentialed arbitrary-origin CORS | CWE-942 | A05 | API8 | The repository explicitly accepts or reflects an arbitrary origin while credentialed sharing is enabled. |
+
+Reviewer state: **AI-drafted, policy-reviewed by maintainer; not community-verified.** The
+OWASP API values are category tags on findings only. Product language must remain
+"code-visible coverage," never "OWASP compliant" or "complete OWASP review."
+
+### Project CI Enhancement 2 — explicit configuration mappings
+
+These mappings apply only when the repository evidence resolver returns
+`insecure_configuration_found`. `verified_in_repository` and
+`not_verifiable_from_repository` are metadata states; neither creates a finding, failed
+control, or posture-score deduction.
+
+| Failure pattern | Primary CWE | Additional CWE | OWASP Web 2021 | OWASP API 2023 | Basis |
+|---|---|---|---|---|---|
+| Security response header explicitly disabled, removed, or neutralized | CWE-693 | — | A05 | API8 | The finding requires a recognized repository-controlled response layer and an explicit ineffective value/operation; it does not infer absence. |
+| Enforced production CSP gives script execution a bare wildcard or `'unsafe-eval'` | CWE-693 | — | A05 | API8 | The rule detects a literal protection-mechanism weakening, not missing CSP or complete CSP quality. |
+| Auth/session cookie explicitly disables HttpOnly/Secure or uses SameSite=None without Secure | CWE-1004 | CWE-614 | A05 | API8 | The cookie name and explicit attributes are repository-visible; generic cookies and dynamic attributes remain silent. |
+| Checked-in Supabase CAPTCHA enablement paired with an auth call missing `captchaToken` | CWE-693 | — | A05 | API8 | This is a provable integration mismatch that should make Supabase reject the request; it is not evidence of CAPTCHA bypass or hosted configuration. |
+
+Reviewer state: **AI-drafted, policy-reviewed by maintainer; not community-verified.**
+OWASP API tags remain finding context only. The three-state evidence records do not extend
+any framework denominator.
+
 ### CWE-798 — Hard-coded credentials
 
 | Control | Conf. | Source citation (official title) | Rationale |

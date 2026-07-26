@@ -3,24 +3,165 @@
 rules:
   - id: ci-baseline-cors-wildcard-credentials
     languages: [javascript, typescript]
-    severity: ERROR
+    severity: WARNING
     message: >
-      CORS allows any origin together with credentials. A wildcard origin with
-      credentials exposes authenticated responses to any site. Pin an allowlist.
+      CORS combines a wildcard origin with credentials. Browsers reject credentialed
+      response sharing for this invalid combination, so cross-origin credentialed
+      requests fail rather than exposing authenticated responses. Pin an explicit
+      origin allowlist and keep credentials disabled unless they are required.
     metadata:
       cwe: "CWE-942: Permissive Cross-domain Policy with Untrusted Domains"
       owasp: "A05:2021 - Security Misconfiguration"
       category: security
       confidence: MEDIUM
     patterns:
-      - pattern: 'cors({ ..., origin: "*", ..., credentials: true, ... })'
+      - pattern-either:
+          - pattern: 'cors({ ..., origin: "*", ..., credentials: true, ... })'
+          - pattern: 'cors({ ..., credentials: true, ..., origin: "*", ... })'
+          - pattern: |
+              const $OPTIONS = { ..., origin: "*", ..., credentials: true, ... };
+              ...
+              cors($OPTIONS);
+          - pattern: |
+              const $OPTIONS = { ..., credentials: true, ..., origin: "*", ... };
+              ...
+              cors($OPTIONS);
+          - pattern: |
+              let $OPTIONS = { ..., origin: "*", ..., credentials: true, ... };
+              ...
+              cors($OPTIONS);
+          - pattern: |
+              let $OPTIONS = { ..., credentials: true, ..., origin: "*", ... };
+              ...
+              cors($OPTIONS);
+          - pattern: |
+              var $OPTIONS = { ..., origin: "*", ..., credentials: true, ... };
+              ...
+              cors($OPTIONS);
+          - pattern: |
+              var $OPTIONS = { ..., credentials: true, ..., origin: "*", ... };
+              ...
+              cors($OPTIONS);
+
+  - id: ci-baseline-cors-arbitrary-origin-credentials
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      CORS reflects or unconditionally accepts an arbitrary request origin while
+      credentials are enabled. A malicious site can make credentialed cross-origin
+      requests and read the response. Validate the Origin against an explicit allowlist.
+    metadata:
+      cwe: "CWE-942: Permissive Cross-domain Policy with Untrusted Domains"
+      owasp: "A05:2021 - Security Misconfiguration"
+      owasp_api: "API8:2023 - Security Misconfiguration"
+      category: security
+      confidence: HIGH
+    patterns:
+      - pattern-either:
+          - pattern: 'cors({ ..., origin: true, ..., credentials: true, ... })'
+          - pattern: 'cors({ ..., credentials: true, ..., origin: true, ... })'
+          - pattern: |
+              const $OPTIONS = { ..., origin: true, ..., credentials: true, ... };
+              ...
+              cors($OPTIONS);
+          - pattern: |
+              const $OPTIONS = { ..., credentials: true, ..., origin: true, ... };
+              ...
+              cors($OPTIONS);
+          - pattern: |
+              let $OPTIONS = { ..., origin: true, ..., credentials: true, ... };
+              ...
+              cors($OPTIONS);
+          - pattern: |
+              let $OPTIONS = { ..., credentials: true, ..., origin: true, ... };
+              ...
+              cors($OPTIONS);
+          - pattern: |
+              var $OPTIONS = { ..., origin: true, ..., credentials: true, ... };
+              ...
+              cors($OPTIONS);
+          - pattern: |
+              var $OPTIONS = { ..., credentials: true, ..., origin: true, ... };
+              ...
+              cors($OPTIONS);
+          - pattern: 'cors({ ..., origin: /.*/, ..., credentials: true, ... })'
+          - pattern: 'cors({ ..., credentials: true, ..., origin: /.*/, ... })'
+          - pattern: |
+              cors({
+                ...,
+                credentials: true,
+                ...,
+                origin($ORIGIN, $CALLBACK) {
+                  $CALLBACK(null, true);
+                },
+                ...
+              })
+          - pattern: |
+              cors({
+                ...,
+                origin($ORIGIN, $CALLBACK) {
+                  $CALLBACK(null, true);
+                },
+                ...,
+                credentials: true,
+                ...
+              })
+          - pattern: |
+              cors({
+                ...,
+                credentials: true,
+                ...,
+                origin($ORIGIN, $CALLBACK) {
+                  $CALLBACK(null, $ORIGIN);
+                },
+                ...
+              })
+          - pattern: |
+              cors({
+                ...,
+                origin($ORIGIN, $CALLBACK) {
+                  $CALLBACK(null, $ORIGIN);
+                },
+                ...,
+                credentials: true,
+                ...
+              })
+          - pattern: 'cors({ ..., origin: ($ORIGIN, $CALLBACK) => $CALLBACK(null, true), ..., credentials: true, ... })'
+          - pattern: 'cors({ ..., credentials: true, ..., origin: ($ORIGIN, $CALLBACK) => $CALLBACK(null, true), ... })'
+          - pattern: 'cors({ ..., origin: ($ORIGIN, $CALLBACK) => $CALLBACK(null, $ORIGIN), ..., credentials: true, ... })'
+          - pattern: 'cors({ ..., credentials: true, ..., origin: ($ORIGIN, $CALLBACK) => $CALLBACK(null, $ORIGIN), ... })'
+          - pattern: |
+              $RES.setHeader("Access-Control-Allow-Origin", $REQ.headers.origin);
+              ...
+              $RES.setHeader("Access-Control-Allow-Credentials", "true");
+          - pattern: |
+              $RES.setHeader("Access-Control-Allow-Credentials", "true");
+              ...
+              $RES.setHeader("Access-Control-Allow-Origin", $REQ.headers.origin);
+          - pattern: |
+              $RES.header("Access-Control-Allow-Origin", $REQ.headers.origin);
+              ...
+              $RES.header("Access-Control-Allow-Credentials", "true");
+          - pattern: |
+              $RES.header("Access-Control-Allow-Credentials", "true");
+              ...
+              $RES.header("Access-Control-Allow-Origin", $REQ.headers.origin);
+      - pattern-not-inside: |
+          if ($ALLOWED.has($REQ.headers.origin)) {
+            ...
+          }
+      - pattern-not-inside: |
+          if ($ALLOWED.includes($REQ.headers.origin)) {
+            ...
+          }
 
   - id: ci-baseline-insecure-cookie
     languages: [javascript, typescript]
     severity: WARNING
     message: >
-      Session cookie set without httpOnly/secure. Set httpOnly:true and secure:true
-      (and a sane sameSite) for auth/session cookies.
+      This cookie explicitly disables HttpOnly, allowing browser scripts to read it.
+      Set httpOnly:true. For auth/session cookies, also set secure:true and choose an
+      intentional SameSite policy.
     metadata:
       cwe: "CWE-1004: Sensitive Cookie Without 'HttpOnly' Flag"
       owasp: "A05:2021 - Security Misconfiguration"

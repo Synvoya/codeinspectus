@@ -23,7 +23,7 @@ import { dirname } from "node:path";
 export const MCP_SPEC_VERSION = "2025-11-25";
 
 export const SERVER_NAME = "codeinspectus";
-export const SERVER_VERSION = "0.3.2";
+export const SERVER_VERSION = "0.4.0";
 
 // ── Bundled engine versions (SHA-pinned in engines.lock.json) ───────────────
 export const ENGINE_VERSIONS = {
@@ -36,7 +36,7 @@ export const ENGINE_VERSIONS = {
 export type EngineName = "opengrep" | "gitleaks" | "trivy";
 
 // CodeInspectus's own analyzer "engine" version (the AI-code checks, §6).
-export const CODEINSPECTUS_AI_VERSION = "1.0.0";
+export const CODEINSPECTUS_AI_VERSION = "1.2.0";
 
 // ── Managed directories (per-machine, never per-repo) ───────────────────────
 // PRD §12: an MCP server is installed once per machine, not per repo.
@@ -84,6 +84,7 @@ export const MAX_BUFFER_BYTES = 1024 * 1024 * 256; // 256 MB stdout cap
 // signal (a git-ignored `public/` is handled by the gitignored bucket).
 export const BUILD_DIRS: ReadonlySet<string> = new Set([
   ".next",
+  "_next", // Exported/copied Next.js assets (for example Capacitor public/_next).
   "dist",
   "build",
   "out",

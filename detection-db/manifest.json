@@ -1,7 +1,7 @@
 {
   "name": "CodeInspectus Detection Database",
-  "version": "0.2.0",
-  "date": "2026-07-04",
+  "version": "0.4.0",
+  "date": "2026-07-26",
   "description": "CodeInspectus's curated detections (the moat, §9): AI-code / vibe-coding / framework-specific failure modes the generic engines miss. Grows via human-reviewed weekly intake. Generic SAST is intentionally NOT here — that is the engines' job.",
   "engine_versions": {
     "opengrep": "1.23.0",
@@ -119,6 +119,86 @@
       "name": "Untrusted or model output rendered as raw HTML (React __html sink)",
       "kind": "ai",
       "cwe": ["CWE-79", "CWE-116"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-client-error-leak",
+      "engine": "codeinspectus-ai",
+      "name": "Internal error details returned to the client",
+      "kind": "ai",
+      "cwe": ["CWE-209"],
+      "owasp_web": ["A05:2021"],
+      "owasp_api": ["API8:2023"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-sensitive-api-response",
+      "engine": "codeinspectus-ai",
+      "name": "Sensitive field explicitly returned in an API response",
+      "kind": "ai",
+      "cwe": ["CWE-201"],
+      "owasp_web": ["A01:2021"],
+      "owasp_api": ["API3:2023"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-unvalidated-request-write",
+      "engine": "codeinspectus-ai",
+      "name": "Unvalidated request object passed directly to a database write",
+      "kind": "ai",
+      "cwe": ["CWE-915"],
+      "owasp_web": ["A01:2021"],
+      "owasp_api": ["API3:2023"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-sensitive-log",
+      "engine": "codeinspectus-ai",
+      "name": "Sensitive request data written to application logs",
+      "kind": "ai",
+      "cwe": ["CWE-532"],
+      "owasp_web": ["A09:2021"],
+      "owasp_api": ["API8:2023"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-security-header-disabled",
+      "engine": "codeinspectus-ai",
+      "name": "Security response header explicitly disabled or ineffective",
+      "kind": "ai",
+      "cwe": ["CWE-693"],
+      "owasp_web": ["A05:2021"],
+      "owasp_api": ["API8:2023"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-unsafe-production-csp",
+      "engine": "codeinspectus-ai",
+      "name": "Production CSP explicitly allows unsafe script execution",
+      "kind": "ai",
+      "cwe": ["CWE-693"],
+      "owasp_web": ["A05:2021"],
+      "owasp_api": ["API8:2023"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-insecure-session-cookie",
+      "engine": "codeinspectus-ai",
+      "name": "Auth/session cookie explicitly uses insecure attributes",
+      "kind": "ai",
+      "cwe": ["CWE-1004", "CWE-614"],
+      "owasp_web": ["A05:2021"],
+      "owasp_api": ["API8:2023"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-supabase-captcha-token-missing",
+      "engine": "codeinspectus-ai",
+      "name": "CAPTCHA-enabled Supabase auth call omits captchaToken",
+      "kind": "ai",
+      "cwe": ["CWE-693"],
+      "owasp_web": ["A05:2021"],
+      "owasp_api": ["API8:2023"],
       "source": "codeinspectus-custom"
     },
     {
@@ -247,12 +327,24 @@
       "name": "CORS wildcard origin with credentials",
       "kind": "sast",
       "cwe": ["CWE-942"],
+      "owasp_web": ["A05:2021"],
+      "owasp_api": ["API8:2023"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-baseline-cors-arbitrary-origin-credentials",
+      "engine": "opengrep",
+      "name": "CORS accepts arbitrary origins with credentials",
+      "kind": "sast",
+      "cwe": ["CWE-942"],
+      "owasp_web": ["A05:2021"],
+      "owasp_api": ["API8:2023"],
       "source": "codeinspectus-custom"
     },
     {
       "id": "ci-baseline-insecure-cookie",
       "engine": "opengrep",
-      "name": "Session cookie without httpOnly/secure",
+      "name": "Session cookie explicitly disables HttpOnly",
       "kind": "sast",
       "cwe": ["CWE-1004"],
       "source": "codeinspectus-custom"
