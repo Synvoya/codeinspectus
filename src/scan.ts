@@ -43,6 +43,7 @@ import { buildComplianceOverview } from "./compliance/report.js";
 import { hasUnverifiedSecretCoverage, secretSuppressionWarnings } from "./gitleaks-suppression.js";
 import { PIPELINE_COMPONENT, staticComponentSignatures } from "./provenance.js";
 import { trivyDbProvenanceSignal } from "./trivy-db-provenance.js";
+import { inspectEngineSetup } from "./engine-health.js";
 
 function wants(input: ScanInput, scanner: string): boolean {
   return !input.scanners || input.scanners.length === 0 || input.scanners.includes(scanner as never);
@@ -205,6 +206,7 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       componentSignatures,
     );
 
+    const engineSetup = await inspectEngineSetup();
     const result: ScanResult = {
       scan_id: `scan-${randomUUID()}`,
       target,
@@ -227,6 +229,7 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
         ? { security_control_evidence: aiResult.securityControlEvidence }
         : {}),
       ...(trivyDbProvenance ? { trivy_db_provenance: trivyDbProvenance } : {}),
+      engine_setup: engineSetup,
       git_safety,
       // CG-75: capture the effective config so a bare rescan is like-for-like and rescan can
       // prove re-checkability. An empty/absent scanners request means "all" — store it as

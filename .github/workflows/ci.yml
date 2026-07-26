@@ -105,20 +105,10 @@ jobs:
           actual="$(node -e "process.stdout.write(process.platform + '-' + process.arch)")"
           echo "runner platform: $actual"
           test "$actual" = "linux-x64"
-      - name: Install engines — fetch + cosign/checksum-verify + SHA-pin + Trivy DB
-        run: node dist/index.js install-engines
-      - name: Assert freshly-verified SHAs == committed engines.lock.json pins
-        shell: bash
-        run: |
-          # install-engines rewrites only generated_at + provenance.at timestamps; every
-          # sha256 pin must be byte-identical to what is committed. A changed pin means an
-          # upstream asset moved under a fixed version tag -> fail closed (supply-chain).
-          if git diff -- engines.lock.json | grep -qE '^[+-][[:space:]]*"sha256"'; then
-            echo "FAIL: an engine SHA256 pin changed after a fresh verified install:"
-            git diff -- engines.lock.json | grep -E '^[+-][[:space:]]*"sha256"'
-            exit 1
-          fi
-          echo "OK: all engine SHA256 pins unchanged (only install timestamps differ)."
+      - name: Repair engines — verify immutable shipped pins + install + Trivy DB
+        run: node dist/index.js repair-engines --refresh-db
+      - name: Assert user repair did not mutate the packaged lockfile
+        run: git diff --exit-code -- engines.lock.json
       - name: Verify installed binaries against the lockfile (native OS)
         run: node dist/index.js verify-engines
       - name: Eval — full suite; REQUIRE E16/E18 Opengrep + E17 Trivy to RUN (0 skipped)
@@ -126,8 +116,7 @@ jobs:
         run: |
           # The engine tier EXISTS to prove Opengrep + Trivy actually execute. A skip
           # here is a FAILURE, not acceptable degradation: if the Trivy DB pull silently
-          # failed (populateTrivyDb logs + returns undefined, so install-engines still
-          # exits 0) or an engine did not run, E16-E18 self-skip and the eval harness
+          # failed or an engine did not run, E16-E18 self-skip and the eval harness
           # exits 0 — a false green. Asserting 0 skipped turns that into a RED instead.
           out="${RUNNER_TEMP:-/tmp}/eval.out"
           set -o pipefail
@@ -181,17 +170,10 @@ jobs:
           actual="$(node -e "process.stdout.write(process.platform + '-' + process.arch)")"
           echo "runner platform: $actual (expected $EXPECTED_PLATFORM)"
           test "$actual" = "$EXPECTED_PLATFORM"
-      - name: Install engines — fetch + cosign/checksum-verify + SHA-pin + Trivy DB
-        run: node dist/index.js install-engines
-      - name: Assert freshly-verified SHAs == committed engines.lock.json pins
-        shell: bash
-        run: |
-          if git diff -- engines.lock.json | grep -qE '^[+-][[:space:]]*"sha256"'; then
-            echo "FAIL: an engine SHA256 pin changed after a fresh verified install:"
-            git diff -- engines.lock.json | grep -E '^[+-][[:space:]]*"sha256"'
-            exit 1
-          fi
-          echo "OK: all engine SHA256 pins unchanged (only install timestamps differ)."
+      - name: Repair engines — verify immutable shipped pins + install + Trivy DB
+        run: node dist/index.js repair-engines --refresh-db
+      - name: Assert user repair did not mutate the packaged lockfile
+        run: git diff --exit-code -- engines.lock.json
       - name: Verify installed binaries against the lockfile (native OS)
         run: node dist/index.js verify-engines
       - name: Eval — full suite; REQUIRE E16/E18 Opengrep + E17 Trivy to RUN (0 skipped)

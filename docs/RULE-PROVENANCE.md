@@ -101,7 +101,7 @@ bundle them.
 ## Bundled engines + the engine-authored rulesets in use
 
 The three scan engines are **external SHA-pinned binaries**, **not** npm dependencies. They
-are downloaded and verified by `codeinspectus install-engines` into a per-machine managed
+are downloaded and verified by `codeinspectus repair-engines` into a per-machine managed
 dir (`~/.codeinspectus/`); they are **not** redistributed inside the npm tarball. `npm pack`
 ships runtime assets only (`dist/`, `data/`, `detection-db/`, `engines.lock.json`,
 `README.md`). So CodeInspectus distributes **pins + download/verify code**, not the engine

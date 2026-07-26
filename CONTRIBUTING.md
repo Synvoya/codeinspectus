@@ -53,7 +53,7 @@ npm run eval       # drives the built MCP server over stdio against fixtures/vul
   dedup, SARIF normalization, and file-routing behaviour. It needs **no** engine binaries.
 - `npm run eval` should report **17 passed, 0 failed** with the engines installed. The two
   engine-dependent evals (Opengrep SQLi, Trivy SCA) **auto-skip** if you haven't run
-  `install-engines` — a **skip is acceptable, a fail is not.**
+  `repair-engines` — a **skip is acceptable, a fail is not.**
 - A green `npm test` + `npm run eval` on your machine is the same gate the maintainer applies.
 
 ---
@@ -162,7 +162,7 @@ will not be merged, however useful it otherwise is:
 4. **stdout is JSON-RPC only.** All logging goes to stderr via `src/logger.ts`. **No
    `console.log` anywhere in `src/`** — it corrupts the MCP stream.
 5. **Zero scan-time egress, no telemetry.** Scans do no network I/O; the only networked step is
-   `install-engines`. Never add a phone-home.
+   explicit `repair-engines`. Never add a phone-home.
 6. **Compliance = code-level coverage only.** Never emit "% compliant", "you pass", or any
    certification language; always show the code-visible denominator + disclaimer.
 7. **Read-only tools.** The scanner reads and reports; it never writes to or deletes the user's

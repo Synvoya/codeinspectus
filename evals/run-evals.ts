@@ -377,16 +377,16 @@ async function main() {
     try {
       // Engine-dependency gating for stable runs.
       if (c.engineDep === "opengrep" && !engineRan("opengrep")) {
-        record(c.id, "skip", "opengrep did not run (install-engines)");
+        record(c.id, "skip", "opengrep did not run (repair-engines)");
         continue;
       }
       if (c.engineDep === "trivy-vuln") {
         if (!engineRan("trivy")) {
-          record(c.id, "skip", "trivy did not run (install-engines)");
+          record(c.id, "skip", "trivy did not run (repair-engines)");
           continue;
         }
         if (!scan.trivy_db_date) {
-          record(c.id, "skip", "trivy vuln DB not present (install-engines populates it)");
+          record(c.id, "skip", "trivy vuln DB not present (repair-engines populates it)");
           continue;
         }
       }

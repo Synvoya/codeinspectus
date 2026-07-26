@@ -2,7 +2,7 @@
 #
 # Each matrix job runs on its NATIVE OS runner, downloads + verifies (cosign /
 # checksums, fail-closed) + pins its own platform's engine binaries via
-# `install-engines --pin-only`, and uploads the resulting engines.lock.json. A
+# `pin-engines --pin-only`, and uploads the resulting engines.lock.json. A
 # final job merges the per-platform pins into one lockfile artifact for a human to
 # review and commit.
 #
@@ -68,7 +68,7 @@ jobs:
           # extracts the binary and records its SHA256 + provenance — all on the native OS.
           # It installs NO runnable binary, so `verify-engines` (which resolves an installed
           # binary) must not follow it here — that mismatch was the CG-71 latent bug.
-          node dist/index.js install-engines --pin-only
+          node dist/index.js pin-engines --pin-only
 
       - name: Upload per-platform lockfile
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

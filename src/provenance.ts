@@ -5,7 +5,7 @@
 
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 
 import { MANAGED_PROVENANCE, MANAGED_TRIVY_DB, MANAGED_TRIVY_DB_PROVENANCE } from "./config.js";
@@ -130,15 +130,27 @@ export async function sha256FileStreaming(path: string): Promise<string> {
   return `sha256:${hash.digest("hex")}`;
 }
 
-/** Called only after install-engines downloads the DB; never hashes the 1.1GB DB during scans. */
-export async function recordTrivyDbContentDigest(): Promise<string> {
-  const digest = await sha256FileStreaming(MANAGED_TRIVY_DB);
+/** Atomically persist a precomputed DB signature after the staged DB is installed. */
+export async function writeTrivyDbContentDigest(digest: string): Promise<void> {
+  if (!/^sha256:[a-f0-9]{64}$/.test(digest)) throw new Error("Invalid Trivy DB content signature.");
   await mkdir(join(MANAGED_PROVENANCE, "trivy"), { recursive: true });
+  const tmp = `${MANAGED_TRIVY_DB_PROVENANCE}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(
-    MANAGED_TRIVY_DB_PROVENANCE,
+    tmp,
     JSON.stringify({ component: "trivy:vulnerability-db", signature: digest, recorded_at: new Date().toISOString() }),
     "utf8",
   );
+  try {
+    await rename(tmp, MANAGED_TRIVY_DB_PROVENANCE);
+  } finally {
+    await rm(tmp, { force: true }).catch(() => {});
+  }
+}
+
+/** Called only after a DB download; never hashes the 1.1GB DB during scans. */
+export async function recordTrivyDbContentDigest(dbPath = MANAGED_TRIVY_DB): Promise<string> {
+  const digest = await sha256FileStreaming(dbPath);
+  await writeTrivyDbContentDigest(digest);
   return digest;
 }
 

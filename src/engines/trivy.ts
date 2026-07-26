@@ -4,7 +4,7 @@
  * ZERO-EGRESS GUARDRAIL (PRD §7): every scan-time invocation includes
  * --skip-db-update --skip-java-db-update --offline-scan --skip-check-update and a
  * managed --cache-dir. No network call ever happens during a scan. The vuln DB
- * is populated out of band by `install-engines` (the only network step).
+ * is populated out of band by explicit `repair-engines` maintenance.
  */
 
 import { readFile, access, mkdir } from "node:fs/promises";
@@ -64,7 +64,7 @@ export async function runTrivy(
       // A common offline failure is a missing DB — give an actionable hint.
       const dbHint = trivyDbDate
         ? ""
-        : " The Trivy vuln DB may be missing; run `codeinspectus install-engines` to populate the offline DB snapshot.";
+        : " The Trivy vuln DB may be missing; run `codeinspectus repair-engines` to populate the offline DB snapshot.";
       return note(version, t0, `Trivy produced no SARIF (exit ${res.code}).${dbHint} stderr: ${trunc(res.stderr)}`, trivyDbDate);
     }
 

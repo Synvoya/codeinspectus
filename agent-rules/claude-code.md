@@ -5,7 +5,11 @@ loop. **Principle: CodeInspectus REPORTS; the user DECIDES; you fix only with co
 CodeInspectus never edits or deletes your source code or repository — the only file it writes is an optional SBOM (managed directory by default, or a path you choose), and engine data + scan history stay under `~/.codeinspectus`.
 
 1. **Scan.** Call `codeinspectus_scan` with the absolute repo path. It runs locally with
-   zero network egress and returns CWE-keyed findings, each with a `remediation`.
+   zero network egress and returns CWE-keyed findings, each with a `remediation`. Inspect
+   `engine_setup`: if it is not `ready`, explain the exact state (partial engine coverage only for
+   `repair_required`; DB freshness/rescan continuity for `db_refresh_recommended`) and ask before
+   running `npx codeinspectus repair-engines` in the user's terminal. Never download engines
+   silently or as part of the scan.
 2. **Surface — always, before touching any code.** Present the findings to the user first.
    Group by severity, **criticals first**. For each finding give: (a) a plain-language
    explanation of the risk a non-expert can understand, (b) the location (`file:line`), and

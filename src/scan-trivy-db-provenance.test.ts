@@ -8,6 +8,7 @@ import { TRIVY_DB_PROVENANCE_MESSAGE } from "./trivy-db-provenance.js";
 let trivyComponentSignatures: Record<string, string> = {};
 
 vi.mock("./engines/trivy.js", () => ({
+  readTrivyDbDate: vi.fn(async () => "2026-07-15T19:04:37.151625466Z"),
   runTrivy: vi.fn(async () => ({
     engine: "trivy",
     version: "0.71.2",

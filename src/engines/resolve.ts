@@ -11,7 +11,7 @@
  * supply-chain compromises.
  */
 
-import { readFile, access } from "node:fs/promises";
+import { readFile, access, stat } from "node:fs/promises";
 import { constants as FS } from "node:fs";
 import { join } from "node:path";
 import { MANAGED_BIN, PKG_ROOT, type EngineName } from "../config.js";
@@ -22,6 +22,7 @@ import { log } from "../logger.js";
 export class EngineUnavailableError extends Error {
   constructor(
     public engine: EngineName,
+    public reason: EngineAvailabilityIssue,
     message: string,
   ) {
     super(message);
@@ -29,13 +30,41 @@ export class EngineUnavailableError extends Error {
   }
 }
 
+export type EngineAvailabilityIssue =
+  | "missing"
+  | "hash_mismatch"
+  | "unpinned"
+  | "lockfile_error"
+  | "unsupported_platform";
+
 interface Resolved {
   path: string;
   version: string;
   sha256: string;
+  file_identity: {
+    size: number;
+    mtime_ms: number;
+    ctime_ms: number;
+    ino: number;
+  };
 }
 
 const cache = new Map<EngineName, Resolved>();
+
+async function cachedFileUnchanged(cached: Resolved): Promise<boolean> {
+  try {
+    const current = await stat(cached.path);
+    return (
+      current.isFile() &&
+      current.size === cached.file_identity.size &&
+      current.mtimeMs === cached.file_identity.mtime_ms &&
+      current.ctimeMs === cached.file_identity.ctime_ms &&
+      current.ino === cached.file_identity.ino
+    );
+  } catch {
+    return false;
+  }
+}
 
 function binaryFilename(base: string): string {
   return process.platform === "win32" ? `${base}.exe` : base;
@@ -63,7 +92,7 @@ function candidatePaths(engine: EngineName): string[] {
 
 function installHint(engine: EngineName): string {
   return (
-    `Engine '${engine}' is not available. Run \`codeinspectus install-engines\` once per machine ` +
+    `Engine '${engine}' is not available. Run \`codeinspectus repair-engines\` once per machine ` +
     `to fetch and SHA-pin the engine binaries (this is the only network step; install-time only). ` +
     `Expected at: ${join(MANAGED_BIN, binaryFilename(engine))}.`
   );
@@ -74,13 +103,15 @@ export async function resolveEngine(
   lock?: Lockfile,
 ): Promise<Resolved> {
   const cached = cache.get(engine);
-  if (cached) return cached;
+  if (cached && await cachedFileUnchanged(cached)) return cached;
+  if (cached) cache.delete(engine);
 
   const lockfile = lock ?? (await loadLockfile().catch(() => undefined));
   if (!lockfile) {
     throw new EngineUnavailableError(
       engine,
-      `engines.lock.json could not be read. Reinstall CodeInspectus or run \`codeinspectus install-engines\`.`,
+      "lockfile_error",
+      `engines.lock.json could not be read. Reinstall CodeInspectus; repair cannot replace a missing packaged lockfile.`,
     );
   }
 
@@ -89,6 +120,7 @@ export async function resolveEngine(
   if (!entry || !engineMeta) {
     throw new EngineUnavailableError(
       engine,
+      "unsupported_platform",
       `No lockfile entry for ${engine} on platform '${platformKey()}'. This platform may be unsupported; see README.`,
     );
   }
@@ -102,16 +134,17 @@ export async function resolveEngine(
     }
   }
   if (!found) {
-    throw new EngineUnavailableError(engine, installHint(engine));
+    throw new EngineUnavailableError(engine, "missing", installHint(engine));
   }
 
   // GUARDRAIL: pin must exist and must match before we ever exec.
   if (!entry.sha256) {
     throw new EngineUnavailableError(
       engine,
+      "unpinned",
       `${engine} is present at ${found} but has no SHA256 pin in engines.lock.json. ` +
         `Refusing to execute an unpinned binary (supply-chain safety, PRD §0.2). ` +
-        `Run \`codeinspectus install-engines\` to fetch + verify + pin it.`,
+        `Reinstall CodeInspectus; user repair cannot modify an unpinned packaged lockfile.`,
     );
   }
 
@@ -119,16 +152,28 @@ export async function resolveEngine(
   if (actual.toLowerCase() !== entry.sha256.toLowerCase()) {
     throw new EngineUnavailableError(
       engine,
+      "hash_mismatch",
       `SHA256 MISMATCH for ${engine} at ${found}.\n` +
         `  expected (lockfile): ${entry.sha256}\n` +
         `  actual (on disk):    ${actual}\n` +
         `Refusing to execute a binary that does not match its pin (possible tampering). ` +
-        `Re-run \`codeinspectus install-engines\` from a trusted network, or restore the verified binary.`,
+        `Run \`codeinspectus repair-engines\` from a trusted network, or restore the verified binary.`,
     );
   }
 
   log.debug(`${engine} verified (sha256 ${actual.slice(0, 12)}…) at ${found}`);
-  const resolved: Resolved = { path: found, version: engineMeta.version, sha256: actual };
+  const identity = await stat(found);
+  const resolved: Resolved = {
+    path: found,
+    version: engineMeta.version,
+    sha256: actual,
+    file_identity: {
+      size: identity.size,
+      mtime_ms: identity.mtimeMs,
+      ctime_ms: identity.ctimeMs,
+      ino: identity.ino,
+    },
+  };
   cache.set(engine, resolved);
   return resolved;
 }
@@ -136,7 +181,7 @@ export async function resolveEngine(
 /** Non-throwing availability probe for list_rules / scan engine_details. */
 export async function probeEngine(
   engine: EngineName,
-): Promise<{ available: boolean; version: string; note?: string }> {
+): Promise<{ available: boolean; version: string; issue?: EngineAvailabilityIssue; note?: string }> {
   try {
     const r = await resolveEngine(engine);
     return { available: true, version: r.version };
@@ -147,6 +192,7 @@ export async function probeEngine(
     return {
       available: false,
       version,
+      ...(err instanceof EngineUnavailableError ? { issue: err.reason } : { issue: "lockfile_error" as const }),
       note: err instanceof Error ? err.message : String(err),
     };
   }

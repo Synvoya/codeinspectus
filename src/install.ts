@@ -1,11 +1,13 @@
 /**
- * install-engines — the ONLY network step, install-time only (PRD §7, §12).
+ * Explicit engine maintenance commands — the only normal user network path (PRD §7, §12).
  *
- * Modes:
- *   install-engines                  Pin + INSTALL the current platform, then fetch the Trivy DB.
- *   install-engines --platform <k>   Pin platform <k> (repeatable). Installs/run only if <k> is current.
- *   install-engines --all-platforms  Pin every platform in the lockfile; install the current one + DB.
- *   (trailing engine names)          Restrict to those engines (opengrep|gitleaks|trivy).
+ * User modes:
+ *   repair-engines                   Offline-plan, then repair only unhealthy engines/DB state.
+ *   install-engines                  Backward-compatible alias; also refreshes the Trivy DB.
+ *
+ * Maintainer mode:
+ *   pin-engines [--platform <k>|--all-platforms|--pin-only]
+ *                                    Verify release artifacts and update the shipped lockfile.
  *
  * Pinning a platform = download asset -> verify authenticity (MANDATORY, fail-closed:
  * cosign for opengrep; cosign sigstore bundle over checksums for trivy; checksum
@@ -18,13 +20,14 @@
  * Output goes to stdout/stderr (CLI mode; not the MCP transport).
  */
 
-import { mkdir, writeFile, readFile, rm, chmod, copyFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile, rm, chmod, copyFile, rename, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { spawn } from "node:child_process";
 import {
   MANAGED_BIN,
   MANAGED_TRIVY_CACHE,
+  MANAGED_TRIVY_DB_PROVENANCE,
   MANAGED_PROVENANCE,
   MANAGED_ROOT,
   type EngineName,
@@ -40,7 +43,9 @@ import {
   type Provenance,
 } from "./engines/lockfile.js";
 import { hasCosign, verifyCertSig, verifyBundle } from "./engines/signature.js";
-import { recordTrivyDbContentDigest } from "./provenance.js";
+import { sha256FileStreaming, writeTrivyDbContentDigest } from "./provenance.js";
+import { inspectEngineSetup } from "./engine-health.js";
+import type { EngineSetupStatus } from "./types.js";
 
 const ENGINE_ORDER: EngineName[] = ["opengrep", "gitleaks", "trivy"];
 
@@ -159,7 +164,7 @@ async function cacheArtifacts(engine: EngineName, files: string[]): Promise<void
   const dir = join(MANAGED_PROVENANCE, engine);
   await mkdir(dir, { recursive: true });
   for (const f of files) {
-    const base = f.split("/").pop()!.replace(new RegExp(`^${engine}-`), "");
+    const base = basename(f).replace(new RegExp(`^${engine}-`), "");
     await copyFile(f, join(dir, base)).catch(() => {});
   }
 }
@@ -172,6 +177,34 @@ interface PinResult {
   installed: boolean;
 }
 
+async function atomicInstallBinary(source: string, dest: string): Promise<void> {
+  await mkdir(MANAGED_BIN, { recursive: true });
+  const tmp = join(MANAGED_BIN, `.${basename(dest)}.${process.pid}.${Date.now()}.tmp`);
+  const backup = `${dest}.${process.pid}.${Date.now()}.backup`;
+  await copyFile(source, tmp);
+  await chmod(tmp, 0o755).catch(() => {});
+  try {
+    try {
+      // POSIX rename replaces atomically. This is the normal path.
+      await rename(tmp, dest);
+    } catch (first) {
+      // Windows may reject replacement of an existing executable. Preserve the
+      // prior verified binary until the replacement has been moved into place.
+      await rename(dest, backup);
+      try {
+        await rename(tmp, dest);
+      } catch (second) {
+        await rename(backup, dest).catch(() => {});
+        throw second;
+      }
+      await rm(backup, { force: true }).catch(() => {});
+    }
+  } finally {
+    await rm(tmp, { force: true }).catch(() => {});
+    await rm(backup, { force: true }).catch(() => {});
+  }
+}
+
 async function pinEnginePlatform(
   engine: EngineName,
   plat: string,
@@ -181,6 +214,7 @@ async function pinEnginePlatform(
   staging: string,
   checksumsCache: Map<EngineName, Map<string, string>>,
   install: boolean,
+  updateLockfile: boolean,
 ): Promise<PinResult> {
   const meta = lock.engines[engine];
   const entry = meta?.platforms[plat];
@@ -231,49 +265,317 @@ async function pinEnginePlatform(
   const memberPath = await extractMember(archivePath, entry, plat, platDir);
   const sha = sha256Hex(await readFile(memberPath));
 
+  if (!updateLockfile) {
+    if (!entry.sha256) {
+      throw new Error(`${engine} [${plat}]: shipped lockfile has no SHA256 pin; refusing user repair.`);
+    }
+    if (sha.toLowerCase() !== entry.sha256.toLowerCase()) {
+      throw new Error(
+        `${engine} [${plat}]: extracted binary does not match the immutable shipped pin ` +
+        `(expected ${entry.sha256}, got ${sha}). Fail-closed.`,
+      );
+    }
+  }
+
   // Current platform: place a runnable copy in the managed bin dir.
   let installed = false;
   if (install) {
     const runName = isWinPlatform(plat) ? `${entry.binary}.exe` : entry.binary;
     const dest = join(MANAGED_BIN, runName);
-    await mkdir(MANAGED_BIN, { recursive: true });
-    await copyFile(memberPath, dest);
-    await chmod(dest, 0o755).catch(() => {});
+    await atomicInstallBinary(memberPath, dest);
     installed = true;
     out(`  ✓ installed ${dest}`);
   }
-  out(`  ✓ pinned sha256 ${sha}${install ? "" : "  (cross-platform pin; not installed/run on this machine)"}`);
+  out(
+    updateLockfile
+      ? `  ✓ pinned sha256 ${sha}${install ? "" : "  (cross-platform pin; not installed/run on this machine)"}`
+      : `  ✓ matched immutable shipped sha256 ${sha}`,
+  );
 
-  // Persist into the lockfile entry.
-  entry.sha256 = sha;
-  entry.provenance = provenance;
-  delete entry._verify;
+  // Only the maintainer pinning command may mutate the packaged lockfile.
+  if (updateLockfile) {
+    entry.sha256 = sha;
+    entry.provenance = provenance;
+    delete entry._verify;
+  }
   return { engine, platform: plat, sha256: sha, provenance, installed };
+}
+
+async function replaceDirectory(staged: string, dest: string): Promise<void> {
+  const backup = `${dest}.${process.pid}.${Date.now()}.backup`;
+  let movedExisting = false;
+  let replacementInstalled = false;
+  try {
+    try {
+      await rename(dest, backup);
+      movedExisting = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    try {
+      await rename(staged, dest);
+      replacementInstalled = true;
+    } catch (error) {
+      if (movedExisting) {
+        try {
+          await rename(backup, dest);
+          movedExisting = false;
+        } catch (restoreError) {
+          throw new AggregateError(
+            [error, restoreError],
+            `Failed to install the staged Trivy DB and restore the previous DB. Backup preserved at ${backup}.`,
+          );
+        }
+      }
+      throw error;
+    }
+    if (movedExisting && replacementInstalled) {
+      await rm(backup, { recursive: true, force: true });
+      movedExisting = false;
+    }
+  } finally {
+    if (!movedExisting) await rm(backup, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 async function populateTrivyDb(): Promise<string | undefined> {
   const trivyBin = join(MANAGED_BIN, process.platform === "win32" ? "trivy.exe" : "trivy");
+  const stagingCache = join(MANAGED_ROOT, `.trivy-cache-repair-${process.pid}-${Date.now()}`);
+  const stagingDbDir = join(stagingCache, "db");
   out("• Trivy vuln DB — downloading offline snapshot (install-time only)…");
-  const r = await run(trivyBin, ["fs", "--download-db-only", "--cache-dir", MANAGED_TRIVY_CACHE]);
-  if (r.code !== 0) {
-    err(`  ! Trivy DB download failed (exit ${r.code}): ${r.stderr.trim().slice(0, 400)}`);
-    return undefined;
-  }
-  const dbDigest = await recordTrivyDbContentDigest();
-  out(`  ✓ Trivy vulnerability DB content signature recorded (${dbDigest.slice(0, 23)}…).`);
   try {
+    await mkdir(stagingCache, { recursive: true });
+    const r = await run(trivyBin, ["fs", "--download-db-only", "--cache-dir", stagingCache]);
+    if (r.code !== 0) {
+      throw new Error(`Trivy DB download failed (exit ${r.code}): ${r.stderr.trim().slice(0, 400)}`);
+    }
+    await stat(join(stagingDbDir, "trivy.db"));
     const meta = JSON.parse(
-      await readFile(join(MANAGED_TRIVY_CACHE, "db", "metadata.json"), "utf8"),
+      await readFile(join(stagingDbDir, "metadata.json"), "utf8"),
     ) as { DownloadedAt?: string };
+    const dbDigest = await sha256FileStreaming(join(stagingDbDir, "trivy.db"));
+    await mkdir(MANAGED_TRIVY_CACHE, { recursive: true });
+    // Clear the old signature before swapping DB content. Any interruption then
+    // degrades conservatively to provenance_missing; it can never associate the
+    // previous DB signature with newly-installed DB bytes.
+    await rm(MANAGED_TRIVY_DB_PROVENANCE, { force: true });
+    await replaceDirectory(stagingDbDir, join(MANAGED_TRIVY_CACHE, "db"));
+    await writeTrivyDbContentDigest(dbDigest);
+    out(`  ✓ Trivy vulnerability DB content signature recorded (${dbDigest.slice(0, 23)}…).`);
     out(`  ✓ Trivy DB ready (downloaded ${meta.DownloadedAt ?? "?"}).`);
     return meta.DownloadedAt;
-  } catch {
-    out("  ✓ Trivy DB download reported success.");
-    return undefined;
+  } finally {
+    await rm(stagingCache, { recursive: true, force: true }).catch(() => {});
   }
 }
 
+export interface EngineRepairPlan {
+  engines: EngineName[];
+  refresh_trivy_db: boolean;
+  blockers: string[];
+}
+
+export function planEngineRepair(
+  status: EngineSetupStatus,
+  selected: EngineName[] = ENGINE_ORDER,
+  forceDbRefresh = false,
+): EngineRepairPlan {
+  const selectedSet = new Set(selected);
+  const blockers = status.engines
+    .filter(
+      (engine) =>
+        selectedSet.has(engine.engine) &&
+        ["unsupported_platform", "unpinned", "lockfile_error"].includes(engine.state),
+    )
+    .map((engine) =>
+      engine.state === "unsupported_platform"
+        ? `${engine.engine} is unsupported on ${status.platform}`
+        : `${engine.engine} has invalid packaged pin state (${engine.state}); reinstall CodeInspectus`,
+    );
+  const engines = status.engines
+    .filter(
+      (engine) =>
+        selectedSet.has(engine.engine) &&
+        engine.state !== "ready" &&
+        !["unsupported_platform", "unpinned", "lockfile_error"].includes(engine.state),
+    )
+    .map((engine) => engine.engine);
+  const trivySelected = selectedSet.has("trivy");
+  const trivySupported = !status.engines.some(
+    (engine) => engine.engine === "trivy" && engine.state === "unsupported_platform",
+  );
+  return {
+    engines,
+    refresh_trivy_db:
+      trivySelected && trivySupported && (forceDbRefresh || status.trivy_db.state !== "ready"),
+    blockers,
+  };
+}
+
+function parseRepairArgs(args: string[]): { selected: EngineName[]; refreshDb: boolean } {
+  const refreshDb = args.includes("--refresh-db");
+  const unknown = args.filter(
+    (arg) => arg !== "--refresh-db" && !ENGINE_ORDER.includes(arg as EngineName),
+  );
+  if (unknown.length) {
+    throw new Error(
+      `Unknown repair-engines argument(s): ${unknown.join(", ")}. ` +
+      "Use --refresh-db or an engine name (opengrep, gitleaks, trivy).",
+    );
+  }
+  const selected = args.filter((arg) => ENGINE_ORDER.includes(arg as EngineName)) as EngineName[];
+  return { selected: selected.length ? [...new Set(selected)] : ENGINE_ORDER, refreshDb };
+}
+
+const REPAIR_LOCK = join(MANAGED_ROOT, ".repair-engines.lock");
+const STALE_REPAIR_LOCK_MS = 1000 * 60 * 60 * 2;
+
+function processIsRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+async function acquireRepairLock(): Promise<() => Promise<void>> {
+  async function create(): Promise<void> {
+    await mkdir(REPAIR_LOCK);
+    await writeFile(
+      join(REPAIR_LOCK, "owner.json"),
+      JSON.stringify({ pid: process.pid, started_at: new Date().toISOString() }),
+      "utf8",
+    );
+  }
+
+  await mkdir(MANAGED_ROOT, { recursive: true });
+  try {
+    await create();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    const info = await stat(REPAIR_LOCK).catch(() => undefined);
+    const owner = await readFile(join(REPAIR_LOCK, "owner.json"), "utf8")
+      .then((raw) => JSON.parse(raw) as { pid?: unknown })
+      .catch(() => undefined);
+    const ownerPid = typeof owner?.pid === "number" ? owner.pid : undefined;
+    const ownerActive = ownerPid !== undefined && processIsRunning(ownerPid);
+    const recentOwnerlessLock = ownerPid === undefined && (!info || Date.now() - info.mtimeMs <= STALE_REPAIR_LOCK_MS);
+    if (ownerActive || recentOwnerlessLock) {
+      throw new Error(
+        `Another engine repair is already running${ownerPid ? ` (pid ${ownerPid})` : ""} (${REPAIR_LOCK}). ` +
+        "Wait for it to finish, then retry.",
+      );
+    }
+    await rm(REPAIR_LOCK, { recursive: true, force: true });
+    await create();
+  }
+  return async () => {
+    await rm(REPAIR_LOCK, { recursive: true, force: true });
+  };
+}
+
+/** User-facing, incremental repair. Never mutates the packaged engines.lock.json. */
+export async function repairEngines(args: string[]): Promise<void> {
+  const { selected, refreshDb } = parseRepairArgs(args);
+  const fullScope = selected.length === ENGINE_ORDER.length;
+  const firstStatus = await inspectEngineSetup();
+  let plan = planEngineRepair(firstStatus, selected, refreshDb);
+  if (plan.blockers.length) throw new Error(plan.blockers.join("; "));
+  if (!plan.engines.length && !plan.refresh_trivy_db) {
+    out(
+      fullScope
+        ? "✓ Engine setup ready. Shipped pins, managed binaries, and Trivy DB state need no repair."
+        : "✓ Selected repair scope is healthy; no download needed. Unselected engine/DB state was not changed.",
+    );
+    return;
+  }
+
+  const releaseLock = await acquireRepairLock();
+  try {
+    // Re-evaluate under the lock so two near-simultaneous processes never repeat
+    // a download based on the same stale preflight.
+    plan = planEngineRepair(await inspectEngineSetup(), selected, refreshDb);
+    if (plan.blockers.length) throw new Error(plan.blockers.join("; "));
+    if (!plan.engines.length && !plan.refresh_trivy_db) {
+      out(
+        fullScope
+          ? "✓ Engine setup was repaired by another process; nothing to do."
+          : "✓ Selected repair scope was repaired by another process; unselected state was not changed.",
+      );
+      return;
+    }
+
+    const lock = await loadLockfile();
+    const current = platformKey();
+    out("CodeInspectus repair-engines — explicit install-time network step.");
+    out(`Host platform: ${current}  Managed dir: ${MANAGED_ROOT}`);
+    out(`Repair plan: engines ${plan.engines.join(", ") || "(none)"}; Trivy DB ${plan.refresh_trivy_db ? "refresh" : "unchanged"}.\n`);
+
+    await mkdir(MANAGED_BIN, { recursive: true });
+    await mkdir(MANAGED_TRIVY_CACHE, { recursive: true });
+    const staging = join(tmpdir(), `ci-repair-${process.pid}-${Date.now()}`);
+    await mkdir(staging, { recursive: true });
+    try {
+      const identities = (lock.sigstore_identities ?? {}) as Record<string, string>;
+      const needsCosign = plan.engines.some(
+        (engine) => lock.engines[engine]?.signature !== "checksums",
+      );
+      const cosignBin = needsCosign ? await hasCosign() : false;
+      if (needsCosign && !cosignBin) {
+        throw new Error(
+          "cosign is required to verify the selected Opengrep/Trivy release artifacts. " +
+          "Install cosign, then rerun repair-engines.",
+        );
+      }
+
+      const checksumsCache = new Map<EngineName, Map<string, string>>();
+      for (const engine of plan.engines) {
+        await pinEnginePlatform(
+          engine,
+          current,
+          lock,
+          identities,
+          cosignBin,
+          staging,
+          checksumsCache,
+          true,
+          false,
+        );
+      }
+      if (plan.refresh_trivy_db) await populateTrivyDb();
+    } finally {
+      await rm(staging, { recursive: true, force: true }).catch(() => {});
+    }
+
+    const finalStatus = await inspectEngineSetup();
+    const finalPlan = planEngineRepair(finalStatus, selected, false);
+    if (finalPlan.blockers.length || finalPlan.engines.length || finalPlan.refresh_trivy_db) {
+      throw new Error(
+        `Repair finished but preflight is still ${finalStatus.state}. ` +
+        "Inspect `codeinspectus_list_rules` engine_setup details and retry.",
+      );
+    }
+    out("\n✓ Engine repair complete. Packaged pins were not modified; scans remain offline.");
+  } finally {
+    await releaseLock();
+  }
+}
+
+/** Backward-compatible user alias; explicit install historically refreshed the DB. */
 export async function installEngines(args: string[]): Promise<void> {
+  const maintainerFlags = args.some(
+    (arg) => arg === "--all-platforms" || arg === "--platform" || arg === "--pin-only",
+  );
+  if (maintainerFlags) {
+    err("! install-engines maintainer flags are deprecated; use pin-engines. Continuing compatibly.");
+    await pinEngines(args);
+    return;
+  }
+  await repairEngines(args.includes("--refresh-db") ? args : [...args, "--refresh-db"]);
+}
+
+export async function pinEngines(args: string[]): Promise<void> {
   const lock = await loadLockfile();
   const current = platformKey();
 
@@ -301,7 +603,7 @@ export async function installEngines(args: string[]): Promise<void> {
     platforms = [current];
   }
 
-  out("CodeInspectus install-engines — install-time network step (PRD §7).");
+  out("CodeInspectus pin-engines — maintainer release-pinning step (networked).");
   out(`Host platform: ${current}  Targets: ${platforms.join(", ")}  Managed dir: ${MANAGED_ROOT}\n`);
 
   await mkdir(MANAGED_BIN, { recursive: true });
@@ -325,7 +627,17 @@ export async function installEngines(args: string[]): Promise<void> {
     for (const engine of engines) {
       const install = !pinOnly && plat === current;
       try {
-        const r = await pinEnginePlatform(engine, plat, lock, identities, cosignBin, staging, checksumsCache, install);
+        const r = await pinEnginePlatform(
+          engine,
+          plat,
+          lock,
+          identities,
+          cosignBin,
+          staging,
+          checksumsCache,
+          install,
+          true,
+        );
         pinned.push(r);
         if (r.installed && engine === "trivy") currentInstalledTrivy = true;
       } catch (e) {
@@ -348,7 +660,7 @@ export async function installEngines(args: string[]): Promise<void> {
   if (failures.length) {
     err(`\n${failures.length} engine x platform combos were NOT pinned (fail-closed). They remain null in the lockfile:`);
     for (const f of failures) err(`  - ${f.engine} [${f.platform}]: ${f.reason}`);
-    err("Populate them by running install-engines on that OS (or via the CI matrix in .github/workflows/pin-engines.yml).");
+    err("Populate them by running pin-engines on that OS (or via the CI matrix in .github/workflows/pin-engines.yml).");
     process.exitCode = 1;
   }
 }
@@ -368,7 +680,7 @@ export async function verifyEnginesCli(): Promise<void> {
       const prov = entry?.provenance;
       if (!prov || !prov.verified) {
         anyBad = true;
-        err(`  ✗ ${engine} v${r.version}: SHA pin OK but NO recorded provenance — re-run install-engines (fail-closed).`);
+        err(`  ✗ ${engine} v${r.version}: SHA pin OK but NO recorded provenance — reinstall the package or contact the maintainer (fail-closed).`);
         continue;
       }
       const provLabel = prov.method === "cosign" ? `cosign-verified (${prov.identity})` : "checksum-verified";

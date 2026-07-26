@@ -22,7 +22,7 @@ Test corpus of planted vulnerabilities (true positives) plus safe equivalents
 - `0001_init.sql` `public.accounts` — RLS enabled with `auth.uid()` policies for all operations.
 - `PaymentForm.tsx` `publishable()` — a publishable (non-secret) key behind a public prefix.
 
-Engines 3 and 4 require the bundled binaries + Trivy DB (`codeinspectus install-engines`).
+Engines 3 and 4 require the managed binaries + Trivy DB (`codeinspectus repair-engines`).
 Detectors 1, 2, 5, + are pure-TypeScript and run with no external binary.
 
 ## Precision corpora — dual-direction (true positives + false-positive guards)

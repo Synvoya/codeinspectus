@@ -7,8 +7,8 @@ import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DETECTION_DB_DIR, CODEINSPECTUS_AI_VERSION, type EngineName } from "./config.js";
-import { probeEngine } from "./engines/resolve.js";
 import { readTrivyDbDate } from "./engines/trivy.js";
+import { inspectEngineSetup } from "./engine-health.js";
 import type { listRulesOutput, ruleInfoSchema } from "./schemas.js";
 import type { ListRulesInput } from "./schemas.js";
 
@@ -34,14 +34,13 @@ export async function listRules(input: ListRulesInput): Promise<ListRulesResult>
   }));
 
   const engineNames: EngineName[] = ["opengrep", "gitleaks", "trivy"];
-  const probes = await Promise.all(engineNames.map((e) => probeEngine(e)));
-  const trivyDbDate = await readTrivyDbDate();
+  const [engineSetup, trivyDbDate] = await Promise.all([inspectEngineSetup(), readTrivyDbDate()]);
 
   const engines = [
-    ...engineNames.map((engine, i) => ({
+    ...engineNames.map((engine) => ({
       engine,
-      version: probes[i]!.version,
-      available: probes[i]!.available,
+      version: engineSetup.engines.find((item) => item.engine === engine)?.version ?? "unknown",
+      available: engineSetup.engines.find((item) => item.engine === engine)?.state === "ready",
       ruleset: engine === "opengrep" ? "security-baseline" : engine === "gitleaks" ? "codeinspectus.toml + defaults" : "embedded + vuln DB",
     })),
     {
@@ -60,6 +59,7 @@ export async function listRules(input: ListRulesInput): Promise<ListRulesResult>
     detection_db_date: manifest.date,
     engines,
     ...(trivyDbDate ? { trivy_db_date: trivyDbDate } : {}),
+    engine_setup: engineSetup,
     custom_rules: custom,
     custom_rule_count: custom.length,
     note: "Generic SAST is provided by the bundled engines; CodeInspectus's custom rules target AI-code / vibe-coding / framework-specific issues the engines miss (PRD §9).",

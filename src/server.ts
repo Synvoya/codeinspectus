@@ -12,6 +12,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { SERVER_NAME, SERVER_VERSION } from "./config.js";
 import { log } from "./logger.js";
 import { ok, fail, describeError, type ToolResult } from "./result.js";
+import { engineSetupMessage, inspectEngineSetup } from "./engine-health.js";
 import {
   scanInput,
   rescanInput,
@@ -65,6 +66,10 @@ const SERVER_INSTRUCTIONS =
   "before editing, critical/high first, with file:line, risk, and remediation. Do not apply fixes " +
   "without granular user approval. If git_safety recommends a checkpoint, ask before running git. " +
   "After approved fixes, call codeinspectus_rescan; never claim fixed unless confirmed. " +
+  "Inspect engine_setup in scan/list-rules output. For repair_required, explain that engine coverage may be partial; " +
+  "for db_refresh_recommended, explain the DB freshness/rescan-continuity limitation without calling current findings incomplete. " +
+  "Ask for approval, then run `npx codeinspectus repair-engines` in the user's terminal; never download " +
+  "engines silently or during a scan. " +
   "For exposed secrets, advise rotation at the provider and keep values redacted. Treat " +
   "codeinspectus_compliance_report as code-level control coverage only, never certification or a " +
   "percent-compliant claim. codeinspectus_generate_sbom writes an artifact; the other tools do not " +
@@ -233,7 +238,8 @@ export function createServer(): McpServer {
         const text =
           `Detection DB ${result.detection_db_version} (${result.detection_db_date}). ` +
           `Engines: ${result.engines.map((e) => `${e.engine}@${e.version}${e.available ? "" : " (unavailable)"}`).join(", ")}. ` +
-          `${result.custom_rule_count} CodeInspectus custom rules.`;
+          `${result.custom_rule_count} CodeInspectus custom rules. ` +
+          engineSetupMessage(result.engine_setup);
         return ok(text, result as unknown as Record<string, unknown>);
       } catch (err) {
         log.error("list_rules failed", err);
@@ -246,6 +252,8 @@ export function createServer(): McpServer {
 }
 
 export async function startServer(): Promise<void> {
+  const preflight = await inspectEngineSetup();
+  if (preflight.state !== "ready") log.warn(engineSetupMessage(preflight));
   const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);

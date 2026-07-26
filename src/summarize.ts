@@ -5,6 +5,7 @@
 
 import type { ScanResult, RescanResult, Finding } from "./types.js";
 import { TRIVY_DB_PROVENANCE_MESSAGE } from "./trivy-db-provenance.js";
+import { engineSetupMessage } from "./engine-health.js";
 
 function topLines(findings: Finding[], n: number): string {
   return findings
@@ -52,6 +53,10 @@ export function summarizeScan(r: ScanResult): string {
     ? `\n\nCVE rescan tracking:\n  ${TRIVY_DB_PROVENANCE_MESSAGE}`
     : "";
 
+  const engineSetup = r.engine_setup && r.engine_setup.state !== "ready"
+    ? `\n\nMachine setup:\n  ${engineSetupMessage(r.engine_setup)}`
+    : "";
+
   const controlEvidence = r.security_control_evidence?.length
     ? (() => {
         const counts = {
@@ -69,7 +74,7 @@ export function summarizeScan(r: ScanResult): string {
       })()
     : "";
 
-  return `${head}${body}${trunc}${controlEvidence}${dbProvenance}${beforeFix}${eng}${warn}\n\n${r.disclaimer}`;
+  return `${head}${body}${trunc}${controlEvidence}${dbProvenance}${engineSetup}${beforeFix}${eng}${warn}\n\n${r.disclaimer}`;
 }
 
 export function summarizeRescan(r: RescanResult): string {

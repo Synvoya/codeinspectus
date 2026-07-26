@@ -23,7 +23,7 @@ egress at scan time**.
 **18 normalized findings across all four engines** with v0.3.1 (4 critical, 8 high,
 5 medium, 1 low). Inspect the [fixture](fixtures/vulnerable-app), read the
 [full scanner-derived report](examples/reports/vulnerable-app-v0.3.1.md), or run the
-[19-case eval suite](evals/run-evals.ts). Dependency findings can change as the local
+[21-case eval suite](evals/run-evals.ts). Dependency findings can change as the local
 Trivy database updates; the report records the exact engine and database versions used.
 
 If CodeInspectus is useful, [star the repository](https://github.com/Synvoya/codeinspectus)
@@ -59,24 +59,31 @@ before shipping.
 ## Install
 
 **Prerequisites:** **Node.js ≥18**, and [**cosign**](https://github.com/sigstore/cosign)
-on your `PATH` for `install-engines`. Signature verification is **fail-closed**: **Opengrep**
-and **Trivy** will **not** pin without cosign — `install-engines` exits non-zero for them —
-so install it first (`brew install cosign`). **Gitleaks** verifies by checksum and needs no
-cosign.
+on your `PATH` when Opengrep or Trivy binaries need installation. Signature verification is
+**fail-closed**: those binaries are never installed without publisher verification. **Gitleaks**
+verifies by checksum and needs no cosign; a DB-only Trivy refresh reuses the already SHA-verified
+local Trivy binary.
 
 ```bash
 # Register once per machine with your agent (see "Client registration"), then:
-npx codeinspectus install-engines
+npx codeinspectus repair-engines
 ```
 
-`install-engines` is the **only** step that touches the network. It downloads the
-engine binaries from their verified GitHub release URLs, checks the publisher
-signature/checksum, computes each binary's SHA256, and records it in
-`engines.lock.json`. It also fetches the offline Trivy vulnerability-DB snapshot
-into `~/.codeinspectus/`. After this, **scans perform zero network I/O.**
+`repair-engines` first checks local state without network access. It downloads only missing,
+mismatched, or newly pinned binaries, verifies them against the immutable lockfile shipped in the
+npm package, and atomically installs them under `~/.codeinspectus/`. It refreshes the offline
+Trivy vulnerability DB only when it is missing, lacks rescan provenance, or is more than seven
+days old. Rule-only CodeInspectus upgrades therefore download nothing. After setup, **scans
+perform zero network I/O.**
+
+Every scan and `codeinspectus_list_rules` response includes structured `engine_setup` state:
+`ready`, `repair_required`, `db_refresh_recommended`, or `unsupported_platform`. MCP agents are
+instructed to explain non-ready state and obtain approval before running the repair command—there
+is no silent npm `postinstall` download. The older `install-engines` command remains supported as
+a compatibility alias and explicitly refreshes the Trivy DB.
 
 If a Trivy DB was installed before 0.3.2, scan output tells your agent that CVE rescan
-tracking is not yet enabled. The agent should run `npx codeinspectus install-engines`
+tracking is not yet enabled. The agent should run `npx codeinspectus repair-engines`
 once; this re-fetches the DB through the verified install path and records its provenance.
 Until then, vanished CVEs conservatively report `not_rechecked`; current scan findings
 remain complete and unaffected.
@@ -153,7 +160,7 @@ useful when you want the same policy persisted explicitly in a repository.
 | `codeinspectus_compliance_report` | Per-framework **code-level control coverage** (not certification). |
 | `codeinspectus_explain_finding` | Deep explanation + full remediation for one finding. |
 | `codeinspectus_generate_sbom` | CycloneDX/SPDX SBOM (written to the managed dir by default, or a path you choose). |
-| `codeinspectus_list_rules` | Active detectors, engine versions, detection-DB + Trivy-DB freshness. |
+| `codeinspectus_list_rules` | Active detectors, engine versions, detection-DB + Trivy-DB freshness, and structured machine setup/repair state. |
 
 CodeInspectus **never edits or deletes your source code or repository** — it reads and
 reports; your agent applies the fixes. It stores engine data and scan history under
@@ -167,7 +174,7 @@ runs git only with your approval; the tool never does.
 ## Honest claims (please read)
 
 - **"No egress" is precise: zero egress _at scan time_.** Engine binaries and the
-  initial Trivy DB are fetched _at install time_ from verified sources, with
+  Trivy DB are fetched only by explicit setup/repair commands from verified sources, with
   SHA256 verification. The scanner functions with the network unplugged. There is
   **no telemetry, ever.**
 - **Supply-chain pinning is mandatory.** Trivy was supply-chain-compromised twice

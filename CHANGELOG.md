@@ -6,6 +6,30 @@ AI-drafted and practitioner-reviewed — see the honesty notes in the [README](R
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-07-26
+
+### Added
+- Offline `engine_setup` health in scan and list-rules output, with stable `ready`,
+  `repair_required`, `db_refresh_recommended`, and `unsupported_platform` states.
+- Incremental `repair-engines` command. It downloads only unhealthy engine artifacts, verifies
+  them against immutable shipped pins, installs binaries atomically, refreshes stale/missing
+  Trivy DB state, and serializes concurrent repairs with a per-machine lock.
+
+### Changed
+- End-user setup no longer rewrites the npm package's `engines.lock.json`; lockfile mutation is
+  restricted to the maintainer-only `pin-engines` command. `install-engines` remains as a
+  backward-compatible alias.
+- MCP instructions require agents to explain partial coverage and obtain approval before launching
+  a networked engine repair. No npm postinstall or scan-time download was added.
+- CI now exercises offline health reporting, incremental repair, a real Trivy DB refresh, and
+  immutable-lockfile enforcement. The manual maintainer workflow uses `pin-engines` explicitly.
+
+### Fixed
+- Long-running MCP processes invalidate cached engine verification when a repaired binary's file
+  identity changes, so a successful repair is recognized without restarting the client.
+- Binary and Trivy DB updates are staged and replaced atomically; interrupted repairs leave the
+  last verified installation usable and clean stale repair locks safely.
+
 ## [0.4.0] — 2026-07-26
 
 ### Added

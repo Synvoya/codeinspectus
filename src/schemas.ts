@@ -102,6 +102,32 @@ export const engineRunInfoSchema = z.object({
   note: z.string().optional(),
 });
 
+export const engineSetupSchema = z.object({
+  state: z.enum(["ready", "repair_required", "db_refresh_recommended", "unsupported_platform"]),
+  platform: z.string(),
+  engines: z.array(
+    z.object({
+      engine: z.enum(["opengrep", "gitleaks", "trivy"]),
+      version: z.string(),
+      state: z.enum([
+        "ready",
+        "missing",
+        "hash_mismatch",
+        "unpinned",
+        "lockfile_error",
+        "unsupported_platform",
+      ]),
+      detail: z.string().optional(),
+    }),
+  ),
+  trivy_db: z.object({
+    state: z.enum(["ready", "missing", "provenance_missing", "stale"]),
+    downloaded_at: z.string().optional(),
+  }),
+  repair_command: z.string().optional(),
+  network_required: z.boolean(),
+});
+
 export const complianceOverviewSchema = z.object({
   posture_score: z.number(),
   frameworks: z.array(
@@ -176,6 +202,7 @@ export const scanResultSchema = z.object({
       instruction: z.string(),
     })
     .optional(),
+  engine_setup: engineSetupSchema.optional(),
   git_safety: gitSafetySchema,
   // CG-75: effective scan config, captured so a bare rescan is like-for-like and rescan can
   // prove re-checkability. Optional so pre-CG-75 stored scans still validate on load.
@@ -348,6 +375,7 @@ export const listRulesOutput = z.object({
     }),
   ),
   trivy_db_date: z.string().optional(),
+  engine_setup: engineSetupSchema,
   custom_rules: z.array(ruleInfoSchema),
   custom_rule_count: z.number().int(),
   note: z.string(),

@@ -54,7 +54,7 @@ export async function generateSbom(input: GenerateSbomInput): Promise<SbomResult
       generated: false,
       note:
         run.note ??
-        "SBOM generation failed. Ensure Trivy is installed (`codeinspectus install-engines`).",
+        "SBOM generation failed. Ensure Trivy is installed (`codeinspectus repair-engines`).",
     };
   }
 

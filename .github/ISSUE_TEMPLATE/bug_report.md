@@ -32,4 +32,5 @@ The smallest synthetic file(s) (no real secrets) and the exact tool call that tr
 - CodeInspectus version (`codeinspectus_list_rules` reports engine + DB versions):
 - OS:
 - Agent / client (Claude Code, Cursor, VS Code, …):
-- Did you run `install-engines`? (engine-dependent findings need it):
+- `engine_setup.state` from `codeinspectus_list_rules`:
+- Did `repair-engines` succeed? (engine-dependent findings need ready setup):

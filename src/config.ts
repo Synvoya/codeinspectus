@@ -4,9 +4,9 @@
  * The MCP spec version is isolated behind a single constant (PRD §0.3) so that
  * re-targeting a future spec is a one-line change.
  *
- * Pinned engine versions feed both the download URLs (install-engines) and the
+ * Pinned engine versions feed both the download URLs (repair/pin-engines) and the
  * SHA-pin lockfile (engines.lock.json). Bumping a version means re-running
- * install-engines, re-verifying the SHA256, and committing the new lockfile.
+ * pin-engines, re-verifying the SHA256, and committing the new lockfile.
  *
  * // VERIFY: engine versions below are the PRD-referenced values; confirm each
  * // against the upstream GitHub Releases page at build time.
@@ -23,7 +23,7 @@ import { dirname } from "node:path";
 export const MCP_SPEC_VERSION = "2025-11-25";
 
 export const SERVER_NAME = "codeinspectus";
-export const SERVER_VERSION = "0.4.0";
+export const SERVER_VERSION = "0.4.1";
 
 // ── Bundled engine versions (SHA-pinned in engines.lock.json) ───────────────
 export const ENGINE_VERSIONS = {
@@ -72,6 +72,7 @@ export const ENGINES_LOCKFILE = join(PKG_ROOT, "engines.lock.json");
 // ── Subprocess limits ───────────────────────────────────────────────────────
 export const ENGINE_TIMEOUT_MS = 1000 * 60 * 5; // 5 min hard cap per engine
 export const MAX_BUFFER_BYTES = 1024 * 1024 * 256; // 256 MB stdout cap
+export const TRIVY_DB_STALE_AFTER_MS = 1000 * 60 * 60 * 24 * 7; // advisory only; scans still run
 
 // ── Build-output directories ────────────────────────────────────────────────
 // Single source of truth (CG-30): walk-skip, the §6.1 bundle-secret check, and git-aware

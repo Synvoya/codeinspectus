@@ -24,6 +24,7 @@ npx @modelcontextprotocol/inspector --cli node dist/index.js --method tools/list
 ## Engine integrity (supply-chain guardrail)
 ```bash
 node dist/index.js verify-engines    # every binary's SHA256 must match engines.lock.json
+node dist/index.js repair-engines opengrep  # healthy selected engine is an offline no-op
 ```
 
 ## Fixture scan (manual)

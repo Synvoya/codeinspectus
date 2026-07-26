@@ -125,6 +125,40 @@ export interface EngineRunInfo {
   note?: string;
 }
 
+/** Offline health of one managed external engine against the shipped lockfile. */
+export type EngineArtifactState =
+  | "ready"
+  | "missing"
+  | "hash_mismatch"
+  | "unpinned"
+  | "lockfile_error"
+  | "unsupported_platform";
+
+export interface EngineArtifactHealth {
+  engine: Exclude<Engine, "codeinspectus-ai">;
+  version: string;
+  state: EngineArtifactState;
+  detail?: string;
+}
+
+export type TrivyDbHealthState = "ready" | "missing" | "provenance_missing" | "stale";
+
+/**
+ * Machine-level setup advisory. This is local metadata, never a vulnerability
+ * finding. Inspection is offline; only the explicit repair command uses the network.
+ */
+export interface EngineSetupStatus {
+  state: "ready" | "repair_required" | "db_refresh_recommended" | "unsupported_platform";
+  platform: string;
+  engines: EngineArtifactHealth[];
+  trivy_db: {
+    state: TrivyDbHealthState;
+    downloaded_at?: string;
+  };
+  repair_command?: string;
+  network_required: boolean;
+}
+
 export interface ComplianceControlCoverage {
   id: string;
   name: string;
@@ -208,6 +242,8 @@ export interface ScanResult {
   security_control_evidence?: SecurityControlEvidence[];
   /** Actionable advisory when a completed Trivy vuln scan lacks install-time DB provenance. */
   trivy_db_provenance?: TrivyDbProvenance;
+  /** Offline machine-level engine/DB health. Advisory metadata, never a finding. */
+  engine_setup?: EngineSetupStatus;
   /** CG-41 read-only git-safety advisory for the scan target (never a finding). */
   git_safety: GitSafety;
   /**

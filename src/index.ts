@@ -2,8 +2,9 @@
  * CodeInspectus entry point.
  *
  * Default (no args): start the MCP server over stdio.
- * `install-engines`: fetch + verify the engine binaries and initial Trivy DB
- *   (the ONLY network step; install-time only — PRD §7).
+ * `repair-engines`: explicitly fetch + verify only unhealthy engine/DB state.
+ * `install-engines`: backward-compatible setup alias (explicit network step).
+ * `pin-engines`: maintainer-only shipped lockfile generation.
  * `verify-engines`: re-verify installed binaries against the SHA lockfile.
  * `--version` / `--help`: info to stderr/stdout.
  *
@@ -25,6 +26,16 @@ async function main(): Promise<void> {
       await installEngines(argv.slice(1));
       return;
     }
+    case "repair-engines": {
+      const { repairEngines } = await import("./install.js");
+      await repairEngines(argv.slice(1));
+      return;
+    }
+    case "pin-engines": {
+      const { pinEngines } = await import("./install.js");
+      await pinEngines(argv.slice(1));
+      return;
+    }
     case "verify-engines": {
       const { verifyEnginesCli } = await import("./install.js");
       await verifyEnginesCli();
@@ -43,7 +54,11 @@ async function main(): Promise<void> {
           "",
           "Usage:",
           "  codeinspectus                 Start the MCP server over stdio (default).",
-          "  codeinspectus install-engines Fetch + SHA/cosign-verify engine binaries + Trivy DB (install-time only).",
+          "  codeinspectus repair-engines Repair only missing/mismatched engines or DB state (explicit network step).",
+          "    --refresh-db               Refresh the Trivy DB even when current state is healthy.",
+          "    [engine names]             Limit repair to opengrep, gitleaks, and/or trivy.",
+          "  codeinspectus install-engines Backward-compatible setup alias; refreshes the Trivy DB.",
+          "  codeinspectus pin-engines    Maintainer-only: update shipped engine pins.",
           "    --all-platforms            Pin every target platform (cross-platform; downloads + verifies all).",
           "    --platform <key>           Pin a specific platform, e.g. linux-x64 (repeatable).",
           "    --pin-only                 Record SHA256 + provenance only; do not install/run or fetch the DB (CI).",
