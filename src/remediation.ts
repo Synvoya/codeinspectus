@@ -85,7 +85,7 @@ const CWE_REMEDIATION: Record<string, Remediation> = {
   "CWE-1395": {
     summary: "Upgrade the vulnerable dependency to a fixed version (or remove it); rebuild the lockfile.",
     steps: [
-      "Bump the affected package to the patched version Trivy reports as fixed.",
+      "Bump the affected package to the patched version the scanner reports as fixed.",
       "Update the lockfile and re-run the scan to confirm the CVE is resolved.",
       "If no fix exists, assess whether the vulnerable code path is reachable and consider an alternative dependency.",
     ],

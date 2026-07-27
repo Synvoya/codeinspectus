@@ -10,7 +10,7 @@
 
 import { runScan } from "./scan.js";
 import { getScan, getLatestScanForTarget } from "./store.js";
-import { dedupKey } from "./dedup.js";
+import { dedupIdentityKeys } from "./dedup.js";
 import { STANDING_DISCLAIMER } from "./config.js";
 import { SEVERITY_RANK } from "./types.js";
 import type { Finding, RescanResult, ScanResult, Severity } from "./types.js";
@@ -45,9 +45,11 @@ export function diffRescan(prior: ScanResult, fresh: ScanResult): RescanResult {
   // Gitleaks(high)⨯AI(critical) secret that merged to the critical representative before can merge
   // to the Gitleaks representative after — a different fingerprint for the SAME live issue. Matching
   // on dedup identity (not just fingerprint) keeps that from being read as resolved/introduced.
-  const priorKeys = new Set(prior.findings.map(dedupKey));
-  const freshKeys = new Set(fresh.findings.map(dedupKey));
-  const stillPresent = (f: Finding): boolean => priorByFp.has(f.fingerprint) || priorKeys.has(dedupKey(f));
+  const priorKeys = new Set(prior.findings.flatMap(dedupIdentityKeys));
+  const freshKeys = new Set(fresh.findings.flatMap(dedupIdentityKeys));
+  const intersects = (keys: Set<string>, finding: Finding): boolean =>
+    dedupIdentityKeys(finding).some((key) => keys.has(key));
+  const stillPresent = (f: Finding): boolean => priorByFp.has(f.fingerprint) || intersects(priorKeys, f);
 
   const remaining = fresh.findings.filter(stillPresent);
   const introduced = fresh.findings.filter((f) => !stillPresent(f));
@@ -63,7 +65,7 @@ export function diffRescan(prior: ScanResult, fresh: ScanResult): RescanResult {
     if (freshByFp.has(f.fingerprint)) continue; // still present (exact fingerprint) → remaining
     // Same issue still present under a FLIPPED fingerprint (dedup-survivor change across a
     // git-status transition) → still present, NOT resolved. Counted in `remaining` via stillPresent.
-    if (freshKeys.has(dedupKey(f))) continue;
+    if (intersects(freshKeys, f)) continue;
 
     // Absent by both fingerprint AND dedup identity — but was its resolution actually PROVABLE?
     if (!priorConfigCaptured) {
@@ -120,6 +122,9 @@ export function diffRescan(prior: ScanResult, fresh: ScanResult): RescanResult {
     scan_id: fresh.scan_id,
     prior_scan_id: prior.scan_id,
     target: fresh.target,
+    detected_technologies: fresh.detected_technologies,
+    pack_coverage: fresh.pack_coverage,
+    ...(fresh.dependency_coverage ? { dependency_coverage: fresh.dependency_coverage } : {}),
     resolved,
     remaining,
     introduced,

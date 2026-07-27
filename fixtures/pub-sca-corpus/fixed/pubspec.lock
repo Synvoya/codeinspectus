@@ -1,0 +1,50 @@
+# Generated fixture. Do not run pub get.
+packages:
+  agent_dart:
+    dependency: "direct dev"
+    description:
+      name: agent_dart
+      sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.0-dev.29"
+  archive:
+    dependency: "direct main"
+    description:
+      name: archive
+      sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.3.8"
+  flutter:
+    dependency: "direct main"
+    description: flutter
+    source: sdk
+    version: "0.0.0"
+  jose:
+    dependency: "direct main"
+    description:
+      name: jose
+      sha256: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.5+1"
+  personnummer:
+    dependency: "direct main"
+    description:
+      name: personnummer
+      sha256: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.3"
+  shared_preferences_android:
+    dependency: "direct main"
+    description:
+      name: shared_preferences_android
+      sha256: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.3.4"
+sdks:
+  dart: ">=3.0.0 <4.0.0"
+  flutter: ">=3.0.0"

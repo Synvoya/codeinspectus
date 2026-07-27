@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { resolve, sep } from "node:path";
 import { resolveScanPath, safeParseScanJson, getScan } from "./store.js";
 import { MANAGED_SCANS } from "./config.js";
+import { scanResultSchema } from "./schemas.js";
 
 describe("resolveScanPath — containment (Claim 2b)", () => {
   test("a real generated id resolves to a file under MANAGED_SCANS", () => {
@@ -58,6 +59,67 @@ describe("safeParseScanJson — validate loaded JSON (Claim 2c)", () => {
     };
     const r = safeParseScanJson(JSON.stringify(old));
     expect(r.ok).toBe(true);
+  });
+
+  test("a stored pre-platform pack-coverage entry remains loadable", () => {
+    const old = {
+      scan_id: "scan-00000000-0000-4000-8000-000000000001",
+      target: "/tmp/x",
+      started_at: "2026-01-01T00:00:00.000Z",
+      duration_ms: 1,
+      engines_run: [],
+      engine_details: [],
+      offline: true,
+      summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 },
+      findings: [],
+      truncated: false,
+      total_findings_before_limit: 0,
+      disclaimer: "d",
+      warnings: [],
+      detected_technologies: [],
+      pack_coverage: [{
+        pack_id: "flutter",
+        version: "1.0.0",
+        state: "not_applicable",
+        languages: ["dart"],
+        frameworks: ["flutter"],
+        analyzers: { registered: 6, ran: 0 },
+        rules: { registered: 6, ran: 0 },
+        limitations: ["Historical entry without platform metadata."],
+      }],
+    };
+
+    const parsed = safeParseScanJson(JSON.stringify(old));
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.value.pack_coverage?.[0]?.platforms).toEqual([]);
+    }
+  });
+
+  test("fresh scan output requires technology detection and native-pack coverage", () => {
+    const freshWithoutCoverage = {
+      scan_id: "scan-00000000-0000-4000-8000-000000000000",
+      target: "/tmp/x",
+      started_at: "2026-01-01T00:00:00.000Z",
+      duration_ms: 1,
+      engines_run: [],
+      engine_details: [],
+      offline: true,
+      summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 },
+      findings: [],
+      truncated: false,
+      total_findings_before_limit: 0,
+      disclaimer: "d",
+      warnings: [],
+      git_safety: { state: "clean" },
+    };
+
+    const parsed = scanResultSchema.safeParse(freshWithoutCoverage);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      const paths = parsed.error.issues.map((issue) => issue.path.join("."));
+      expect(paths).toEqual(expect.arrayContaining(["detected_technologies", "pack_coverage"]));
+    }
   });
 
   test("CG-76: store schema is SURGICAL — a scan missing a CORE field (findings) is REJECTED", () => {

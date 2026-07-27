@@ -7,7 +7,8 @@
  * is populated out of band by explicit `repair-engines` maintenance.
  */
 
-import { readFile, access, mkdir } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { readFile, access, lstat, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { MANAGED_TRIVY_CACHE, MANAGED_TRIVY_DB_META } from "../config.js";
 import { resolveEngine, EngineUnavailableError } from "./resolve.js";
@@ -16,6 +17,7 @@ import { log } from "../logger.js";
 import type { EngineOutput } from "./types.js";
 import type { SarifLog } from "../sarif/types.js";
 import { invocationSignature, readTrivyDbContentDigest, signature } from "../provenance.js";
+import { engineWorkingDirectory } from "./target.js";
 
 const OFFLINE_FLAGS = [
   "--skip-db-update",
@@ -25,6 +27,15 @@ const OFFLINE_FLAGS = [
 ];
 
 export type TrivyScanner = "vuln" | "misconfig" | "secret" | "license";
+const MAX_TRIVY_SBOM_BYTES = 128 * 1024 * 1024;
+
+export interface TrivySbomRun {
+  ran: boolean;
+  note?: string;
+  version: string;
+  /** Exact fresh staged bytes; the caller validates before promoting them to outputPath. */
+  content?: string;
+}
 
 export async function runTrivy(
   target: string,
@@ -52,7 +63,10 @@ export async function runTrivy(
     };
     await mkdir(MANAGED_TRIVY_CACHE, { recursive: true });
 
-    const res = await execBinary(bin.path, args, { cwd: target, offline: true });
+    const res = await execBinary(bin.path, args, {
+      cwd: await engineWorkingDirectory(target),
+      offline: true,
+    });
     const trivyDbDate = await readTrivyDbDate();
 
     let sarif: SarifLog | undefined;
@@ -101,13 +115,14 @@ export function buildTrivyArgs(target: string, sarifPath: string, scanners: Triv
   ];
 }
 
-/** SBOM generation (PRD §8). Separate invocation; writes the SBOM to outputPath. */
+/** SBOM generation (PRD §8). The caller validates and promotes the staged content. */
 export async function runTrivySbom(
   target: string,
   format: "cyclonedx" | "spdx",
   outputPath: string,
-): Promise<{ ran: boolean; note?: string; version: string }> {
+): Promise<TrivySbomRun> {
   let version = "unknown";
+  const stagedOutput = `${outputPath}.${process.pid}.${randomUUID()}.trivy.tmp`;
   try {
     const bin = await resolveEngine("trivy");
     version = bin.version;
@@ -118,22 +133,45 @@ export async function runTrivySbom(
       "--format",
       fmt,
       "--output",
-      outputPath,
+      stagedOutput,
       ...OFFLINE_FLAGS,
       "--cache-dir",
       MANAGED_TRIVY_CACHE,
       target,
     ];
-    const res = await execBinary(bin.path, args, { cwd: target, offline: true });
+    const res = await execBinary(bin.path, args, {
+      cwd: await engineWorkingDirectory(target),
+      offline: true,
+    });
+    if (res.timedOut || res.code !== 0) {
+      return {
+        ran: false,
+        version,
+        note: `Trivy SBOM failed (exit ${res.code ?? "unknown"}${res.timedOut ? ", timed out" : ""}). stderr: ${trunc(res.stderr)}`,
+      };
+    }
     try {
-      await access(outputPath);
-      return { ran: true, version };
-    } catch {
-      return { ran: false, version, note: `Trivy SBOM produced no output (exit ${res.code}). stderr: ${trunc(res.stderr)}` };
+      const metadata = await lstat(stagedOutput);
+      if (!metadata.isFile() || metadata.size === 0) throw new Error("staged output is not a non-empty regular file");
+      if (metadata.size > MAX_TRIVY_SBOM_BYTES) {
+        throw new Error(`staged output exceeds the ${MAX_TRIVY_SBOM_BYTES / (1024 * 1024)} MiB bound`);
+      }
+      const content = await readFile(stagedOutput, "utf8");
+      return { ran: true, version, content };
+    } catch (error) {
+      return {
+        ran: false,
+        version,
+        note:
+          `Trivy SBOM produced no fresh output (exit ${res.code}). ` +
+          `${error instanceof Error ? error.message : String(error)} stderr: ${trunc(res.stderr)}`,
+      };
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { ran: false, version, note: msg };
+  } finally {
+    await rm(stagedOutput, { force: true }).catch(() => undefined);
   }
 }
 

@@ -51,3 +51,41 @@ expectations in the test file are the public spec).
   evidence-gated Supabase CAPTCHA integration. Includes safe configurations, development/report-only
   near misses, hosted unknowns, nginx/Next.js effective-order cases, and unresolved cross-layer
   conflicts. Locked by `src/ai-checks/security-controls.test.ts` plus evals E20/E21.
+- `supabase-edge-auth-corpus/` — an Edge Function request handler without caller authentication,
+  paired with an authenticated equivalent and non-Edge near miss. It deliberately contains no SQL
+  so the Edge Function detector cannot accidentally depend on the separate RLS project gate. Locked
+  by `src/ai-checks/supabase-rls.test.ts`.
+- `flutter-corpus/` — three complete synthetic Flutter projects: six one-to-one true positives,
+  safe near misses plus generated/test/example exclusion guards, and matching remediated files for
+  rescan proof. Covers all six first-party Flutter/Dart rules, technology applicability, pack
+  execution accounting, detector provenance, and redaction. Locked by
+  `src/packs/flutter/corpus.test.ts` and MCP evals E23/E24. The private `CONTRACT.md` expectation
+  ledger is excluded from the public seed; this index and the shipped tests are the public spec.
+- `mobile-config-corpus/` — Android and iOS TP/FP/fixed repository-configuration projects for the
+  eight first-party mobile platform rules. Locks effective release selection, platform/config
+  precedence, ignored development corpora, parser bounds, exact provenance, and zero-finding
+  remediated states. Covered by `src/packs/android/android-config.test.ts`,
+  `src/packs/ios/ios-config.test.ts`, and MCP evals E25/E26. The private `CONTRACT.md` expectation
+  ledger is excluded from the public seed; this index and the shipped tests are the public spec.
+- `pub-sca-corpus/` — frozen Pub TP/FP/fixed/malformed lockfiles for the first-party offline
+  dependency matcher and native SBOM fallback. It locks Pub build-suffix/prerelease boundaries,
+  two distinct advisories for one `archive` version, custom-registry/Git/path/SDK exclusions,
+  fail-closed malformed input, provenance, and fixed-version rescan behavior. Covered by
+  `src/pub/*.test.ts` and MCP evals E27-E29. The private `CONTRACT.md` expectation ledger is
+  excluded from the public seed; shipped tests are the public spec.
+- `react-native-expo-corpus/` — three complete Expo/React Native projects with exactly one TP for
+  each of the four React Native and two Expo rules, safe near misses and excluded test/example/
+  generated source, plus path-identical remediated files. It locks framework applicability,
+  bounded non-executing parsing, pack coverage, provenance, redaction, and same-path rescan via
+  shipped pack tests and MCP evals E30/E31. The private `CONTRACT.md` expectation ledger is excluded
+  from the public seed; shipped tests are the public spec.
+- `python-ai-api-corpus/` — three Python projects with exactly one TP for each of the six Python
+  AI/API rules, safe near misses plus excluded test/example/generated source, and path-identical
+  remediated files. It locks bounded syntax/project loading, framework applicability, source/sink
+  provenance, pack coverage, redaction, and same-path rescan through shipped tests and MCP evals
+  E32/E33. The private `CONTRACT.md` expectation ledger is excluded from the public seed; shipped
+  tests are the public spec.
+- `opengrep-shadow-corpus/` — TP/FP/fixed JavaScript/TypeScript projects for exact raw parity between
+  the still-active Opengrep weak-hash/cipher rules and the first native SAST candidates. It covers
+  named imports, JS/TS/JSX/TSX, multiline and same-line multiplicity, modern/dynamic algorithms,
+  and literal/comment/lookalike exclusions. The candidates remain shadow-only until promotion.

@@ -1,7 +1,7 @@
 # CodeInspectus, by Synvoya
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](package.json)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](package.json)
 [![npm downloads](https://img.shields.io/npm/dm/codeinspectus)](https://www.npmjs.com/package/codeinspectus)
 ![MCP-ready](https://img.shields.io/badge/MCP-ready-blue.svg)
 ![Local-first](https://img.shields.io/badge/local--first-yes-brightgreen.svg)
@@ -23,7 +23,7 @@ egress at scan time**.
 **18 normalized findings across all four engines** with v0.3.1 (4 critical, 8 high,
 5 medium, 1 low). Inspect the [fixture](fixtures/vulnerable-app), read the
 [full scanner-derived report](examples/reports/vulnerable-app-v0.3.1.md), or run the
-[21-case eval suite](evals/run-evals.ts). Dependency findings can change as the local
+[36-case eval suite](evals/run-evals.ts). Dependency findings can change as the local
 Trivy database updates; the report records the exact engine and database versions used.
 
 If CodeInspectus is useful, [star the repository](https://github.com/Synvoya/codeinspectus)
@@ -36,12 +36,25 @@ scanners miss:
 - **Opengrep** — SAST / OWASP Top 10 (SARIF)
 - **Gitleaks** — secrets
 - **Trivy** — dependency CVEs (SCA), IaC misconfig, secrets, license, SBOM
-- **CodeInspectus AI checks** — client-side secret/bundle exposure, Supabase
+- **CodeInspectus Pub** — first-party, exact-version Dart/Flutter dependency matching and
+  CycloneDX/SPDX inventory from `pubspec.lock`, backed by a bundled offline OSV Pub snapshot
+- **CodeInspectus native checks** — client-side secret/bundle exposure, Supabase
   RLS / inverted-auth (the CVE-2025-48757 class), prompt-injection sinks,
   client-writable `user_metadata` authorization, and unsanitized model/user output
   rendered via `dangerouslySetInnerHTML` (XSS / LLM05), plus explicit API-boundary
   leaks, raw request-to-database writes, sensitive logging, and evidence-gated
-  security-header/CSP/session-cookie/Supabase-CAPTCHA configuration checks
+  security-header/CSP/session-cookie/Supabase-CAPTCHA configuration checks. Separate
+  first-party packs cover six narrow Flutter/Dart source failure modes and eight bounded
+  Android/iOS repository-configuration failures, plus four React Native and two Expo
+  framework-specific mobile failures. A bounded Python AI/API pack covers six narrow
+  Django, Flask, FastAPI, Starlette, Jinja, OpenAI, and Anthropic source failures.
+
+The shipped manifest contains **70 curated detections**: **49 first-party native rule
+IDs** (21 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, and
+2 Expo, plus 6 Python AI/API and 2 JavaScript baseline SAST rules), 18 Opengrep-owned
+SAST rules, and 3 custom Gitleaks rules. All 20 Opengrep YAML rules remain physically active:
+the two native-owned rules reconcile exact results and fall back to Opengrep on mismatch or
+native unavailability. Opengrep, Gitleaks, and Trivy remain installed and additive.
 
 > CodeInspectus bundles the official, **SHA-pinned** engine binaries and calls
 > them as local subprocesses. It does **not** fork them.
@@ -58,7 +71,8 @@ before shipping.
 
 ## Install
 
-**Prerequisites:** **Node.js ≥18**, and [**cosign**](https://github.com/sigstore/cosign)
+**Prerequisites:** **Node.js ≥22**. Node 24 LTS is recommended. Also install
+[**cosign**](https://github.com/sigstore/cosign)
 on your `PATH` when Opengrep or Trivy binaries need installation. Signature verification is
 **fail-closed**: those binaries are never installed without publisher verification. **Gitleaks**
 verifies by checksum and needs no cosign; a DB-only Trivy refresh reuses the already SHA-verified
@@ -155,12 +169,12 @@ useful when you want the same policy persisted explicitly in a repository.
 
 | Tool | Purpose |
 |------|---------|
-| `codeinspectus_scan` | Full local scan of a path (engines + AI checks). Returns CWE-keyed findings, remediations, framework tags, and three-state repository evidence for supported runtime controls. |
-| `codeinspectus_rescan` | Re-scan after fixes; diffs vs a prior scan → resolved / remaining / introduced. |
+| `codeinspectus_scan` | Full local scan of a path (engines + AI checks). Returns CWE-keyed findings, detected technologies, exact native-pack and Pub dependency coverage, remediations, framework tags, and three-state repository evidence for supported runtime controls. |
+| `codeinspectus_rescan` | Re-scan after fixes; diffs vs a prior scan → resolved / remaining / introduced, with fresh technology and pack coverage. |
 | `codeinspectus_compliance_report` | Per-framework **code-level control coverage** (not certification). |
 | `codeinspectus_explain_finding` | Deep explanation + full remediation for one finding. |
-| `codeinspectus_generate_sbom` | CycloneDX/SPDX SBOM (written to the managed dir by default, or a path you choose). |
-| `codeinspectus_list_rules` | Active detectors, engine versions, detection-DB + Trivy-DB freshness, and structured machine setup/repair state. |
+| `codeinspectus_generate_sbom` | CycloneDX/SPDX SBOM using Trivy plus native Pub inventory/fallback (written to the managed dir by default, or a path you choose). |
+| `codeinspectus_list_rules` | Active detectors, native-pack inventory/rule ownership, engine versions, detection-DB + Trivy/Pub DB provenance and freshness, and structured machine setup/repair state. |
 
 CodeInspectus **never edits or deletes your source code or repository** — it reads and
 reports; your agent applies the fixes. It stores engine data and scan history under
@@ -170,6 +184,22 @@ by default, or a path you choose (see `codeinspectus_generate_sbom`).
 Each scan also reports a read-only **git-safety** state: if there's no git repo or
 uncommitted changes, it recommends creating a checkpoint before fixes — your agent
 runs git only with your approval; the tool never does.
+
+`detected_technologies` explains the bounded repository signals CodeInspectus saw.
+`pack_coverage` separately reports how many registered native analyzers and rules actually ran.
+A pack state of `ran` means those listed rules executed; it is not a claim of complete security
+coverage for the named language or framework. `not_applicable` means the installed pack did not
+match detected project technology; `not_run`, `partial`, and `unavailable` distinguish scanner
+filtering from incomplete or failed execution. The Flutter pack runs only when bounded repository
+signals identify Flutter; an ordinary Dart package does not activate it. Android and iOS packs
+likewise require bounded platform-project evidence and report their own platform metadata.
+React Native and Expo are separate technology-gated packs: an Expo project can run both, while a
+bare React Native project never implies that Expo configuration rules ran.
+The Python AI/API pack requires bounded Python/package/framework evidence. It reports unsupported
+syntax, source bounds, and deliberately excluded corpora as explicit coverage notes instead of
+inferring that omitted source is safe.
+`dependency_coverage` separately reports whether the native Pub matcher ran, which lockfiles and
+eligible packages it analyzed, what it deliberately skipped, and the bundled snapshot version.
 
 ## Honest claims (please read)
 
@@ -192,6 +222,60 @@ runs git only with your approval; the tool never does.
   code-evidenced — this is **not** an Essential Eight assessment.
 - **Prompt-injection detection is heuristic and immature** — those findings are
   worded "potential …" and marked medium confidence.
+- **Flutter/Dart native coverage is six narrow, first-party structural checks:**
+  `ci-flutter-tls-verification-disabled`, `ci-flutter-sensitive-shared-preferences`,
+  `ci-flutter-webview-untrusted-content`, `ci-flutter-sensitive-log`,
+  `ci-flutter-supabase-privileged-key-client`, and `ci-flutter-cleartext-network`.
+  They inspect Dart tokens and local source structure without type resolution or whole-program
+  dataflow. Project-root scans exclude generated files and test/example corpora unless those paths
+  are scanned directly. Unreadable Dart files, files over 2 MiB, and source beyond the
+  10,000-file/64 MiB project bounds are skipped and named in `pack_coverage`. This is repository
+  evidence, not runtime mobile testing or complete Flutter coverage. Native Pub vulnerability/SBOM
+  analysis is a separate `vuln`-class engine, so it can run for Flutter and plain Dart projects
+  without implying that the Flutter source pack applied. Android/iOS configuration is handled by
+  separate native platform packs; existing Trivy behavior is unchanged.
+  The shipped [Flutter TP/FP/fixed corpus](fixtures/README.md) locks exactly one
+  expected finding per rule in the vulnerable project and zero findings in both the near-miss and
+  remediated projects. E23/E24 exercise that corpus through the built MCP stdio server, including
+  pack execution accounting and redaction of the planted synthetic sentinel.
+- **Android/iOS native coverage is eight narrow, first-party repository-configuration checks.**
+  Android flags an explicitly debuggable release, effective production cleartext opt-in,
+  production trust of user-added CAs, and an exported AndroidX FileProvider. iOS flags global ATS
+  arbitrary loads, insecure production-domain exceptions, weak production-domain TLS policy, and
+  disabled default data protection. The packs parse bounded, literal XML/Xcode repository evidence;
+  they never run Gradle, Xcode, or target code, and parsed configuration is never executed. Dynamic
+  build settings,
+  arbitrary Android product flavors, full manifest merging, provisioning profiles, runtime behavior,
+  and complete mobile-platform security remain out of scope. Skipped or unsupported configuration is
+  named in `pack_coverage`, not inferred as secure or vulnerable. The shipped
+  [Android/iOS TP/FP/fixed corpus](fixtures/README.md)
+  and E25/E26 lock exact findings, zero-finding near-miss/remediated states, provenance, redaction,
+  execution accounting, and bidirectional same-path rescan behavior.
+- **React Native/Expo native coverage is six narrow, first-party structural checks.** The React
+  Native pack flags sensitive credential writes to proven AsyncStorage receivers, untrusted route/
+  deep-link content entering an imported JavaScript-enabled WebView, explicit mixed-content opt-in,
+  and universal-origin access from a file-backed WebView. The separate Expo pack flags sensitive
+  server environment values placed in public app config and unsigned updates fetched over cleartext
+  production URLs. Both use bounded read-only parsing and never import, execute, or evaluate target
+  code/configuration. Dynamic values, spreads, unresolved guards, unreadable/oversized input, and
+  bounded-out source become named coverage limitations rather than inferred findings. Framework
+  evidence is required; ordinary JavaScript/TypeScript or native Android/iOS skeletons do not
+  activate these packs. This is intrafile/static repository evidence, not complete dataflow,
+  deployment proof, or runtime mobile testing. The shipped
+  [React Native/Expo TP/FP/fixed corpus](fixtures/README.md) and E30/E31 lock exact findings,
+  precision, redaction, provenance, execution accounting, and same-path resolution/reintroduction.
+- **Python AI/API native coverage is six narrow, high-confidence first-party structural checks.** The pack flags
+  hardcoded framework signing secrets, credentialed all-origin CORS, request-controlled file
+  responses and redirects, request-controlled template source, and unsanitized OpenAI/Anthropic
+  output returned as HTML. It uses a bounded Lezer syntax gate plus source-ordered intrafile
+  analysis; it never imports or executes target Python. There is no type checker, module graph,
+  interprocedural flow, or path-sensitive branch merge. Format strings and leading-tab indentation
+  currently fail closed with named coverage notes. Generated, migration, dependency, build, test,
+  fixture, demo, sample, and example trees are excluded from project-root scans. Unsupported,
+  malformed, symlinked, unreadable, oversized, or bounded-out source is reported, not inferred as
+  secure. The shipped [Python AI/API TP/FP/fixed corpus](fixtures/README.md) and E32/E33 lock exact
+  findings, precision, redaction, provenance, execution accounting, and same-path
+  resolution/reintroduction.
 - **Client-side authorization that trusts `user_metadata` is flagged** (`ci-ai-client-metadata-authz`).
   CodeInspectus detects an authorization decision that reads client-writable Supabase
   `user_metadata` — e.g. `if (user.user_metadata.role === 'admin')` — at **high** severity,
@@ -237,17 +321,27 @@ runs git only with your approval; the tool never does.
 ## Language support
 
 Plainly, what runs on what. The commodity engines are broad; the **CodeInspectus
-AI-code checks (the moat) are JavaScript/TypeScript-focused today** — more languages
-are planned. So on a Python/Go/Rust/etc. repo you still get full secrets, dependency,
-IaC and SBOM coverage (and Python SAST), but the AI-code-specific checks won't fire.
-This is stated so you don't infer coverage that isn't there.
+native checks are predominantly JavaScript/TypeScript, plus targeted Flutter/Dart,
+Android/iOS configuration, React Native, Expo, and Python AI/API packs**. A Python repository gets
+native coverage only for the six documented framework/source shapes; Go, Rust, and other
+unsupported native-pack ecosystems still receive the selected commodity-engine coverage but no
+native pack applies. Plain Dart without Flutter also does not activate the Flutter source pack
+(the separate native Pub SCA/SBOM engine can still run). This is stated so you don't infer broader
+coverage than the executed pack reports.
 
 | Layer | What it covers | Language / ecosystem scope |
 |-------|----------------|----------------------------|
-| **Secrets** — Gitleaks + CodeInspectus client-secret checks | hard-coded credentials, leaked keys | **Any language.** Detection is value/pattern-based, not language-parsed. |
+| **Secrets** — Gitleaks + applicable native client-secret checks | hard-coded credentials, leaked keys | **Gitleaks: any language** because its detection is value/pattern-based. Native client-secret analysis remains pack-specific: JavaScript/TypeScript bundle and env exposure, plus Supabase privileged keys passed to Flutter client initialization. |
 | **Dependencies (CVEs/SCA), IaC misconfig, SBOM, license** — Trivy | vulnerable deps, infra misconfig, bill of materials | **Many language & package ecosystems and IaC formats** — see [Trivy's docs](https://trivy.dev). |
+| **Native Pub SCA/SBOM** — CodeInspectus Pub | exact locked-version matches against the bundled advisory snapshot; native Pub inventory and Trivy merge/fallback | **Dart/Flutter `pubspec.lock` only.** Official `pub.dev`/legacy official-host packages are matched by exact enumerated version. Custom registries, Git, path, SDK, malformed, oversized, and unreadable inputs are excluded and reported. No generic SemVer inference, reachability claim, license inference, or complete dependency-graph claim. |
 | **SAST** — Opengrep + CodeInspectus `security-baseline` | injection, XSS, SSRF, weak crypto, insecure deserialization, explicit CORS misconfiguration | **JavaScript, TypeScript, Python.** CodeInspectus ships its own MIT ruleset and runs Opengrep with **no network registry packs**, so SAST coverage is exactly these languages — deliberately narrower than Opengrep's full engine. |
-| **AI-code checks (the moat)** — client-side secret/bundle exposure, Supabase RLS, prompt-injection sinks, client-writable `user_metadata` authz, unsanitized-output XSS, API response/error leaks, unsafe request writes, sensitive logging, explicit runtime-control misconfiguration | the AI-code / vibe-coding failure modes the engines miss | **JavaScript / TypeScript only** (incl. `.jsx/.tsx/.mjs/.cjs`; the client-secret checks also read JS-framework files `.vue/.svelte/.astro/.html`). Supabase RLS analyzes `.sql` (plus `.ts/.js` Edge Functions); runtime-control evidence also reads recognized `.json`, `.toml`, nginx `.conf`, and Cloudflare `_headers` configuration. **More languages are planned.** |
+| **Native JavaScript/TypeScript pack** | client-side secret/bundle exposure, Supabase RLS, prompt-injection sinks, client-writable `user_metadata` authz, unsanitized-output XSS, API response/error leaks, unsafe request writes, sensitive logging, explicit runtime-control misconfiguration | **JavaScript / TypeScript** (incl. `.jsx/.tsx/.mjs/.cjs`; client-secret checks also read `.vue/.svelte/.astro/.html`). Supabase RLS analyzes `.sql` plus `.ts/.js` Edge Functions; runtime-control evidence also reads recognized configuration formats. |
+| **Native Flutter/Dart pack** | disabled TLS verification, sensitive SharedPreferences writes, untrusted JavaScript-enabled WebView navigation, sensitive logs, Supabase privileged client keys, cleartext production endpoints | **Flutter projects only.** Token-aware, source-ordered intrafile Dart analysis; no type resolution, path-sensitive branch merge, complete dataflow, or runtime mobile testing. Pub SCA/SBOM is reported by the separate native Pub engine. File/total bounds and omissions are explicit in pack coverage. |
+| **Native Android configuration pack** | debuggable release manifests, effective cleartext traffic, production user-CA trust, exported AndroidX FileProvider | **Android project evidence only.** Bounded structured XML with supported main-to-release precedence; no Gradle execution, arbitrary flavor/DSL evaluation, full manifest merger, runtime testing, or complete Android review. |
+| **Native iOS configuration pack** | global ATS arbitrary loads, insecure domain exceptions, weak TLS policy, disabled default data protection | **iOS project evidence only.** Bounded XML plist/entitlements parsing plus literal Release/AppStore Xcode references; no Xcode execution, dynamic setting expansion, provisioning-profile inspection, runtime testing, or complete iOS review. |
+| **Native React Native pack** | sensitive AsyncStorage writes; untrusted, mixed-content, or file-origin WebView configurations | **Exact React Native dependency or statically proven Expo project evidence.** Expo uses React Native, so proven Expo evidence activates both packs; bare React Native evidence does not activate Expo rules. Bounded token/structure-aware JS/TS/JSX analysis; no module execution, type resolution, whole-program flow, dynamic-prop evaluation, runtime testing, or complete React Native review. |
+| **Native Expo pack** | server secrets exposed through public app config; unsigned cleartext production updates | **Exact Expo dependency or explicit top-level `expo` config evidence only; generic `name` + `slug` fields do not activate it.** Bounded root and nested-package discovery, comments/trailing-comma-aware JSON, and non-executing direct-object JavaScript/TypeScript config parsing; dynamic config is omitted and reported, never evaluated. |
+| **Native Python AI/API pack** | hardcoded signing secrets; credentialed wildcard CORS; untrusted file responses, redirects, and template source; LLM output returned as unsafe HTML | **Python with bounded Django, Flask, FastAPI, Starlette, Jinja2, OpenAI, or Anthropic evidence.** Non-executing Lezer-gated intrafile analysis; no type resolution, module graph, interprocedural/path-sensitive flow, complete Python review, or runtime proof. Unsupported syntax and bounded-out input fail closed and are reported in pack coverage. |
 
 ## Compliance frameworks (code-visible subset)
 
@@ -271,8 +365,8 @@ coverage score, compliance claim, or certification.
 ## How it works
 
 ```
-agent → codeinspectus_scan → [Opengrep | Gitleaks | Trivy] + AI checks
-      → SARIF normalize → dedup (incl. Trivy⨯Gitleaks secret overlap)
+agent → codeinspectus_scan → [Opengrep | Gitleaks | Trivy | native Pub] + applicable native packs
+      → normalize → dedup (incl. Trivy/native-Pub advisory aliases + secret overlap)
       → CWE-keyed findings + runtime-control evidence → compliance map → compact JSON + summary
 ALL LOCAL. NO NETWORK EGRESS AT SCAN TIME.
 ```
@@ -293,7 +387,7 @@ trademark**.
 ```bash
 npm install
 npm run build      # tsc --noEmit && tsup  (must compile clean)
-npm run eval       # ≥10 evals against fixtures/vulnerable-app
+npm run eval       # 26 MCP stdio evals across the shipped verification fixtures
 npm run inspector  # npx @modelcontextprotocol/inspector node dist/index.js
 ```
 
@@ -319,7 +413,7 @@ Two areas where review helps most:
   primary source + your basis) — the bar and process are in
   [`CONTRIBUTING.md`](CONTRIBUTING.md); the per-mapping rationale and confidence live
   in [`docs/COMPLIANCE-RATIONALE.md`](docs/COMPLIANCE-RATIONALE.md).
-- **Detection rules** (`detection-db/**`, `src/ai-checks/**`). New rules, precision
+- **Detection rules** (`detection-db/**`, `src/ai-checks/**`, `src/packs/**`). New rules, precision
   fixes, and false-positive reports are all welcome. The merge bar is **precision**:
   a fixture proving the true positive, and a near-miss fixture proving the rule does
   **not** over-fire. Details in [`CONTRIBUTING.md`](CONTRIBUTING.md).
@@ -352,3 +446,6 @@ Per-version release notes live in [`CHANGELOG.md`](CHANGELOG.md).
 
 CodeInspectus: MIT. Bundled engines: Opengrep (LGPL-2.1), Gitleaks (MIT, CLI
 only), Trivy (Apache-2.0) — all permissive for bundling the compiled binaries.
+The transformed Pub advisory snapshot is derived from OSV.dev records sourced from the
+GitHub Advisory Database and remains CC BY 4.0; attribution and transformation details ship
+beside the snapshot in `detection-db/osv-pub/LICENSE-PROVENANCE.md`.

@@ -66,6 +66,8 @@ const SERVER_INSTRUCTIONS =
   "before editing, critical/high first, with file:line, risk, and remediation. Do not apply fixes " +
   "without granular user approval. If git_safety recommends a checkpoint, ask before running git. " +
   "After approved fixes, call codeinspectus_rescan; never claim fixed unless confirmed. " +
+  "Inspect pack_coverage and disclose partial, unavailable, not_run, or not_applicable native packs; " +
+  "a ran pack means its listed rules executed, not complete security coverage for that language. " +
   "Inspect engine_setup in scan/list-rules output. For repair_required, explain that engine coverage may be partial; " +
   "for db_refresh_recommended, explain the DB freshness/rescan-continuity limitation without calling current findings incomplete. " +
   "Ask for approval, then run `npx codeinspectus repair-engines` in the user's terminal; never download " +
@@ -88,11 +90,13 @@ export function createServer(): McpServer {
       title: "Scan code for security issues",
       description:
         "Run a full local security scan of a path: bundled engines (Opengrep SAST, " +
-        "Gitleaks secrets, Trivy SCA/IaC/license) plus CodeInspectus's AI-code-specific " +
+        "Gitleaks secrets, Trivy SCA/IaC/license), CodeInspectus's offline native Pub SCA, " +
+        "plus AI-code-specific " +
         "checks (client-side secret exposure, Supabase RLS/inverted-auth, prompt-injection " +
         "sinks, API-boundary failures, and explicit runtime-control misconfiguration). " +
-        "Returns CWE-keyed findings with fix recommendations, compliance tags, and three-state " +
-        "repository evidence for supported runtime controls. " +
+        "Returns CWE-keyed findings with fix recommendations, detected repository technologies, " +
+        "explicit native-pack execution counts, compliance tags, and three-state repository " +
+        "evidence for supported runtime controls. " +
         "Fully offline — zero network egress at scan time. Never writes to your code or repo.",
       inputSchema: scanInput.shape,
       outputSchema: scanResultSchema.shape,
@@ -117,7 +121,8 @@ export function createServer(): McpServer {
       description:
         "Re-run a scan after fixes were applied and diff against a prior scan_id (or the " +
         "most recent scan of the same path). Reports which findings are resolved, which " +
-        "remain, and which were newly introduced. Use this to verify fixes. Never writes to your code or repo.",
+        "remain, and which were newly introduced, plus fresh technology and native-pack " +
+        "execution coverage. Use this to verify fixes. Never writes to your code or repo.",
       inputSchema: rescanInput.shape,
       outputSchema: rescanResultSchema.shape,
       annotations: { title: "CodeInspectus Rescan", ...READ_ONLY },
@@ -198,7 +203,8 @@ export function createServer(): McpServer {
     {
       title: "Generate a software bill of materials",
       description:
-        "Generate a CycloneDX or SPDX SBOM for the target project using Trivy. Writes the " +
+        "Generate a CycloneDX or SPDX SBOM for the target project using Trivy plus the " +
+        "first-party offline Pub lockfile inventory, with native Pub fallback when Trivy is unavailable. Writes the " +
         "SBOM file to the chosen output path and returns its location and component count. " +
         "Offline.",
       inputSchema: generateSbomInput.shape,
@@ -209,7 +215,9 @@ export function createServer(): McpServer {
       try {
         const result = await generateSbom(args);
         return ok(
-          `SBOM (${result.format}) ${result.generated ? "written to" : "could not be written to"} ${result.output_path}. Components: ${result.component_count}.${result.note ? "\n" + result.note : ""}`,
+          `SBOM (${result.format}) ${result.generated ? "written to" : "could not be written to"} ${result.output_path}. ` +
+          `Components: ${result.component_count}. Providers: ${result.providers.join(", ") || "none"}. ` +
+          `Coverage: ${result.coverage_state}.${result.note ? "\n" + result.note : ""}`,
           result as unknown as Record<string, unknown>,
         );
       } catch (err) {
@@ -226,8 +234,9 @@ export function createServer(): McpServer {
       title: "List active rules and detector versions",
       description:
         "List the active detectors and engine versions, the CodeInspectus detection-database " +
-        "version and date, the Trivy vulnerability-DB freshness date, and the custom " +
-        "CodeInspectus AI-code rules currently shipped.",
+        "version and date, Trivy vulnerability-DB freshness, bundled Pub advisory-database " +
+        "provenance/freshness, and the custom " +
+        "CodeInspectus AI-code rules and native detector packs currently shipped.",
       inputSchema: listRulesInput.shape,
       outputSchema: listRulesOutput.shape,
       annotations: { title: "CodeInspectus List Rules", ...READ_ONLY },

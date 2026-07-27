@@ -3,9 +3,48 @@
  * Kept compact to protect the agent's context window (PRD §5 output discipline).
  */
 
-import type { ScanResult, RescanResult, Finding } from "./types.js";
+import type { ScanResult, RescanResult, Finding, DependencyCoverage } from "./types.js";
 import { TRIVY_DB_PROVENANCE_MESSAGE } from "./trivy-db-provenance.js";
 import { engineSetupMessage } from "./engine-health.js";
+
+function technologyAndPackSummary(
+  technologies: ScanResult["detected_technologies"],
+  coverage: ScanResult["pack_coverage"],
+): string {
+  const detected = technologies.length
+    ? technologies.map((technology) => technology.id).join(", ")
+    : "none from supported repository signals";
+  const packs = coverage.length
+    ? coverage
+        .map(
+          (pack) =>
+            `${pack.pack_id}=${pack.state} ` +
+            `(${pack.analyzers.ran}/${pack.analyzers.registered} analyzers, ` +
+            `${pack.rules.ran}/${pack.rules.registered} rules)` +
+            (pack.note ? ` — ${pack.note}` : ""),
+        )
+        .join("\n  ")
+    : "none registered";
+  return (
+    `\n\nDetected technologies: ${detected}\n` +
+    `Native pack execution (registered rules only; not complete language coverage):\n  ${packs}`
+  );
+}
+
+function dependencyCoverageSummary(coverage: DependencyCoverage[] | undefined): string {
+  if (!coverage?.length) return "";
+  const lines = coverage.map((entry) => {
+    const snapshot = entry.database_version ? `, snapshot ${entry.database_version}` : "";
+    const limitation = entry.note ? ` — ${entry.note}` : "";
+    return (
+      `${entry.ecosystem}/${entry.engine}=${entry.state} ` +
+      `(${entry.lockfiles.analyzed}/${entry.lockfiles.discovered} lockfiles, ` +
+      `${entry.packages.eligible}/${entry.packages.resolved} eligible packages, ` +
+      `${entry.packages.skipped} skipped${snapshot})${limitation}`
+    );
+  });
+  return `\n\nNative dependency coverage (exact locked-version matching only):\n  ${lines.join("\n  ")}`;
+}
 
 function topLines(findings: Finding[], n: number): string {
   return findings
@@ -74,7 +113,10 @@ export function summarizeScan(r: ScanResult): string {
       })()
     : "";
 
-  return `${head}${body}${trunc}${controlEvidence}${dbProvenance}${engineSetup}${beforeFix}${eng}${warn}\n\n${r.disclaimer}`;
+  const nativeCoverage = technologyAndPackSummary(r.detected_technologies, r.pack_coverage);
+  const dependencyCoverage = dependencyCoverageSummary(r.dependency_coverage);
+
+  return `${head}${nativeCoverage}${dependencyCoverage}${body}${trunc}${controlEvidence}${dbProvenance}${engineSetup}${beforeFix}${eng}${warn}\n\n${r.disclaimer}`;
 }
 
 export function summarizeRescan(r: RescanResult): string {
@@ -90,6 +132,8 @@ export function summarizeRescan(r: RescanResult): string {
     `CodeInspectus rescan of ${r.target} (vs ${r.prior_scan_id})\n` +
     `Resolved: ${r.summary.resolved} | Remaining: ${r.summary.remaining} | ` +
     `Newly introduced: ${r.summary.introduced} | Not re-checked: ${r.summary.not_rechecked}` +
+    technologyAndPackSummary(r.detected_technologies, r.pack_coverage) +
+    dependencyCoverageSummary(r.dependency_coverage) +
     (r.introduced.length ? `\n\nNewly introduced:\n${topLines(r.introduced, 10)}` : "") +
     (r.remaining.length ? `\n\nStill present:\n${topLines(r.remaining, 10)}` : "") +
     notRechecked +

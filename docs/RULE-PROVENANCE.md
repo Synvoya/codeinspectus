@@ -10,32 +10,46 @@
 > versions. Where this document and any other doc disagree on a count or a version, the
 > two files above win and this document is the one to correct.
 
-_Last refreshed: Project CI Enhancement 2 (2026-07-26) — recorded four original
-repository-evidence AI analyzers for explicit header/CSP/cookie/CAPTCHA configuration.
-Enhancement 1 recorded four original API-boundary AI analyzers and one original CORS rule,
-and compared the CORS rule with the closest current Semgrep registry analog. **No re-audit
-of the existing rules was performed this session**. Prior
+_Last refreshed: Python AI/API native pack (2026-07-26) — recorded six original structural rules
+and their first-party pack ownership. The React Native/Expo refresh recorded six original
+framework-specific structural rules. The Android/iOS refresh
+recorded eight original repository-configuration rules. The Flutter/Dart refresh
+recorded six original token-aware structural rules. Project CI Enhancement 2
+recorded four original repository-evidence AI analyzers for explicit header/CSP/cookie/CAPTCHA
+configuration. Enhancement 1 recorded four original API-boundary AI analyzers and one original
+CORS rule, and compared the CORS rule with the closest current Semgrep registry analog. **No
+re-audit of the existing rules was performed this session**. Prior
 full provenance pass: CG-08 (2026-06-23) audit + the CG-39 sweep, against
-`detection-db/manifest.json`, `engines.lock.json`, `detection-db/**`, and `src/ai-checks/**`._
+`detection-db/manifest.json`, `engines.lock.json`, `detection-db/**`, `src/ai-checks/**`,
+and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api}/**`._
 
 ---
 
-## Reconciled detection count — **44 active CodeInspectus detections**
+## Reconciled detection count — **70 active CodeInspectus detections**
 
-`detection-db/manifest.json` `custom_rules` has **44** entries:
+`detection-db/manifest.json` `custom_rules` has **70** entries:
 
 | Group | Count | Engine | Kind | Where |
 |---|---:|---|---|---|
-| AI-code analyzers | **21** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
-| Opengrep SAST rules | **20** | `opengrep` | `sast` | `detection-db/opengrep-rules/security-baseline/` |
+| JavaScript/TypeScript native rules | **21** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
+| Flutter/Dart native rules | **6** | `codeinspectus-ai` | `ai` | `src/packs/flutter/*.ts` |
+| Android configuration native rules | **4** | `codeinspectus-ai` | `ai` | `src/packs/android/*.ts` |
+| iOS configuration native rules | **4** | `codeinspectus-ai` | `ai` | `src/packs/ios/*.ts` |
+| React Native native rules | **4** | `codeinspectus-ai` | `ai` | `src/packs/react-native/*.ts` |
+| Expo native rules | **2** | `codeinspectus-ai` | `ai` | `src/packs/expo/*.ts` |
+| Python AI/API native rules | **6** | `codeinspectus-ai` | `ai` | `src/packs/python-ai-api/*.ts` |
+| JavaScript baseline native rules | **2** | `codeinspectus-ai` | `sast` | `src/packs/javascript-baseline/*.ts` |
+| Opengrep-owned SAST rules | **18** | `opengrep` | `sast` | `detection-db/opengrep-rules/security-baseline/` |
 | Gitleaks secret rules | **3** | `gitleaks` | `secret` | `detection-db/gitleaks/codeinspectus.toml` |
-| **Total** | **44** | — | — | — |
+| **Total** | **70** | — | — | — |
 
-Verified counts: 20 Opengrep rule ids and 3 Gitleaks rule ids are greppable on disk;
-21 `kind: "ai"` entries in the manifest.
+Verified physical counts: 20 Opengrep YAML rule ids and 3 Gitleaks rule ids are greppable on disk.
+The catalog assigns 49 rule IDs to eight native packs and 18 to Opengrep; the two promoted native
+SAST IDs retain physically active Opengrep fallbacks and are not double-counted.
 
-The authoritative current figure is **44**, decomposing as **21 AI analyzers + 20 Opengrep SAST +
-3 Gitleaks** (single source of truth: `detection-db/manifest.json`). CG-25b added two original
+The authoritative current figure is **70**, decomposing as **49 first-party native rules +
+18 Opengrep-owned SAST + 3 Gitleaks** (single source of truth: `detection-db/manifest.json`).
+CG-25b added two original
 CodeInspectus detections: `ci-ai-llm-key-browser-exposed` (B-11; `dangerouslyAllowBrowser: true`) and
 `ci-ai-storage-rls-public` (B-12; permissive `USING (true)` on `storage.objects`). CG-50/51 then added
 two more original **`ci-ai-*`** moat analyzers — `ci-ai-client-metadata-authz` (CWE-639; an
@@ -59,13 +73,54 @@ TypeScript evidence analyzers (`ci-ai-security-header-disabled`,
 `ci-ai-supabase-captcha-token-missing`). They were authored from the maintainer's
 three-state evidence contract and current primary framework documentation, not from a
 third-party detection corpus. No registry rule expression was referenced or copied. The
-human legal gate stays **de-risked, not closed**.
+Flutter/Dart pack adds six independently authored TypeScript analyzers for Dart source:
+`ci-flutter-tls-verification-disabled`, `ci-flutter-sensitive-shared-preferences`,
+`ci-flutter-webview-untrusted-content`, `ci-flutter-sensitive-log`,
+`ci-flutter-supabase-privileged-key-client`, and `ci-flutter-cleartext-network`.
+They were written for CodeInspectus from the maintainer's six detector contracts and primary
+Dart/Flutter security/API documentation. They are not ports, translations, or derived expressions
+from Opengrep, Semgrep, Trivy, or another rule corpus. This records original first-party authorship
+under the existing self-diligence frame; it is **not** an independent legal review. The human legal
+gate stays **de-risked, not closed**. The Android/iOS packs add eight independently authored
+TypeScript repository-configuration rule implementations:
+`ci-android-debuggable-release`, `ci-android-cleartext-traffic`, `ci-android-user-ca-trust`,
+`ci-android-exported-file-provider`, `ci-ios-ats-global-arbitrary-loads`,
+`ci-ios-ats-insecure-domain-exception`, `ci-ios-ats-weak-tls`, and
+`ci-ios-data-protection-disabled`. They were written for CodeInspectus from the maintainer's
+detector contracts and platform configuration semantics, not ported or translated from a
+third-party detection corpus. This is the same first-party authorship record, not an independent
+legal review. No new CWE-to-compliance-control mapping claim is made for these rules.
+The React Native and Expo packs add six independently authored TypeScript structural rules:
+`ci-react-native-sensitive-async-storage`, `ci-react-native-webview-untrusted-content`,
+`ci-react-native-webview-mixed-content`, `ci-react-native-webview-universal-file-access`,
+`ci-expo-secret-in-public-config`, and `ci-expo-unsigned-cleartext-updates`. They were written for
+CodeInspectus from the maintainer's detector contracts and primary React Native, React Native
+WebView, and Expo configuration/update documentation. They were not ported, translated, or derived
+from Opengrep, Semgrep, Trivy, or another detection corpus. This is an original first-party
+authorship record under the existing self-diligence frame, not an independent legal clearance.
+The Python AI/API pack adds six independently authored TypeScript structural rules:
+`ci-python-hardcoded-signing-secret`, `ci-python-credentialed-cors-all-origins`,
+`ci-python-untrusted-file-response`, `ci-python-untrusted-redirect`,
+`ci-python-untrusted-template-source`, and `ci-python-llm-output-dangerous-html`. They were written
+for CodeInspectus from the maintainer's detector contracts and primary Python framework/API
+documentation. They were not ported, translated, or derived from Opengrep, Semgrep, Trivy, or
+another detection corpus. The Lezer Python parser and smol-toml dependency licenses are reproduced
+in `THIRD-PARTY-NOTICES.md`; those parsing libraries do not supply detection rules. This is an
+original first-party authorship record under the existing self-diligence frame, not an independent
+legal clearance.
+The JavaScript baseline implementation is independently authored TypeScript. After exact shadow
+parity, `ci-baseline-weak-hash` and `ci-baseline-weak-cipher` moved to the native SAST pack. Both
+original YAML rules remain active as reconciliation references and fallbacks. Exact pairs surface
+native-only provenance before global dedup; Opengrep-only or metadata-mismatched pairs remain
+Opengrep findings, native-only pairs are suppressed while Opengrep ran, and native results surface
+when Opengrep is unavailable. This changes catalog ownership without claiming the contextual rules
+are confirmed exploitable vulnerabilities.
 
 ---
 
 ## Provenance summary (the headline for counsel)
 
-- **All 44 custom detections are CodeInspectus-original work, licensed MIT.** In
+- **All 70 custom detections are CodeInspectus-original work, licensed MIT.** In
   `manifest.json` every `custom_rules` entry carries `"source": "codeinspectus-custom"`,
   and the Opengrep ruleset carries `"source": "codeinspectus-mit"` / `"license": "MIT"`.
 - **No detection copies copyrightable expression from a third-party corpus.** For the Opengrep
@@ -89,8 +144,8 @@ human legal gate stays **de-risked, not closed**.
   `semgrep/semgrep-rules` (Semgrep Rules License v1.0). This is the legally-sensitive group
   because it *resembles the registry in form*; see
   `detection-db/opengrep-rules/security-baseline/LICENSE-PROVENANCE.md`.
-- The Gitleaks rules are original regexes; the AI-code analyzers are original TypeScript.
-  Neither has a registry equivalent.
+- The Gitleaks rules are original regexes; the AI-code and native mobile-configuration analyzers
+  are original TypeScript. Neither has a registry equivalent.
 
 **Method for the reviewer:** every rule id below is greppable in the cited file. Diff the
 Opengrep YAML against the upstream registries in a scratch dir if desired — but do **not**
@@ -168,10 +223,13 @@ Gitleaks' own MIT default rules run alongside these three.)
 | `codeinspectus-supabase-service-role` | CWE-798 | Supabase service_role JWT (bypasses RLS) |
 | `codeinspectus-anthropic-key` | CWE-798 | Anthropic API key |
 
-## Inventory — AI-code analyzers (21) — the moat
+## Inventory — first-party native rules (49) — the moat
 
-Path: `src/ai-checks/*.ts` (TypeScript). **Origin: CodeInspectus-original · License: MIT ·
-Derived-from: none.**
+Paths: `src/ai-checks/*.ts` and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api,javascript-baseline}/*.ts`
+(TypeScript implementations).
+**Origin: CodeInspectus-original · License: MIT · Derived-from: none.**
+
+### JavaScript/TypeScript pack (21)
 
 | Rule id | File | CWE | What it flags |
 |---|---|---|---|
@@ -196,6 +254,131 @@ Derived-from: none.**
 | `ci-ai-unsafe-production-csp` | `security-controls.ts` | CWE-693 | Enforced production script policy includes bare wildcard or `'unsafe-eval'` |
 | `ci-ai-insecure-session-cookie` | `security-controls.ts` | CWE-1004 / 614 | Auth/session cookie explicitly uses insecure attributes |
 | `ci-ai-supabase-captcha-token-missing` | `security-controls.ts` | CWE-693 | Checked-in CAPTCHA enablement paired with a recognized Supabase auth call missing `captchaToken` |
+
+### Flutter/Dart pack (6)
+
+Applicability is intentionally narrow: this pack runs only when bounded repository evidence identifies
+a Flutter project. It uses a first-party token-aware Dart lexical/structural layer, without type
+resolution or whole-program dataflow. Generated files and test/example corpora are excluded from
+project-root scans unless scanned directly. Unreadable Dart files, files over 2 MiB, and source
+beyond 10,000 files/64 MiB are skipped and surfaced in pack coverage. These are repository-source
+checks, not runtime mobile testing, native Pub vulnerability/SBOM analysis, or a claim of complete
+Flutter security coverage. Android/iOS repository configuration is owned by the separate packs
+below.
+
+| Rule id | File | CWE | What it flags |
+|---|---|---|---|
+| `ci-flutter-tls-verification-disabled` | `tls.ts` | CWE-295 | `badCertificateCallback` unconditionally accepts invalid certificates |
+| `ci-flutter-sensitive-shared-preferences` | `preferences.ts` | CWE-312 | A proven SharedPreferences receiver stores explicit credential material |
+| `ci-flutter-webview-untrusted-content` | `webview.ts` | CWE-20 / 346 | Route/deep-link input reaches an unrestricted JavaScript WebView without a visible exact HTTPS host allowlist |
+| `ci-flutter-sensitive-log` | `logs.ts` | CWE-532 | A recognized Dart/Flutter log sink receives explicit credential data outside a visible `kDebugMode` guard |
+| `ci-flutter-supabase-privileged-key-client` | `supabase.ts` | CWE-798 / 312 / 285 | A Supabase service-role or secret key reaches Flutter client initialization |
+| `ci-flutter-cleartext-network` | `cleartext.ts` | CWE-319 | A literal cleartext production URL reaches a recognized network or WebView sink |
+
+### Android configuration pack (4)
+
+Applicability requires bounded Android project evidence. The pack uses a structured XML parser and
+supports explicit root/main/release manifests, literal Network Security Config references, and the
+documented release overlay/resource precedence. It does not run Gradle, expand arbitrary
+product-flavor/build-type DSL or placeholders, model the full manifest merger, or claim runtime or
+complete Android security coverage. Symlinks and external/DTD entities are never followed or
+resolved; malformed, dynamic, unreadable, oversized, or bounded-out evidence is reported as a
+coverage limitation.
+
+| Rule id | File | CWE | What it flags |
+|---|---|---|---|
+| `ci-android-debuggable-release` | `android-config.ts` | CWE-489 | A release manifest explicitly enables application debugging |
+| `ci-android-cleartext-traffic` | `android-config.ts` | CWE-319 | Effective production manifest/network-security configuration explicitly permits cleartext traffic |
+| `ci-android-user-ca-trust` | `android-config.ts` | CWE-295 | Effective production network-security configuration trusts user-added certificate authorities |
+| `ci-android-exported-file-provider` | `android-config.ts` | CWE-926 | An AndroidX FileProvider is exported to other applications |
+
+### iOS configuration pack (4)
+
+Applicability requires bounded iOS project evidence. The pack parses XML plists/entitlements and
+resolves only literal Release/AppStore `INFOPLIST_FILE` and `CODE_SIGN_ENTITLEMENTS` settings with
+iPhone platform evidence. It does not run Xcode, expand xcconfig/preprocessing/dynamic variables,
+inspect provisioning profiles, or claim runtime or complete iOS security coverage. Symlinks and
+external/DTD entities are never followed or resolved; binary, malformed, dynamic, unreadable,
+oversized, or bounded-out evidence is reported as a coverage limitation.
+
+| Rule id | File | CWE | What it flags |
+|---|---|---|---|
+| `ci-ios-ats-global-arbitrary-loads` | `config.ts` | CWE-319 | App Transport Security globally permits arbitrary network loads |
+| `ci-ios-ats-insecure-domain-exception` | `config.ts` | CWE-319 | ATS permits insecure HTTP for a non-local production domain |
+| `ci-ios-ats-weak-tls` | `config.ts` | CWE-327 | ATS weakens TLS requirements for a non-local production domain |
+| `ci-ios-data-protection-disabled` | `config.ts` | CWE-311 | Default iOS data protection is explicitly disabled |
+
+### React Native pack (4)
+
+Applicability requires an exact `react-native` package dependency or statically proven Expo project
+evidence. Proven Expo evidence activates both packs because Expo uses React Native; bare React
+Native evidence does not activate Expo configuration rules. The pack uses bounded,
+non-executing JavaScript/TypeScript/JSX structure analysis with explicit import and receiver
+provenance. It does not resolve types or modules, evaluate dynamic props, perform whole-program or
+path-sensitive dataflow, or claim runtime or complete React Native security coverage. Generated,
+dependency, test, example, and similar non-production trees are excluded from project-root scans;
+symlinked, unreadable, malformed, over-2 MiB, over-200,000-token, or over-64-level files are skipped.
+Project discovery is capped at 50,000 entries, 10,000 files, 64 MiB, 1,000,000 tokens, and 32
+directory levels; every omission is reported as a coverage limitation.
+
+| Rule id | File | CWE | What it flags |
+|---|---|---|---|
+| `ci-react-native-sensitive-async-storage` | `async-storage.ts` | CWE-312 | A proven AsyncStorage receiver stores explicit credential or session material |
+| `ci-react-native-webview-untrusted-content` | `webview-untrusted.ts` | CWE-20 / 346 | Route, deep-link, or search-parameter content reaches an imported JavaScript-enabled WebView without a visible safety boundary |
+| `ci-react-native-webview-mixed-content` | `webview-mixed-content.ts` | CWE-319 | An imported WebView explicitly permits mixed content for a production HTTPS source |
+| `ci-react-native-webview-universal-file-access` | `webview-universal-file-access.ts` | CWE-200 / 942 | A file-backed imported WebView explicitly permits universal origin access while JavaScript remains enabled |
+
+### Expo pack (2)
+
+Applicability requires exact Expo package evidence or an explicit top-level `expo` object in static
+application config; generic root `name` + `slug` fields alone do not activate the pack. The pack
+parses bounded JSON/JSONC and direct-object JavaScript/TypeScript configuration at
+the scan root and eligible nested package roots without importing, evaluating, or executing target
+modules. Discovery is capped at 20,000 entries, 500 package roots, and 24 levels; individual configs
+at 1 MiB/100,000 tokens; aggregate reads at 4,096 files/4 MiB; and aggregate static parsing at
+250,000 tokens/25,000 properties. Dynamic
+configuration, spreads, unresolved values, symlinks, malformed input, and bounded-out evidence are
+omitted and reported; the pack does not prove deployed update settings or claim complete Expo
+security coverage.
+
+| Rule id | File | CWE | What it flags |
+|---|---|---|---|
+| `ci-expo-secret-in-public-config` | `config.ts` | CWE-798 / 312 | A non-public server secret environment value is exposed through public Expo application config |
+| `ci-expo-unsigned-cleartext-updates` | `config.ts` | CWE-494 / 319 | Enabled Expo updates use a cleartext production URL without a literal code-signing certificate |
+
+### Python AI/API pack (6)
+
+Applicability requires bounded Python/package/framework evidence. All six rules emit only the
+documented exact high-confidence source/sink or literal-configuration shapes. The pack uses a Lezer syntax gate
+and source-ordered intrafile analysis without importing or executing target code. It does not
+provide type resolution, a module graph, interprocedural flow, or path-sensitive branch merging.
+Format strings and leading-tab indentation currently fail closed. Generated, migration,
+dependency, build, test, fixture, demo, sample, and example trees are excluded from project-root
+scans; unsupported, malformed, symlinked, unreadable, oversized, and bounded-out input is reported
+as a coverage limitation rather than inferred safe.
+
+| Rule id | File | CWE | What it flags |
+|---|---|---|---|
+| `ci-python-hardcoded-signing-secret` | `hardcoded-signing-secret.ts` | CWE-798 / 321 | A non-empty literal is assigned to a proven Django, Flask, or Starlette signing-secret setting |
+| `ci-python-credentialed-cors-all-origins` | `credentialed-cors.ts` | CWE-942 / 346 | A proven framework CORS configuration combines every origin with credentials |
+| `ci-python-untrusted-file-response` | `file-response.ts` | CWE-22 / 73 | Proven request input reaches a framework file-response sink without a supported path boundary |
+| `ci-python-untrusted-redirect` | `redirect.ts` | CWE-601 | Proven request input reaches a framework redirect sink without a supported destination boundary |
+| `ci-python-untrusted-template-source` | `template-source.ts` | CWE-1336 / 94 | Proven request input becomes dynamic Jinja template source and is rendered |
+| `ci-python-llm-output-dangerous-html` | `llm-html.ts` | CWE-79 / 116 | Proven OpenAI/Anthropic output reaches an HTML response without supported sanitization |
+
+### JavaScript baseline SAST pack (2)
+
+Applicability requires detected JavaScript or TypeScript. The pack uses bounded structural parsing
+and reconciles raw results against the still-active Opengrep rules before routing or global dedup.
+Exact pairs surface only native producer components. Opengrep-only and metadata-mismatched results
+remain Opengrep-owned; native-only candidates are suppressed while Opengrep ran; native results are
+the explicit fallback if Opengrep is unavailable. These contextual rules are medium-confidence
+signals, not proof that every MD5/SHA-1 or deprecated cipher call is security-sensitive.
+
+| Rule id | File | CWE | What it flags |
+|---|---|---|---|
+| `ci-baseline-weak-hash` | `rules.ts` | CWE-327 | JavaScript/TypeScript `createHash` with MD5 or SHA-1 |
+| `ci-baseline-weak-cipher` | `rules.ts` | CWE-327 | DES/3DES/RC4 `createCipheriv` or deprecated password-based `createCipher` |
 
 ---
 

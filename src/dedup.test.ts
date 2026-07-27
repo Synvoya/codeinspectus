@@ -95,3 +95,67 @@ describe("dedup provenance attribution", () => {
     ]);
   });
 });
+
+describe("first-party Pub vulnerability dedup", () => {
+  function vulnerability(
+    engine: Engine,
+    ruleId: string,
+    line: number,
+    vulnerabilityAliases?: string[],
+  ): Finding {
+    return {
+      id: `${engine}-${ruleId}`,
+      fingerprint: `${engine}-${ruleId}`,
+      title: ruleId,
+      severity: "high",
+      engine,
+      engines: [engine],
+      rule_id: ruleId,
+      ...(vulnerabilityAliases ? { vulnerability_aliases: vulnerabilityAliases } : {}),
+      cwe: ["CWE-1395"],
+      location: { file: "pubspec.lock", start_line: line, end_line: line },
+      message: "vulnerable dependency",
+      remediation: { summary: "upgrade", steps: [], references: [] },
+      frameworks: [],
+      confidence: "high",
+      finding_kind: "vulnerability",
+      producer_components: [`${engine}:component`],
+    };
+  }
+
+  test("merges the same GHSA from Trivy and the native Pub scanner despite line differences", () => {
+    const [merged] = dedupFindings([
+      vulnerability("trivy", "CVE-2026-0001", 1),
+      vulnerability("codeinspectus-pub", "GHSA-test-0000-0001", 12, ["CVE-2026-0001"]),
+    ]).findings;
+    expect(merged?.engines).toEqual(["trivy", "codeinspectus-pub"]);
+    expect(merged?.producer_components).toEqual([
+      "codeinspectus-pub:component",
+      "trivy:component",
+    ]);
+    expect(merged?.vulnerability_aliases).toEqual([
+      "CVE-2026-0001",
+      "GHSA-test-0000-0001",
+    ]);
+  });
+
+  test("merges when Trivy reports the GHSA and Pub carries the CVE as an alias", () => {
+    const [merged] = dedupFindings([
+      vulnerability("trivy", "GHSA-test-0000-0001", 1),
+      vulnerability("codeinspectus-pub", "CVE-2026-0001", 12, ["GHSA-test-0000-0001"]),
+    ]).findings;
+    expect(merged?.engines).toEqual(["trivy", "codeinspectus-pub"]);
+    expect(merged?.vulnerability_aliases).toEqual([
+      "CVE-2026-0001",
+      "GHSA-test-0000-0001",
+    ]);
+  });
+
+  test("does not collapse distinct advisories that share one lockfile location and CWE", () => {
+    const findings = dedupFindings([
+      vulnerability("codeinspectus-pub", "GHSA-test-0000-0001", 12),
+      vulnerability("codeinspectus-pub", "GHSA-test-0000-0002", 12),
+    ]).findings;
+    expect(findings).toHaveLength(2);
+  });
+});

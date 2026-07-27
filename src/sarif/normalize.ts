@@ -68,7 +68,11 @@ function normalizePath(uri: string | undefined, target: string): string {
   const caseInsensitive = windowsStyle.test(p) && windowsStyle.test(normalizedTarget);
   const comparablePath = caseInsensitive ? p.toLowerCase() : p;
   const comparableTarget = caseInsensitive ? normalizedTarget.toLowerCase() : normalizedTarget;
-  if (comparablePath === comparableTarget) return ".";
+  if (comparablePath === comparableTarget) {
+    // A direct file scan must converge with first-party analyzers, which report the target's
+    // basename. SARIF engines vary between absolute-target and basename URIs for the same file.
+    return p.slice(p.lastIndexOf("/") + 1) || ".";
+  }
 
   const targetPrefix = comparableTarget.endsWith("/") ? comparableTarget : comparableTarget + "/";
   if (comparablePath.startsWith(targetPrefix)) {
@@ -90,9 +94,18 @@ function ruleFor(result: SarifResult, rules: SarifRule[]): SarifRule | undefined
 
 function precisionToConfidence(props: SarifProps | undefined, isSecret: boolean): Confidence {
   if (isSecret) return "high";
-  const explicit = typeof props?.confidence === "string" ? props.confidence : "";
+  // Authored rule confidence is the primary signal. Some SARIF producers emit a generic
+  // `precision: high`; that must not silently upgrade an explicitly MEDIUM/LOW rule.
+  const explicit = typeof props?.confidence === "string" ? props.confidence.toLowerCase() : "";
+  if (/^(?:very-high|high)$/.test(explicit)) return "high";
+  if (explicit === "medium") return "medium";
+  if (explicit === "low") return "low";
   const tagConfidence = (props?.tags ?? []).find((tag) => /\b(?:high|medium|low)\s+confidence\b/i.test(tag)) ?? "";
-  const prec = `${props?.precision ?? ""} ${explicit} ${tagConfidence}`.toLowerCase();
+  const normalizedTag = tagConfidence.toLowerCase();
+  if (/\b(?:very-high|high)\s+confidence\b/.test(normalizedTag)) return "high";
+  if (/\bmedium\s+confidence\b/.test(normalizedTag)) return "medium";
+  if (/\blow\s+confidence\b/.test(normalizedTag)) return "low";
+  const prec = `${props?.precision ?? ""}`.toLowerCase();
   if (prec === "very-high" || prec === "high") return "high";
   if (/\b(?:very-high|high)(?:\s+confidence)?\b/.test(prec)) return "high";
   if (/\blow(?:\s+confidence)?\b/.test(prec)) return "low";

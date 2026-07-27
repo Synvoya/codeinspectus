@@ -5,15 +5,16 @@
 # engine-gated design (evals E16-E18 self-skip when their security engines are absent):
 #
 #   always-run (no engines) — MUST stay green on every PR regardless of engines.
+#     Runs on Node 24 LTS. A separate Node 22 job proves the declared minimum runtime.
 #     Pure-TS surface only: typecheck, build, unit tests, the MCP stdio transport
-#     smoke, the eval harness (E01-E15 + E19-E21 run; E16/E18 Opengrep + E17 Trivy self-skip),
+#     smoke, the eval harness (native cases run; engine-dependent cases self-skip),
 #     and an npm-pack contents gate (runtime-only payload; no src/fixtures leak).
 #     Redaction is covered here by eval E03; the gitleaks-backed redaction-e2e is
 #     engine-dependent and runs in the engine job below.
 #
 #   engine (linux/amd64) — fetches + cosign/checksum-verifies + SHA-pins the three
 #     engine binaries and pulls the Trivy vuln DB, then runs the FULL eval (E16-E18
-#     now execute, with E19-E21 pure-TS -> 21/21), the gitleaks-backed redaction-e2e, and a real
+#     now execute, with E19-E33 pure-TS plus E34-E36 parity/promotion gates -> 36/36), the gitleaks-backed redaction-e2e, and a real
 #     fixture scan. Proven feasible in CG-77 recon: every engine has a non-null
 #     linux-x64 pin and a fresh verified install reproduces the committed SHAs.
 #
@@ -59,7 +60,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - name: Typecheck (tsc --noEmit)
@@ -70,7 +71,7 @@ jobs:
         run: npm test
       - name: MCP stdio transport smoke (boots, lists 6 tools, stdout pure JSON-RPC)
         run: node scripts/smoke-stdio.mjs
-      - name: Eval — E01-E15 + E19-E21 (engine evals E16-E18 self-skip with no engines)
+      - name: Eval — native/no-engine coverage (engine-dependent cases self-skip)
         run: npm run eval
       - name: npm pack — runtime-only payload (no src/fixtures/evals/scripts/docs)
         run: |
@@ -81,6 +82,28 @@ jobs:
             if (leak.length) { console.error("LEAK — non-runtime paths packed:", leak.join(", ")); process.exit(1); }
             console.log("OK — runtime-only,", files.length, "files");
           '
+
+  node22-compatibility:
+    name: minimum runtime (Node 22)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Assert minimum supported runtime
+        run: node -e "if (Number(process.versions.node.split('.')[0]) !== 22) process.exit(1)"
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - run: node scripts/smoke-stdio.mjs
+      - name: Eval — native/no-engine coverage on minimum runtime
+        run: npm run eval
 
   engine:
     name: engine (linux/amd64)
@@ -93,7 +116,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - name: Install cosign (mandatory, fail-closed, for opengrep + trivy verify)
         uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
@@ -151,7 +174,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - name: Install cosign (mandatory, fail-closed, for opengrep + trivy verify)
         uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2

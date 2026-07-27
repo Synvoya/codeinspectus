@@ -4,7 +4,71 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
-## [Unreleased]
+## [1.0.0] — 2026-07-27
+
+### Added
+- A static native detector-pack registry now owns **49 first-party rule IDs** across eight packs and
+  29 independently failing analyzers. Existing AI/framework packs retain their scanner behavior.
+- A fail-closed Opengrep reconciliation layer promotes the parity-proven JavaScript/TypeScript
+  weak-hash and weak-cipher rules into a native SAST pack before routing and deduplication. Exact
+  matches surface native-only provenance; Opengrep remains physically active and wins on reference-
+  only or metadata-mismatch cases, while native-only candidates are suppressed. If Opengrep cannot
+  run, the native implementation is the explicit fallback. Shadow parity remains a release gate.
+- An additive Flutter/Dart pack contributes `ci-flutter-tls-verification-disabled`,
+  `ci-flutter-sensitive-shared-preferences`, `ci-flutter-webview-untrusted-content`,
+  `ci-flutter-sensitive-log`, `ci-flutter-supabase-privileged-key-client`, and
+  `ci-flutter-cleartext-network`. These first-party structural checks run only when Flutter is
+  detected and do not replace runtime mobile testing, the separate native platform configuration
+  packs, or Pub vulnerability/SBOM analysis.
+- Android and iOS configuration packs add eight first-party rules for explicit production
+  debuggability, cleartext/user-CA policy, exported AndroidX FileProvider, ATS exceptions/TLS policy,
+  and disabled iOS data protection. They use bounded structured repository parsing, never execute
+  Gradle, Xcode, or target content, and report unsupported/dynamic inputs as coverage limitations.
+- Separate React Native and Expo packs add six first-party structural rules for sensitive
+  AsyncStorage writes, unsafe WebView content/origin settings, public Expo configuration secrets,
+  and unsigned cleartext updates. They require explicit framework evidence, never execute target
+  modules/configuration, and keep bare React Native coverage distinct from Expo coverage.
+- A Python AI/API pack adds six high-confidence first-party rules for hardcoded framework signing secrets,
+  credentialed all-origin CORS, request-controlled file responses, redirects, and template source,
+  plus unsanitized OpenAI/Anthropic output returned as HTML. Bounded Lezer-gated, source-ordered
+  intrafile analysis never imports or executes target code; unsupported syntax and project bounds
+  fail closed with explicit pack-coverage notes.
+- A separate first-party `codeinspectus-pub` engine now analyzes bounded `pubspec.lock` files under
+  the `vuln` scanner class, independently of Trivy. It matches only exact affected versions from a
+  bundled, provenance-recorded OSV Pub snapshot (11 active reviewed advisories across 10 packages
+  at this release), rejects ambiguous lockfiles, excludes custom registries/Git/path/SDK packages,
+  and reports explicit dependency coverage instead of treating skipped input as clean.
+- Native Pub SBOM support generates CycloneDX 1.6 or SPDX 2.3 inventories, merges official Pub
+  components additively into Trivy output, and falls back to a Pub-only document when Trivy is
+  unavailable. It preserves lockfile hashes/directness/origin without inventing licenses,
+  suppliers, or a dependency graph that `pubspec.lock` does not contain.
+- Scan and rescan output now includes deterministic repository technology detection and explicit
+  per-pack analyzer/rule execution coverage, including `not_applicable` for an installed pack that
+  does not match detected technology. Stored scans from older versions remain loadable.
+- `codeinspectus_list_rules` now exposes native-pack inventory and exact manifest-to-pack ownership,
+  including user-visible scope limitations that prevent a `ran` state being read as full language
+  coverage.
+- Detection database `1.0.0` contains **70 curated detections**: 49 first-party native rules,
+  18 Opengrep-owned SAST rules, and 3 custom Gitleaks rules. The two promoted native rules retain
+  active Opengrep YAML fallbacks, so 20 YAML rules still execute. The aggregate native engine
+  signature is `5.0.0`; the separate Pub engine is `1.0.0`, and the built MCP stdio eval suite
+  contains 36 cases. Opengrep, Gitleaks, and Trivy remain installed.
+
+### Fixed
+- Authored Opengrep confidence metadata now takes precedence over the producer's generic SARIF
+  precision, preventing medium-confidence rules from being silently upgraded to high. The weak-
+  cipher wording now covers deprecated password-based `createCipher` as well as DES/3DES/RC4.
+- Supabase Edge Function authentication analysis now runs for projects that commit Edge Function
+  source without also committing Supabase SQL migrations. The SQL project gate remains scoped to
+  RLS analysis, and dedicated true-positive/false-positive fixtures lock the behavior.
+- Replaced a pathological API-boundary string-masking regular expression with a bounded linear
+  scanner. On the pinned Mattermost Mobile checkout, the complete native scan fell from about 69
+  seconds to 7-8 seconds without changing finding identities or native-pack coverage.
+
+### Changed
+- The supported runtime floor is Node.js 22, with Node 24 LTS as the primary CI/runtime target.
+  Node 22 and 24 are tested separately; the production bundle now targets Node 22 instead of the
+  end-of-life Node 18 line.
 
 ## [0.4.1] — 2026-07-26
 

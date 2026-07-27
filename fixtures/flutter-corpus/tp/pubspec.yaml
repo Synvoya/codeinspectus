@@ -1,0 +1,11 @@
+name: codeinspectus_flutter_tp
+publish_to: none
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  dio: ^5.0.0
+  shared_preferences: ^2.0.0
+  supabase_flutter: ^2.0.0
+  webview_flutter: ^4.0.0

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:a="http://schemas.android.com/apk/res/android"
+    package="dev.codeinspectus.androidfp">
+  <!-- a:debuggable="true" a:usesCleartextTraffic="true" -->
+  <application
+      a:debuggable="true"
+      a:usesCleartextTraffic="false"
+      a:networkSecurityConfig="@xml/network_security_config">
+    <provider
+        a:name="androidx.core.content.FileProvider"
+        a:authorities="dev.codeinspectus.androidfp.files"
+        a:exported="false"
+        a:grantUriPermissions="true" />
+  </application>
+</manifest>

@@ -106,6 +106,31 @@ async function waitFor(id, timeoutMs = 8000) {
   const scan = await waitFor(3, 30_000);
   const sc = scan.result?.structuredContent;
   if (!sc || typeof sc.scan_id !== "string") throw new Error("scan returned no structuredContent");
+  if (!Array.isArray(sc.detected_technologies)) throw new Error("scan returned no detected_technologies array");
+  if (!Array.isArray(sc.pack_coverage)) throw new Error("scan returned no pack_coverage array");
+  if (sc.pack_coverage.length !== 8) throw new Error(`scan returned ${sc.pack_coverage.length} native packs, expected 8`);
+  if (!Array.isArray(sc.dependency_coverage)) throw new Error("scan returned no dependency_coverage array");
+  const pubCoverage = sc.dependency_coverage.find((coverage) => coverage.engine === "codeinspectus-pub");
+  if (!pubCoverage || pubCoverage.matching !== "exact-enumerated-versions") {
+    throw new Error("scan returned no exact-version native Pub dependency coverage");
+  }
+  const nativePack = sc.pack_coverage.find((pack) => pack.pack_id === "javascript-typescript");
+  if (!nativePack || nativePack.rules?.registered !== 21) {
+    throw new Error("scan returned no 21-rule javascript-typescript pack coverage");
+  }
+  const reactNativePack = sc.pack_coverage.find((pack) => pack.pack_id === "react-native");
+  const expoPack = sc.pack_coverage.find((pack) => pack.pack_id === "expo");
+  if (reactNativePack?.rules?.registered !== 4 || expoPack?.rules?.registered !== 2) {
+    throw new Error("scan returned incomplete React Native/Expo pack inventory");
+  }
+  const pythonPack = sc.pack_coverage.find((pack) => pack.pack_id === "python-ai-api");
+  if (pythonPack?.analyzers?.registered !== 6 || pythonPack?.rules?.registered !== 6) {
+    throw new Error("scan returned incomplete Python AI/API pack inventory");
+  }
+  const baselinePack = sc.pack_coverage.find((pack) => pack.pack_id === "javascript-baseline");
+  if (baselinePack?.scanner_kind !== "sast" || baselinePack?.analyzers?.registered !== 1 || baselinePack?.rules?.registered !== 2) {
+    throw new Error("scan returned incomplete JavaScript baseline SAST pack inventory");
+  }
   console.error("✓ codeinspectus_scan structuredContent.scan_id:", sc.scan_id);
 
   console.error("\nALL STDIO SMOKE CHECKS PASSED. stdout was pure JSON-RPC.");

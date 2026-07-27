@@ -23,6 +23,7 @@ import { log } from "../logger.js";
 import type { EngineOutput } from "./types.js";
 import type { SarifLog } from "../sarif/types.js";
 import { fileSignature, invocationSignature, signature } from "../provenance.js";
+import { engineWorkingDirectory } from "./target.js";
 
 export async function runGitleaks(target: string, tmpDir: string): Promise<EngineOutput> {
   const t0 = Date.now();
@@ -47,7 +48,10 @@ export async function runGitleaks(target: string, tmpDir: string): Promise<Engin
         : signature("gitleaks:effective-ignore\0absent"),
     };
 
-    const res = await execBinary(bin.path, args, { cwd: target, offline: true });
+    const res = await execBinary(bin.path, args, {
+      cwd: await engineWorkingDirectory(target),
+      offline: true,
+    });
     let sarif: SarifLog | undefined;
     try {
       await access(sarifPath);

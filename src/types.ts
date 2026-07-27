@@ -20,7 +20,8 @@ export type Engine =
   | "opengrep"
   | "gitleaks"
   | "trivy"
-  | "codeinspectus-ai";
+  | "codeinspectus-ai"
+  | "codeinspectus-pub";
 
 export type ScannerKind = "sast" | "secret" | "vuln" | "misconfig" | "license" | "ai";
 
@@ -57,6 +58,8 @@ export interface Finding {
   /** Every engine that reported this finding (after dedup merge). */
   engines: Engine[];
   rule_id: string;
+  /** Equivalent advisory identifiers used to deduplicate the same vulnerability across scanners. */
+  vulnerability_aliases?: string[];
   /** Canonical key. Always at least one CWE. */
   cwe: string[];
   owasp_web?: string[];
@@ -125,6 +128,58 @@ export interface EngineRunInfo {
   note?: string;
 }
 
+/** Repository technology inferred from bounded, read-only filename/manifest evidence. */
+export interface DetectedTechnology {
+  id: string;
+  kind: "language" | "framework" | "platform";
+  confidence: "high" | "medium";
+  /** Deterministically ordered project-relative evidence paths/signals; never file contents. */
+  evidence: string[];
+}
+
+/** What a statically shipped native detector pack actually executed during this scan. */
+export interface DetectorPackCoverage {
+  pack_id: string;
+  version: string;
+  scanner_kind: Extract<ScannerKind, "ai" | "sast">;
+  state: "ran" | "partial" | "not_run" | "not_applicable" | "unavailable";
+  languages: string[];
+  frameworks: string[];
+  platforms: string[];
+  analyzers: {
+    registered: number;
+    ran: number;
+  };
+  rules: {
+    registered: number;
+    ran: number;
+  };
+  /** Explicit scope/failure boundaries; `ran` never means complete language coverage. */
+  limitations: string[];
+  note?: string;
+}
+
+/** First-party dependency analysis coverage, separate from source detector packs. */
+export interface DependencyCoverage {
+  ecosystem: "Pub";
+  engine: "codeinspectus-pub";
+  state: "ran" | "partial" | "not_run" | "not_applicable" | "unavailable";
+  lockfiles: {
+    discovered: number;
+    analyzed: number;
+  };
+  packages: {
+    resolved: number;
+    eligible: number;
+    skipped: number;
+  };
+  database_version?: string;
+  database_checked_at?: string;
+  matching: "exact-enumerated-versions";
+  limitations: string[];
+  note?: string;
+}
+
 /** Offline health of one managed external engine against the shipped lockfile. */
 export type EngineArtifactState =
   | "ready"
@@ -135,7 +190,7 @@ export type EngineArtifactState =
   | "unsupported_platform";
 
 export interface EngineArtifactHealth {
-  engine: Exclude<Engine, "codeinspectus-ai">;
+  engine: "opengrep" | "gitleaks" | "trivy";
   version: string;
   state: EngineArtifactState;
   detail?: string;
@@ -223,6 +278,9 @@ export interface ScanResult {
   engines_run: string[];
   engine_details: EngineRunInfo[];
   offline: boolean;
+  detected_technologies: DetectedTechnology[];
+  pack_coverage: DetectorPackCoverage[];
+  dependency_coverage?: DependencyCoverage[];
   trivy_db_date?: string;
   summary: SeveritySummary;
   findings: Finding[];
@@ -269,6 +327,9 @@ export interface RescanResult {
   scan_id: string;
   prior_scan_id: string;
   target: string;
+  detected_technologies: DetectedTechnology[];
+  pack_coverage: DetectorPackCoverage[];
+  dependency_coverage?: DependencyCoverage[];
   resolved: Finding[];
   remaining: Finding[];
   introduced: Finding[];

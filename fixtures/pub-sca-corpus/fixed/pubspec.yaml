@@ -1,0 +1,14 @@
+name: codeinspectus_pub_fixed
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  jose: any
+  archive: any
+  personnummer: any
+  shared_preferences_android: any
+dev_dependencies:
+  agent_dart: any
+flutter:
+  uses-material-design: true

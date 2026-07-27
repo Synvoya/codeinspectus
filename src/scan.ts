@@ -18,6 +18,8 @@ import { join, resolve as resolvePath } from "node:path";
 import { DEFAULT_MAX_FINDINGS, STANDING_DISCLAIMER } from "./config.js";
 import { SEVERITY_RANK } from "./types.js";
 import type {
+  DetectorPackCoverage,
+  DependencyCoverage,
   Finding,
   ScanResult,
   EngineRunInfo,
@@ -34,6 +36,8 @@ import { runGitleaks } from "./engines/gitleaks.js";
 import { runTrivy, type TrivyScanner } from "./engines/trivy.js";
 import type { EngineOutput } from "./engines/types.js";
 import { runAiChecks } from "./ai-checks/index.js";
+import { nativePackNotRunCoverage } from "./packs/registry.js";
+import { detectTechnologies } from "./technology-detection.js";
 import { normalizeEngineOutput } from "./sarif/normalize.js";
 import { routeScanFindings } from "./file-routing.js";
 import { detectGitSafety } from "./git-safety.js";
@@ -44,6 +48,8 @@ import { hasUnverifiedSecretCoverage, secretSuppressionWarnings } from "./gitlea
 import { PIPELINE_COMPONENT, staticComponentSignatures } from "./provenance.js";
 import { trivyDbProvenanceSignal } from "./trivy-db-provenance.js";
 import { inspectEngineSetup } from "./engine-health.js";
+import { runPubScan } from "./pub/scanner.js";
+import { PROMOTED_OPENGREP_RULE_IDS, reconcileNativeSast } from "./native-sast-reconciliation.js";
 
 function wants(input: ScanInput, scanner: string): boolean {
   return !input.scanners || input.scanners.length === 0 || input.scanners.includes(scanner as never);
@@ -71,6 +77,22 @@ function sortFindings(findings: Finding[]): Finding[] {
   });
 }
 
+function inactivePubCoverage(
+  state: "not_run" | "not_applicable",
+  note: string,
+): DependencyCoverage {
+  return {
+    ecosystem: "Pub",
+    engine: "codeinspectus-pub",
+    state,
+    lockfiles: { discovered: 0, analyzed: 0 },
+    packages: { resolved: 0, eligible: 0, skipped: 0 },
+    matching: "exact-enumerated-versions",
+    limitations: [],
+    note,
+  };
+}
+
 export async function runScan(input: ScanInput): Promise<ScanResult> {
   const startedAt = new Date().toISOString();
   const t0 = Date.now();
@@ -87,6 +109,7 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   // CG-41 git-safety rail (READ-ONLY): detect the target's git state concurrently with the
   // engines. Never mutates git or the repo — only reads (rev-parse / status --porcelain).
   const gitSafetyProbe = detectGitSafety(target);
+  const technologyProbe = detectTechnologies(target);
   const tmpDir = await mkdtemp(join(tmpdir(), "ci-scan-"));
 
   try {
@@ -97,6 +120,7 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       (s) => wants(input, s),
     );
     const runAi = wants(input, "ai");
+    const runVuln = wants(input, "vuln");
 
     // Run everything concurrently.
     const tasks: Array<Promise<EngineOutput | (EngineOutput & { trivyDbDate?: string })>> = [];
@@ -107,12 +131,71 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       trivyTask = runTrivy(target, tmpDir, trivyScanners);
       tasks.push(trivyTask);
     }
-    const aiTask = runAi ? runAiChecks(target) : undefined;
+    const nativeScannerKinds: ("ai" | "sast")[] = [
+      ...(runAi ? ["ai" as const] : []),
+      ...(runSast ? ["sast" as const] : []),
+    ];
+    const nativeTask = nativeScannerKinds.length
+      ? technologyProbe.then((technologyDetection) => runAiChecks(target, {
+          detectedTechnologies: technologyDetection.detected_technologies,
+          scannerKinds: nativeScannerKinds,
+        }))
+      : undefined;
+    // Always perform the bounded Pub discovery probe for vuln scans. Technology detection cannot
+    // infer a language hidden behind an unreadable/symlinked subtree; the Pub loader must get a
+    // chance to report that omission as partial rather than the envelope saying not_applicable.
+    const pubTask = runVuln ? runPubScan(target) : undefined;
 
-    const [engineOutputs, aiResult] = await Promise.all([
+    const [engineOutputs, nativeResult, technologyDetection, pubResult] = await Promise.all([
       Promise.all(tasks),
-      aiTask ?? Promise.resolve(undefined),
+      nativeTask ?? Promise.resolve(undefined),
+      technologyProbe,
+      pubTask ?? Promise.resolve(undefined),
     ]);
+
+    if (technologyDetection.limitations.length) {
+      warnings.push(
+        "Technology detection was partial: " +
+          technologyDetection.limitations
+            .map((limitation) => `${limitation.path} (${limitation.reason})`)
+            .join(", "),
+      );
+    }
+
+    const packCoverage: DetectorPackCoverage[] = nativeResult?.packCoverage ?? nativePackNotRunCoverage(
+      "The ai and sast scanner classes were excluded by this scan's scanner filter.",
+    );
+    const baselineCoverage = packCoverage.find((pack) => pack.pack_id === "javascript-baseline");
+    if (baselineCoverage?.state === "ran" && baselineCoverage.note) baselineCoverage.state = "partial";
+    for (const pack of packCoverage) {
+      if ((pack.state === "partial" || pack.state === "unavailable") && pack.note) {
+        warnings.push(`Native pack ${pack.pack_id} ${pack.state}: ${pack.note}`);
+      }
+    }
+    const dartDetected = technologyDetection.detected_technologies.some(
+      (technology) => technology.id === "dart",
+    );
+    const activePubResult = pubResult && (
+      dartDetected || pubResult.applicability !== "not_applicable"
+    ) ? pubResult : undefined;
+    const dependencyCoverage: DependencyCoverage[] = [
+      activePubResult?.coverage ?? (runVuln
+        ? inactivePubCoverage(
+            "not_applicable",
+            "No Dart project signal was detected, so native Pub dependency analysis was not applicable.",
+          )
+        : inactivePubCoverage(
+            "not_run",
+            dartDetected
+              ? "The vuln scanner class was excluded by this scan's scanner filter."
+              : "The vuln scanner class was excluded; no Dart project signal was detected.",
+          )),
+    ];
+    if (activePubResult && (activePubResult.coverage.state === "partial" || activePubResult.coverage.state === "unavailable")) {
+      warnings.push(
+        `Native Pub dependency coverage ${activePubResult.coverage.state}: ${activePubResult.coverage.note ?? "see dependency_coverage limitations"}`,
+      );
+    }
 
     // Normalize engine SARIF → findings; track per-engine raw counts.
     let allFindings: Finding[] = [];
@@ -123,9 +206,16 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
     let trivyVulnerabilityScanRan = false;
     const componentSignatures: Record<string, string> = staticComponentSignatures([PIPELINE_COMPONENT]);
 
+    let opengrepFindings: Finding[] = [];
+    let opengrepRan = false;
     for (const out of engineOutputs) {
       const normalized = out.ran ? normalizeEngineOutput(out, target) : [];
-      allFindings.push(...normalized);
+      if (out.engine === "opengrep") {
+        opengrepFindings = normalized;
+        opengrepRan = out.ran;
+      } else {
+        allFindings.push(...normalized);
+      }
       if ("trivyDbDate" in out && out.trivyDbDate) trivyDbDate = out.trivyDbDate;
       if (out.engine === "trivy" && out.ran && trivyScanners.includes("vuln")) {
         trivyVulnerabilityScanRan = true;
@@ -152,10 +242,40 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       if (!out.ran && out.note) warnings.push(`${out.engine} did not run: ${out.note}`);
     }
 
-    if (aiResult) {
-      allFindings.push(...aiResult.findings);
-      Object.assign(componentSignatures, aiResult.componentSignatures);
-      engineDetails.push(aiResult.info);
+    if (nativeResult) {
+      const sastCandidates = nativeResult.findings.filter((finding) =>
+        PROMOTED_OPENGREP_RULE_IDS.has(finding.rule_id)
+      );
+      const otherNativeFindings = nativeResult.findings.filter((finding) =>
+        !PROMOTED_OPENGREP_RULE_IDS.has(finding.rule_id)
+      );
+      const reconciliation = runSast
+        ? reconcileNativeSast(opengrepRan, opengrepFindings, sastCandidates)
+        : undefined;
+      allFindings.push(
+        ...otherNativeFindings,
+        ...(reconciliation?.findings ?? opengrepFindings),
+      );
+      if (reconciliation?.note) {
+        const coverage = packCoverage.find((pack) => pack.pack_id === "javascript-baseline");
+        if (coverage) {
+          coverage.note = [coverage.note, reconciliation.note].filter(Boolean).join(" ");
+          if (!reconciliation.usedFallback) coverage.state = "partial";
+        }
+        if (!reconciliation.usedFallback) warnings.push(`Native pack javascript-baseline partial: ${reconciliation.note}`);
+      }
+      Object.assign(componentSignatures, nativeResult.componentSignatures);
+      engineDetails.push({
+        ...nativeResult.info,
+        finding_count: otherNativeFindings.length + (reconciliation?.nativeFindings.length ?? 0),
+      });
+    } else {
+      allFindings.push(...opengrepFindings);
+    }
+    if (activePubResult) {
+      allFindings.push(...activePubResult.findings);
+      Object.assign(componentSignatures, activePubResult.componentSignatures);
+      engineDetails.push(activePubResult.info);
     }
 
     // CG-30 git-aware file routing: classify each finding by WHERE it lives (node_modules /
@@ -215,6 +335,9 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       engines_run: enginesRun,
       engine_details: engineDetails,
       offline: true,
+      detected_technologies: technologyDetection.detected_technologies,
+      pack_coverage: packCoverage,
+      dependency_coverage: dependencyCoverage,
       ...(trivyDbDate ? { trivy_db_date: trivyDbDate } : {}),
       summary,
       findings: limited,
@@ -225,8 +348,8 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       ...(secretCoverage ? { secret_coverage: secretCoverage } : {}),
       ...(secretSuppression ? { secret_suppression: secretSuppression } : {}),
       component_signatures: componentSignatures,
-      ...(aiResult?.securityControlEvidence.length
-        ? { security_control_evidence: aiResult.securityControlEvidence }
+      ...(nativeResult?.securityControlEvidence.length
+        ? { security_control_evidence: nativeResult.securityControlEvidence }
         : {}),
       ...(trivyDbProvenance ? { trivy_db_provenance: trivyDbProvenance } : {}),
       engine_setup: engineSetup,

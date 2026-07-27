@@ -70,9 +70,11 @@ export async function runSupabaseRlsCheck(target: string): Promise<Finding[]> {
   const looksLikeSupabase =
     sqlFiles.some((f) => /(^|\/)supabase\//i.test(f.rel)) ||
     sqlFiles.some((f) => /\bauth\.(uid|users|jwt|role)\b/i.test(f.content));
-  if (!looksLikeSupabase) return findings;
 
-  for (const state of reduceRlsEffectiveState(sqlFiles)) {
+  // The project gate applies only to SQL/RLS analysis. Edge Functions carry their own
+  // unambiguous `supabase/functions/` path signal and must still be checked in projects
+  // with no committed SQL migrations.
+  for (const state of looksLikeSupabase ? reduceRlsEffectiveState(sqlFiles) : []) {
     const isSnapshot = state.kind === "snapshot";
 
     // (a) Only policies active at the end of this sequence/snapshot are evaluated.

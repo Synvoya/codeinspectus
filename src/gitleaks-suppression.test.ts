@@ -91,6 +91,8 @@ describe("Gitleaks suppression disclosure", () => {
       engines_run: ["gitleaks@8.30.1"],
       engine_details: [],
       offline: true,
+      detected_technologies: [],
+      pack_coverage: [],
       summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 },
       findings: [],
       truncated: false,

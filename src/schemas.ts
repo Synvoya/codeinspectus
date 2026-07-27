@@ -12,7 +12,13 @@ import { z } from "zod";
 // ── Enumerations ────────────────────────────────────────────────────────────
 export const severityEnum = z.enum(["critical", "high", "medium", "low", "info"]);
 export const confidenceEnum = z.enum(["high", "medium", "low"]);
-export const engineEnum = z.enum(["opengrep", "gitleaks", "trivy", "codeinspectus-ai"]);
+export const engineEnum = z.enum([
+  "opengrep",
+  "gitleaks",
+  "trivy",
+  "codeinspectus-ai",
+  "codeinspectus-pub",
+]);
 export const scannerEnum = z.enum(["sast", "secret", "vuln", "misconfig", "license", "ai"]);
 
 // ── scan_id hardening (CG-75 / Claim 2) ─────────────────────────────────────
@@ -67,6 +73,7 @@ export const findingSchema = z.object({
   engine: engineEnum,
   engines: z.array(engineEnum),
   rule_id: z.string(),
+  vulnerability_aliases: z.array(z.string()).optional(),
   cwe: z.array(z.string()),
   owasp_web: z.array(z.string()).optional(),
   owasp_api: z.array(z.string()).optional(),
@@ -99,6 +106,53 @@ export const engineRunInfoSchema = z.object({
   ran: z.boolean(),
   finding_count: z.number().int(),
   duration_ms: z.number().int(),
+  note: z.string().optional(),
+});
+
+export const detectedTechnologySchema = z.object({
+  id: z.string(),
+  kind: z.enum(["language", "framework", "platform"]),
+  confidence: z.enum(["high", "medium"]),
+  evidence: z.array(z.string()),
+});
+
+export const detectorPackCoverageSchema = z.object({
+  pack_id: z.string(),
+  version: z.string(),
+  scanner_kind: z.enum(["ai", "sast"]).default("ai"),
+  state: z.enum(["ran", "partial", "not_run", "not_applicable", "unavailable"]),
+  languages: z.array(z.string()),
+  frameworks: z.array(z.string()),
+  platforms: z.array(z.string()),
+  analyzers: z.object({
+    registered: z.number().int().nonnegative(),
+    ran: z.number().int().nonnegative(),
+  }),
+  rules: z.object({
+    registered: z.number().int().nonnegative(),
+    ran: z.number().int().nonnegative(),
+  }),
+  limitations: z.array(z.string()),
+  note: z.string().optional(),
+});
+
+export const dependencyCoverageSchema = z.object({
+  ecosystem: z.literal("Pub"),
+  engine: z.literal("codeinspectus-pub"),
+  state: z.enum(["ran", "partial", "not_run", "not_applicable", "unavailable"]),
+  lockfiles: z.object({
+    discovered: z.number().int().nonnegative(),
+    analyzed: z.number().int().nonnegative(),
+  }),
+  packages: z.object({
+    resolved: z.number().int().nonnegative(),
+    eligible: z.number().int().nonnegative(),
+    skipped: z.number().int().nonnegative(),
+  }),
+  database_version: z.string().optional(),
+  database_checked_at: z.string().optional(),
+  matching: z.literal("exact-enumerated-versions"),
+  limitations: z.array(z.string()),
   note: z.string().optional(),
 });
 
@@ -184,6 +238,9 @@ export const scanResultSchema = z.object({
   engines_run: z.array(z.string()),
   engine_details: z.array(engineRunInfoSchema),
   offline: z.boolean(),
+  detected_technologies: z.array(detectedTechnologySchema),
+  pack_coverage: z.array(detectorPackCoverageSchema),
+  dependency_coverage: z.array(dependencyCoverageSchema).optional(),
   trivy_db_date: z.string().optional(),
   summary: summarySchema,
   findings: z.array(findingSchema),
@@ -224,6 +281,12 @@ export const scanResultSchema = z.object({
 // inherited leniently here.)
 export const storedScanResultSchema = scanResultSchema.extend({
   git_safety: gitSafetySchema.optional(),
+  detected_technologies: z.array(detectedTechnologySchema).optional(),
+  pack_coverage: z.array(
+    detectorPackCoverageSchema
+      .extend({ platforms: z.array(z.string()).optional() })
+      .transform((coverage) => ({ ...coverage, platforms: coverage.platforms ?? [] })),
+  ).optional(),
 });
 
 // ── Tool INPUT schemas ──────────────────────────────────────────────────────
@@ -281,7 +344,7 @@ export const generateSbomInput = z.object({
   output_path: z
     .string()
     .optional()
-    .describe("Where to write the SBOM file. Default: <path>/codeinspectus-sbom.<fmt>.json."),
+    .describe("Where to write the SBOM file. Default: ~/.codeinspectus/sbom/<project>.<fmt>.json."),
 });
 
 export const listRulesInput = z.object({
@@ -293,6 +356,9 @@ export const rescanResultSchema = z.object({
   scan_id: z.string(),
   prior_scan_id: z.string(),
   target: z.string(),
+  detected_technologies: z.array(detectedTechnologySchema),
+  pack_coverage: z.array(detectorPackCoverageSchema),
+  dependency_coverage: z.array(dependencyCoverageSchema).optional(),
   resolved: z.array(findingSchema),
   remaining: z.array(findingSchema),
   introduced: z.array(findingSchema),
@@ -349,18 +415,60 @@ export const sbomOutput = z.object({
   output_path: z.string(),
   component_count: z.number().int(),
   generated: z.boolean(),
+  offline: z.boolean(),
+  providers: z.array(z.enum(["trivy", "codeinspectus-pub"])),
+  ecosystems: z.array(z.string()),
+  coverage_state: z.enum(["combined", "native_only", "trivy_only", "unavailable"]),
+  lockfiles_analyzed: z.number().int().nonnegative(),
+  limitations: z.array(z.string()),
   note: z.string().optional(),
 });
 
 export const ruleInfoSchema = z.object({
   id: z.string(),
   engine: engineEnum,
+  pack_id: z.string().optional(),
+  fallback_engine: z.literal("opengrep").optional(),
   name: z.string(),
   kind: scannerEnum,
+  severity: severityEnum.optional(),
   cwe: z.array(z.string()),
   owasp_web: z.array(z.string()).optional(),
   owasp_api: z.array(z.string()).optional(),
   source: z.enum(["builtin-engine", "codeinspectus-custom"]),
+});
+
+export const nativePackInfoSchema = z.object({
+  id: z.string(),
+  version: z.string(),
+  scanner_kind: z.enum(["ai", "sast"]),
+  languages: z.array(z.string()),
+  frameworks: z.array(z.string()),
+  platforms: z.array(z.string()),
+  limitations: z.array(z.string()),
+  analyzer_count: z.number().int().nonnegative(),
+  rule_count: z.number().int().nonnegative(),
+});
+
+export const advisoryDatabaseInfoSchema = z.object({
+  engine: z.literal("codeinspectus-pub"),
+  ecosystem: z.literal("Pub"),
+  state: z.enum(["current", "stale", "missing", "invalid"]),
+  version: z.string(),
+  checked_at: z.string().optional(),
+  latest_record_modified: z.string().optional(),
+  age_days: z.number().int().nonnegative().optional(),
+  stale_after_days: z.number().int().positive(),
+  content_digest: z.string().optional(),
+  active_advisories: z.number().int().nonnegative(),
+  withdrawn_records: z.number().int().nonnegative(),
+  affected_packages: z.number().int().nonnegative(),
+  matching: z.literal("exact-enumerated-versions"),
+  source_url: z.string().url(),
+  source_database: z.literal("GitHub Advisory Database"),
+  license: z.literal("CC-BY-4.0"),
+  attribution: z.string(),
+  note: z.string().optional(),
 });
 
 export const listRulesOutput = z.object({
@@ -376,6 +484,8 @@ export const listRulesOutput = z.object({
   ),
   trivy_db_date: z.string().optional(),
   engine_setup: engineSetupSchema,
+  native_packs: z.array(nativePackInfoSchema),
+  advisory_databases: z.array(advisoryDatabaseInfoSchema),
   custom_rules: z.array(ruleInfoSchema),
   custom_rule_count: z.number().int(),
   note: z.string(),

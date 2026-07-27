@@ -23,7 +23,7 @@ import { dirname } from "node:path";
 export const MCP_SPEC_VERSION = "2025-11-25";
 
 export const SERVER_NAME = "codeinspectus";
-export const SERVER_VERSION = "0.4.1";
+export const SERVER_VERSION = "1.0.0";
 
 // ── Bundled engine versions (SHA-pinned in engines.lock.json) ───────────────
 export const ENGINE_VERSIONS = {
@@ -35,8 +35,10 @@ export const ENGINE_VERSIONS = {
 
 export type EngineName = "opengrep" | "gitleaks" | "trivy";
 
-// CodeInspectus's own analyzer "engine" version (the AI-code checks, §6).
-export const CODEINSPECTUS_AI_VERSION = "1.2.0";
+// Aggregate CodeInspectus native-analyzer engine version. Individual detector packs
+// retain their own semantic versions so adding a pack does not imply unrelated rule changes.
+export const CODEINSPECTUS_AI_VERSION = "5.0.0";
+export const CODEINSPECTUS_PUB_VERSION = "1.0.0";
 
 // ── Managed directories (per-machine, never per-repo) ───────────────────────
 // PRD §12: an MCP server is installed once per machine, not per repo.
@@ -67,6 +69,7 @@ export const DATA_DIR = join(PKG_ROOT, "data");
 export const DETECTION_DB_DIR = join(PKG_ROOT, "detection-db");
 export const OPENGREP_RULES_DIR = join(DETECTION_DB_DIR, "opengrep-rules");
 export const GITLEAKS_CONFIG = join(DETECTION_DB_DIR, "gitleaks", "codeinspectus.toml");
+export const OSV_PUB_SNAPSHOT = join(DETECTION_DB_DIR, "osv-pub", "snapshot.json");
 export const ENGINES_LOCKFILE = join(PKG_ROOT, "engines.lock.json");
 
 // ── Subprocess limits ───────────────────────────────────────────────────────

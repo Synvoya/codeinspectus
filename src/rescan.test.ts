@@ -58,6 +58,8 @@ function mkScan(over: Partial<ScanResult> = {}): ScanResult {
     engines_run: [],
     engine_details: over.engine_details ?? [engineInfo("opengrep", true)],
     offline: true,
+    detected_technologies: [],
+    pack_coverage: [],
     summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 },
     findings: [],
     truncated: false,
@@ -83,12 +85,34 @@ const A = () => mkFinding({ fingerprint: "a", engine: "opengrep", severity: "hig
 describe("diffRescan — provable resolution (Claim 1 Part B)", () => {
   test("MODE 1: same-config, all engines ran, finding genuinely gone → resolved", () => {
     const prior = mkScan({ findings: [A()] });
-    const fresh = mkScan({ scan_id: "scan-11111111-1111-4111-8111-111111111111", findings: [] });
+    const fresh = mkScan({
+      scan_id: "scan-11111111-1111-4111-8111-111111111111",
+      findings: [],
+      detected_technologies: [
+        { id: "typescript", kind: "language", confidence: "high", evidence: ["src/app.ts"] },
+      ],
+      pack_coverage: [
+        {
+          pack_id: "javascript-typescript",
+          version: "1.2.0",
+          scanner_kind: "ai",
+          state: "ran",
+          languages: ["javascript", "typescript"],
+          frameworks: [],
+          platforms: [],
+          analyzers: { registered: 7, ran: 7 },
+          rules: { registered: 21, ran: 21 },
+          limitations: ["Rule-specific coverage only."],
+        },
+      ],
+    });
     const r = diffRescan(prior, fresh);
     expect(r.summary.resolved).toBe(1);
     expect(r.summary.not_rechecked).toBe(0);
     expect(r.resolved.map((f) => f.fingerprint)).toEqual(["a"]);
     expect(r.partial).toBe(false);
+    expect(r.detected_technologies).toEqual(fresh.detected_technologies);
+    expect(r.pack_coverage).toEqual(fresh.pack_coverage);
   });
 
   test("MODE 6: still-present finding on like-for-like rescan → remaining, NEVER resolved", () => {
@@ -233,6 +257,39 @@ describe("diffRescan — CG-76: threshold is display-only, diffs on the COMPLETE
     // The same-identity fresh finding is "still present", not "introduced".
     expect(r.summary.introduced).toBe(0);
   });
+
+  test.each([
+    ["GHSA primary survives", "GHSA-test-0000-0001"],
+    ["CVE alias survives", "CVE-2026-0001"],
+  ])("BLOCKER regression: Pub/Trivy representative change matches when %s", (_label, freshRule) => {
+    const priorVulnerability = mkFinding({
+      fingerprint: "FP_PUB",
+      engine: "codeinspectus-pub",
+      engines: ["codeinspectus-pub"],
+      rule_id: "GHSA-test-0000-0001",
+      vulnerability_aliases: ["CVE-2026-0001"],
+      finding_kind: "vulnerability",
+      location: { file: "pubspec.lock", start_line: 12, end_line: 12 },
+    });
+    const freshVulnerability = mkFinding({
+      fingerprint: "FP_TRIVY",
+      engine: "trivy",
+      engines: ["trivy"],
+      rule_id: freshRule,
+      finding_kind: "vulnerability",
+      location: { file: "pubspec.lock", start_line: 1, end_line: 1 },
+    });
+    const result = diffRescan(
+      mkScan({ findings: [priorVulnerability] }),
+      mkScan({
+        findings: [freshVulnerability],
+        engine_details: [engineInfo("trivy", true), engineInfo("codeinspectus-pub", true)],
+      }),
+    );
+
+    expect(result.summary).toMatchObject({ remaining: 1, introduced: 0, resolved: 0 });
+    expect(result.resolved).toEqual([]);
+  });
 });
 
 describe("filterRescanForDisplay — CG-76: threshold hides sub-threshold in display, counts recomputed", () => {
@@ -241,6 +298,8 @@ describe("filterRescanForDisplay — CG-76: threshold hides sub-threshold in dis
       scan_id: "scan-1",
       prior_scan_id: "scan-0",
       target: "/repo",
+      detected_technologies: [],
+      pack_coverage: [],
       resolved: [],
       remaining: [],
       introduced: [],

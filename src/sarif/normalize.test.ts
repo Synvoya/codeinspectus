@@ -77,6 +77,27 @@ describe("normalizeSarif redacts non-allowlisted secrets (CG-24 A3-1/A6-2)", () 
 });
 
 describe("normalizeSarif path portability", () => {
+  test("normalizes absolute and relative direct-file URIs to the same basename", () => {
+    const result = (uri: string): SarifLog => ({
+      runs: [{
+        tool: { driver: { name: "trivy", rules: [{ id: "CVE-2026-0001" }] } },
+        results: [{
+          ruleId: "CVE-2026-0001",
+          message: { text: "vulnerable dependency" },
+          locations: [{
+            physicalLocation: {
+              artifactLocation: { uri },
+              region: { startLine: 1, endLine: 1 },
+            },
+          }],
+        }],
+      }],
+    });
+    const target = "/repo/pubspec.lock";
+    expect(normalizeSarif(result(target), "trivy", target)[0]?.location.file).toBe("pubspec.lock");
+    expect(normalizeSarif(result("pubspec.lock"), "trivy", target)[0]?.location.file).toBe("pubspec.lock");
+  });
+
   test("makes a Windows absolute SARIF path relative to a backslash target", () => {
     const target = "D:\\a\\codeinspectus-dev\\codeinspectus-dev\\fixtures\\vulnerable-app";
     const sarif: SarifLog = {
@@ -121,6 +142,21 @@ describe("normalizeSarif path portability", () => {
 });
 
 describe("Opengrep SAST classification", () => {
+  test("authored confidence tags take precedence over generic SARIF precision", () => {
+    const sarif: SarifLog = { runs: [{
+      tool: { driver: { name: "opengrep", rules: [{
+        id: "ci-baseline-weak-hash",
+        properties: { precision: "very-high", tags: ["MEDIUM CONFIDENCE", "CWE-327"] },
+      }] } },
+      results: [{
+        ruleId: "ci-baseline-weak-hash",
+        message: { text: "Weak hash." },
+        locations: [{ physicalLocation: { artifactLocation: { uri: "/repo/hash.ts" }, region: { startLine: 1 } } }],
+      }],
+    }] };
+    expect(normalizeSarif(sarif, "opengrep", TARGET)[0]?.confidence).toBe("medium");
+  });
+
   test("CORS credentials wording remains a SAST finding, not a hard-coded secret", () => {
     const sarif: SarifLog = {
       runs: [{

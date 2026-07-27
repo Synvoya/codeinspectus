@@ -337,7 +337,36 @@ function sensitiveResponseFields(expression: string): string[] {
 }
 
 function maskStrings(value: string): string {
-  return value.replace(/(["'`])(?:\\.|(?!\1)[\s\S])*?\1/g, (match) => " ".repeat(match.length));
+  // Keep this linear. The prior backreference/lookahead regex could take tens of
+  // seconds over a large TS/TSX repository after comment masking changed the
+  // surrounding lexical shape. Mask code units in place so every later regex
+  // retains the original offsets. An unterminated literal is masked to EOF:
+  // malformed source must fail closed instead of exposing string text as code.
+  const chars = value.split("");
+  let quote: "'" | '"' | "`" | undefined;
+  let escaped = false;
+
+  for (let index = 0; index < chars.length; index++) {
+    const char = chars[index]!;
+    if (!quote) {
+      if (char === "'" || char === '"' || char === "`") {
+        quote = char;
+        chars[index] = " ";
+      }
+      continue;
+    }
+
+    chars[index] = " ";
+    if (escaped) {
+      escaped = false;
+    } else if (char === "\\") {
+      escaped = true;
+    } else if (char === quote) {
+      quote = undefined;
+    }
+  }
+
+  return chars.join("");
 }
 
 function isExplicitProjection(rhs: string, tainted: Set<string>): boolean {

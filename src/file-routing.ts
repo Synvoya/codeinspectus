@@ -109,6 +109,21 @@ const REFRAME_PREFIX = "Local hygiene — ";
 export function reframeLocalHygiene(f: Finding): Finding {
   const severity: Severity = f.severity === "info" ? "info" : "low";
   const title = f.title.startsWith(REFRAME_PREFIX) ? f.title : REFRAME_PREFIX + f.title;
+  if (f.finding_kind === "vulnerability") {
+    return {
+      ...f,
+      severity,
+      title,
+      message:
+        `${f.message} This lockfile is git-ignored, so the dependency state is local and is not ` +
+        "committed via this repository; confirm whether the deployed build resolves the same version.",
+      remediation: {
+        ...f.remediation,
+        summary:
+          "Local dependency hygiene: upgrade or remove the affected package, regenerate the lockfile, and verify the deployed dependency resolution.",
+      },
+    };
+  }
   return {
     ...f,
     severity,

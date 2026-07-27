@@ -19,6 +19,8 @@ function mkResult(over: Partial<ScanResult> = {}): ScanResult {
     engines_run: ["codeinspectus-ai@1"],
     engine_details: [],
     offline: true,
+    detected_technologies: [],
+    pack_coverage: [],
     summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 },
     findings: [],
     truncated: false,
@@ -31,6 +33,60 @@ function mkResult(over: Partial<ScanResult> = {}): ScanResult {
 }
 
 describe("summarizeScan — git-safety advisory placement (CG-42)", () => {
+  test("surfaces detected technologies and exact native-pack execution counts", () => {
+    const out = summarizeScan(
+      mkResult({
+        detected_technologies: [
+          { id: "typescript", kind: "language", confidence: "high", evidence: ["src/app.ts"] },
+          { id: "react", kind: "framework", confidence: "high", evidence: ["package.json"] },
+        ],
+        pack_coverage: [
+          {
+            pack_id: "javascript-typescript",
+            version: "1.2.0",
+            scanner_kind: "ai",
+            state: "partial",
+            languages: ["javascript", "typescript"],
+            frameworks: ["react"],
+            platforms: [],
+            analyzers: { registered: 7, ran: 6 },
+            rules: { registered: 21, ran: 17 },
+            limitations: ["Rule-defined coverage only."],
+            note: "1 analyzer failed.",
+          },
+        ],
+      }),
+    );
+
+    expect(out).toContain("Detected technologies: typescript, react");
+    expect(out).toContain("javascript-typescript=partial (6/7 analyzers, 17/21 rules)");
+    expect(out).toContain("1 analyzer failed.");
+  });
+
+  test("surfaces native Pub dependency scope and skipped packages", () => {
+    const out = summarizeScan(
+      mkResult({
+        dependency_coverage: [
+          {
+            ecosystem: "Pub",
+            engine: "codeinspectus-pub",
+            state: "partial",
+            lockfiles: { discovered: 2, analyzed: 1 },
+            packages: { resolved: 12, eligible: 10, skipped: 2 },
+            database_version: "2026-07-26",
+            matching: "exact-enumerated-versions",
+            limitations: ["One lockfile was malformed."],
+            note: "One lockfile was malformed.",
+          },
+        ],
+      }),
+    );
+
+    expect(out).toContain("Native dependency coverage (exact locked-version matching only):");
+    expect(out).toContain("Pub/codeinspectus-pub=partial (1/2 lockfiles, 10/12 eligible packages, 2 skipped, snapshot 2026-07-26)");
+    expect(out).toContain("One lockfile was malformed.");
+  });
+
   test("no_git → recommendation under 'Before you fix:', and NO 'Warnings:' section", () => {
     const out = summarizeScan(
       mkResult({ git_safety: { state: "no_git", recommendation: NO_GIT_RECOMMENDATION }, warnings: [] }),
@@ -124,6 +180,8 @@ function mkRescan(over: Partial<RescanResult> = {}): RescanResult {
     scan_id: "scan-1",
     prior_scan_id: "scan-0",
     target: "/repo",
+    detected_technologies: [],
+    pack_coverage: [],
     resolved: [],
     remaining: [],
     introduced: [],
@@ -136,6 +194,54 @@ function mkRescan(over: Partial<RescanResult> = {}): RescanResult {
 }
 
 describe("summarizeRescan — not_rechecked surfaced in human text (CG-75 Claim 1)", () => {
+  test("retains fresh technology and not-run pack coverage", () => {
+    const out = summarizeRescan(
+      mkRescan({
+        detected_technologies: [
+          { id: "dart", kind: "language", confidence: "high", evidence: ["lib/main.dart"] },
+        ],
+        pack_coverage: [
+          {
+            pack_id: "javascript-typescript",
+            version: "1.2.0",
+            scanner_kind: "ai",
+            state: "not_run",
+            languages: ["javascript", "typescript"],
+            frameworks: [],
+            platforms: [],
+            analyzers: { registered: 7, ran: 0 },
+            rules: { registered: 21, ran: 0 },
+            limitations: ["The ai scanner class was excluded."],
+          },
+        ],
+      }),
+    );
+
+    expect(out).toContain("Detected technologies: dart");
+    expect(out).toContain("javascript-typescript=not_run (0/7 analyzers, 0/21 rules)");
+  });
+
+  test("retains fresh native dependency coverage", () => {
+    const out = summarizeRescan(
+      mkRescan({
+        dependency_coverage: [
+          {
+            ecosystem: "Pub",
+            engine: "codeinspectus-pub",
+            state: "ran",
+            lockfiles: { discovered: 1, analyzed: 1 },
+            packages: { resolved: 4, eligible: 4, skipped: 0 },
+            database_version: "2026-07-26",
+            matching: "exact-enumerated-versions",
+            limitations: [],
+          },
+        ],
+      }),
+    );
+
+    expect(out).toContain("Pub/codeinspectus-pub=ran (1/1 lockfiles, 4/4 eligible packages, 0 skipped, snapshot 2026-07-26)");
+  });
+
   test("not_rechecked findings appear under a dedicated NOT-confirmed-resolved section with count + note", () => {
     const out = summarizeRescan(
       mkRescan({

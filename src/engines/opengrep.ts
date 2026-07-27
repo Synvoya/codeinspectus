@@ -16,6 +16,7 @@ import { log } from "../logger.js";
 import type { EngineOutput } from "./types.js";
 import type { SarifLog } from "../sarif/types.js";
 import { invocationSignature, rulesetSignature } from "../provenance.js";
+import { engineWorkingDirectory } from "./target.js";
 
 export async function runOpengrep(target: string, tmpDir: string): Promise<EngineOutput> {
   const t0 = Date.now();
@@ -37,7 +38,10 @@ export async function runOpengrep(target: string, tmpDir: string): Promise<Engin
 
     // VERIFY: confirm flag spelling against opengrep v1.23.0 (`--sarif-output=`
     // per PRD §4.1; some builds use `--sarif --output`). Isolated here for easy fix.
-    const res = await execBinary(bin.path, args, { cwd: target, offline: true });
+    const res = await execBinary(bin.path, args, {
+      cwd: await engineWorkingDirectory(target),
+      offline: true,
+    });
     // Opengrep exit code is non-zero when findings exist; we read the SARIF
     // regardless and interpret results, not the exit code.
     let sarif: SarifLog | undefined;

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+  <application android:debuggable="false">
+    <provider
+        android:name="androidx.core.content.FileProvider"
+        android:exported="false"
+        tools:replace="android:exported" />
+  </application>
+</manifest>

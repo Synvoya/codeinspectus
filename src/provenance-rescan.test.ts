@@ -57,6 +57,8 @@ function scan(
     engines_run: [],
     engine_details: engines.map(engineInfo),
     offline: true,
+    detected_technologies: [],
+    pack_coverage: [],
     summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: findings.length },
     findings,
     truncated: false,
@@ -176,6 +178,35 @@ describe("diffRescan — component provenance", () => {
       resolved: 0,
       not_rechecked: 1,
     });
+  });
+
+  test("unchanged Pub parser/matcher/database signatures prove an upgraded dependency resolved", () => {
+    const components = {
+      [PIPELINE]: "p1",
+      "codeinspectus-pub:lockfile-parser": "parser1",
+      "codeinspectus-pub:exact-version-matcher": "matcher1",
+      "codeinspectus-pub:osv-snapshot": "db1",
+    };
+    const vuln = finding("pub-vuln", "codeinspectus-pub", Object.keys(components), "vulnerability");
+    expect(diffRescan(
+      scan([vuln], components, ["codeinspectus-pub"]),
+      scan([], components, ["codeinspectus-pub"]),
+    ).summary).toMatchObject({ resolved: 1, not_rechecked: 0 });
+  });
+
+  test("changed Pub advisory snapshot makes an absent vulnerability not_rechecked", () => {
+    const priorComponents = {
+      [PIPELINE]: "p1",
+      "codeinspectus-pub:lockfile-parser": "parser1",
+      "codeinspectus-pub:exact-version-matcher": "matcher1",
+      "codeinspectus-pub:osv-snapshot": "db1",
+    };
+    const freshComponents = { ...priorComponents, "codeinspectus-pub:osv-snapshot": "db2" };
+    const vuln = finding("pub-vuln", "codeinspectus-pub", Object.keys(priorComponents), "vulnerability");
+    expect(diffRescan(
+      scan([vuln], priorComponents, ["codeinspectus-pub"]),
+      scan([], freshComponents, ["codeinspectus-pub"]),
+    ).summary).toMatchObject({ resolved: 0, not_rechecked: 1 });
   });
 
   test.each(["license", "misconfiguration"] as const)(

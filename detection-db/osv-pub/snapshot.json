@@ -1,0 +1,1256 @@
+{
+  "schema_version": "1.0.0",
+  "snapshot": {
+    "ecosystem": "Pub",
+    "snapshot_version": "2026-07-26.28cf740b203f",
+    "checked_at": "2026-07-26T14:38:20.409Z",
+    "latest_record_modified": "2026-07-08T06:53:12.190101301Z",
+    "source_index_url": "https://storage.googleapis.com/osv-vulnerabilities/Pub/modified_id.csv",
+    "source_index_sha256": "sha256:28cf740b203f097a1707dbe015e73ba76e78653c02d2b5d89af98992a3bd061a",
+    "source_index_http": {
+      "etag": "\"32bfebdf0f45289314124b75f2b54718\"",
+      "last_modified": "Wed, 08 Jul 2026 07:10:18 GMT",
+      "generation": "1783494617989688",
+      "crc32c_md5": "crc32c=oN9w1w==, md5=Mr/r3w9FKJMUEkt18rVHGA=="
+    },
+    "source_records_sha256": "sha256:60ca55540e7f8e732c8804be5ae4d88aad624395b09841c403cef52bb23a8e51",
+    "source_records_digest_algorithm": "SHA-256 over advisory id, NUL, raw JSON bytes, NUL in ascending advisory-id order",
+    "normalized_payload_sha256": "sha256:da48cafb1ff577dbbcc9e261fcc98db3d5cea1dea2f7124e864cd12c712bc961",
+    "source_schema_versions": [
+      "1.7.3",
+      "1.7.5"
+    ],
+    "generator_revision": "3:single-package-coherent-index-record-normalizer",
+    "transformations": [
+      "retained only affected entries whose package ecosystem is Pub",
+      "rejected active advisories with multiple Pub affected-package entries pending package-qualified identity support",
+      "excluded withdrawn records from active matching while retaining their identities and digests",
+      "retained reviewed advisory identity, severity, CWE, references, exact versions, ranges, and provenance",
+      "sorted active and withdrawn records by advisory id and normalized set-like fields"
+    ],
+    "upstream_record_count": 13,
+    "advisory_count": 11,
+    "affected_package_count": 10,
+    "withdrawn_record_count": 2,
+    "withdrawn_records": [
+      {
+        "id": "GHSA-9f2c-xxfm-32mj",
+        "withdrawn": "2023-01-11T18:58:40Z",
+        "raw_sha256": "sha256:43b535ab18281b6dfcc3c6360667720dcf456abbcb6abd3e54d905b4f644fb80",
+        "source_schema_version": "1.7.3"
+      },
+      {
+        "id": "GHSA-jwpw-q68h-r678",
+        "withdrawn": "2023-10-05T17:32:48Z",
+        "raw_sha256": "sha256:36c9027911e79662ddc6551693cc34b66794c250ba1622174b3eae1379bfc01d",
+        "source_schema_version": "1.7.3"
+      }
+    ],
+    "matching": "exact-enumerated-versions",
+    "license": "CC-BY-4.0",
+    "attribution": "OSV.dev Pub ecosystem export; source records from the GitHub Advisory Database."
+  },
+  "advisories": [
+    {
+      "id": "GHSA-3hpf-ff72-j67p",
+      "source_schema_version": "1.7.3",
+      "source_database": "GitHub Advisory Database",
+      "published": "2024-12-06T21:24:30Z",
+      "modified": "2024-12-06T21:24:30Z",
+      "github_reviewed_at": "2024-12-06T21:24:30Z",
+      "aliases": [],
+      "summary": "shared_preferences_android vulnerability",
+      "severity": "low",
+      "severity_vectors": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:L/AC:H/PR:H/UI:N/S:U/C:N/I:L/A:L"
+        }
+      ],
+      "cwe": [
+        "CWE-502"
+      ],
+      "references": [
+        "https://github.com/flutter/packages",
+        "https://github.com/flutter/packages/commit/15501ece235684a3bdddad089345fc3e33dc1df3",
+        "https://github.com/flutter/packages/security/advisories/GHSA-3hpf-ff72-j67p"
+      ],
+      "raw_sha256": "sha256:48591fee3862b9e75c742cae315109c613fecf41de8b97373d81750d1b91ecb6",
+      "source_license": "CC-BY-4.0",
+      "affected": [
+        {
+          "package": "shared_preferences_android",
+          "purl": "pkg:pub/shared_preferences_android",
+          "versions": [
+            "2.3.3"
+          ],
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "2.3.3"
+                },
+                {
+                  "fixed": "2.3.4"
+                }
+              ]
+            }
+          ],
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2024/12/GHSA-3hpf-ff72-j67p/GHSA-3hpf-ff72-j67p.json"
+        }
+      ]
+    },
+    {
+      "id": "GHSA-4rgh-jx4f-qfcq",
+      "source_schema_version": "1.7.3",
+      "source_database": "GitHub Advisory Database",
+      "published": "2022-05-24T17:37:16Z",
+      "modified": "2023-11-08T04:03:35.243834Z",
+      "github_reviewed_at": "2022-08-04T21:05:04Z",
+      "aliases": [
+        "CVE-2020-35669"
+      ],
+      "summary": "http before 0.13.3 vulnerable to header injection",
+      "severity": "medium",
+      "severity_vectors": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
+        }
+      ],
+      "cwe": [
+        "CWE-74"
+      ],
+      "references": [
+        "https://github.com/dart-lang/http",
+        "https://github.com/dart-lang/http/blob/master/CHANGELOG.md#0133",
+        "https://github.com/dart-lang/http/commit/abb2bb182fbd7f03aafd1f889b902d7b3bdb8769",
+        "https://github.com/dart-lang/http/issues/511",
+        "https://github.com/dart-lang/http/pull/512",
+        "https://nvd.nist.gov/vuln/detail/CVE-2020-35669",
+        "https://pub.dev/packages/http/changelog#0133"
+      ],
+      "raw_sha256": "sha256:de47649a75d254a689c61ec7d5869c81351c63b76f4c8cd6ed5fa65272b4ae73",
+      "source_license": "CC-BY-4.0",
+      "affected": [
+        {
+          "package": "http",
+          "purl": "pkg:pub/http",
+          "versions": [
+            "0.10.0",
+            "0.11.0",
+            "0.11.0+1",
+            "0.11.1",
+            "0.11.1+1",
+            "0.11.1+3",
+            "0.11.2",
+            "0.11.3",
+            "0.11.3+1",
+            "0.11.3+11",
+            "0.11.3+12",
+            "0.11.3+13",
+            "0.11.3+14",
+            "0.11.3+15",
+            "0.11.3+16",
+            "0.11.3+17",
+            "0.11.3+2",
+            "0.11.3+3",
+            "0.11.3+4",
+            "0.11.3+5",
+            "0.11.3+6",
+            "0.11.3+7",
+            "0.11.3+8",
+            "0.11.3+9",
+            "0.12.0",
+            "0.12.0+1",
+            "0.12.0+2",
+            "0.12.0+3",
+            "0.12.0+4",
+            "0.12.1",
+            "0.12.2",
+            "0.13.0",
+            "0.13.0-nullsafety.0",
+            "0.13.1",
+            "0.13.2",
+            "0.2.10+1",
+            "0.2.7+0",
+            "0.2.8+2",
+            "0.2.9+7",
+            "0.3.1+1",
+            "0.3.2",
+            "0.3.4",
+            "0.3.5+1",
+            "0.3.7+6",
+            "0.4.0",
+            "0.4.1",
+            "0.4.2",
+            "0.4.3+1",
+            "0.4.4+4",
+            "0.4.5+1",
+            "0.4.7+1",
+            "0.5.0+1",
+            "0.5.1",
+            "0.5.11+1",
+            "0.5.12",
+            "0.5.13",
+            "0.5.14+1",
+            "0.5.14+3",
+            "0.5.15",
+            "0.5.16",
+            "0.5.17",
+            "0.5.20",
+            "0.5.4",
+            "0.5.5",
+            "0.5.6",
+            "0.5.7",
+            "0.5.9",
+            "0.6.1",
+            "0.6.11",
+            "0.6.12",
+            "0.6.13",
+            "0.6.14",
+            "0.6.15+2",
+            "0.6.15+3",
+            "0.6.17",
+            "0.6.17+2",
+            "0.6.19",
+            "0.6.2",
+            "0.6.20+1",
+            "0.6.21+3",
+            "0.6.3+1",
+            "0.6.5",
+            "0.6.6",
+            "0.6.8",
+            "0.6.9",
+            "0.6.9+2",
+            "0.7.0",
+            "0.7.1",
+            "0.7.2",
+            "0.7.2+1",
+            "0.7.3+1",
+            "0.7.4",
+            "0.7.5",
+            "0.7.6",
+            "0.7.6+4",
+            "0.8.0",
+            "0.8.1",
+            "0.8.10",
+            "0.8.10+3",
+            "0.8.10+4",
+            "0.8.2",
+            "0.8.3",
+            "0.8.4",
+            "0.8.5",
+            "0.8.6",
+            "0.8.7",
+            "0.8.8",
+            "0.8.9",
+            "0.9.0",
+            "0.9.1",
+            "0.9.2",
+            "0.9.2+1",
+            "0.9.2+3"
+          ],
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "0.13.3"
+                }
+              ]
+            }
+          ],
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2022/05/GHSA-4rgh-jx4f-qfcq/GHSA-4rgh-jx4f-qfcq.json"
+        }
+      ]
+    },
+    {
+      "id": "GHSA-4xh4-v2pq-jvhm",
+      "source_schema_version": "1.7.3",
+      "source_database": "GitHub Advisory Database",
+      "published": "2022-09-19T22:47:29Z",
+      "modified": "2026-07-08T06:53:12.190101301Z",
+      "github_reviewed_at": "2022-09-19T22:47:29Z",
+      "aliases": [
+        "CVE-2023-22963"
+      ],
+      "summary": "personnummer/dart vulnerable to Improper Input Validation",
+      "severity": "low",
+      "severity_vectors": [],
+      "cwe": [
+        "CWE-20"
+      ],
+      "references": [
+        "https://github.com/personnummer/dart",
+        "https://github.com/personnummer/dart/security/advisories/GHSA-4xh4-v2pq-jvhm",
+        "https://nvd.nist.gov/vuln/detail/CVE-2023-22963",
+        "https://pub.dev/packages/personnummer"
+      ],
+      "raw_sha256": "sha256:d7aad68f9d0639fe10f82900563605207b44b17df3b0bd723e14e3203c0edb5a",
+      "source_license": "CC-BY-4.0",
+      "affected": [
+        {
+          "package": "personnummer",
+          "purl": "pkg:pub/personnummer",
+          "versions": [
+            "1.0.0",
+            "1.0.1",
+            "1.0.2",
+            "2.0.0",
+            "2.1.0",
+            "3.0.0",
+            "3.0.1",
+            "3.0.2"
+          ],
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.0.3"
+                }
+              ]
+            }
+          ],
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2022/09/GHSA-4xh4-v2pq-jvhm/GHSA-4xh4-v2pq-jvhm.json"
+        }
+      ]
+    },
+    {
+      "id": "GHSA-5844-q3fc-56rh",
+      "source_schema_version": "1.7.3",
+      "source_database": "GitHub Advisory Database",
+      "published": "2023-12-06T06:30:20Z",
+      "modified": "2026-07-07T17:56:14.430840384Z",
+      "github_reviewed_at": "2023-12-06T16:55:26Z",
+      "aliases": [
+        "CVE-2023-26154",
+        "GO-2023-2385",
+        "PYSEC-2026-1807"
+      ],
+      "summary": "pubnub Insufficient Entropy vulnerability",
+      "severity": "medium",
+      "severity_vectors": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N"
+        }
+      ],
+      "cwe": [
+        "CWE-331"
+      ],
+      "references": [
+        "https://gist.github.com/vargad/20237094fce7a0a28f0723d7ce395bb0",
+        "https://github.com/advisories/GHSA-5844-q3fc-56rh",
+        "https://github.com/pubnub/go/commit/428517fef5b901db7275d9f5a75eda89a4c28e08",
+        "https://github.com/pubnub/javascript",
+        "https://github.com/pubnub/javascript/blob/master/src/crypto/modules/web.js#L70",
+        "https://github.com/pubnub/javascript/commit/fb6cd0417cbb4ba87ea2d5d86a9c94774447e119",
+        "https://github.com/rubysec/ruby-advisory-db/blob/master/gems/pubnub/CVE-2023-26154.yml",
+        "https://nvd.nist.gov/vuln/detail/CVE-2023-26154",
+        "https://security.snyk.io/vuln/SNYK-COCOAPODS-PUBNUB-6098384",
+        "https://security.snyk.io/vuln/SNYK-DOTNET-PUBNUB-6098372",
+        "https://security.snyk.io/vuln/SNYK-GOLANG-GITHUBCOMPUBNUBGO-6098373",
+        "https://security.snyk.io/vuln/SNYK-GOLANG-GITHUBCOMPUBNUBGOV7-6098374",
+        "https://security.snyk.io/vuln/SNYK-JAVA-COMPUBNUB-6098371",
+        "https://security.snyk.io/vuln/SNYK-JAVA-COMPUBNUB-6098380",
+        "https://security.snyk.io/vuln/SNYK-JS-PUBNUB-5840690",
+        "https://security.snyk.io/vuln/SNYK-PHP-PUBNUBPUBNUB-6098376",
+        "https://security.snyk.io/vuln/SNYK-PUB-PUBNUB-6098385",
+        "https://security.snyk.io/vuln/SNYK-PYTHON-PUBNUB-6098375",
+        "https://security.snyk.io/vuln/SNYK-RUBY-PUBNUB-6098377",
+        "https://security.snyk.io/vuln/SNYK-RUST-PUBNUB-6098378",
+        "https://security.snyk.io/vuln/SNYK-SWIFT-PUBNUBSWIFT-6098381",
+        "https://security.snyk.io/vuln/SNYK-UNMANAGED-PUBNUBCCORE-6098379"
+      ],
+      "raw_sha256": "sha256:acccf0eabaca84f227782e4c4bac3cd2bb75b138f7ad733b5c56571fcfa24b32",
+      "source_license": "CC-BY-4.0",
+      "affected": [
+        {
+          "package": "pubnub",
+          "purl": "pkg:pub/pubnub",
+          "versions": [
+            "0.1.0",
+            "0.1.1",
+            "1.0.2",
+            "1.0.3",
+            "1.0.4",
+            "1.0.5",
+            "1.1.0",
+            "1.1.1",
+            "1.1.2",
+            "1.1.3",
+            "1.2.0",
+            "1.3.0",
+            "1.4.0",
+            "1.4.1",
+            "1.4.2",
+            "1.4.3",
+            "1.4.4",
+            "2.0.0",
+            "2.0.1",
+            "3.0.0",
+            "3.0.0-rc",
+            "3.0.0-rc.1",
+            "3.0.0-rc.2",
+            "3.0.1",
+            "3.0.2",
+            "3.1.0",
+            "3.2.0",
+            "4.0.0",
+            "4.0.0-beta.0",
+            "4.0.0-beta.1",
+            "4.0.0-beta.2",
+            "4.1.0",
+            "4.1.1",
+            "4.1.2",
+            "4.1.3",
+            "4.2.1",
+            "4.2.2",
+            "4.2.3",
+            "4.2.4"
+          ],
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "4.3.0"
+                }
+              ]
+            }
+          ],
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2023/12/GHSA-5844-q3fc-56rh/GHSA-5844-q3fc-56rh.json"
+        }
+      ]
+    },
+    {
+      "id": "GHSA-9324-jv53-9cc8",
+      "source_schema_version": "1.7.3",
+      "source_database": "GitHub Advisory Database",
+      "published": "2023-03-21T22:41:11Z",
+      "modified": "2024-02-16T08:19:11.352648Z",
+      "github_reviewed_at": "2023-03-21T22:41:11Z",
+      "aliases": [
+        "CVE-2021-31402"
+      ],
+      "summary": "dio vulnerable to CRLF injection with HTTP method string",
+      "severity": "high",
+      "severity_vectors": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+        }
+      ],
+      "cwe": [
+        "CWE-93"
+      ],
+      "references": [
+        "https://github.com/cfug/dio",
+        "https://github.com/cfug/dio/commit/927f79e93ba39f3c3a12c190624a55653d577984",
+        "https://github.com/cfug/dio/issues/1752",
+        "https://github.com/cfug/dio/security/advisories/GHSA-9324-jv53-9cc8",
+        "https://github.com/flutterchina/dio/issues/1130",
+        "https://nvd.nist.gov/vuln/detail/CVE-2021-31402",
+        "https://osv.dev/GHSA-jwpw-q68h-r678",
+        "https://security.snyk.io/vuln/SNYK-PUB-DIO-5891148"
+      ],
+      "raw_sha256": "sha256:25149d4c6dd7ceb8a2a58646d68c1e14eae5889463ec1f6788ad863e285af1f4",
+      "source_license": "CC-BY-4.0",
+      "affected": [
+        {
+          "package": "dio",
+          "purl": "pkg:pub/dio",
+          "versions": [
+            "0.0.1",
+            "0.0.10",
+            "0.0.11",
+            "0.0.12",
+            "0.0.13",
+            "0.0.14",
+            "0.0.2",
+            "0.0.3",
+            "0.0.4",
+            "0.0.5",
+            "0.0.6",
+            "0.0.7",
+            "0.0.8",
+            "0.0.9",
+            "0.1.1",
+            "0.1.2",
+            "0.1.3",
+            "0.1.4",
+            "0.1.5",
+            "0.1.6",
+            "0.1.7",
+            "0.1.8",
+            "1.0.0",
+            "1.0.1",
+            "1.0.10",
+            "1.0.11",
+            "1.0.12",
+            "1.0.13",
+            "1.0.14",
+            "1.0.15",
+            "1.0.16",
+            "1.0.17",
+            "1.0.2",
+            "1.0.3",
+            "1.0.4",
+            "1.0.5",
+            "1.0.6",
+            "1.0.7",
+            "1.0.8",
+            "1.0.9",
+            "2.0.0",
+            "2.0.1",
+            "2.0.10",
+            "2.0.11",
+            "2.0.12",
+            "2.0.13",
+            "2.0.14",
+            "2.0.15",
+            "2.0.16",
+            "2.0.17",
+            "2.0.18",
+            "2.0.19",
+            "2.0.2",
+            "2.0.20",
+            "2.0.21",
+            "2.0.22",
+            "2.0.23",
+            "2.0.3",
+            "2.0.4",
+            "2.0.5",
+            "2.0.6",
+            "2.0.7",
+            "2.0.8",
+            "2.0.9",
+            "2.1.0",
+            "2.1.1",
+            "2.1.10",
+            "2.1.11",
+            "2.1.12",
+            "2.1.13",
+            "2.1.14",
+            "2.1.15",
+            "2.1.16",
+            "2.1.2",
+            "2.1.3",
+            "2.1.4",
+            "2.1.5",
+            "2.1.6",
+            "2.1.7",
+            "2.1.8",
+            "2.1.9",
+            "2.2.0",
+            "2.2.1",
+            "2.2.2",
+            "3.0.0",
+            "3.0.0-dev.1",
+            "3.0.1",
+            "3.0.10",
+            "3.0.2",
+            "3.0.2-dev.1",
+            "3.0.3",
+            "3.0.4",
+            "3.0.5",
+            "3.0.6",
+            "3.0.7",
+            "3.0.8",
+            "3.0.8-dev.1",
+            "3.0.9",
+            "4.0.0",
+            "4.0.0-beta1",
+            "4.0.0-beta2",
+            "4.0.0-beta3",
+            "4.0.0-beta4",
+            "4.0.0-beta5",
+            "4.0.0-beta6",
+            "4.0.0-beta7",
+            "4.0.0-prev1",
+            "4.0.0-prev2",
+            "4.0.0-prev3",
+            "4.0.1",
+            "4.0.2",
+            "4.0.2-beta1",
+            "4.0.3",
+            "4.0.4",
+            "4.0.5",
+            "4.0.5-beta1",
+            "4.0.6"
+          ],
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "5.0.0"
+                }
+              ]
+            }
+          ],
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2023/03/GHSA-9324-jv53-9cc8/GHSA-9324-jv53-9cc8.json"
+        }
+      ]
+    },
+    {
+      "id": "GHSA-9v85-q87q-g4vg",
+      "source_schema_version": "1.7.3",
+      "source_database": "GitHub Advisory Database",
+      "published": "2023-08-31T00:30:17Z",
+      "modified": "2024-02-16T08:24:53.140481Z",
+      "github_reviewed_at": "2023-08-31T01:42:46Z",
+      "aliases": [
+        "CVE-2023-39139"
+      ],
+      "summary": "Path traversal in Archive",
+      "severity": "high",
+      "severity_vectors": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H"
+        }
+      ],
+      "cwe": [
+        "CWE-22"
+      ],
+      "references": [
+        "https://blog.ostorlab.co/zip-packages-exploitation.html",
+        "https://github.com/brendan-duncan/archive",
+        "https://github.com/brendan-duncan/archive/commit/6de492385d72af044231c4163dff13a43d991c83",
+        "https://github.com/brendan-duncan/archive/commit/edb0d480733a44d28ff3d5e4e2779153ba645ce7",
+        "https://github.com/brendan-duncan/archive/issues/265",
+        "https://nvd.nist.gov/vuln/detail/CVE-2023-39139",
+        "https://ostorlab.co/vulndb/advisory/OVE-2023-5"
+      ],
+      "raw_sha256": "sha256:4b1f151c800fbd5a6a8600bc9607e6089fdb12a2d324019a38f2a3f03861710a",
+      "source_license": "CC-BY-4.0",
+      "affected": [
+        {
+          "package": "archive",
+          "purl": "pkg:pub/archive",
+          "versions": [
+            "1.0.0",
+            "1.0.10",
+            "1.0.11",
+            "1.0.12",
+            "1.0.13",
+            "1.0.14",
+            "1.0.15",
+            "1.0.16",
+            "1.0.17",
+            "1.0.18",
+            "1.0.19",
+            "1.0.2",
+            "1.0.20",
+            "1.0.21",
+            "1.0.22",
+            "1.0.23",
+            "1.0.24",
+            "1.0.25",
+            "1.0.26",
+            "1.0.27",
+            "1.0.28",
+            "1.0.29",
+            "1.0.3",
+            "1.0.31",
+            "1.0.32",
+            "1.0.33",
+            "1.0.4",
+            "1.0.5",
+            "1.0.6",
+            "1.0.7",
+            "1.0.8",
+            "1.0.9",
+            "2.0.0",
+            "2.0.1",
+            "2.0.10",
+            "2.0.11",
+            "2.0.12",
+            "2.0.13",
+            "2.0.2",
+            "2.0.3",
+            "2.0.4",
+            "2.0.5",
+            "2.0.6",
+            "2.0.7",
+            "2.0.8",
+            "2.0.9",
+            "3.0.0",
+            "3.0.0-nullsafety.0",
+            "3.1.1",
+            "3.1.10",
+            "3.1.11",
+            "3.1.2",
+            "3.1.3",
+            "3.1.4",
+            "3.1.5",
+            "3.1.6",
+            "3.1.7",
+            "3.1.8",
+            "3.1.9",
+            "3.2.0",
+            "3.2.1",
+            "3.2.2",
+            "3.3.0",
+            "3.3.1",
+            "3.3.2",
+            "3.3.3",
+            "3.3.4",
+            "3.3.5",
+            "3.3.6",
+            "3.3.7"
+          ],
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.3.8"
+                }
+              ]
+            }
+          ],
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2023/08/GHSA-9v85-q87q-g4vg/GHSA-9v85-q87q-g4vg.json"
+        }
+      ]
+    },
+    {
+      "id": "GHSA-fmj7-7gfw-64pg",
+      "source_schema_version": "1.7.3",
+      "source_database": "GitHub Advisory Database",
+      "published": "2024-10-15T17:33:50Z",
+      "modified": "2024-10-15T23:41:01.085916Z",
+      "github_reviewed_at": "2024-10-15T17:33:50Z",
+      "aliases": [
+        "CVE-2024-48915"
+      ],
+      "summary": "Agent Dart is missing certificate verification checks",
+      "severity": "high",
+      "severity_vectors": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N"
+        },
+        {
+          "type": "CVSS_V4",
+          "score": "CVSS:4.0/AV:N/AC:H/AT:N/PR:N/UI:P/VC:H/VI:H/VA:N/SC:N/SI:N/SA:N"
+        }
+      ],
+      "cwe": [
+        "CWE-295",
+        "CWE-347"
+      ],
+      "references": [
+        "https://github.com/AstroxNetwork/agent_dart",
+        "https://github.com/AstroxNetwork/agent_dart/blob/f50971dfae3f536c1720f0084f28afbcf5d99cb5/lib/agent/certificate.dart#L162",
+        "https://github.com/AstroxNetwork/agent_dart/blob/main/lib/agent/certificate.dart",
+        "https://github.com/AstroxNetwork/agent_dart/commit/0d200686aabcd9313c7bc3e675cbdc82f6b775cf",
+        "https://github.com/AstroxNetwork/agent_dart/security/advisories/GHSA-fmj7-7gfw-64pg",
+        "https://nvd.nist.gov/vuln/detail/CVE-2024-48915"
+      ],
+      "raw_sha256": "sha256:1c3c17fdfe98d9b9ebba93ff35227f625912987df765c4720c893bd96611dd41",
+      "source_license": "CC-BY-4.0",
+      "affected": [
+        {
+          "package": "agent_dart",
+          "purl": "pkg:pub/agent_dart",
+          "versions": [
+            "0.0.1",
+            "0.0.2",
+            "0.0.4",
+            "0.0.5",
+            "0.0.6",
+            "0.1.0",
+            "0.1.1",
+            "0.1.10",
+            "0.1.11",
+            "0.1.12",
+            "0.1.13",
+            "0.1.14",
+            "0.1.14+1",
+            "0.1.15",
+            "0.1.15+1",
+            "0.1.15+2",
+            "0.1.16",
+            "0.1.16+1",
+            "0.1.16+2",
+            "0.1.17",
+            "0.1.17+1",
+            "0.1.18",
+            "0.1.19",
+            "0.1.19+1",
+            "0.1.19+2",
+            "0.1.19+3",
+            "0.1.19+4",
+            "0.1.2",
+            "0.1.21",
+            "0.1.22",
+            "0.1.22+1",
+            "0.1.23",
+            "0.1.23+1",
+            "0.1.24",
+            "0.1.24+1",
+            "0.1.3",
+            "0.1.4",
+            "0.1.5",
+            "0.1.6",
+            "0.1.7",
+            "0.1.8",
+            "0.1.9",
+            "1.0.0-dev.1",
+            "1.0.0-dev.10",
+            "1.0.0-dev.11",
+            "1.0.0-dev.13",
+            "1.0.0-dev.14",
+            "1.0.0-dev.15",
+            "1.0.0-dev.16",
+            "1.0.0-dev.17",
+            "1.0.0-dev.18",
+            "1.0.0-dev.19",
+            "1.0.0-dev.2",
+            "1.0.0-dev.20",
+            "1.0.0-dev.21",
+            "1.0.0-dev.22",
+            "1.0.0-dev.23",
+            "1.0.0-dev.24",
+            "1.0.0-dev.25",
+            "1.0.0-dev.26",
+            "1.0.0-dev.27",
+            "1.0.0-dev.28",
+            "1.0.0-dev.3",
+            "1.0.0-dev.4",
+            "1.0.0-dev.5",
+            "1.0.0-dev.6",
+            "1.0.0-dev.7",
+            "1.0.0-dev.8",
+            "1.0.0-dev.9"
+          ],
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "1.0.0-dev.29"
+                }
+              ]
+            }
+          ],
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2024/10/GHSA-fmj7-7gfw-64pg/GHSA-fmj7-7gfw-64pg.json"
+        }
+      ]
+    },
+    {
+      "id": "GHSA-h6x7-r5rg-x5fw",
+      "source_schema_version": "1.7.3",
+      "source_database": "GitHub Advisory Database",
+      "published": "2024-03-28T17:53:26Z",
+      "modified": "2024-03-28T18:11:48.116606Z",
+      "github_reviewed_at": "2024-03-28T17:53:26Z",
+      "aliases": [
+        "CVE-2024-29887"
+      ],
+      "summary": "Serverpod client accepts any certificate",
+      "severity": "high",
+      "severity_vectors": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N"
+        }
+      ],
+      "cwe": [
+        "CWE-295"
+      ],
+      "references": [
+        "https://github.com/serverpod/serverpod",
+        "https://github.com/serverpod/serverpod/commit/d55bf8d12967fc7955a875cb3e0f9693bd6d2c71",
+        "https://github.com/serverpod/serverpod/security/advisories/GHSA-h6x7-r5rg-x5fw",
+        "https://nvd.nist.gov/vuln/detail/CVE-2024-29887"
+      ],
+      "raw_sha256": "sha256:14a0be0318f00950f2412738f1ef6824a58820d6cc0a16d55819730fcfbd5f73",
+      "source_license": "CC-BY-4.0",
+      "affected": [
+        {
+          "package": "serverpod_client",
+          "purl": "pkg:pub/serverpod_client",
+          "versions": [
+            "0.8.0",
+            "0.8.1",
+            "0.8.10",
+            "0.8.11",
+            "0.8.12",
+            "0.8.2",
+            "0.8.3",
+            "0.8.4",
+            "0.8.5",
+            "0.8.6",
+            "0.8.8",
+            "0.8.9",
+            "0.9.0",
+            "0.9.1",
+            "0.9.10",
+            "0.9.11",
+            "0.9.12",
+            "0.9.13",
+            "0.9.14",
+            "0.9.15",
+            "0.9.16",
+            "0.9.17",
+            "0.9.18",
+            "0.9.19",
+            "0.9.2",
+            "0.9.20",
+            "0.9.21",
+            "0.9.22",
+            "0.9.3",
+            "0.9.4",
+            "0.9.5",
+            "0.9.6",
+            "0.9.7",
+            "0.9.8",
+            "0.9.9",
+            "1.0.0",
+            "1.0.1",
+            "1.1.0",
+            "1.1.1",
+            "1.2.0",
+            "1.2.0-rc.1",
+            "1.2.0-rc.2",
+            "1.2.0-rc.3",
+            "1.2.0-rc.4",
+            "1.2.1",
+            "1.2.1-rc.1",
+            "1.2.1-rc.2",
+            "1.2.1-rc.3",
+            "1.2.2",
+            "1.2.2-rc.1",
+            "1.2.3",
+            "1.2.4",
+            "1.2.5"
+          ],
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "1.2.6"
+                }
+              ]
+            }
+          ],
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2024/03/GHSA-h6x7-r5rg-x5fw/GHSA-h6x7-r5rg-x5fw.json"
+        }
+      ]
+    },
+    {
+      "id": "GHSA-r285-q736-9v95",
+      "source_schema_version": "1.7.3",
+      "source_database": "GitHub Advisory Database",
+      "published": "2023-08-31T00:30:17Z",
+      "modified": "2024-10-02T13:45:54.869272Z",
+      "github_reviewed_at": "2023-08-31T01:43:38Z",
+      "aliases": [
+        "CVE-2023-39137"
+      ],
+      "summary": "Filename spoofing in archive",
+      "severity": "high",
+      "severity_vectors": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H"
+        }
+      ],
+      "cwe": [
+        "CWE-20"
+      ],
+      "references": [
+        "https://blog.ostorlab.co/zip-packages-exploitation.html",
+        "https://github.com/brendan-duncan/archive",
+        "https://github.com/brendan-duncan/archive/commit/0d17b270a3c33d3bed56cadd9a43da7717ab11f4",
+        "https://github.com/brendan-duncan/archive/issues/266",
+        "https://nvd.nist.gov/vuln/detail/CVE-2023-39137",
+        "https://ostorlab.co/vulndb/advisory/OVE-2023-3",
+        "https://www.rapid7.com/db/modules/exploit/windows/fileformat/winrar_name_spoofing"
+      ],
+      "raw_sha256": "sha256:612b553dd77e87de86cecc94f64b4536bddfcea3cab3699100111e794990dc2b",
+      "source_license": "CC-BY-4.0",
+      "affected": [
+        {
+          "package": "archive",
+          "purl": "pkg:pub/archive",
+          "versions": [
+            "1.0.0",
+            "1.0.10",
+            "1.0.11",
+            "1.0.12",
+            "1.0.13",
+            "1.0.14",
+            "1.0.15",
+            "1.0.16",
+            "1.0.17",
+            "1.0.18",
+            "1.0.19",
+            "1.0.2",
+            "1.0.20",
+            "1.0.21",
+            "1.0.22",
+            "1.0.23",
+            "1.0.24",
+            "1.0.25",
+            "1.0.26",
+            "1.0.27",
+            "1.0.28",
+            "1.0.29",
+            "1.0.3",
+            "1.0.31",
+            "1.0.32",
+            "1.0.33",
+            "1.0.4",
+            "1.0.5",
+            "1.0.6",
+            "1.0.7",
+            "1.0.8",
+            "1.0.9",
+            "2.0.0",
+            "2.0.1",
+            "2.0.10",
+            "2.0.11",
+            "2.0.12",
+            "2.0.13",
+            "2.0.2",
+            "2.0.3",
+            "2.0.4",
+            "2.0.5",
+            "2.0.6",
+            "2.0.7",
+            "2.0.8",
+            "2.0.9",
+            "3.0.0",
+            "3.0.0-nullsafety.0",
+            "3.1.1",
+            "3.1.10",
+            "3.1.11",
+            "3.1.2",
+            "3.1.3",
+            "3.1.4",
+            "3.1.5",
+            "3.1.6",
+            "3.1.7",
+            "3.1.8",
+            "3.1.9",
+            "3.2.0",
+            "3.2.1",
+            "3.2.2",
+            "3.3.0",
+            "3.3.1",
+            "3.3.2",
+            "3.3.3",
+            "3.3.4",
+            "3.3.5",
+            "3.3.6",
+            "3.3.7"
+          ],
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "3.3.8"
+                }
+              ]
+            }
+          ],
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2023/08/GHSA-r285-q736-9v95/GHSA-r285-q736-9v95.json"
+        }
+      ]
+    },
+    {
+      "id": "GHSA-r75m-26cq-mjxc",
+      "source_schema_version": "1.7.3",
+      "source_database": "GitHub Advisory Database",
+      "published": "2024-03-28T17:53:42Z",
+      "modified": "2024-03-28T18:11:48.036467Z",
+      "github_reviewed_at": "2024-03-28T17:53:42Z",
+      "aliases": [
+        "CVE-2024-29886"
+      ],
+      "summary": "Serverpod improved security for stored password hashes",
+      "severity": "medium",
+      "severity_vectors": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+        }
+      ],
+      "cwe": [
+        "CWE-916"
+      ],
+      "references": [
+        "https://github.com/serverpod/serverpod",
+        "https://github.com/serverpod/serverpod/commit/a78b9e9f1de74d1300633a122b6cc0f064139ad6",
+        "https://github.com/serverpod/serverpod/security/advisories/GHSA-r75m-26cq-mjxc",
+        "https://nvd.nist.gov/vuln/detail/CVE-2024-29886"
+      ],
+      "raw_sha256": "sha256:36112996674d142b2d7b548da4de68391360cef66a9a9621523a82174f44176b",
+      "source_license": "CC-BY-4.0",
+      "affected": [
+        {
+          "package": "serverpod_auth_server",
+          "purl": "pkg:pub/serverpod_auth_server",
+          "versions": [
+            "0.9.10",
+            "0.9.11",
+            "0.9.12",
+            "0.9.13",
+            "0.9.14",
+            "0.9.15",
+            "0.9.16",
+            "0.9.17",
+            "0.9.18",
+            "0.9.19",
+            "0.9.2",
+            "0.9.20",
+            "0.9.21",
+            "0.9.22",
+            "0.9.3",
+            "0.9.4",
+            "0.9.5",
+            "0.9.6",
+            "0.9.7",
+            "0.9.8",
+            "0.9.9",
+            "1.0.0",
+            "1.0.1",
+            "1.1.0",
+            "1.1.1",
+            "1.2.0",
+            "1.2.0-rc.1",
+            "1.2.0-rc.2",
+            "1.2.0-rc.3",
+            "1.2.0-rc.4",
+            "1.2.1",
+            "1.2.1-rc.1",
+            "1.2.1-rc.2",
+            "1.2.1-rc.3",
+            "1.2.2",
+            "1.2.2-rc.1",
+            "1.2.3",
+            "1.2.4",
+            "1.2.5"
+          ],
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "1.2.6"
+                }
+              ]
+            }
+          ],
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2024/03/GHSA-r75m-26cq-mjxc/GHSA-r75m-26cq-mjxc.json"
+        }
+      ]
+    },
+    {
+      "id": "GHSA-vm9r-h74p-hg97",
+      "source_schema_version": "1.7.5",
+      "source_database": "GitHub Advisory Database",
+      "published": "2026-03-31T23:09:16Z",
+      "modified": "2026-03-31T23:21:05.456511Z",
+      "github_reviewed_at": "2026-03-31T23:09:16Z",
+      "aliases": [
+        "CVE-2026-34240"
+      ],
+      "summary": "jose vulnerable to untrusted JWK header key acceptance during signature verification",
+      "severity": "high",
+      "severity_vectors": [
+        {
+          "type": "CVSS_V3",
+          "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
+        }
+      ],
+      "cwe": [
+        "CWE-347"
+      ],
+      "references": [
+        "https://github.com/appsup-dart/jose",
+        "https://github.com/appsup-dart/jose/commit/b07799aac1f56a9a21483feac026272aab30cc5d",
+        "https://github.com/appsup-dart/jose/security/advisories/GHSA-vm9r-h74p-hg97",
+        "https://nvd.nist.gov/vuln/detail/CVE-2026-34240"
+      ],
+      "raw_sha256": "sha256:1244cae473e6e437a9e5ef0589ff34c6f5cc8d83fbaa09fb75acda8cc2663eb2",
+      "source_license": "CC-BY-4.0",
+      "affected": [
+        {
+          "package": "jose",
+          "purl": "pkg:pub/jose",
+          "versions": [
+            "0.1.0",
+            "0.1.0+1",
+            "0.1.0+2",
+            "0.1.1",
+            "0.1.2",
+            "0.1.2+1",
+            "0.2.0",
+            "0.2.1",
+            "0.2.1+1",
+            "0.2.2",
+            "0.3.0",
+            "0.3.0-nullsafety.1",
+            "0.3.0-nullsafety.2",
+            "0.3.1",
+            "0.3.2",
+            "0.3.3",
+            "0.3.4",
+            "0.3.5"
+          ],
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "0.3.5+1"
+                }
+              ]
+            }
+          ],
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/03/GHSA-vm9r-h74p-hg97/GHSA-vm9r-h74p-hg97.json"
+        }
+      ]
+    }
+  ]
+}

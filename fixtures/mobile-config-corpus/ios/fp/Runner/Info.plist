@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>com.synvoya.iosconfig.fp</string>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <!-- On iOS 10+, the presence of a fine-grained global key makes the
+         legacy NSAllowsArbitraryLoads value ignored/default-false. -->
+    <key>NSAllowsArbitraryLoads</key>
+    <true/>
+    <key>NSAllowsLocalNetworking</key>
+    <false/>
+    <key>NSExceptionDomains</key>
+    <dict>
+      <key>localhost</key>
+      <dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key>
+        <true/>
+      </dict>
+      <key>api.example.com</key>
+      <dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key>
+        <true/>
+        <key>NSExceptionMinimumTLSVersion</key>
+        <string>TLSv1.0</string>
+        <key>NSExceptionRequiresForwardSecrecy</key>
+        <false/>
+      </dict>
+      <key>$(API_DOMAIN)</key>
+      <dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key>
+        <true/>
+      </dict>
+      <key>api.codeinspectus.com</key>
+      <dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key>
+        <false/>
+        <key>NSExceptionMinimumTLSVersion</key>
+        <string>TLSv1.2</string>
+        <key>NSExceptionRequiresForwardSecrecy</key>
+        <true/>
+      </dict>
+    </dict>
+  </dict>
+</dict>
+</plist>

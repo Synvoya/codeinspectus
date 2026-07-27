@@ -10,19 +10,45 @@
 import { describe, test, expect } from "vitest";
 import { join } from "node:path";
 import { runSupabaseRlsCheck } from "./supabase-rls.js";
+import { runAiChecks } from "./index.js";
 import type { Finding } from "../types.js";
 import type { SourceFile } from "./walk.js";
 import { buildRlsAnalysisUnits } from "./supabase-migration-state.js";
 
 const CORPUS = join(process.cwd(), "fixtures", "secret-rls-corpus");
+const EDGE_CORPUS = join(process.cwd(), "fixtures", "supabase-edge-auth-corpus");
 const STORAGE = "ci-ai-storage-rls-public";
 const USING_TRUE = "ci-ai-rls-using-true";
 const INVERTED_AUTH = "ci-ai-rls-inverted-auth";
 const MISSING = "ci-ai-rls-missing";
+const EDGE_NO_AUTH = "ci-ai-edge-fn-no-auth";
 
 const atFile = (findings: Finding[], suffix: string) =>
   findings.filter((f) => f.location.file.endsWith(suffix));
 const sourceFile = (rel: string): SourceFile => ({ abs: `/${rel}`, rel, content: "", ext: "sql" });
+
+describe("Supabase Edge Function authentication", () => {
+  test("runs independently of SQL/RLS signals and keeps authenticated/non-edge files silent", async () => {
+    const findings = await runSupabaseRlsCheck(EDGE_CORPUS);
+    const edgeFindings = findings.filter((finding) => finding.rule_id === EDGE_NO_AUTH);
+
+    expect(edgeFindings).toHaveLength(1);
+    expect(edgeFindings[0]).toMatchObject({
+      severity: "high",
+      confidence: "medium",
+      location: { file: "tp/supabase/functions/public-handler/index.ts" },
+    });
+    expect(edgeFindings.every((finding) => !finding.location.file.startsWith("fp/"))).toBe(true);
+  });
+
+  test("is wired through the native runner with edge-auth provenance", async () => {
+    const result = await runAiChecks(EDGE_CORPUS);
+    const finding = result.findings.find((candidate) => candidate.rule_id === EDGE_NO_AUTH);
+
+    expect(finding?.producer_components).toContain("ai:supabase-edge-auth");
+    expect(result.componentSignatures["ai:supabase-edge-auth"]).toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+});
 
 describe("B-12 storage.objects RLS (ci-ai-storage-rls-public)", () => {
   test("public storage.objects policies fire; owner-scoped + system-table policies do not", async () => {

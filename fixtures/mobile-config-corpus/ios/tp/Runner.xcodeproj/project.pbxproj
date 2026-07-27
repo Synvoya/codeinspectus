@@ -1,0 +1,35 @@
+// !$*UTF8*$!
+{
+  objects = {
+    RELEASE_PROJECT_CONFIG = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        SDKROOT = iphoneos;
+      };
+      name = Release;
+    };
+    RELEASE_TARGET_CONFIG = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
+        INFOPLIST_FILE = Runner/Info.plist;
+      };
+      name = Release;
+    };
+    APP_STORE_PROJECT_CONFIG = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+      };
+      name = AppStore;
+    };
+    APP_STORE_TARGET_CONFIG = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
+        INFOPLIST_FILE = Runner/Info.plist;
+      };
+      name = AppStore;
+    };
+  };
+}

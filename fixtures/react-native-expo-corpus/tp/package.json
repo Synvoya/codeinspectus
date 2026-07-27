@@ -1,0 +1,10 @@
+{
+  "name": "codeinspectus-react-native-expo-tp",
+  "private": true,
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "expo": "^55.0.0",
+    "react-native": "^0.83.0",
+    "react-native-webview": "^13.16.0"
+  }
+}

@@ -177,10 +177,11 @@ will not be merged, however useful it otherwise is:
 
 ## Other contributions
 
-### Detection rules (`detection-db/**`, `src/ai-checks/**`)
+### Detection rules (`detection-db/**`, `src/ai-checks/**`, `src/packs/**`)
 
-CodeInspectus ships **44 curated detections** today (see `detection-db/manifest.json`): the
-AI-code checks (`ci-ai-*`), the MIT `security-baseline` SAST rules (`ci-baseline-*`), and a few
+CodeInspectus ships **70 curated detections** today (see `detection-db/manifest.json`): the
+first-party native checks (`ci-ai-*` plus framework/platform pack namespaces), the MIT
+`security-baseline` SAST rules (`ci-baseline-*`), and a few
 custom secret rules (`codeinspectus-*`). The set grows through a **human-reviewed weekly
 intake** — the maintainer triages proposals in batches. There is **no autonomous rule
 generation**: every rule is written and reviewed by a person, with fixtures, before it ships.
@@ -197,8 +198,10 @@ by being *precise*, not by flagging more.
   fixture for a realistic safe case will be sent back. Wire the fixtures into the vitest corpus
   so the precision check is a standing regression lock, not a one-time claim.
 - **Rule ids are append-only — never rename or restructure a shipped one.**
-  - **Internal ids** are lowercase-kebab, namespaced: `ci-ai-*` (AI-code checks) /
-    `ci-baseline-*` (SAST baseline) / `codeinspectus-*` (secret rules).
+  - **Internal ids** are lowercase-kebab, namespaced: `ci-ai-*` or an installed pack namespace
+    (`ci-flutter-*`, `ci-android-*`, `ci-ios-*`, `ci-react-native-*`, `ci-expo-*`,
+    `ci-python-*`) for native
+    checks / `ci-baseline-*` for SAST baseline / `codeinspectus-*` for secret rules.
   - **Display ids** are the uppercase sequential form users see, e.g. `CI-0001`.
   - A shipped internal `ruleId` is a **stable fingerprint**: it feeds finding dedup/suppression
     **and rescan continuity** — the `scan → fix → rescan` loop matches findings across runs by

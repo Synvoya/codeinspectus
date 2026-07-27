@@ -21,7 +21,8 @@ rules:
     languages: [javascript, typescript]
     severity: WARNING
     message: >
-      Weak/broken cipher (DES/RC4/3DES) used. Use AES-GCM or another modern AEAD cipher.
+      Deprecated password-based createCipher or weak cipher (DES/RC4/3DES) used. Use
+      createCipheriv with a modern AEAD cipher, an independent random key, and a unique nonce.
     metadata:
       cwe: "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
       owasp: "A02:2021 - Cryptographic Failures"
