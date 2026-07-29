@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeinspectus.com/schemas/v2.0.0/sarif.schema.json",
+  "title": "CodeInspectus V2 SARIF 2.1.0 export profile",
+  "type": "object",
+  "required": ["$schema", "version", "runs"],
+  "properties": {
+    "$schema": { "const": "https://json.schemastore.org/sarif-2.1.0.json" },
+    "version": { "const": "2.1.0" },
+    "runs": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "$ref": "#/$defs/run" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "aggregate": { "enum": ["complete", "partial", "unknown"] },
+    "message": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string" } }, "additionalProperties": false },
+    "coverageEvidence": {
+      "type": "object", "required": ["category", "component", "state", "detail"],
+      "properties": {
+        "category": { "type": "string" }, "component": { "type": "string" },
+        "state": { "enum": ["covered", "not_applicable", "informational", "excluded", "partial", "unknown"] },
+        "detail": { "type": "string" }
+      }, "additionalProperties": false
+    },
+    "gitScope": {
+      "type": "object", "required": ["schema_version", "mode", "repository", "base", "entries", "primary_paths", "primary_finding_count", "supporting_context_finding_count", "supporting_context_scanned", "completeness", "limitations"],
+      "properties": {
+        "schema_version": { "const": "1.0.0" }, "mode": { "enum": ["commit_diff", "working_tree"] }, "repository": { "type": "string" },
+        "base": { "$ref": "#/$defs/gitRevision" }, "head": { "$ref": "#/$defs/gitRevision" }, "entries": { "type": "array", "items": { "$ref": "#/$defs/gitScopeEntry" } },
+        "primary_paths": { "type": "array", "items": { "type": "string" } }, "primary_finding_count": { "type": "integer", "minimum": 0 }, "supporting_context_finding_count": { "type": "integer", "minimum": 0 }, "supporting_context_scanned": { "type": "boolean" }, "completeness": { "enum": ["complete", "partial"] }, "limitations": { "type": "array", "items": { "type": "string" } }
+      }, "additionalProperties": false
+    },
+    "gitRevision": { "type": "object", "required": ["requested", "commit"], "properties": { "requested": { "type": "string" }, "commit": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" } }, "additionalProperties": false },
+    "gitScopeEntry": { "type": "object", "required": ["status", "path", "binary", "generated", "submodule", "inspected"], "properties": { "status": { "enum": ["added", "modified", "deleted", "renamed", "untracked", "ignored"] }, "path": { "type": "string" }, "old_path": { "type": "string" }, "binary": { "type": "boolean" }, "generated": { "type": "boolean" }, "submodule": { "type": "boolean" }, "inspected": { "type": "boolean" }, "note": { "type": "string" } }, "additionalProperties": false },
+    "rule": {
+      "type": "object", "required": ["id", "name", "shortDescription", "help", "properties"],
+      "properties": {
+        "id": { "type": "string" }, "name": { "type": "string" },
+        "shortDescription": { "$ref": "#/$defs/message" }, "help": { "$ref": "#/$defs/message" },
+        "properties": {
+          "type": "object", "required": ["severity", "confidence", "cwe", "producer", "producer_components"],
+          "properties": {
+            "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+            "confidence": { "enum": ["high", "medium", "low"] }, "cwe": { "type": "array", "items": { "type": "string" } },
+            "producer": { "type": "string" }, "producer_components": { "type": "array", "items": { "type": "string" } }
+          }, "additionalProperties": false
+        }
+      }, "additionalProperties": false
+    },
+    "result": {
+      "type": "object", "required": ["ruleId", "level", "message", "locations", "fingerprints", "properties"],
+      "properties": {
+        "ruleId": { "type": "string" }, "baselineState": { "enum": ["new", "unchanged"] }, "level": { "enum": ["error", "warning", "note"] }, "message": { "$ref": "#/$defs/message" },
+        "locations": {
+          "type": "array", "minItems": 1, "maxItems": 1,
+          "items": {
+            "type": "object", "required": ["physicalLocation"],
+            "properties": { "physicalLocation": {
+              "type": "object", "required": ["artifactLocation", "region"],
+              "properties": {
+                "artifactLocation": { "type": "object", "required": ["uri"], "properties": { "uri": { "type": "string" } }, "additionalProperties": false },
+                "region": {
+                  "type": "object", "required": ["startLine", "endLine"],
+                  "properties": { "startLine": { "type": "integer", "minimum": 1 }, "endLine": { "type": "integer", "minimum": 1 }, "snippet": { "$ref": "#/$defs/message" } },
+                  "additionalProperties": false
+                }
+              }, "additionalProperties": false
+            } }, "additionalProperties": false
+          }
+        },
+        "fingerprints": {
+          "type": "object", "required": ["codeinspectus/v2"],
+          "properties": { "codeinspectus/v2": { "type": "string" } }, "additionalProperties": false
+        },
+        "properties": {
+          "type": "object",
+          "required": ["finding_id", "severity", "confidence", "cwe", "remediation", "producer", "producers", "producer_components", "aggregate_coverage", "coverage_context"],
+          "properties": {
+            "finding_id": { "type": "string" }, "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+            "confidence": { "enum": ["high", "medium", "low"] }, "cwe": { "type": "array", "items": { "type": "string" } },
+            "remediation": { "type": "object", "required": ["summary", "steps", "references"] },
+            "producer": { "type": "string" }, "producers": { "type": "array", "items": { "type": "string" } },
+            "producer_components": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+            "aggregate_coverage": { "$ref": "#/$defs/aggregate" },
+            "coverage_context": {
+              "type": "object", "required": ["aggregate", "producer_components"],
+              "properties": { "aggregate": { "$ref": "#/$defs/aggregate" }, "producer_components": { "type": "array", "minItems": 1, "items": { "type": "string" } } },
+              "additionalProperties": false
+            },
+            "triage_context": { "type": "array", "items": { "$ref": "#/$defs/triageAnnotation" } }, "scope_role": { "enum": ["primary", "supporting_context"] }
+          }, "additionalProperties": false
+        }
+      }, "additionalProperties": false
+    },
+    "run": {
+      "type": "object", "required": ["tool", "invocations", "results", "properties"],
+      "properties": {
+        "tool": {
+          "type": "object", "required": ["driver"], "properties": { "driver": {
+            "type": "object", "required": ["name", "version", "informationUri", "rules"],
+            "properties": { "name": { "const": "CodeInspectus" }, "version": { "type": "string" }, "informationUri": { "type": "string" }, "rules": { "type": "array", "items": { "$ref": "#/$defs/rule" } } },
+            "additionalProperties": false
+          } }, "additionalProperties": false
+        },
+        "invocations": {
+          "type": "array", "minItems": 1, "maxItems": 1,
+          "items": {
+            "type": "object", "required": ["executionSuccessful", "properties"],
+            "properties": {
+              "executionSuccessful": { "type": "boolean" },
+              "properties": {
+                "type": "object", "required": ["offline", "scan_id", "aggregate_coverage", "coverage_evidence"],
+                "properties": { "offline": { "const": true }, "scan_id": { "type": "string", "pattern": "^scan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }, "aggregate_coverage": { "$ref": "#/$defs/aggregate" }, "coverage_evidence": { "type": "array", "items": { "$ref": "#/$defs/coverageEvidence" } }, "git_scope": { "$ref": "#/$defs/gitScope" } },
+                "additionalProperties": false
+              }
+            }, "additionalProperties": false
+          }
+        },
+        "results": { "type": "array", "items": { "$ref": "#/$defs/result" } },
+        "properties": {
+          "type": "object", "required": ["codeinspectus_schema_version", "scan_id", "target", "policy_mode", "aggregate_coverage", "coverage_evidence"],
+          "properties": {
+            "codeinspectus_schema_version": { "const": "2.0.0" }, "scan_id": { "type": "string", "pattern": "^scan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }, "target": { "type": "string" },
+            "policy_mode": { "enum": ["report_only", "enforcement", "new_findings_enforcement"] },
+            "fail_on_severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+            "fail_on_new_severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+            "baseline_scan_id": { "type": "string", "pattern": "^scan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+            "baseline": { "$ref": "#/$defs/baseline" },
+            "triage_store": { "type": "object", "required": ["partial", "matched_annotations"], "properties": { "partial": { "type": "boolean" }, "matched_annotations": { "type": "integer", "minimum": 0 } }, "additionalProperties": false },
+            "aggregate_coverage": { "$ref": "#/$defs/aggregate" }, "coverage_evidence": { "type": "array", "items": { "$ref": "#/$defs/coverageEvidence" } }, "git_scope": { "$ref": "#/$defs/gitScope" }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "policy_mode": { "const": "enforcement" } } },
+              "then": { "required": ["fail_on_severity"] },
+              "else": { "not": { "required": ["fail_on_severity"] } }
+            },
+            {
+              "if": { "properties": { "policy_mode": { "const": "new_findings_enforcement" } } },
+              "then": { "required": ["baseline_scan_id", "fail_on_new_severity", "baseline"] },
+              "else": { "not": { "required": ["fail_on_new_severity"] } }
+            }
+          ],
+          "additionalProperties": false
+        }
+      }, "additionalProperties": false
+    },
+    "triageAnnotation": {
+      "type": "object", "required": ["annotation_id", "state", "reason", "recorded_at"],
+      "properties": { "annotation_id": { "type": "string", "pattern": "^triage-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }, "state": { "enum": ["Accepted", "False positive", "Risk accepted", "Needs review", "Fixed pending verification"] }, "reason": { "type": "string" }, "recorded_at": { "type": "string" }, "actor": { "type": "string" } },
+      "additionalProperties": false
+    },
+    "baseline": {
+      "type": "object", "required": ["schema_version", "baseline_scan_id", "scan_id", "target", "repository", "summary", "coverage", "partial", "notes", "items"],
+      "properties": {
+        "schema_version": { "const": "1.0.0" },
+        "baseline_scan_id": { "type": "string", "pattern": "^scan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+        "scan_id": { "type": "string", "pattern": "^scan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+        "target": { "type": "string" }, "repository": { "type": "string" },
+        "summary": { "type": "object", "required": ["New", "Existing", "Not rechecked / unknown"], "properties": { "New": { "type": "integer", "minimum": 0 }, "Existing": { "type": "integer", "minimum": 0 }, "Not rechecked / unknown": { "type": "integer", "minimum": 0 } }, "additionalProperties": false },
+        "coverage": { "$ref": "#/$defs/aggregate" }, "partial": { "type": "boolean" }, "notes": { "type": "array", "items": { "type": "string" } },
+        "items": { "type": "array", "items": { "type": "object", "required": ["state", "finding_id", "fingerprint", "evidence"], "properties": { "state": { "enum": ["New", "Existing", "Not rechecked / unknown"] }, "finding_id": { "type": "string" }, "fingerprint": { "type": "string" }, "evidence": { "type": "string" } }, "additionalProperties": false } }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeinspectus.com/schemas/issue-payload/1.0.0/payload.schema.json",
+  "title": "CodeInspectus redacted issue payload",
+  "type": "object",
+  "required": ["$schema", "schema_version", "adapter", "generated_by", "source", "destination", "payload"],
+  "properties": {
+    "$schema": { "const": "https://codeinspectus.com/schemas/issue-payload/1.0.0/payload.schema.json" },
+    "schema_version": { "const": "1.0.0" },
+    "adapter": { "enum": ["github", "jira", "linear"] },
+    "generated_by": {
+      "type": "object", "required": ["name", "version"],
+      "properties": { "name": { "const": "codeinspectus" }, "version": { "type": "string" } }, "additionalProperties": false
+    },
+    "source": {
+      "type": "object", "required": ["scan_id", "finding_id", "fingerprint", "aggregate_coverage"],
+      "properties": {
+        "scan_id": { "type": "string", "pattern": "^scan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+        "finding_id": { "type": "string", "minLength": 1 }, "fingerprint": { "type": "string", "minLength": 1 },
+        "aggregate_coverage": { "enum": ["complete", "partial", "unknown"] }
+      }, "additionalProperties": false
+    },
+    "destination": {
+      "type": "object", "required": ["visibility", "warnings", "review_required", "submission", "required_destination_fields"],
+      "properties": {
+        "visibility": { "enum": ["private", "public"] }, "warnings": { "type": "array", "minItems": 2, "items": { "type": "string" } },
+        "review_required": { "const": true }, "submission": { "const": "not_performed" },
+        "required_destination_fields": { "type": "array", "items": { "type": "string" } }
+      }, "additionalProperties": false
+    },
+    "payload": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "adapter": { "const": "github" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/github" } } }
+    },
+    {
+      "if": { "properties": { "adapter": { "const": "jira" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/jira" } } }
+    },
+    {
+      "if": { "properties": { "adapter": { "const": "linear" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/linear" } } }
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "labels": { "type": "array", "maxItems": 20, "items": { "type": "string" } },
+    "github": {
+      "type": "object", "required": ["title", "body", "labels"],
+      "properties": { "title": { "type": "string", "minLength": 1, "maxLength": 240 }, "body": { "type": "string", "minLength": 1, "maxLength": 20000 }, "labels": { "$ref": "#/$defs/labels" } },
+      "additionalProperties": false
+    },
+    "jira": {
+      "type": "object", "required": ["fields"],
+      "properties": { "fields": {
+        "type": "object", "required": ["summary", "description", "labels"],
+        "properties": {
+          "summary": { "type": "string", "minLength": 1, "maxLength": 240 }, "labels": { "$ref": "#/$defs/labels" },
+          "description": {
+            "type": "object", "required": ["type", "version", "content"],
+            "properties": {
+              "type": { "const": "doc" }, "version": { "const": 1 },
+              "content": { "type": "array", "minItems": 1, "maxItems": 1, "items": {
+                "type": "object", "required": ["type", "content"],
+                "properties": { "type": { "const": "paragraph" }, "content": { "type": "array", "minItems": 1, "maxItems": 1, "items": {
+                  "type": "object", "required": ["type", "text"], "properties": { "type": { "const": "text" }, "text": { "type": "string", "maxLength": 20000 } }, "additionalProperties": false
+                } } }, "additionalProperties": false
+              } }
+            }, "additionalProperties": false
+          }
+        }, "additionalProperties": false
+      } }, "additionalProperties": false
+    },
+    "linear": {
+      "type": "object", "required": ["title", "description"],
+      "properties": { "title": { "type": "string", "minLength": 1, "maxLength": 240 }, "description": { "type": "string", "minLength": 1, "maxLength": 20000 } },
+      "additionalProperties": false
+    }
+  }
+}

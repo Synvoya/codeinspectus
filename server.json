@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Synvoya/codeinspectus",
   "title": "CodeInspectus",
-  "description": "Local-first MCP security scanner for AI-generated web apps.",
-  "version": "1.5.0",
+  "description": "Local-first MCP security scanner and CLI for AI-generated applications.",
+  "version": "2.0.0",
   "websiteUrl": "https://codeinspectus.com",
   "repository": {
     "url": "https://github.com/Synvoya/codeinspectus",
@@ -13,7 +13,7 @@
     {
       "registryType": "npm",
       "identifier": "codeinspectus",
-      "version": "1.5.0",
+      "version": "2.0.0",
       "registryBaseUrl": "https://registry.npmjs.org",
       "transport": { "type": "stdio" }
     }

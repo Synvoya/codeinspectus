@@ -1,8 +1,8 @@
 {
   "name": "codeinspectus",
-  "version": "1.5.0",
+  "version": "2.0.0",
   "mcpName": "io.github.Synvoya/codeinspectus",
-  "description": "CodeInspectus, by Synvoya — a local-first, privacy-preserving security MCP server that scans AI-generated code for real vulnerabilities, maps findings to compliance frameworks, and drives a scan → fix → rescan loop. Zero network egress at scan time.",
+  "description": "CodeInspectus, by Synvoya — a local-first security MCP server and CLI with CI policy, versioned exports, evidence bundles, history, baselines, and approval-gated agent workflows. Zero network egress at scan time.",
   "license": "MIT",
   "author": "Synvoya",
   "homepage": "https://codeinspectus.com",
@@ -17,10 +17,20 @@
   "bin": {
     "codeinspectus": "dist/index.js"
   },
+  "exports": {
+    "./sdk": {
+      "types": "./dist/sdk/index.d.ts",
+      "import": "./dist/sdk/index.js"
+    },
+    "./schemas/*": "./schemas/*",
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist",
     "data",
     "detection-db",
+    "schemas",
+    "agent-rules",
     "engines.lock.json",
     "README.md",
     "THIRD-PARTY-NOTICES.md"
@@ -35,6 +45,7 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:redaction": "node scripts/redaction-e2e.mjs",
+    "test:sdk-consumer": "node scripts/sdk-consumer-e2e.mjs",
     "shadow:opengrep": "tsx scripts/opengrep-shadow.ts",
     "eval": "tsx evals/run-evals.ts",
     "inspector": "npx @modelcontextprotocol/inspector node dist/index.js"
@@ -60,7 +71,10 @@
     "supabase",
     "owasp",
     "appsec",
-    "application-security"
+    "application-security",
+    "sarif",
+    "devsecops",
+    "ci"
   ],
   "dependencies": {
     "@lezer/python": "1.1.19",
@@ -71,6 +85,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "ajv": "^8.20.0",
     "tsup": "^8.5.1",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",

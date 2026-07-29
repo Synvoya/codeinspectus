@@ -4,7 +4,7 @@ import { defineConfig } from "tsup";
 // `npx codeinspectus` starts fast. Data files (data/, detection-db/) are shipped
 // alongside dist/ and resolved at runtime relative to the package root.
 export default defineConfig({
-  entry: { index: "src/index.ts" },
+  entry: { index: "src/index.ts", "sdk/index": "src/sdk/index.ts" },
   format: ["esm"],
   target: "node22",
   platform: "node",
@@ -14,6 +14,7 @@ export default defineConfig({
   minify: false,
   sourcemap: false,
   shims: true,
+  dts: true,
   // Keep the SDK external so we don't re-bundle express/hono/etc.; resolved from
   // node_modules at runtime. `npx codeinspectus` installs deps before running.
   noExternal: [],

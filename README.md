@@ -10,7 +10,7 @@
 [![codeinspectus MCP server](https://glama.ai/mcp/servers/Synvoya/codeinspectus/badges/score.svg)](https://glama.ai/mcp/servers/Synvoya/codeinspectus)
 [![GitHub stars](https://img.shields.io/github/stars/Synvoya/codeinspectus?style=social)](https://github.com/Synvoya/codeinspectus)
 
-**A local-first, privacy-preserving security MCP server.** Any AI coding agent
+**A local-first, privacy-preserving security MCP server and CLI.** Any AI coding agent
 (Claude Code, Cursor, Codex, Windsurf, Cline, Aider) can invoke CodeInspectus to
 scan AI-generated / "vibe-coded" code for real vulnerabilities, map findings to
 compliance frameworks as honest code-level coverage, and drive a **scan → fix →
@@ -119,6 +119,98 @@ Re-verify your pinned binaries any time:
 ```bash
 npx codeinspectus verify-engines
 ```
+
+## CLI, CI, and local evidence workflows
+
+```bash
+codeinspectus scan . --format sarif --output results.sarif
+codeinspectus scan . --format csv --output findings.csv
+codeinspectus scan . --format sarif --output results.sarif --fail-on-severity high
+codeinspectus scan . --baseline SCAN_ID --fail-on-new-severity high
+codeinspectus scan . --diff origin/main --head HEAD
+codeinspectus scan . --working-tree --base HEAD
+codeinspectus bundle create SCAN_ID --output-dir /outside/repository/scan-results
+codeinspectus bundle verify /outside/repository/scan-results
+codeinspectus bulk scan /absolute/path/to/local-repositories --concurrency 2
+codeinspectus history scan . --from BASE_SHA --to HEAD_SHA --since 2026-07-01 --until 2026-07-30 --max-commits 20
+codeinspectus issue export SCAN_ID CI-0001 --adapter github --visibility private
+```
+
+Git-scoped scans retain full repository context, tag changed versus supporting-context
+findings, and report exact resolved revisions and explicit completeness limits. They never
+checkout, reset, stage, or modify the repository. See
+[`docs/GIT-SCOPED-SCANS.md`](docs/GIT-SCOPED-SCANS.md).
+
+Sealed bundles retain redacted JSON, SARIF, Markdown, coverage, provenance and an additive
+canonical scan record with content hashes for every artifact. Verification is mandatory before
+bundle export or comparison. See [`docs/SEALED-SCAN-BUNDLES.md`](docs/SEALED-SCAN-BUNDLES.md).
+
+CSV is a deterministic spreadsheet-safe projection of the canonical JSON model. It always retains
+an explicit scan/coverage row, even with zero findings, and neutralizes formula-triggering cells.
+See [`docs/CSV-EXPORT.md`](docs/CSV-EXPORT.md) for the stable column contract.
+
+The V2 TypeScript SDK is available from `codeinspectus/sdk`. It is a bounded,
+shell-free wrapper around the exact installed local CLI and exports versioned finding, coverage,
+history, baseline, triage and bundle types without duplicating scanner logic. See
+[`docs/TYPESCRIPT-SDK.md`](docs/TYPESCRIPT-SDK.md).
+
+Bulk mode scans already-existing repositories under one explicit local parent with bounded
+concurrency, per-repository isolation and an atomic resumable manifest. It never clones or requires
+a GitHub account. See [`docs/BULK-SCANNING.md`](docs/BULK-SCANNING.md).
+
+Repository-history mode is separately opt-in and requires exact revision, UTC date and commit-count
+bounds. It scans isolated immutable snapshots, marks shallow or truncated history partial, and never
+describes an old finding as current or a historical secret as active. See
+[`docs/REPOSITORY-HISTORY.md`](docs/REPOSITORY-HISTORY.md).
+
+Issue adapters generate one redacted, review-required GitHub, Jira or Linear JSON payload without
+authentication or submission. Destination visibility is mandatory and public/private disclosure
+warnings remain in the artifact. See [`docs/ISSUE-PAYLOADS.md`](docs/ISSUE-PAYLOADS.md).
+
+The first command is report-only: findings are retained but do not fail complete scans. The second
+enforces a severity threshold. Both fail closed with exit 2 when aggregate coverage is partial or
+unknown; coverage takes precedence over finding severity. Exit 1 is reserved for threshold findings
+after complete coverage. See the [CLI command reference](docs/CLI-REFERENCE.md) and
+[CI policy and SHA-pinned GitHub Actions workflow](docs/CI-POLICY.md)
+for the full exit contract, SARIF upload, artifact privacy, and fork/Dependabot behavior.
+
+Baseline enforcement fails only on findings proven new against a compatible explicit stored scan.
+Incompatible, partial, or unknown comparison evidence fails closed with exit 2. Local triage adds
+append-only review context without hiding or changing findings. See
+[baselines and local triage](docs/BASELINES-AND-TRIAGE.md) for commands, exact matching, bounds,
+storage, redaction, schemas, and audit behavior.
+
+Local scan history can be listed, inspected, rerun, and compared without network access:
+
+```bash
+codeinspectus scans list --repository "$PWD"
+codeinspectus scans show SCAN_ID
+codeinspectus scans rerun SCAN_ID
+codeinspectus scans compare OLD_SCAN_ID NEW_SCAN_ID --format json
+```
+
+Comparison is evidence-gated: absence is `Resolved` only after compatible producer components and
+complete like-for-like coverage; otherwise it is `Not rechecked / unknown`. See the
+[scan history and comparison contract](docs/SCAN-HISTORY.md) for filters, bounds, V1.x compatibility,
+corruption handling, and `Reopened` provenance.
+
+The shipped agent rules also define an approval-gated
+[one-finding remediation workflow](docs/ONE-FINDING-REMEDIATION.md): investigate one exact finding,
+propose the regression and smallest patch, edit only after separate approval, test, then rescan
+against the exact prior scan. Only a CodeInspectus `resolved` result supports a scanner-resolution
+claim; `not_rechecked` remains an explicit proof gap.
+
+Two explicit, optional workflows extend investigation without changing scanner truth:
+
+- [Threat-model and knowledge-base review](docs/THREAT-MODEL-WORKFLOW.md) treats every
+  repository-controlled document as untrusted context. Documents can explain or prioritize raw
+  findings, but never suppress, downgrade, override, or mark them resolved.
+- [Bounded multi-agent review](docs/MULTI-AGENT-REVIEW.md) keeps deterministic findings and agent
+  interpretations in separate evidence lanes, applies explicit agent/time/scope/cost limits, and
+  requires an exact-prior deterministic rescan before any scanner-resolution claim.
+
+These rules are included in the npm package under `agent-rules/`; normal CLI and MCP scans do not
+load documents, invoke models, or depend on either workflow.
 
 An MCP server is installed **once per machine** and shared across all your
 projects — it is **not** a per-repo `npm install` dependency.

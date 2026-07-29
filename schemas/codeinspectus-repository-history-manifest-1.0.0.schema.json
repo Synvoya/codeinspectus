@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeinspectus.com/schemas/repository-history/1.0.0/manifest.schema.json",
+  "title": "CodeInspectus bounded repository-history manifest",
+  "type": "object",
+  "required": ["$schema", "schema_version", "run_id", "repository", "created_at", "updated_at", "bounds", "discovery", "commits", "aggregate"],
+  "properties": {
+    "$schema": { "const": "https://codeinspectus.com/schemas/repository-history/1.0.0/manifest.schema.json" },
+    "schema_version": { "const": "1.0.0" },
+    "run_id": { "type": "string", "pattern": "^history-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "repository": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "bounds": {
+      "type": "object", "required": ["from", "to", "since", "until", "max_commits", "max_findings", "include_compliance"],
+      "properties": {
+        "from": { "$ref": "#/$defs/revision" }, "to": { "$ref": "#/$defs/revision" },
+        "since": { "type": "string", "format": "date-time" }, "until": { "type": "string", "format": "date-time" },
+        "max_commits": { "type": "integer", "minimum": 1, "maximum": 50 },
+        "scanners": { "type": "array", "uniqueItems": true, "items": { "enum": ["sast", "secret", "vuln", "misconfig", "license", "ai"] } },
+        "max_findings": { "type": "integer", "minimum": 1 }, "include_compliance": { "type": "boolean" }
+      }, "additionalProperties": false
+    },
+    "discovery": {
+      "type": "object", "required": ["selected_commits", "available_at_least", "truncated", "shallow_repository", "partial", "limitations"],
+      "properties": {
+        "selected_commits": { "type": "integer", "minimum": 0, "maximum": 50 }, "available_at_least": { "type": "integer", "minimum": 0 },
+        "truncated": { "type": "boolean" }, "shallow_repository": { "type": "boolean" }, "partial": { "type": "boolean" },
+        "limitations": { "type": "array", "items": { "type": "string" } }
+      }, "additionalProperties": false
+    },
+    "commits": { "type": "array", "maxItems": 50, "items": { "$ref": "#/$defs/commit" } },
+    "aggregate": {
+      "type": "object", "required": ["coverage", "total", "pending", "complete", "partial", "unknown", "failed", "cancelled", "finding_count"],
+      "properties": {
+        "coverage": { "enum": ["complete", "partial", "unknown"] }, "total": { "type": "integer", "minimum": 0 },
+        "pending": { "type": "integer", "minimum": 0 }, "complete": { "type": "integer", "minimum": 0 },
+        "partial": { "type": "integer", "minimum": 0 }, "unknown": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 }, "cancelled": { "type": "integer", "minimum": 0 },
+        "finding_count": { "type": "integer", "minimum": 0 }
+      }, "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "revision": {
+      "type": "object", "required": ["requested", "commit"],
+      "properties": { "requested": { "type": "string", "minLength": 1 }, "commit": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" } },
+      "additionalProperties": false
+    },
+    "change": {
+      "type": "object", "required": ["status", "path"],
+      "properties": { "status": { "enum": ["added", "modified", "deleted", "renamed"] }, "path": { "type": "string", "minLength": 1 }, "old_path": { "type": "string", "minLength": 1 } },
+      "additionalProperties": false
+    },
+    "commit": {
+      "type": "object", "required": ["commit", "parents", "committer_at", "temporal_scope", "interpretation", "state", "changes", "change_metadata_partial"],
+      "properties": {
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" }, "parents": { "type": "array", "items": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" } },
+        "committer_at": { "type": "string", "format": "date-time" }, "temporal_scope": { "enum": ["historical", "selected_head"] },
+        "interpretation": { "type": "string" }, "state": { "enum": ["pending", "complete", "partial", "unknown", "failed", "cancelled"] },
+        "changes": { "type": "array", "maxItems": 10000, "items": { "$ref": "#/$defs/change" } }, "change_metadata_partial": { "type": "boolean" },
+        "scan_id": { "type": "string", "pattern": "^scan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+        "aggregate_coverage": { "enum": ["complete", "partial", "unknown"] }, "finding_count": { "type": "integer", "minimum": 0 },
+        "started_at": { "type": "string", "format": "date-time" }, "completed_at": { "type": "string", "format": "date-time" }, "error": { "type": "string" }
+      }, "additionalProperties": false
+    }
+  }
+}

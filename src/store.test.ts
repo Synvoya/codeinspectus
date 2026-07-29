@@ -6,10 +6,17 @@
  */
 
 import { describe, test, expect } from "vitest";
-import { readdir } from "node:fs/promises";
+import { access, readdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { resolve, sep } from "node:path";
-import { resolveScanPath, safeParseScanJson, getScan } from "./store.js";
+import {
+  INTERNAL_DISABLE_SCAN_PERSISTENCE_ENV,
+  resolveScanPath,
+  safeParseScanJson,
+  getScan,
+  saveScan,
+  scanPersistenceDisabled,
+} from "./store.js";
 import { MANAGED_SCANS } from "./config.js";
 import { scanResultSchema } from "./schemas.js";
 
@@ -96,6 +103,33 @@ describe("safeParseScanJson — validate loaded JSON (Claim 2c)", () => {
     }
   });
 
+  test("V2 canonical marker and unprojected raw count survive persisted JSON validation", () => {
+    const stored = {
+      scan_id: "scan-00000000-0000-4000-8000-000000000002", target: "/tmp/x",
+      started_at: "2026-01-01T00:00:00.000Z", duration_ms: 1,
+      engines_run: [], engine_details: [], offline: true, detected_technologies: [], pack_coverage: [],
+      summary: { critical: 0, high: 1, medium: 0, low: 1, info: 0, total: 2 },
+      findings: [{
+        id: "f1", fingerprint: "fp1", title: "one", severity: "high", engine: "opengrep", engines: ["opengrep"],
+        rule_id: "r1", cwe: ["CWE-1"], location: { file: "x", start_line: 1, end_line: 1 }, message: "one",
+        remediation: { summary: "fix", steps: [], references: [] }, frameworks: [], confidence: "high",
+      }, {
+        id: "f2", fingerprint: "fp2", title: "two", severity: "low", engine: "opengrep", engines: ["opengrep"],
+        rule_id: "r2", cwe: ["CWE-2"], location: { file: "x", start_line: 2, end_line: 2 }, message: "two",
+        remediation: { summary: "fix", steps: [], references: [] }, frameworks: [], confidence: "high",
+      }],
+      truncated: false, total_findings_before_limit: 2, disclaimer: "d", warnings: [],
+      storage_schema_version: "2.0.0", canonical_findings: true,
+    };
+    const parsed = safeParseScanJson(JSON.stringify(stored));
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.value.canonical_findings).toBe(true);
+      expect(parsed.value.findings).toHaveLength(2);
+      expect(parsed.value.total_findings_before_limit).toBe(2);
+    }
+  });
+
   test("fresh scan output requires technology detection and native-pack coverage", () => {
     const freshWithoutCoverage = {
       scan_id: "scan-00000000-0000-4000-8000-000000000000",
@@ -175,5 +209,40 @@ describe("getScan — end-to-end against real managed store", () => {
 
   test("a containment-violating id → throws an actionable error", async () => {
     await expect(getScan("../../etc/passwd")).rejects.toThrow(/managed scans/i);
+  });
+});
+
+describe("verification-only persistence isolation", () => {
+  test("production persistence stays enabled unless the internal flag is exactly 1", () => {
+    expect(scanPersistenceDisabled({})).toBe(false);
+    expect(scanPersistenceDisabled({ [INTERNAL_DISABLE_SCAN_PERSISTENCE_ENV]: "0" })).toBe(false);
+    expect(scanPersistenceDisabled({ [INTERNAL_DISABLE_SCAN_PERSISTENCE_ENV]: "true" })).toBe(false);
+    expect(scanPersistenceDisabled({ [INTERNAL_DISABLE_SCAN_PERSISTENCE_ENV]: "1" })).toBe(true);
+  });
+
+  test("a verification scan stays available in memory but is not written to the managed store", async () => {
+    expect(process.env[INTERNAL_DISABLE_SCAN_PERSISTENCE_ENV]).toBe("1");
+    const scanId = `scan-${randomUUID()}`;
+    await saveScan({
+      scan_id: scanId,
+      target: "/tmp/codeinspectus-verification-only",
+      started_at: "2026-07-30T00:00:00.000Z",
+      duration_ms: 1,
+      engines_run: [],
+      engine_details: [],
+      offline: true,
+      detected_technologies: [],
+      pack_coverage: [],
+      summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 },
+      findings: [],
+      truncated: false,
+      total_findings_before_limit: 0,
+      disclaimer: "verification fixture",
+      warnings: [],
+      git_safety: { state: "unknown" },
+    }, { canonicalFindings: true });
+
+    expect((await getScan(scanId))?.scan_id).toBe(scanId);
+    await expect(access(resolveScanPath(scanId)!)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

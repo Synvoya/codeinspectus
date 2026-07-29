@@ -8,7 +8,7 @@
  * Batch 2 additionally requires identical per-finding detector-component signatures.
  */
 
-import { runScan } from "./scan.js";
+import { executeScan } from "./scan.js";
 import { getScan, getLatestScanForTarget } from "./store.js";
 import { dedupIdentityKeys } from "./dedup.js";
 import { STANDING_DISCLAIMER } from "./config.js";
@@ -186,18 +186,17 @@ export async function runRescan(input: RescanInput): Promise<RescanResult> {
   }
 
   // CG-76: run the fresh scan WITHOUT a severity_threshold so diffRescan sees the COMPLETE
-  // all-severity set — a still-present finding reframed to `low` is then matched (remaining)
-  // instead of looking absent (CG-75 MAJOR #2). scanners + max_findings are still reused for
-  // like-for-like scope; the threshold is applied display-only below. Truncation still applies
-  // (max_findings unchanged), so under truncation absent findings remain not_rechecked.
+  // all-severity canonical set — a still-present finding reframed to `low` is then matched
+  // (remaining) instead of looking absent (CG-75 MAJOR #2). Scanner scope is reused for a
+  // like-for-like comparison; severity/max limits affect only the returned display projection.
   const effectiveThreshold = input.severity_threshold ?? prior.scan_config?.severity_threshold;
-  const fresh = await runScan({
+  const fresh = (await executeScan({
     path: input.path,
     severity_threshold: undefined,
     scanners: input.scanners ?? prior.scan_config?.scanners,
     max_findings: input.max_findings ?? prior.scan_config?.max_findings,
     include_compliance: false,
-  });
+  })).canonical;
 
   return filterRescanForDisplay(diffRescan(prior, fresh), effectiveThreshold);
 }

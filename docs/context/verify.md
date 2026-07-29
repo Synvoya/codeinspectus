@@ -209,6 +209,13 @@ provenance, SAST/AI scanner filtering, and same-path fixed/reintroduced rescan b
 Opengrep YAML fallback remains active.
 
 ## Guardrail spot-checks
+- Run `npx vitest run src/agent-rule-contract.test.ts src/agent-extension-contract.test.ts` and
+  require every mutation gate, malicious-document case, orchestration bound, and scanner/agent
+  evidence-separation assertion to pass.
+- Run the skill-creator `quick_validate.py` validator against `agent-rules/codeinspectus-fix-one/`,
+  `agent-rules/codeinspectus-threat-model/`, and `agent-rules/codeinspectus-multi-review/`.
+- Inspect `npm pack --dry-run --json` and require all three skill directories to be present while
+  workflow fixtures and internal context remain excluded from the npm artifact.
 - No `console.log` anywhere in `src/` (stdout must be pure JSON-RPC).
 - No raw secret value in any tool output (redaction).
 - Compliance output never says "% compliant" / "you pass"; always shows the

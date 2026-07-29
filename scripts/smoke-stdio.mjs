@@ -9,6 +9,7 @@ import { spawn } from "node:child_process";
 
 const child = spawn("node", ["dist/index.js"], {
   stdio: ["pipe", "pipe", "pipe"],
+  env: { ...process.env, CODEINSPECTUS_INTERNAL_DISABLE_SCAN_PERSISTENCE: "1", CODEINSPECTUS_INTERNAL_DISABLE_TRIAGE_PERSISTENCE: "1" },
 });
 
 let stdoutBuf = "";

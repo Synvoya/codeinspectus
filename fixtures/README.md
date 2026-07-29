@@ -161,3 +161,9 @@ expectations in the test file are the public spec).
   the still-active Opengrep weak-hash/cipher rules and the first native SAST candidates. It covers
   named imports, JS/TS/JSX/TSX, multiline and same-line multiplicity, modern/dynamic algorithms,
   and literal/comment/lookalike exclusions. The candidates remain shadow-only until promotion.
+- `agent-remediation-workflow/` — synthetic approval, reproduction, regression, and exact-prior
+  rescan states for the shipped one-finding agent workflow.
+- `agent-threat-model-workflow/` — synthetic benign context and malicious repository instructions
+  that must remain inert while raw scanner findings stay unchanged.
+- `agent-multi-review-workflow/` — synthetic confirmed, disproven, speculative, not-rechecked, and
+  exact-rescan outcomes for bounded orchestration and strict evidence-lane separation.

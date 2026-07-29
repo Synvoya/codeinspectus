@@ -553,7 +553,10 @@ class McpClient {
   private nextId = 1;
 
   constructor() {
-    this.child = spawn("node", ["dist/index.js"], { stdio: ["pipe", "pipe", "pipe"] });
+    this.child = spawn("node", ["dist/index.js"], {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, CODEINSPECTUS_INTERNAL_DISABLE_SCAN_PERSISTENCE: "1", CODEINSPECTUS_INTERNAL_DISABLE_TRIAGE_PERSISTENCE: "1" },
+    });
     this.child.stdout.on("data", (d) => this.onData(d.toString()));
     this.child.stderr.on("data", () => {});
   }

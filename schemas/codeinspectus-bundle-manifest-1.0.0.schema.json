@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeinspectus.com/schemas/bundle/1.0.0/manifest.schema.json",
+  "title": "CodeInspectus sealed scan bundle manifest",
+  "type": "object",
+  "required": ["$schema", "schema_version", "bundle_id", "created_by", "schemas", "detection_database", "native_engine", "engine_platform", "commodity_engines", "component_signatures", "target", "scan_id", "scan_scope", "timestamps", "artifacts", "seal"],
+  "properties": {
+    "$schema": { "const": "https://codeinspectus.com/schemas/bundle/1.0.0/manifest.schema.json" },
+    "schema_version": { "const": "1.0.0" },
+    "bundle_id": { "type": "string", "pattern": "^bundle-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "created_by": { "type": "object", "required": ["name", "version"], "properties": { "name": { "const": "codeinspectus" }, "version": { "type": "string" } }, "additionalProperties": false },
+    "schemas": { "type": "object", "required": ["bundle", "export", "sarif", "stored_scan"], "properties": { "bundle": { "const": "1.0.0" }, "export": { "const": "2.0.0" }, "sarif": { "const": "2.1.0" }, "stored_scan": { "const": "2.0.0" } }, "additionalProperties": false },
+    "detection_database": { "type": "object", "required": ["version", "date"], "properties": { "version": { "type": "string" }, "date": { "type": "string" } }, "additionalProperties": false },
+    "native_engine": { "type": "object", "required": ["name", "version"], "properties": { "name": { "const": "codeinspectus-ai" }, "version": { "type": "string" } }, "additionalProperties": false },
+    "engine_platform": { "type": "string" },
+    "commodity_engines": {
+      "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/engine" },
+      "allOf": [
+        { "contains": { "type": "object", "properties": { "engine": { "const": "opengrep" } }, "required": ["engine"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "type": "object", "properties": { "engine": { "const": "gitleaks" } }, "required": ["engine"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "type": "object", "properties": { "engine": { "const": "trivy" } }, "required": ["engine"] }, "minContains": 1, "maxContains": 1 }
+      ]
+    },
+    "component_signatures": { "type": "object", "additionalProperties": { "type": "string" } },
+    "target": {
+      "type": "object", "required": ["path"],
+      "properties": {
+        "path": { "type": "string" }, "repository_root": { "type": "string" },
+        "git_revision": { "type": "object", "required": ["commit", "source"], "properties": { "commit": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" }, "source": { "const": "commit_diff_head" } }, "additionalProperties": false }
+      }, "additionalProperties": false
+    },
+    "scan_id": { "type": "string", "pattern": "^scan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "scan_configuration": {
+      "type": "object", "required": ["max_findings"],
+      "properties": {
+        "scanners": { "type": "array", "items": { "enum": ["sast", "secret", "vuln", "misconfig", "license", "ai"] } },
+        "severity_threshold": { "enum": ["critical", "high", "medium", "low", "info"] }, "max_findings": { "type": "integer", "minimum": 1 }
+      }, "additionalProperties": false
+    },
+    "scan_scope": {
+      "oneOf": [
+        { "type": "object", "required": ["mode", "target"], "properties": { "mode": { "const": "whole_target" }, "target": { "type": "string" } }, "additionalProperties": false },
+        { "$ref": "#/$defs/gitScope" }
+      ]
+    },
+    "timestamps": { "type": "object", "required": ["started_at", "completed_at", "sealed_at"], "properties": { "started_at": { "type": "string", "format": "date-time" }, "completed_at": { "type": "string", "format": "date-time" }, "sealed_at": { "type": "string", "format": "date-time" } }, "additionalProperties": false },
+    "artifacts": {
+      "type": "array", "minItems": 6, "maxItems": 6, "items": { "$ref": "#/$defs/artifact" },
+      "allOf": [
+        { "contains": { "type": "object", "properties": { "path": { "const": "findings.json" } }, "required": ["path"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "type": "object", "properties": { "path": { "const": "coverage.json" } }, "required": ["path"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "type": "object", "properties": { "path": { "const": "report.md" } }, "required": ["path"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "type": "object", "properties": { "path": { "const": "results.sarif" } }, "required": ["path"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "type": "object", "properties": { "path": { "const": "artifacts/scan-record.json" } }, "required": ["path"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "type": "object", "properties": { "path": { "const": "artifacts/export.json" } }, "required": ["path"] }, "minContains": 1, "maxContains": 1 }
+      ]
+    },
+    "seal": { "type": "object", "required": ["algorithm", "manifest_payload_sha256"], "properties": { "algorithm": { "const": "sha256" }, "manifest_payload_sha256": { "$ref": "#/$defs/sha256" } }, "additionalProperties": false }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "engine": {
+      "type": "object", "required": ["engine", "version", "ran", "integrity_state"],
+      "properties": { "engine": { "enum": ["opengrep", "gitleaks", "trivy"] }, "version": { "type": "string" }, "ran": { "type": "boolean" }, "integrity_state": { "enum": ["verified", "unavailable", "not_recorded"] }, "verified_sha256": { "$ref": "#/$defs/sha256" } },
+      "allOf": [{ "if": { "properties": { "integrity_state": { "const": "verified" } } }, "then": { "required": ["verified_sha256"] }, "else": { "not": { "required": ["verified_sha256"] } } }],
+      "additionalProperties": false
+    },
+    "artifact": {
+      "type": "object", "required": ["path", "media_type", "bytes", "sha256"],
+      "properties": { "path": { "enum": ["findings.json", "coverage.json", "report.md", "results.sarif", "artifacts/scan-record.json", "artifacts/export.json"] }, "media_type": { "type": "string" }, "bytes": { "type": "integer", "minimum": 0 }, "sha256": { "$ref": "#/$defs/sha256" } },
+      "additionalProperties": false
+    },
+    "gitRevision": { "type": "object", "required": ["requested", "commit"], "properties": { "requested": { "type": "string" }, "commit": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" } }, "additionalProperties": false },
+    "gitScopeEntry": { "type": "object", "required": ["status", "path", "binary", "generated", "submodule", "inspected"], "properties": { "status": { "enum": ["added", "modified", "deleted", "renamed", "untracked", "ignored"] }, "path": { "type": "string" }, "old_path": { "type": "string" }, "binary": { "type": "boolean" }, "generated": { "type": "boolean" }, "submodule": { "type": "boolean" }, "inspected": { "type": "boolean" }, "note": { "type": "string" } }, "additionalProperties": false },
+    "gitScope": {
+      "type": "object", "required": ["schema_version", "mode", "repository", "base", "entries", "primary_paths", "primary_finding_count", "supporting_context_finding_count", "supporting_context_scanned", "completeness", "limitations"],
+      "properties": { "schema_version": { "const": "1.0.0" }, "mode": { "enum": ["commit_diff", "working_tree"] }, "repository": { "type": "string" }, "base": { "$ref": "#/$defs/gitRevision" }, "head": { "$ref": "#/$defs/gitRevision" }, "entries": { "type": "array", "items": { "$ref": "#/$defs/gitScopeEntry" } }, "primary_paths": { "type": "array", "items": { "type": "string" } }, "primary_finding_count": { "type": "integer", "minimum": 0 }, "supporting_context_finding_count": { "type": "integer", "minimum": 0 }, "supporting_context_scanned": { "type": "boolean" }, "completeness": { "enum": ["complete", "partial"] }, "limitations": { "type": "array", "items": { "type": "string" } } },
+      "additionalProperties": false
+    }
+  }
+}

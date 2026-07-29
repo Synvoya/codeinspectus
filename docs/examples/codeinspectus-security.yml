@@ -1,0 +1,143 @@
+# Copyable reference policy workflow. It never runs with pull_request_target and never passes
+# repository secrets or GITHUB_TOKEN to repository-controlled shell/Node code.
+name: codeinspectus-security
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codeinspectus-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: SARIF policy (high+)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+
+      - name: Install cosign for fail-closed engine verification
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+
+      # Network-permitted preparation. Install the exact released scanner outside the target.
+      # --ignore-scripts prevents npm lifecycle execution; no target package/build code runs.
+      - name: Install CodeInspectus 2.0.0 outside the repository
+        shell: bash
+        run: |
+          npm install \
+            --ignore-scripts \
+            --no-save \
+            --no-package-lock \
+            --prefix "$RUNNER_TEMP/codeinspectus-cli" \
+            codeinspectus@2.0.0
+
+      - name: Explicitly repair verified engines and the offline vulnerability database
+        run: node "$RUNNER_TEMP/codeinspectus-cli/node_modules/codeinspectus/dist/index.js" repair-engines --refresh-db
+
+      - name: Verify installed engine hashes before scanning
+        run: node "$RUNNER_TEMP/codeinspectus-cli/node_modules/codeinspectus/dist/index.js" verify-engines
+
+      # Scan-time contract: all engines/DB are local; CodeInspectus performs zero network I/O.
+      # Capture the policy status so SARIF can be uploaded before the same status fails the job.
+      - name: Offline scan and policy evaluation
+        id: policy
+        shell: bash
+        run: |
+          set +e
+          node "$RUNNER_TEMP/codeinspectus-cli/node_modules/codeinspectus/dist/index.js" scan "$GITHUB_WORKSPACE" \
+            --format sarif \
+            --output "$RUNNER_TEMP/codeinspectus.sarif" \
+            --fail-on-severity high \
+            > /dev/null
+          policy_exit="$?"
+          set -e
+          report_written=false
+          if test -s "$RUNNER_TEMP/codeinspectus.sarif"; then report_written=true; fi
+          echo "exit_code=$policy_exit" >> "$GITHUB_OUTPUT"
+          echo "report_written=$report_written" >> "$GITHUB_OUTPUT"
+
+      # Safe for fork/Dependabot runs: publish only bounded identity/severity/location metadata,
+      # never finding messages, source snippets, remediation text, or raw SARIF.
+      - name: Add bounded policy summary
+        if: ${{ always() && steps.policy.outputs.report_written == 'true' }}
+        shell: bash
+        run: |
+          node - "$RUNNER_TEMP/codeinspectus.sarif" "$GITHUB_STEP_SUMMARY" <<'EOF'
+          const fs = require('node:fs');
+          const [reportPath, summaryPath] = process.argv.slice(2);
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+          const run = report.runs?.[0] ?? {};
+          const aggregate = run.properties?.aggregate_coverage ?? 'unknown';
+          const results = Array.isArray(run.results) ? run.results : [];
+          const lines = [
+            '## CodeInspectus policy',
+            '',
+            `Aggregate coverage: **${aggregate}**`,
+            '',
+            '| Severity | Rule | Location |',
+            '|---|---|---|',
+            ...results.slice(0, 50).map((result) => {
+              const location = result.locations?.[0]?.physicalLocation;
+              const uri = String(location?.artifactLocation?.uri ?? '').replace(/[|\r\n]/g, '');
+              const line = Number(location?.region?.startLine ?? 0);
+              const rule = String(result.ruleId ?? '').replace(/[|\r\n]/g, '');
+              return `| ${result.level ?? 'note'} | ${rule} | ${uri}:${line} |`;
+            }),
+            ...(results.length > 50 ? ['', `${results.length - 50} additional finding(s) remain in SARIF.`] : []),
+          ];
+          fs.appendFileSync(summaryPath, lines.join('\n') + '\n');
+          EOF
+
+      # Fork PRs and Dependabot receive a read-only token. They still run the exact policy scan,
+      # but do not invoke a write-capable Code Scanning upload action.
+      - name: Upload SARIF to GitHub Code Scanning
+        if: >-
+          ${{ always() && steps.policy.outputs.report_written == 'true' &&
+              (github.event_name == 'push' ||
+               (github.event.pull_request.head.repo.full_name == github.repository &&
+                github.actor != 'dependabot[bot]')) }}
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4
+        with:
+          sarif_file: ${{ runner.temp }}/codeinspectus.sarif
+          category: codeinspectus
+
+      # Raw SARIF can contain source excerpts. Retain it only for private repositories and only
+      # briefly; public repositories rely on the Code Scanning view instead.
+      - name: Retain private SARIF artifact for debugging
+        if: ${{ always() && github.event.repository.private && steps.policy.outputs.report_written == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codeinspectus-sarif-${{ github.run_id }}
+          path: ${{ runner.temp }}/codeinspectus.sarif
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce the CodeInspectus exit contract
+        if: always()
+        shell: bash
+        env:
+          POLICY_EXIT: ${{ steps.policy.outputs.exit_code }}
+        run: |
+          case "$POLICY_EXIT" in
+            0) exit 0 ;;
+            1) echo "CodeInspectus found a high-or-higher policy finding." >&2; exit 1 ;;
+            2) echo "CodeInspectus input/runtime/coverage proof was incomplete." >&2; exit 2 ;;
+            130|143) echo "CodeInspectus was interrupted or terminated ($POLICY_EXIT)." >&2; exit "$POLICY_EXIT" ;;
+            *) echo "CodeInspectus did not produce a valid policy exit code." >&2; exit 2 ;;
+          esac

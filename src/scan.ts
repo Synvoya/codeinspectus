@@ -11,9 +11,9 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve as resolvePath } from "node:path";
+import { join } from "node:path";
 
 import { DEFAULT_MAX_FINDINGS, STANDING_DISCLAIMER } from "./config.js";
 import { SEVERITY_RANK } from "./types.js";
@@ -50,6 +50,7 @@ import { trivyDbProvenanceSignal } from "./trivy-db-provenance.js";
 import { inspectEngineSetup } from "./engine-health.js";
 import { runPubScan } from "./pub/scanner.js";
 import { PROMOTED_OPENGREP_RULE_IDS, reconcileNativeSast } from "./native-sast-reconciliation.js";
+import { requireSafeScanTarget } from "./path-safety.js";
 
 function wants(input: ScanInput, scanner: string): boolean {
   return !input.scanners || input.scanners.length === 0 || input.scanners.includes(scanner as never);
@@ -93,17 +94,46 @@ function inactivePubCoverage(
   };
 }
 
-export async function runScan(input: ScanInput): Promise<ScanResult> {
+export interface ScanExecution {
+  /** Complete redacted finding set persisted for export/history/baseline use. */
+  canonical: ScanResult;
+  /** Backward-compatible MCP/CLI view after severity and max-findings display filters. */
+  display: ScanResult;
+}
+
+export async function projectScanForDisplay(
+  canonical: ScanResult,
+  input: Pick<ScanInput, "severity_threshold" | "max_findings" | "include_compliance">,
+): Promise<ScanResult> {
+  let visible = canonical.findings;
+  if (input.severity_threshold) {
+    const min = SEVERITY_RANK[input.severity_threshold];
+    visible = visible.filter((finding) => SEVERITY_RANK[finding.severity] >= min);
+  }
+  const totalBeforeLimit = visible.length;
+  const limited = visible.slice(0, input.max_findings ?? DEFAULT_MAX_FINDINGS);
+  const display: ScanResult = {
+    ...canonical,
+    summary: summarize(visible),
+    findings: limited,
+    truncated: limited.length < totalBeforeLimit,
+    total_findings_before_limit: totalBeforeLimit,
+  };
+  if (input.include_compliance === false) delete display.compliance_overview;
+  else display.compliance_overview = await buildComplianceOverview(visible);
+  return display;
+}
+
+export async function executeScan(
+  input: ScanInput,
+  options: { persist?: boolean } = {},
+): Promise<ScanExecution> {
   const startedAt = new Date().toISOString();
   const t0 = Date.now();
-  const target = resolvePath(input.path);
-
-  // Validate target exists and is a directory/file (read-only check).
-  try {
-    await stat(target);
-  } catch {
-    throw new Error(`Path not found: ${target}. Provide an absolute path to an existing directory or file.`);
-  }
+  // One target boundary for CLI and MCP: a stable canonical regular file/directory. A symlink
+  // leaf is rejected; platform ancestor aliases are collapsed before any engine receives it.
+  const targetInspection = await requireSafeScanTarget(input.path);
+  const target = targetInspection.canonical_path;
 
   const warnings: string[] = [];
   // CG-41 git-safety rail (READ-ONLY): detect the target's git state concurrently with the
@@ -296,21 +326,15 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
     if (stats.merged > 0) log.debug(`dedup merged ${stats.merged} overlapping findings`);
     await tagFindings(deduped);
 
-    // Sort, threshold, assign ids, paginate.
-    let sorted = sortFindings(deduped);
-    if (input.severity_threshold) {
-      const min = SEVERITY_RANK[input.severity_threshold];
-      sorted = sorted.filter((f) => SEVERITY_RANK[f.severity] >= min);
-    }
+    // The canonical set is sorted and assigned stable display ids before ANY presentation
+    // filtering. Severity/max are views only; persistence/export/history retain every finding.
+    const sorted = sortFindings(deduped);
     sorted.forEach((f, i) => {
       f.id = `CI-${String(i + 1).padStart(4, "0")}`;
     });
 
     const summary = summarize(sorted);
-    const totalBeforeLimit = sorted.length;
     const max = input.max_findings ?? DEFAULT_MAX_FINDINGS;
-    const limited = sorted.slice(0, max);
-    const truncated = limited.length < totalBeforeLimit;
 
     const enginesRun = engineDetails
       .filter((e) => e.ran)
@@ -327,9 +351,10 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
     );
 
     const engineSetup = await inspectEngineSetup();
-    const result: ScanResult = {
+    const canonical: ScanResult = {
       scan_id: `scan-${randomUUID()}`,
       target,
+      ...(targetInspection.repository_root ? { repository_root: targetInspection.repository_root } : {}),
       started_at: startedAt,
       duration_ms: Date.now() - t0,
       engines_run: enginesRun,
@@ -340,9 +365,9 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       dependency_coverage: dependencyCoverage,
       ...(trivyDbDate ? { trivy_db_date: trivyDbDate } : {}),
       summary,
-      findings: limited,
-      truncated,
-      total_findings_before_limit: totalBeforeLimit,
+      findings: sorted,
+      truncated: false,
+      total_findings_before_limit: sorted.length,
       disclaimer: STANDING_DISCLAIMER,
       warnings,
       ...(secretCoverage ? { secret_coverage: secretCoverage } : {}),
@@ -364,13 +389,14 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       },
     };
 
-    if (input.include_compliance !== false) {
-      result.compliance_overview = await buildComplianceOverview(sorted);
-    }
-
-    await saveScan(result);
-    return result;
+    canonical.compliance_overview = await buildComplianceOverview(sorted);
+    if (options.persist !== false) await saveScan(canonical, { canonicalFindings: true });
+    return { canonical, display: await projectScanForDisplay(canonical, input) };
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+export async function runScan(input: ScanInput): Promise<ScanResult> {
+  return (await executeScan(input)).display;
 }

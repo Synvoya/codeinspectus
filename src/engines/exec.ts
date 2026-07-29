@@ -8,7 +8,7 @@
  *   child's streams are piped and captured, never forwarded to our stdout.
  */
 
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { ENGINE_TIMEOUT_MS, MAX_BUFFER_BYTES } from "../config.js";
 import { log } from "../logger.js";
 
@@ -26,6 +26,15 @@ export interface ExecOptions {
   env?: Record<string, string>;
   /** When true, attempt to neutralize network env (defense in depth, PRD §7.4). */
   offline?: boolean;
+}
+
+const activeEngineProcesses = new Set<ChildProcess>();
+
+/** Best-effort synchronous shutdown used by the CLI's SIGINT/SIGTERM handlers. */
+export function terminateActiveEngineProcesses(signal: NodeJS.Signals = "SIGTERM"): void {
+  for (const child of activeEngineProcesses) {
+    if (!child.killed) child.kill(signal);
+  }
 }
 
 export async function execBinary(
@@ -55,6 +64,7 @@ export async function execBinary(
       env,
       stdio: ["ignore", "pipe", "pipe"],
     });
+    activeEngineProcesses.add(child);
 
     let stdout = "";
     let stderr = "";
@@ -78,10 +88,12 @@ export async function execBinary(
 
     child.on("error", (err) => {
       clearTimeout(timer);
+      activeEngineProcesses.delete(child);
       resolve({ code: null, stdout, stderr: stderr + `\n[spawn error] ${err.message}`, timedOut });
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      activeEngineProcesses.delete(child);
       resolve({ code, stdout, stderr, timedOut });
     });
   });

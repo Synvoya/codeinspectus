@@ -88,6 +88,7 @@ export const findingSchema = z.object({
   secret_value_hash: z.string().optional(),
   producer_components: z.array(z.string()).optional(),
   finding_kind: z.enum(["vulnerability", "license", "misconfiguration", "secret", "sast", "ai", "other"]).optional(),
+  scope_role: z.enum(["primary", "supporting_context"]).optional(),
 });
 
 export const summarySchema = z.object({
@@ -229,10 +230,34 @@ export const securityControlEvidenceSchema = z.object({
   limitation: z.string(),
 });
 
+export const gitScopeEntrySchema = z.object({
+  status: z.enum(["added", "modified", "deleted", "renamed", "untracked", "ignored"]),
+  path: z.string(), old_path: z.string().optional(), binary: z.boolean(), generated: z.boolean(),
+  submodule: z.boolean(), inspected: z.boolean(), note: z.string().optional(),
+});
+export const gitScanScopeSchema = z.object({
+  schema_version: z.literal("1.0.0"), mode: z.enum(["commit_diff", "working_tree"]), repository: z.string(),
+  base: z.object({ requested: z.string(), commit: z.string().regex(/^[0-9a-f]{40,64}$/) }),
+  head: z.object({ requested: z.string(), commit: z.string().regex(/^[0-9a-f]{40,64}$/) }).optional(),
+  entries: z.array(gitScopeEntrySchema), primary_paths: z.array(z.string()), supporting_context_scanned: z.boolean(),
+  primary_finding_count: z.number().int().nonnegative(), supporting_context_finding_count: z.number().int().nonnegative(),
+  completeness: z.enum(["complete", "partial"]), limitations: z.array(z.string()),
+});
+export const repositoryHistoryRevisionSchema = z.object({
+  schema_version: z.literal("1.0.0"),
+  repository: z.string(),
+  commit: z.string().regex(/^[0-9a-f]{40,64}$/),
+  committer_at: z.string().datetime(),
+  temporal_scope: z.enum(["historical", "selected_head"]),
+  snapshot_completeness: z.enum(["complete", "partial"]),
+  limitations: z.array(z.string()),
+});
+
 // ── scan / rescan output envelope (PRD §5) ──────────────────────────────────
 export const scanResultSchema = z.object({
   scan_id: z.string(),
   target: z.string(),
+  repository_root: z.string().optional(),
   started_at: z.string(),
   duration_ms: z.number().int(),
   engines_run: z.array(z.string()),
@@ -270,6 +295,8 @@ export const scanResultSchema = z.object({
       max_findings: z.number().int(),
     })
     .optional(),
+  git_scope: gitScanScopeSchema.optional(),
+  history_revision: repositoryHistoryRevisionSchema.optional(),
 });
 
 // Store-tolerant LOAD schema (CG-75 / Claim 2c). Persisted scans on disk may predate
@@ -280,6 +307,8 @@ export const scanResultSchema = z.object({
 // scanResultSchema — including the CG-75 scan-config fields once they are added — is
 // inherited leniently here.)
 export const storedScanResultSchema = scanResultSchema.extend({
+  storage_schema_version: z.literal("2.0.0").optional(),
+  canonical_findings: z.literal(true).optional(),
   git_safety: gitSafetySchema.optional(),
   detected_technologies: z.array(detectedTechnologySchema).optional(),
   pack_coverage: z.array(

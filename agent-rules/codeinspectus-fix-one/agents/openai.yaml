@@ -1,0 +1,4 @@
+interface:
+  display_name: "CodeInspectus Fix One"
+  short_description: "Fix one selected security finding safely"
+  default_prompt: "Use $codeinspectus-fix-one to investigate and fix one user-selected CodeInspectus finding."

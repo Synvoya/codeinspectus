@@ -23,7 +23,7 @@ import { dirname } from "node:path";
 export const MCP_SPEC_VERSION = "2025-11-25";
 
 export const SERVER_NAME = "codeinspectus";
-export const SERVER_VERSION = "1.5.0";
+export const SERVER_VERSION = "2.0.0";
 
 // ── Bundled engine versions (SHA-pinned in engines.lock.json) ───────────────
 export const ENGINE_VERSIONS = {
@@ -46,6 +46,9 @@ export const MANAGED_ROOT = join(homedir(), ".codeinspectus");
 export const MANAGED_BIN = join(MANAGED_ROOT, "bin");
 export const MANAGED_TRIVY_CACHE = join(MANAGED_ROOT, "trivy-cache");
 export const MANAGED_SCANS = join(MANAGED_ROOT, "scans");
+export const MANAGED_TRIAGE = join(MANAGED_ROOT, "triage");
+export const MANAGED_BULK = join(MANAGED_ROOT, "bulk");
+export const MANAGED_REPOSITORY_HISTORY = join(MANAGED_ROOT, "repository-history");
 export const MANAGED_PROVENANCE = join(MANAGED_ROOT, "provenance");
 export const MANAGED_TRIVY_DB_META = join(MANAGED_TRIVY_CACHE, "db", "metadata.json");
 export const MANAGED_TRIVY_DB = join(MANAGED_TRIVY_CACHE, "db", "trivy.db");

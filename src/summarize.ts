@@ -51,7 +51,7 @@ function topLines(findings: Finding[], n: number): string {
     .slice(0, n)
     .map(
       (f) =>
-        `  • [${f.severity}] ${f.title} — ${f.location.file}:${f.location.start_line} (${f.cwe.join(", ")}, ${f.engine})`,
+        `  • [${f.severity}]${f.scope_role ? ` [${f.scope_role === "primary" ? "changed" : "supporting context"}]` : ""} ${f.title} — ${f.location.file}:${f.location.start_line} (${f.cwe.join(", ")}, ${f.engine})`,
     )
     .join("\n");
 }
@@ -70,8 +70,11 @@ export function summarizeScan(r: ScanResult): string {
     .map((e) => `  ! ${e.engine}: ${e.note}`)
     .join("\n");
 
+  const orderedFindings = r.git_scope
+    ? [...r.findings.filter((finding) => finding.scope_role === "primary"), ...r.findings.filter((finding) => finding.scope_role !== "primary")]
+    : r.findings;
   const body = r.findings.length
-    ? `\n\nTop findings:\n${topLines(r.findings, 10)}`
+    ? `\n\nTop findings:\n${topLines(orderedFindings, 10)}`
     : "\n\nNo findings.";
 
   const trunc = r.truncated
@@ -115,8 +118,13 @@ export function summarizeScan(r: ScanResult): string {
 
   const nativeCoverage = technologyAndPackSummary(r.detected_technologies, r.pack_coverage);
   const dependencyCoverage = dependencyCoverageSummary(r.dependency_coverage);
+  const gitScope = r.git_scope
+    ? `\n\nGit scope: ${r.git_scope.mode} | base=${r.git_scope.base.commit}` +
+      (r.git_scope.head ? ` | head=${r.git_scope.head.commit}` : " | head=working-tree") +
+      ` | ${r.git_scope.entries.length} change record(s) | ${r.git_scope.primary_finding_count} changed-path finding(s) | ${r.git_scope.supporting_context_finding_count} supporting-context finding(s) | ${r.git_scope.completeness}`
+    : "";
 
-  return `${head}${nativeCoverage}${dependencyCoverage}${body}${trunc}${controlEvidence}${dbProvenance}${engineSetup}${beforeFix}${eng}${warn}\n\n${r.disclaimer}`;
+  return `${head}${gitScope}${nativeCoverage}${dependencyCoverage}${body}${trunc}${controlEvidence}${dbProvenance}${engineSetup}${beforeFix}${eng}${warn}\n\n${r.disclaimer}`;
 }
 
 export function summarizeRescan(r: RescanResult): string {

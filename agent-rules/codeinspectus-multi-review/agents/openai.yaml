@@ -1,0 +1,6 @@
+interface:
+  display_name: "CodeInspectus Multi Review"
+  short_description: "Run a bounded evidence-separated agent review"
+  default_prompt: "Use $codeinspectus-multi-review to review selected CodeInspectus findings within explicit agent, time, scope, and cost bounds."
+policy:
+  allow_implicit_invocation: false

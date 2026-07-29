@@ -1,0 +1,94 @@
+{
+  "schema_version": "1.0.0",
+  "synthetic": true,
+  "cases": [
+    {
+      "id": "accepted-selection",
+      "disposition": "actionable",
+      "reproduction": "approved_safe",
+      "regression_before": "failing_as_expected",
+      "patch_approval": "approved",
+      "focused_tests": "passed",
+      "rescan": "resolved",
+      "unrelated_findings": 0,
+      "expected": { "may_reproduce": true, "may_patch": true, "target_report": "scanner_resolved" }
+    },
+    {
+      "id": "disproven-by-control",
+      "disposition": "disproven",
+      "reproduction": "not_needed",
+      "regression_before": "not_run",
+      "patch_approval": "not_requested",
+      "focused_tests": "not_run",
+      "rescan": "not_run",
+      "unrelated_findings": 0,
+      "expected": { "may_reproduce": false, "may_patch": false, "target_report": "disproven_not_resolved" }
+    },
+    {
+      "id": "unsafe-to-reproduce",
+      "disposition": "actionable",
+      "reproduction": "unsafe",
+      "regression_before": "not_practical",
+      "patch_approval": "approved",
+      "focused_tests": "passed",
+      "rescan": "resolved",
+      "unrelated_findings": 0,
+      "expected": { "may_reproduce": false, "may_patch": true, "target_report": "scanner_resolved_with_proof_gap" }
+    },
+    {
+      "id": "rescan-not-rechecked",
+      "disposition": "actionable",
+      "reproduction": "not_needed",
+      "regression_before": "failing_as_expected",
+      "patch_approval": "approved",
+      "focused_tests": "passed",
+      "rescan": "not_rechecked",
+      "unrelated_findings": 0,
+      "expected": { "may_reproduce": false, "may_patch": true, "target_report": "proof_gap_not_rechecked" }
+    },
+    {
+      "id": "rejected-patch",
+      "disposition": "actionable",
+      "reproduction": "approved_safe",
+      "regression_before": "failing_as_expected",
+      "patch_approval": "rejected",
+      "focused_tests": "not_run",
+      "rescan": "not_run",
+      "unrelated_findings": 0,
+      "expected": { "may_reproduce": true, "may_patch": false, "target_report": "stopped_no_edit" }
+    },
+    {
+      "id": "failing-regression-command",
+      "disposition": "actionable",
+      "reproduction": "approved_safe",
+      "regression_before": "failed_to_run",
+      "patch_approval": "not_requested",
+      "focused_tests": "not_run",
+      "rescan": "not_run",
+      "unrelated_findings": 0,
+      "expected": { "may_reproduce": true, "may_patch": false, "target_report": "blocked_regression" }
+    },
+    {
+      "id": "focused-test-fails-after-patch",
+      "disposition": "actionable",
+      "reproduction": "not_needed",
+      "regression_before": "failing_as_expected",
+      "patch_approval": "approved",
+      "focused_tests": "failed",
+      "rescan": "not_run",
+      "unrelated_findings": 0,
+      "expected": { "may_reproduce": false, "may_patch": true, "target_report": "tests_failed_unverified" }
+    },
+    {
+      "id": "target-resolved-unrelated-remain",
+      "disposition": "actionable",
+      "reproduction": "not_needed",
+      "regression_before": "failing_as_expected",
+      "patch_approval": "approved",
+      "focused_tests": "passed",
+      "rescan": "resolved",
+      "unrelated_findings": 3,
+      "expected": { "may_reproduce": false, "may_patch": true, "target_report": "scanner_resolved_unrelated_untouched" }
+    }
+  ]
+}

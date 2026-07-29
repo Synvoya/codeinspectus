@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeinspectus.com/schemas/v1.0.0/triage-event.schema.json",
+  "title": "CodeInspectus append-only triage event",
+  "type": "object",
+  "required": ["schema_version", "event_id", "annotation_id", "operation", "recorded_at", "tool_version", "source_scan_id", "scope", "finding_identity", "state", "reason"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "event_id": { "$ref": "#/$defs/eventId" },
+    "annotation_id": { "$ref": "#/$defs/annotationId" },
+    "operation": { "enum": ["create", "update", "delete"] },
+    "previous_event_id": { "$ref": "#/$defs/eventId" },
+    "recorded_at": { "type": "string", "format": "date-time" },
+    "tool_version": { "type": "string" },
+    "source_scan_id": { "$ref": "#/$defs/scanId" },
+    "scope": {
+      "type": "object",
+      "required": ["repository", "target", "scope_id"],
+      "properties": {
+        "repository": { "type": "string" },
+        "target": { "type": "string" },
+        "scope_id": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      },
+      "additionalProperties": false
+    },
+    "finding_identity": {
+      "type": "object",
+      "required": ["fingerprint", "rule_id", "file", "producer_components"],
+      "properties": {
+        "fingerprint": { "type": "string" },
+        "rule_id": { "type": "string" },
+        "file": { "type": "string" },
+        "producer_components": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "state": { "enum": ["Accepted", "False positive", "Risk accepted", "Needs review", "Fixed pending verification"] },
+    "reason": { "type": "string", "minLength": 1, "maxLength": 2000, "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$" },
+    "actor": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "operation": { "const": "create" } } },
+      "then": { "not": { "required": ["previous_event_id"] } },
+      "else": { "required": ["previous_event_id"] }
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "scanId": { "type": "string", "pattern": "^scan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "annotationId": { "type": "string", "pattern": "^triage-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "eventId": { "type": "string", "pattern": "^event-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }
+  }
+}

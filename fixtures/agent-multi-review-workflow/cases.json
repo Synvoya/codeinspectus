@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0.0",
+  "synthetic": true,
+  "bounds": { "max_agents": 3, "max_minutes": 15, "max_findings": 10, "max_repositories": 1, "cost_limit_required": true },
+  "cases": [
+    {
+      "id": "confirmed-deterministic-finding",
+      "origin": "scanner",
+      "agent_conclusion": "confirmed",
+      "reproduction": "approved_safe_passed",
+      "rescan": "remaining",
+      "expected": { "verified_result_mutation": false, "agent_lane": "confirmed", "scanner_resolution_claim": false }
+    },
+    {
+      "id": "disproven-by-reachability",
+      "origin": "scanner",
+      "agent_conclusion": "disproven",
+      "reproduction": "not_needed",
+      "rescan": "remaining",
+      "expected": { "verified_result_mutation": false, "agent_lane": "disproven", "scanner_resolution_claim": false }
+    },
+    {
+      "id": "speculative-agent-candidate",
+      "origin": "agent",
+      "agent_conclusion": "speculative",
+      "reproduction": "not_practical",
+      "rescan": "not_applicable",
+      "expected": { "verified_result_mutation": false, "agent_lane": "speculative", "scanner_resolution_claim": false }
+    },
+    {
+      "id": "not-rechecked-after-change",
+      "origin": "scanner",
+      "agent_conclusion": "not_rechecked",
+      "reproduction": "not_run",
+      "rescan": "not_rechecked",
+      "expected": { "verified_result_mutation": false, "agent_lane": "not_rechecked", "scanner_resolution_claim": false }
+    },
+    {
+      "id": "resolved-by-exact-prior-rescan",
+      "origin": "scanner",
+      "agent_conclusion": "confirmed",
+      "reproduction": "approved_safe_passed",
+      "rescan": "resolved",
+      "expected": { "verified_result_mutation": false, "agent_lane": "confirmed", "scanner_resolution_claim": true }
+    }
+  ]
+}

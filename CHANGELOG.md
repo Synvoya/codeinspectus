@@ -4,6 +4,48 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [2.0.0] — 2026-07-30
+
+### Added
+- A first-class local CLI with offline `preflight`, current scans, JSON/SARIF/CSV export, explicit
+  CI severity policy, stable exit statuses, and unchanged no-argument MCP stdio startup.
+- Versioned aggregate coverage that fails closed for partial, unknown, excluded, unavailable,
+  truncated, or not-rechecked work.
+- Bounded scan history, arbitrary compatible comparison, append-only local triage, baselines, and
+  new-finding enforcement without suppressing raw findings.
+- Exact Git diff and working-tree scans with isolated snapshots, supporting repository context, and
+  explicit changed/supporting/deleted/renamed/untracked coverage.
+- Sealed local evidence bundles with versioned manifests and hash verification before export or
+  comparison.
+- A spreadsheet-safe CSV projection and the public `codeinspectus/sdk` ESM/type subpath, implemented
+  as a bounded shell-free wrapper around the exact installed CLI.
+- Resumable bounded scanning of existing local child repositories and explicit bounded immutable
+  repository-history scanning. Neither workflow clones repositories or discovers remote accounts.
+- Redacted review-only GitHub, Jira, and Linear issue payload adapters. No submission, authentication,
+  destination lookup, or network client is included.
+- Three shipped agent skills: approval-gated one-finding remediation, untrusted-document
+  threat-model interpretation, and evidence-separated bounded multi-agent review.
+- A SHA-pinned reference GitHub Actions policy workflow and a complete V2 CLI command reference.
+
+### Changed
+- Package, MCP server, CLI, SDK API, and MCP Registry manifest versions are synchronized at `2.0.0`.
+- Agent-rule files are included in the npm artifact as well as the fail-closed public repository
+  projection.
+- The detection database remains `1.13.0`: 86 curated detections, including 65 first-party native
+  rules across 16 packs. V2 expands workflow surfaces, not detection breadth.
+- Node 22 remains the minimum supported runtime; Node 24 is the primary CI runtime.
+
+### Security and compatibility
+- Scans remain zero-egress and repository-read-only. Network access remains limited to explicit
+  engine installation/repair and user-run external integrations outside the scanner.
+- Existing six MCP tools and stored v1.x scan loading remain backward compatible.
+- Output schemas are versioned independently from the npm package. V2 JSON export/storage use
+  `2.0.0`; SARIF remains `2.1.0`; bounded workflow manifests use their documented `1.0.0` contracts.
+- Optional agent interpretations never suppress, downgrade, override, or enter deterministic
+  findings. Exact-prior deterministic rescan evidence remains required for scanner-resolution claims.
+- The V2 workflow layer was independently implemented from public product concepts; see
+  [workflow design provenance](docs/V2-WORKFLOW-PROVENANCE.md).
+
 ## [1.5.0] — 2026-07-29
 
 ### Added

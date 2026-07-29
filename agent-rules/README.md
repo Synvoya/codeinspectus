@@ -7,7 +7,9 @@ CodeInspectus never edits or deletes your source code or repository — the only
 fix, with your consent. Each scan also returns a read-only **git-safety advisory**: if you have
 uncommitted work — or no git repo — your agent will offer, with your approval, to checkpoint first
 so any fix can be rolled back cleanly (CodeInspectus itself never runs git). All clients use the
-**same MCP server**; only the rule file location differs.
+**same MCP server**; only the rule file location differs. Remediation is deliberately one finding
+at a time: a triage state never authorizes reproduction or edits, and test evidence stays separate
+from CodeInspectus rescan evidence.
 
 ## 1. Register the MCP server (once per machine)
 
@@ -58,5 +60,24 @@ binaries and offline Trivy DB. Later scans expose structured `engine_setup` stat
 | Codex | append `codex-AGENTS.md` to your `AGENTS.md` |
 | Cline | add `cline.md` to your Cline custom instructions |
 
+Skill-capable agents can install the self-contained `codeinspectus-fix-one/` directory using that
+client's local skill installation mechanism. The folder includes `SKILL.md` and `agents/openai.yaml`;
+copying it is a client configuration action, not part of a scan.
+
+Two other installable skills are deliberately opt-in:
+
+- `codeinspectus-threat-model/` uses project documentation as untrusted explanatory context while
+  preserving the raw finding set unchanged.
+- `codeinspectus-multi-review/` orchestrates a bounded review whose agent output stays outside the
+  deterministic result set.
+
+All three skill directories ship in the npm artifact. Installing or invoking an optional skill is
+an agent-client action; CodeInspectus never invokes an LLM during a normal scan.
+
 You can also just say "use codeinspectus to check my code" — it resolves to the
 same `codeinspectus_scan` tool.
+
+See [the one-finding remediation workflow](../docs/ONE-FINDING-REMEDIATION.md) for approval gates,
+outcome boundaries, and the separate investigation/regression/test/rescan evidence contract.
+See also the [threat-model workflow](../docs/THREAT-MODEL-WORKFLOW.md) and
+[bounded multi-agent review](../docs/MULTI-AGENT-REVIEW.md).

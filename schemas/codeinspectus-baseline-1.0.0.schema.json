@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeinspectus.com/schemas/v1.0.0/baseline.schema.json",
+  "title": "CodeInspectus baseline comparison",
+  "type": "object",
+  "required": ["schema_version", "baseline_scan_id", "scan_id", "target", "repository", "summary", "coverage", "partial", "notes", "items"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "baseline_scan_id": { "$ref": "#/$defs/scanId" },
+    "scan_id": { "$ref": "#/$defs/scanId" },
+    "target": { "type": "string" },
+    "repository": { "type": "string" },
+    "summary": {
+      "type": "object",
+      "required": ["New", "Existing", "Not rechecked / unknown"],
+      "properties": {
+        "New": { "type": "integer", "minimum": 0 },
+        "Existing": { "type": "integer", "minimum": 0 },
+        "Not rechecked / unknown": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "coverage": { "enum": ["complete", "partial", "unknown"] },
+    "partial": { "type": "boolean" },
+    "notes": { "type": "array", "items": { "type": "string" } },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["state", "finding_id", "fingerprint", "evidence"],
+        "properties": {
+          "state": { "enum": ["New", "Existing", "Not rechecked / unknown"] },
+          "finding_id": { "type": "string" },
+          "fingerprint": { "type": "string" },
+          "evidence": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "scanId": { "type": "string", "pattern": "^scan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }
+  }
+}

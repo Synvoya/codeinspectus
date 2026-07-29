@@ -20,7 +20,26 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const cmd = argv[0];
 
+  if (!cmd) {
+    const { startServer } = await import("./server.js");
+    await startServer();
+    return;
+  }
+
   switch (cmd) {
+    case "scan":
+    case "preflight":
+    case "export":
+    case "scans":
+    case "triage":
+    case "bundle":
+    case "bulk":
+    case "history":
+    case "issue": {
+      const { runCli } = await import("./cli.js");
+      process.exitCode = await runCli(argv);
+      return;
+    }
     case "install-engines": {
       const { installEngines } = await import("./install.js");
       await installEngines(argv.slice(1));
@@ -48,39 +67,13 @@ async function main(): Promise<void> {
     }
     case "--help":
     case "-h": {
-      process.stdout.write(
-        [
-          "CodeInspectus, by Synvoya — local-first security MCP server.",
-          "",
-          "Usage:",
-          "  codeinspectus                 Start the MCP server over stdio (default).",
-          "  codeinspectus repair-engines Repair only missing/mismatched engines or DB state (explicit network step).",
-          "    --refresh-db               Refresh the Trivy DB even when current state is healthy.",
-          "    [engine names]             Limit repair to opengrep, gitleaks, and/or trivy.",
-          "  codeinspectus install-engines Backward-compatible setup alias; refreshes the Trivy DB.",
-          "  codeinspectus pin-engines    Maintainer-only: update shipped engine pins.",
-          "    --all-platforms            Pin every target platform (cross-platform; downloads + verifies all).",
-          "    --platform <key>           Pin a specific platform, e.g. linux-x64 (repeatable).",
-          "    --pin-only                 Record SHA256 + provenance only; do not install/run or fetch the DB (CI).",
-          "  codeinspectus verify-engines  Re-verify installed binaries against engines.lock.json (--deep = live cosign).",
-          "  codeinspectus --version       Print version.",
-          "",
-          "Register with an MCP agent (identical JSON shape, different config locations):",
-          '  { "mcpServers": { "codeinspectus": { "command": "npx", "args": ["-y", "codeinspectus"] } } }',
-          "",
-          "Zero network egress at scan time. No account. No telemetry.",
-          "",
-        ].join("\n"),
-      );
+      const { cliHelp } = await import("./cli.js");
+      process.stdout.write(cliHelp());
       return;
     }
     default: {
-      if (cmd && cmd.startsWith("-") === false) {
-        // Unknown subcommand → guide, then fall through to server.
-        log.warn(`Unknown subcommand '${cmd}'. Starting MCP server. See --help for commands.`);
-      }
-      const { startServer } = await import("./server.js");
-      await startServer();
+      log.error(`Unknown subcommand '${cmd}'. See 'codeinspectus --help'.`);
+      process.exitCode = 2;
       return;
     }
   }

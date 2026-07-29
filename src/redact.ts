@@ -56,6 +56,9 @@ export function secretPreview(value: string): string {
 export function redactSnippet(snippet: string): string {
   let out = snippet;
   for (const p of SECRET_PATTERNS) {
+    // These regexes are global and shared. Reset state so repeated fields are all scrubbed;
+    // otherwise a prior replacement can leave lastIndex past the start of the next string.
+    p.re.lastIndex = 0;
     out = out.replace(p.re, (m) => secretPreview(m));
   }
   return out;

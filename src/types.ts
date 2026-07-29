@@ -81,6 +81,8 @@ export interface Finding {
   producer_components?: string[];
   /** Structural finding category used for component-scoped provenance (not display severity). */
   finding_kind?: FindingKind;
+  /** Relationship to an optional Git change scope. Omitted for whole-target scans. */
+  scope_role?: "primary" | "supporting_context";
 }
 
 export interface SeveritySummary {
@@ -270,9 +272,48 @@ export interface SecurityControlEvidence {
   limitation: string;
 }
 
+export type GitScopeStatus = "added" | "modified" | "deleted" | "renamed" | "untracked" | "ignored";
+export interface GitScopeEntry {
+  status: GitScopeStatus;
+  path: string;
+  old_path?: string;
+  binary: boolean;
+  generated: boolean;
+  submodule: boolean;
+  inspected: boolean;
+  note?: string;
+}
+export interface GitScanScope {
+  schema_version: "1.0.0";
+  mode: "commit_diff" | "working_tree";
+  repository: string;
+  base: { requested: string; commit: string };
+  head?: { requested: string; commit: string };
+  entries: GitScopeEntry[];
+  primary_paths: string[];
+  primary_finding_count: number;
+  supporting_context_finding_count: number;
+  supporting_context_scanned: boolean;
+  completeness: "complete" | "partial";
+  limitations: string[];
+}
+
+/** Exact immutable commit context for an explicit bounded repository-history scan. */
+export interface RepositoryHistoryRevision {
+  schema_version: "1.0.0";
+  repository: string;
+  commit: string;
+  committer_at: string;
+  temporal_scope: "historical" | "selected_head";
+  snapshot_completeness: "complete" | "partial";
+  limitations: string[];
+}
+
 export interface ScanResult {
   scan_id: string;
   target: string;
+  /** Canonical enclosing Git worktree when known; absent for non-Git and legacy scans. */
+  repository_root?: string;
   started_at: string;
   duration_ms: number;
   engines_run: string[];
@@ -311,6 +352,10 @@ export interface ScanResult {
    * `not_rechecked` (never `resolved`), because like-for-like scope cannot be proven.
    */
   scan_config?: ScanConfig;
+  /** Optional read-only Git change scope; full findings remain available with export scope roles. */
+  git_scope?: GitScanScope;
+  /** Present only when this stored result came from an isolated repository-history snapshot. */
+  history_revision?: RepositoryHistoryRevision;
 }
 
 /** CG-75 captured scan config (per-engine ran/failed status lives in engine_details). */
