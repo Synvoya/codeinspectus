@@ -29,9 +29,12 @@ const CWE_BLURB: Record<string, string> = {
   "CWE-89": "SQL injection lets attacker-controlled input alter the structure of a SQL query.",
   "CWE-79": "Cross-site scripting injects attacker-controlled script into a page's output.",
   "CWE-77": "Command/argument injection lets untrusted input change the command being executed.",
+  "CWE-78": "OS command injection lets untrusted input alter a shell command executed by the application.",
   "CWE-94": "Code injection lets untrusted input be interpreted as code.",
   "CWE-1426":
-    "Improper validation of generative-AI output / unsafe handling of untrusted input flowing into an LLM enables prompt injection.",
+    "Improper validation of generative-AI output can let untrusted model output violate security, content, or privacy policy.",
+  "CWE-1427":
+    "Improper neutralization of external input used for LLM prompting can let request content override developer-provided instructions.",
 };
 
 export async function explainFinding(input: ExplainFindingInput): Promise<ExplainOutput> {

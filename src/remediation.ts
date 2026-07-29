@@ -74,6 +74,15 @@ const CWE_REMEDIATION: Record<string, Remediation> = {
     ],
     references: ["CWE-77"],
   },
+  "CWE-78": {
+    summary: "Do not pass untrusted data to a shell command string; use fixed executables, separated arguments, validation, and least privilege.",
+    steps: [
+      "Replace exec/execSync shell strings with execFile/spawn using a fixed executable and argument array.",
+      "Validate every untrusted or model-produced argument against a strict allowlist.",
+      "Require approval for sensitive actions and isolate execution with least privilege.",
+    ],
+    references: ["CWE-78"],
+  },
   "CWE-94": {
     summary: "Never interpret untrusted input as code; remove dynamic evaluation of external data.",
     steps: [
@@ -91,14 +100,14 @@ const CWE_REMEDIATION: Record<string, Remediation> = {
     ],
     references: ["CWE-1395", "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"],
   },
-  "CWE-1426": {
+  "CWE-1427": {
     summary: "Treat untrusted content reaching an LLM as data, not instructions: isolate it behind a message-role boundary, constrain output handling, and gate any tool access.",
     steps: [
       "Do not concatenate untrusted input directly into the prompt/system message.",
       "Pass untrusted content as a separate user-role message and constrain with explicit instructions.",
       "Validate/limit what the model's output can trigger; require human confirmation for sensitive tool actions.",
     ],
-    references: ["CWE-1426", "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"],
+    references: ["CWE-1427", "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"],
   },
   "CWE-942": {
     summary: "Allow credentialed cross-origin responses only for an explicit, trusted origin allowlist.",

@@ -51,8 +51,8 @@ npm run eval       # drives the built MCP server over stdio against fixtures/vul
 - `npm test` is the fast inner loop. It runs the real analyzers over the committed
   `fixtures/secret-rls-corpus` (true-positive **and** false-positive cases) and locks redaction,
   dedup, SARIF normalization, and file-routing behaviour. It needs **no** engine binaries.
-- `npm run eval` should report **17 passed, 0 failed** with the engines installed. The two
-  engine-dependent evals (Opengrep SQLi, Trivy SCA) **auto-skip** if you haven't run
+- `npm run eval` should report **53 passed, 0 failed** with the engines installed. Engine-
+  dependent evals **auto-skip** if you haven't run
   `repair-engines` — a **skip is acceptable, a fail is not.**
 - A green `npm test` + `npm run eval` on your machine is the same gate the maintainer applies.
 
@@ -179,7 +179,7 @@ will not be merged, however useful it otherwise is:
 
 ### Detection rules (`detection-db/**`, `src/ai-checks/**`, `src/packs/**`)
 
-CodeInspectus ships **70 curated detections** today (see `detection-db/manifest.json`): the
+CodeInspectus ships **86 curated detections** today (see `detection-db/manifest.json`): the
 first-party native checks (`ci-ai-*` plus framework/platform pack namespaces), the MIT
 `security-baseline` SAST rules (`ci-baseline-*`), and a few
 custom secret rules (`codeinspectus-*`). The set grows through a **human-reviewed weekly
@@ -200,7 +200,8 @@ by being *precise*, not by flagging more.
 - **Rule ids are append-only — never rename or restructure a shipped one.**
   - **Internal ids** are lowercase-kebab, namespaced: `ci-ai-*` or an installed pack namespace
     (`ci-flutter-*`, `ci-android-*`, `ci-ios-*`, `ci-react-native-*`, `ci-expo-*`,
-    `ci-python-*`) for native
+    `ci-python-*`, `ci-go-*`, `ci-java-*`, `ci-csharp-*`, `ci-php-*`, `ci-rust-*`, `ci-ruby-*`,
+    `ci-firebase-*`, `ci-github-actions-*`) for native
     checks / `ci-baseline-*` for SAST baseline / `codeinspectus-*` for secret rules.
   - **Display ids** are the uppercase sequential form users see, e.g. `CI-0001`.
   - A shipped internal `ruleId` is a **stable fingerprint**: it feeds finding dedup/suppression

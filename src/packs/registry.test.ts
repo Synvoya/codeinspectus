@@ -15,6 +15,15 @@ import { makeAiFinding } from "../ai-checks/finding.js";
 import { log } from "../logger.js";
 import type { DetectedTechnology } from "../types.js";
 import type { NativeAnalyzerResult, NativeDetectorPack } from "./types.js";
+import { pythonAiApiPack } from "./python-ai-api-pack.js";
+import { goAiPack } from "./go-ai-pack.js";
+import { javaAiPack } from "./java-ai-pack.js";
+import { csharpAiPack } from "./csharp-ai-pack.js";
+import { phpAiPack } from "./php-ai-pack.js";
+import { rustAiPack } from "./rust-ai-pack.js";
+import { rubyAiPack } from "./ruby-ai-pack.js";
+import { firebasePack } from "./firebase-pack.js";
+import { githubActionsPack } from "./github-actions-pack.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -36,7 +45,7 @@ function testFinding() {
     ruleId: "ci-ai-prompt-injection-sink",
     title: "Test finding",
     severity: "medium",
-    cwe: ["CWE-1426"],
+    cwe: ["CWE-1427"],
     file: "src/test.ts",
     startLine: 1,
     snippet: "test",
@@ -88,6 +97,90 @@ function testPack(
 }
 
 describe("native detector pack registry", () => {
+  test("language-gates ecosystem-neutral OpenAI pack dispatch", () => {
+    const goOpenAi = [
+      { id: "go", kind: "language", confidence: "high", evidence: [] },
+      { id: "openai", kind: "framework", confidence: "high", evidence: [] },
+    ] satisfies DetectedTechnology[];
+    const pythonOpenAi = [
+      { id: "python", kind: "language", confidence: "high", evidence: [] },
+      { id: "openai", kind: "framework", confidence: "high", evidence: [] },
+    ] satisfies DetectedTechnology[];
+    const javaOpenAi = [
+      { id: "java", kind: "language", confidence: "high", evidence: [] },
+      { id: "openai", kind: "framework", confidence: "high", evidence: [] },
+    ] satisfies DetectedTechnology[];
+    const csharpOpenAi = [
+      { id: "csharp", kind: "language", confidence: "high", evidence: [] },
+      { id: "openai", kind: "framework", confidence: "high", evidence: [] },
+    ] satisfies DetectedTechnology[];
+    const phpOpenAi = [
+      { id: "php", kind: "language", confidence: "high", evidence: [] },
+      { id: "openai", kind: "framework", confidence: "high", evidence: [] },
+    ] satisfies DetectedTechnology[];
+    const rustOpenAi = [
+      { id: "rust", kind: "language", confidence: "high", evidence: [] },
+      { id: "openai", kind: "framework", confidence: "high", evidence: [] },
+    ] satisfies DetectedTechnology[];
+    const rubyOpenAi = [
+      { id: "ruby", kind: "language", confidence: "high", evidence: [] },
+      { id: "openai", kind: "framework", confidence: "high", evidence: [] },
+    ] satisfies DetectedTechnology[];
+
+    expect(goAiPack.isApplicable?.(goOpenAi)).toBe(true);
+    expect(pythonAiApiPack.isApplicable?.(goOpenAi)).toBe(false);
+    expect(javaAiPack.isApplicable?.(goOpenAi)).toBe(false);
+    expect(csharpAiPack.isApplicable?.(goOpenAi)).toBe(false);
+    expect(phpAiPack.isApplicable?.(goOpenAi)).toBe(false);
+    expect(rustAiPack.isApplicable?.(goOpenAi)).toBe(false);
+    expect(goAiPack.isApplicable?.(pythonOpenAi)).toBe(false);
+    expect(pythonAiApiPack.isApplicable?.(pythonOpenAi)).toBe(true);
+    expect(javaAiPack.isApplicable?.(pythonOpenAi)).toBe(false);
+    expect(csharpAiPack.isApplicable?.(pythonOpenAi)).toBe(false);
+    expect(phpAiPack.isApplicable?.(pythonOpenAi)).toBe(false);
+    expect(rustAiPack.isApplicable?.(pythonOpenAi)).toBe(false);
+    expect(goAiPack.isApplicable?.(javaOpenAi)).toBe(false);
+    expect(pythonAiApiPack.isApplicable?.(javaOpenAi)).toBe(false);
+    expect(javaAiPack.isApplicable?.(javaOpenAi)).toBe(true);
+    expect(csharpAiPack.isApplicable?.(javaOpenAi)).toBe(false);
+    expect(phpAiPack.isApplicable?.(javaOpenAi)).toBe(false);
+    expect(rustAiPack.isApplicable?.(javaOpenAi)).toBe(false);
+    expect(goAiPack.isApplicable?.(csharpOpenAi)).toBe(false);
+    expect(pythonAiApiPack.isApplicable?.(csharpOpenAi)).toBe(false);
+    expect(javaAiPack.isApplicable?.(csharpOpenAi)).toBe(false);
+    expect(csharpAiPack.isApplicable?.(csharpOpenAi)).toBe(true);
+    expect(phpAiPack.isApplicable?.(csharpOpenAi)).toBe(false);
+    expect(rustAiPack.isApplicable?.(csharpOpenAi)).toBe(false);
+    expect(goAiPack.isApplicable?.(phpOpenAi)).toBe(false);
+    expect(pythonAiApiPack.isApplicable?.(phpOpenAi)).toBe(false);
+    expect(javaAiPack.isApplicable?.(phpOpenAi)).toBe(false);
+    expect(csharpAiPack.isApplicable?.(phpOpenAi)).toBe(false);
+    expect(phpAiPack.isApplicable?.(phpOpenAi)).toBe(true);
+    expect(rustAiPack.isApplicable?.(phpOpenAi)).toBe(false);
+    expect(goAiPack.isApplicable?.(rustOpenAi)).toBe(false);
+    expect(pythonAiApiPack.isApplicable?.(rustOpenAi)).toBe(false);
+    expect(javaAiPack.isApplicable?.(rustOpenAi)).toBe(false);
+    expect(csharpAiPack.isApplicable?.(rustOpenAi)).toBe(false);
+    expect(phpAiPack.isApplicable?.(rustOpenAi)).toBe(false);
+    expect(rustAiPack.isApplicable?.(rustOpenAi)).toBe(true);
+    expect(rubyAiPack.isApplicable?.(rustOpenAi)).toBe(false);
+    expect(goAiPack.isApplicable?.(rubyOpenAi)).toBe(false);
+    expect(pythonAiApiPack.isApplicable?.(rubyOpenAi)).toBe(false);
+    expect(javaAiPack.isApplicable?.(rubyOpenAi)).toBe(false);
+    expect(csharpAiPack.isApplicable?.(rubyOpenAi)).toBe(false);
+    expect(phpAiPack.isApplicable?.(rubyOpenAi)).toBe(false);
+    expect(rustAiPack.isApplicable?.(rubyOpenAi)).toBe(false);
+    expect(rubyAiPack.isApplicable?.(rubyOpenAi)).toBe(true);
+    expect(firebasePack.isApplicable?.(rubyOpenAi)).toBe(false);
+    expect(firebasePack.isApplicable?.([
+      { id: "firebase", kind: "platform", confidence: "high", evidence: [] },
+    ])).toBe(true);
+    expect(githubActionsPack.isApplicable?.([
+      { id: "github-actions", kind: "platform", confidence: "high", evidence: [] },
+    ])).toBe(true);
+    expect(githubActionsPack.isApplicable?.(rubyOpenAi)).toBe(false);
+  });
+
   test("registers the existing analyzer groups in their original order", () => {
     expect(listNativePacks().map((pack) => pack.id)).toEqual([
       "javascript-typescript",
@@ -98,11 +191,20 @@ describe("native detector pack registry", () => {
       "expo",
       "python-ai-api",
       "javascript-baseline",
+      "go-ai",
+      "java-ai",
+      "csharp-ai",
+      "php-ai",
+      "rust-ai",
+      "ruby-ai",
+      "firebase",
+      "github-actions",
     ]);
     expect(registeredNativeAnalyzers("/tmp/codeinspectus-pack-registry").map((analyzer) => analyzer.id)).toEqual([
       "client-secrets",
       "supabase-rls",
       "prompt-injection",
+      "unsafe-tool-execution",
       "client-metadata-authz",
       "llm-dangerous-html",
       "api-boundary",
@@ -127,7 +229,19 @@ describe("native detector pack registry", () => {
       "python-untrusted-redirect",
       "python-untrusted-template-source",
       "python-llm-output-dangerous-html",
+      "python-faiss-dangerous-deserialization",
+      "python-langchain-web-loader-ssrf",
+      "python-prompt-injection-sink",
+      "python-unsafe-tool-execution",
       "javascript-baseline-crypto",
+      "go-unsafe-tool-execution",
+      "java-unsafe-tool-execution",
+      "csharp-unsafe-tool-execution",
+      "php-unsafe-tool-execution",
+      "rust-unsafe-tool-execution",
+      "ruby-unsafe-tool-execution",
+      "firebase-security-rules",
+      "github-actions-workflow-security",
     ]);
   });
 
@@ -156,11 +270,11 @@ describe("native detector pack registry", () => {
       "python:lezer-structural-parser",
     ]));
     expect(new Set(ruleIds).size).toBe(ruleIds.length);
-    expect(ruleIds).toHaveLength(49);
+    expect(ruleIds).toHaveLength(65);
 
     const javascriptAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "javascript-typescript");
-    expect(javascriptAnalyzers).toHaveLength(7);
-    expect(javascriptAnalyzers.every((analyzer) => analyzer.packVersion === "1.2.0")).toBe(true);
+    expect(javascriptAnalyzers).toHaveLength(8);
+    expect(javascriptAnalyzers.every((analyzer) => analyzer.packVersion === "1.3.0")).toBe(true);
     expect(javascriptAnalyzers.every((analyzer) => analyzer.packLanguages.includes("typescript"))).toBe(true);
     expect(javascriptAnalyzers.every((analyzer) => analyzer.packFrameworks.includes("supabase"))).toBe(true);
 
@@ -191,16 +305,81 @@ describe("native detector pack registry", () => {
     expect(expoAnalyzers.every((analyzer) => analyzer.packFrameworks.includes("expo"))).toBe(true);
 
     const pythonAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "python-ai-api");
-    expect(pythonAnalyzers).toHaveLength(6);
-    expect(pythonAnalyzers.every((analyzer) => analyzer.packVersion === "1.0.0")).toBe(true);
+    expect(pythonAnalyzers).toHaveLength(10);
+    expect(pythonAnalyzers.every((analyzer) => analyzer.packVersion === "1.4.0")).toBe(true);
     expect(pythonAnalyzers.every((analyzer) => analyzer.packLanguages.includes("python"))).toBe(true);
     expect(pythonAnalyzers.every((analyzer) => analyzer.packFrameworks.includes("fastapi"))).toBe(true);
     expect(pythonAnalyzers.every((analyzer) => analyzer.packFrameworks.includes("openai"))).toBe(true);
+    expect(pythonAnalyzers.every((analyzer) => analyzer.packFrameworks.includes("langchain"))).toBe(true);
 
     const baselineAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "javascript-baseline");
     expect(baselineAnalyzers).toHaveLength(1);
     expect(baselineAnalyzers[0]?.packScannerKind).toBe("sast");
     expect(baselineAnalyzers[0]?.ruleIds).toHaveLength(2);
+
+    const goAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "go-ai");
+    expect(goAnalyzers).toHaveLength(1);
+    expect(goAnalyzers[0]?.packVersion).toBe("1.0.0");
+    expect(goAnalyzers[0]?.packLanguages).toEqual(["go"]);
+    expect(goAnalyzers[0]?.packFrameworks).toEqual(["openai"]);
+    expect(goAnalyzers[0]?.ruleIds).toEqual(["ci-go-llm-tool-argument-command-execution"]);
+
+    const javaAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "java-ai");
+    expect(javaAnalyzers).toHaveLength(1);
+    expect(javaAnalyzers[0]?.packVersion).toBe("1.0.0");
+    expect(javaAnalyzers[0]?.packLanguages).toEqual(["java"]);
+    expect(javaAnalyzers[0]?.packFrameworks).toEqual(["openai"]);
+    expect(javaAnalyzers[0]?.ruleIds).toEqual(["ci-java-llm-tool-argument-command-execution"]);
+
+    const csharpAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "csharp-ai");
+    expect(csharpAnalyzers).toHaveLength(1);
+    expect(csharpAnalyzers[0]?.packVersion).toBe("1.0.0");
+    expect(csharpAnalyzers[0]?.packLanguages).toEqual(["csharp"]);
+    expect(csharpAnalyzers[0]?.packFrameworks).toEqual(["openai"]);
+    expect(csharpAnalyzers[0]?.ruleIds).toEqual(["ci-csharp-llm-tool-argument-command-execution"]);
+
+    const phpAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "php-ai");
+    expect(phpAnalyzers).toHaveLength(1);
+    expect(phpAnalyzers[0]?.packVersion).toBe("1.0.0");
+    expect(phpAnalyzers[0]?.packLanguages).toEqual(["php"]);
+    expect(phpAnalyzers[0]?.packFrameworks).toEqual(["openai"]);
+    expect(phpAnalyzers[0]?.ruleIds).toEqual(["ci-php-llm-tool-argument-command-execution"]);
+
+    const rustAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "rust-ai");
+    expect(rustAnalyzers).toHaveLength(1);
+    expect(rustAnalyzers[0]?.packVersion).toBe("1.0.0");
+    expect(rustAnalyzers[0]?.packLanguages).toEqual(["rust"]);
+    expect(rustAnalyzers[0]?.packFrameworks).toEqual(["openai"]);
+    expect(rustAnalyzers[0]?.ruleIds).toEqual(["ci-rust-llm-tool-argument-command-execution"]);
+
+    const rubyAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "ruby-ai");
+    expect(rubyAnalyzers).toHaveLength(1);
+    expect(rubyAnalyzers[0]?.packVersion).toBe("1.0.0");
+    expect(rubyAnalyzers[0]?.packLanguages).toEqual(["ruby"]);
+    expect(rubyAnalyzers[0]?.packFrameworks).toEqual(["openai"]);
+    expect(rubyAnalyzers[0]?.ruleIds).toEqual(["ci-ruby-llm-tool-argument-command-execution"]);
+
+    const firebaseAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "firebase");
+    expect(firebaseAnalyzers).toHaveLength(1);
+    expect(firebaseAnalyzers[0]?.packVersion).toBe("1.0.0");
+    expect(firebaseAnalyzers[0]?.packLanguages).toEqual(["firebase-rules", "json"]);
+    expect(firebaseAnalyzers[0]?.packFrameworks).toEqual([]);
+    expect(firebaseAnalyzers[0]?.packPlatforms).toEqual(["firebase"]);
+    expect(firebaseAnalyzers[0]?.ruleIds).toEqual([
+      "ci-firebase-firestore-public-write",
+      "ci-firebase-storage-public-write",
+      "ci-firebase-realtime-database-public-write",
+    ]);
+    const githubActionsAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "github-actions");
+    expect(githubActionsAnalyzers).toHaveLength(1);
+    expect(githubActionsAnalyzers[0]?.packVersion).toBe("1.0.0");
+    expect(githubActionsAnalyzers[0]?.packLanguages).toEqual(["yaml"]);
+    expect(githubActionsAnalyzers[0]?.packFrameworks).toEqual([]);
+    expect(githubActionsAnalyzers[0]?.packPlatforms).toEqual(["github-actions"]);
+    expect(githubActionsAnalyzers[0]?.ruleIds).toEqual([
+      "ci-github-actions-untrusted-expression-command",
+      "ci-github-actions-pwn-request",
+    ]);
   });
 
   test("exposes installed inventory and explicit not-run coverage without executing analyzers", () => {
@@ -208,8 +387,8 @@ describe("native detector pack registry", () => {
     expect(inventory).toEqual([
       expect.objectContaining({
         pack_id: "javascript-typescript",
-        analyzers: { registered: 7 },
-        rules: { registered: 21 },
+        analyzers: { registered: 8 },
+        rules: { registered: 22 },
       }),
       expect.objectContaining({
         pack_id: "flutter",
@@ -243,12 +422,67 @@ describe("native detector pack registry", () => {
       expect.objectContaining({
         pack_id: "python-ai-api",
         languages: ["python"],
-        analyzers: { registered: 6 },
-        rules: { registered: 6 },
+        analyzers: { registered: 10 },
+        rules: { registered: 10 },
       }),
       expect.objectContaining({
         pack_id: "javascript-baseline",
         scanner_kind: "sast",
+        analyzers: { registered: 1 },
+        rules: { registered: 2 },
+      }),
+      expect.objectContaining({
+        pack_id: "go-ai",
+        languages: ["go"],
+        frameworks: ["openai"],
+        analyzers: { registered: 1 },
+        rules: { registered: 1 },
+      }),
+      expect.objectContaining({
+        pack_id: "java-ai",
+        languages: ["java"],
+        frameworks: ["openai"],
+        analyzers: { registered: 1 },
+        rules: { registered: 1 },
+      }),
+      expect.objectContaining({
+        pack_id: "csharp-ai",
+        languages: ["csharp"],
+        frameworks: ["openai"],
+        analyzers: { registered: 1 },
+        rules: { registered: 1 },
+      }),
+      expect.objectContaining({
+        pack_id: "php-ai",
+        languages: ["php"],
+        frameworks: ["openai"],
+        analyzers: { registered: 1 },
+        rules: { registered: 1 },
+      }),
+      expect.objectContaining({
+        pack_id: "rust-ai",
+        languages: ["rust"],
+        frameworks: ["openai"],
+        analyzers: { registered: 1 },
+        rules: { registered: 1 },
+      }),
+      expect.objectContaining({
+        pack_id: "ruby-ai",
+        languages: ["ruby"],
+        frameworks: ["openai"],
+        analyzers: { registered: 1 },
+        rules: { registered: 1 },
+      }),
+      expect.objectContaining({
+        pack_id: "firebase",
+        frameworks: [],
+        platforms: ["firebase"],
+        analyzers: { registered: 1 },
+        rules: { registered: 3 },
+      }),
+      expect.objectContaining({
+        pack_id: "github-actions",
+        platforms: ["github-actions"],
         analyzers: { registered: 1 },
         rules: { registered: 2 },
       }),
@@ -260,8 +494,8 @@ describe("native detector pack registry", () => {
       expect.objectContaining({
         pack_id: "javascript-typescript",
         state: "not_run",
-        analyzers: { registered: 7, ran: 0 },
-        rules: { registered: 21, ran: 0 },
+        analyzers: { registered: 8, ran: 0 },
+        rules: { registered: 22, ran: 0 },
       }),
       expect.objectContaining({
         pack_id: "flutter",
@@ -296,12 +530,60 @@ describe("native detector pack registry", () => {
       expect.objectContaining({
         pack_id: "python-ai-api",
         state: "not_run",
-        analyzers: { registered: 6, ran: 0 },
-        rules: { registered: 6, ran: 0 },
+        analyzers: { registered: 10, ran: 0 },
+        rules: { registered: 10, ran: 0 },
       }),
       expect.objectContaining({
         pack_id: "javascript-baseline",
         scanner_kind: "sast",
+        state: "not_run",
+        analyzers: { registered: 1, ran: 0 },
+        rules: { registered: 2, ran: 0 },
+      }),
+      expect.objectContaining({
+        pack_id: "go-ai",
+        state: "not_run",
+        analyzers: { registered: 1, ran: 0 },
+        rules: { registered: 1, ran: 0 },
+      }),
+      expect.objectContaining({
+        pack_id: "java-ai",
+        state: "not_run",
+        analyzers: { registered: 1, ran: 0 },
+        rules: { registered: 1, ran: 0 },
+      }),
+      expect.objectContaining({
+        pack_id: "csharp-ai",
+        state: "not_run",
+        analyzers: { registered: 1, ran: 0 },
+        rules: { registered: 1, ran: 0 },
+      }),
+      expect.objectContaining({
+        pack_id: "php-ai",
+        state: "not_run",
+        analyzers: { registered: 1, ran: 0 },
+        rules: { registered: 1, ran: 0 },
+      }),
+      expect.objectContaining({
+        pack_id: "rust-ai",
+        state: "not_run",
+        analyzers: { registered: 1, ran: 0 },
+        rules: { registered: 1, ran: 0 },
+      }),
+      expect.objectContaining({
+        pack_id: "ruby-ai",
+        state: "not_run",
+        analyzers: { registered: 1, ran: 0 },
+        rules: { registered: 1, ran: 0 },
+      }),
+      expect.objectContaining({
+        pack_id: "firebase",
+        state: "not_run",
+        analyzers: { registered: 1, ran: 0 },
+        rules: { registered: 3, ran: 0 },
+      }),
+      expect.objectContaining({
+        pack_id: "github-actions",
         state: "not_run",
         analyzers: { registered: 1, ran: 0 },
         rules: { registered: 2, ran: 0 },

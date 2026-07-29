@@ -23,7 +23,7 @@ egress at scan time**.
 **18 normalized findings across all four engines** with v0.3.1 (4 critical, 8 high,
 5 medium, 1 low). Inspect the [fixture](fixtures/vulnerable-app), read the
 [full scanner-derived report](examples/reports/vulnerable-app-v0.3.1.md), or run the
-[36-case eval suite](evals/run-evals.ts). Dependency findings can change as the local
+[45-case eval suite](evals/run-evals.ts). Dependency findings can change as the local
 Trivy database updates; the report records the exact engine and database versions used.
 
 If CodeInspectus is useful, [star the repository](https://github.com/Synvoya/codeinspectus)
@@ -40,18 +40,28 @@ scanners miss:
   CycloneDX/SPDX inventory from `pubspec.lock`, backed by a bundled offline OSV Pub snapshot
 - **CodeInspectus native checks** — client-side secret/bundle exposure, Supabase
   RLS / inverted-auth (the CVE-2025-48757 class), prompt-injection sinks,
+  model-produced tool arguments reaching Node, Python, or narrowly supported Go, Java, C#, PHP, Rust, and Ruby shell sinks without a visible guard,
   client-writable `user_metadata` authorization, and unsanitized model/user output
   rendered via `dangerouslySetInnerHTML` (XSS / LLM05), plus explicit API-boundary
   leaks, raw request-to-database writes, sensitive logging, and evidence-gated
   security-header/CSP/session-cookie/Supabase-CAPTCHA configuration checks. Separate
   first-party packs cover six narrow Flutter/Dart source failure modes and eight bounded
   Android/iOS repository-configuration failures, plus four React Native and two Expo
-  framework-specific mobile failures. A bounded Python AI/API pack covers six narrow
-  Django, Flask, FastAPI, Starlette, Jinja, OpenAI, and Anthropic source failures.
+  framework-specific mobile failures. A bounded Python AI/API pack covers ten narrow
+  Django, Flask, FastAPI, Starlette, Jinja, OpenAI, Anthropic, LangChain, and OS-command source failures.
+  Separate Go, Java, and C# AI packs each contribute one exact official OpenAI SDK
+  tool-argument-to-shell rule; the PHP pack contributes one equivalent rule for the
+  community-maintained `openai-php/client` ecosystem, and the Rust pack contributes one
+  bounded rule for the community-maintained `async-openai` ecosystem. A Ruby pack contributes one
+  equivalent rule for the exact official `openai` gem. A Firebase configuration pack contributes
+  three literal public-write rules for Firestore, Cloud Storage, and Realtime Database. A GitHub
+  Actions pack contributes two workflow rules for direct untrusted-context shell interpolation and
+  exact `pull_request_target` checkout-and-execute chains.
 
-The shipped manifest contains **70 curated detections**: **49 first-party native rule
-IDs** (21 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, and
-2 Expo, plus 6 Python AI/API and 2 JavaScript baseline SAST rules), 18 Opengrep-owned
+The shipped manifest contains **86 curated detections**: **65 first-party native rule
+IDs** (22 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, and
+2 Expo, plus 10 Python AI/API, 1 Go AI, 1 Java AI, 1 C# AI, 1 PHP AI, 1 Rust AI, 1 Ruby AI,
+3 Firebase configuration, 2 GitHub Actions workflow, and 2 JavaScript baseline SAST rules), 18 Opengrep-owned
 SAST rules, and 3 custom Gitleaks rules. All 20 Opengrep YAML rules remain physically active:
 the two native-owned rules reconcile exact results and fall back to Opengrep on mismatch or
 native unavailability. Opengrep, Gitleaks, and Trivy remain installed and additive.
@@ -63,7 +73,7 @@ native unavailability. Opengrep, Gitleaks, and Trivy remain installed and additi
 
 AI-generated apps often ship with security mistakes that generic scanners miss: exposed
 client-side secrets, weak Supabase auth patterns, unsafe HTML rendering, prompt-injection
-sinks, and insecure agent/tool integrations.
+sinks, and risky AI/vector-store integrations.
 
 CodeInspectus combines proven local scanners with AI-app-specific rules, then exposes the
 workflow through an MCP server so coding agents can scan, explain, and help fix issues
@@ -198,6 +208,15 @@ bare React Native project never implies that Expo configuration rules ran.
 The Python AI/API pack requires bounded Python/package/framework evidence. It reports unsupported
 syntax, source bounds, and deliberately excluded corpora as explicit coverage notes instead of
 inferring that omitted source is safe.
+The Go, Java, and C# AI packs require their language plus the exact official OpenAI SDK dependency.
+The PHP pack requires PHP plus exact `openai-php/client` or `openai-php/laravel` Composer evidence;
+those packages are community-maintained, not official OpenAI SDKs. A generic `openai` framework tag
+alone cannot activate it.
+The Rust pack requires Rust plus exact `async-openai` Cargo dependency evidence; that crate is
+community-maintained, not an official OpenAI SDK. The Ruby pack requires Ruby plus exact official
+`openai` production Gemfile or runtime gemspec evidence; lockfiles remain Ruby-language evidence
+because they do not preserve dependency groups. A generic `openai` framework tag alone
+cannot activate Go, Java, C#, PHP, Rust, Ruby, or Python analyzers.
 `dependency_coverage` separately reports whether the native Pub matcher ran, which lockfiles and
 eligible packages it analyzed, what it deliberately skipped, and the bundled snapshot version.
 
@@ -264,18 +283,96 @@ eligible packages it analyzed, what it deliberately skipped, and the bundled sna
   deployment proof, or runtime mobile testing. The shipped
   [React Native/Expo TP/FP/fixed corpus](fixtures/README.md) and E30/E31 lock exact findings,
   precision, redaction, provenance, execution accounting, and same-path resolution/reintroduction.
-- **Python AI/API native coverage is six narrow, high-confidence first-party structural checks.** The pack flags
+- **Python AI/API native coverage is ten narrow first-party structural checks.** The pack flags
   hardcoded framework signing secrets, credentialed all-origin CORS, request-controlled file
   responses and redirects, request-controlled template source, and unsanitized OpenAI/Anthropic
-  output returned as HTML. It uses a bounded Lezer syntax gate plus source-ordered intrafile
+  output returned as HTML, explicit LangChain FAISS pickle-deserialization opt-in, and request-controlled
+  complete URLs fetched by a proven LangChain WebBaseLoader, plus medium-confidence potential
+  prompt-injection sinks where request input reaches proven OpenAI/Anthropic privileged instructions
+  or shares the LLM call with configured tool access, and model tool arguments reaching proven
+  Python shell-execution APIs without a visible checked guard. It uses a bounded Lezer syntax gate plus source-ordered intrafile
   analysis; it never imports or executes target Python. There is no type checker, module graph,
-  interprocedural flow, or path-sensitive branch merge. Format strings and leading-tab indentation
-  currently fail closed with named coverage notes. Generated, migration, dependency, build, test,
+  interprocedural flow, or path-sensitive branch merge. Lezer-validated format strings are retained
+  as opaque dynamic values, so their replacement expressions are not inspected; leading-tab indentation
+  still fails closed with a named coverage note. Generated, migration, dependency, build, test,
   fixture, demo, sample, and example trees are excluded from project-root scans. Unsupported,
   malformed, symlinked, unreadable, oversized, or bounded-out source is reported, not inferred as
   secure. The shipped [Python AI/API TP/FP/fixed corpus](fixtures/README.md) and E32/E33 lock exact
   findings, precision, redaction, provenance, execution accounting, and same-path
   resolution/reintroduction.
+- **Go AI native coverage is one narrow, medium-confidence structural check.**
+  `ci-go-llm-tool-argument-command-execution` requires the exact official OpenAI Go SDK Chat
+  Completions tool-call argument shape and import-proven `os/exec` invocation of a recognized shell
+  with its command flag. It supports direct aliases, `encoding/json.Unmarshal`, one local JSON
+  parser, and one local command wrapper. Checked rejection/approval or allowlist guards and
+  validated replacement values suppress findings. It does not cover general Go SAST, other model
+  SDKs, cross-module dispatch, runtime sandboxing, or complete agent safety. The shipped
+  [Go TP/FP/fixed corpus](fixtures/README.md) and E37/E38 lock exact findings, zero-finding safe and
+  fixed states, provenance, pack dispatch, and same-path resolution/reintroduction.
+- **Java and C# AI native coverage is one narrow, medium-confidence structural check per ecosystem.**
+  Each requires the exact official OpenAI SDK dependency and tool-call argument shape before model
+  data can reach a recognized, actually-started shell process. Direct aliases, one local parser,
+  and one local command wrapper are supported; checked rejection/approval or allowlist guards and
+  validated replacement values suppress findings. These packs do not provide general Java or C#
+  SAST, cross-module dispatch, runtime sandbox proof, or complete agent review. The shipped
+  [Java and C# TP/FP/fixed corpora](fixtures/README.md) and E39-E42 lock exact findings, safe/fixed
+  silence, provenance, language-gated dispatch, and same-path resolution/reintroduction.
+- **PHP AI native coverage is one narrow, medium-confidence structural check.**
+  `ci-php-llm-tool-argument-command-execution` requires exact community-maintained
+  `openai-php/client` or `openai-php/laravel` Composer evidence and model tool-call
+  `function->arguments` reaching `exec`, `system`, `shell_exec`, or `passthru`. It supports direct
+  aliases, associative `json_decode`, one local parser, one local command wrapper, and one exact
+  mapped variadic method dispatch. Checked approval/full-command allowlists and validated
+  replacement values suppress findings; first-token executable checks do not neutralize shell
+  metacharacters and do not suppress them. It does not provide general PHP SAST, cross-file flow,
+  runtime sandbox proof, or complete agent review. The shipped [PHP TP/FP/fixed corpus](fixtures/README.md)
+  and E43/E44 lock exact findings, safe/fixed silence, provenance, language-gated dispatch, and
+  same-path resolution/reintroduction.
+- **Rust AI native coverage is one narrow, medium-confidence structural check.**
+  `ci-rust-llm-tool-argument-command-execution` requires exact community-maintained
+  `async-openai` Cargo evidence and recognized model tool arguments reaching an import-proven
+  standard/Tokio process shell or literal Bollard Docker exec shell vector. It supports direct
+  aliases, `serde_json` extraction, one recognized `generate_function_call` result, and one local
+  command wrapper. Checked approval/allowlist rejection and validated replacement values suppress
+  findings. It does not provide general Rust SAST, rustc/type/Cargo-graph resolution, cross-crate
+  flow, runtime container/sandbox proof, or complete agent review. The shipped
+  [Rust TP/FP/fixed corpus](fixtures/README.md) and E45/E46 lock exact findings, safe/fixed silence,
+  provenance, language-gated dispatch, and same-path resolution/reintroduction. `async-openai` is
+  community maintained and is not represented as an official OpenAI SDK.
+- **Ruby AI native coverage is one narrow, medium-confidence structural check.**
+  `ci-ruby-llm-tool-argument-command-execution` requires exact official production `openai` Gemfile
+  or runtime gemspec evidence and
+  recognizes Chat tool-call `function.arguments` or explicitly typed Responses function-tool
+  arguments reaching `system`, `exec`, `IO.popen`, or import-proven Open3 shell execution. It
+  supports direct aliases, `JSON.parse` command extraction, one local parser, and one local command
+  wrapper. Checked approval/full-command allowlists and validated replacements stay silent. It
+  does not provide general Ruby SAST, Bundler/type resolution, cross-file flow, backtick/percent-x/
+  spawn coverage, runtime sandbox proof, or complete agent review. The shipped
+  [Ruby TP/FP/fixed corpus](fixtures/README.md) and E47/E48 lock exact findings, safe/fixed silence,
+  provenance, language-gated dispatch, and same-path resolution/reintroduction.
+- **Firebase native coverage is three narrow, high-confidence configuration checks.**
+  `ci-firebase-firestore-public-write`, `ci-firebase-storage-public-write`, and
+  `ci-firebase-realtime-database-public-write` flag only checked-in literal write grants with no
+  condition or a condition exactly equal to `true` (Realtime Database boolean/string `true`).
+  Public reads stay silent because they are often intentional. The bounded parser masks Rules
+  comments/strings, requires exact Firestore/Storage service declarations, requires strict JSON
+  for Realtime Database, excludes non-production/dependency/generated trees, and never runs
+  Firebase tooling or target code. It does not evaluate helper functions, deployed policy, IAM,
+  App Check, or runtime access. The shipped [Firebase TP/FP/fixed corpus](fixtures/README.md) and
+  E49/E50 lock exact findings, safe/fixed silence, provenance, pack dispatch, and same-path
+  resolution/reintroduction.
+- **GitHub Actions native coverage is two narrow workflow checks.**
+  `ci-github-actions-untrusted-expression-command` flags direct documented attacker-controlled
+  `github` expressions embedded in `run`; using an intermediate `env` value or action `with` input
+  stays silent. `ci-github-actions-pwn-request` requires the complete high-risk chain: exact
+  `pull_request_target`, checkout of the pull request's untrusted ref into the default workspace,
+  and subsequent execution of checked-out code or a local action. Checkout v7 is treated as
+  protected unless `allow-unsafe-pr-checkout` is explicitly enabled. The bounded YAML 1.2 parser
+  reads only direct `.github/workflows/*.yml`/`.yaml` files and never executes workflows or target
+  code. It does not provide general workflow taint analysis, custom-action analysis, artifact-flow
+  analysis, permission-policy proof, or runner/runtime verification. The shipped
+  [GitHub Actions TP/FP/fixed corpus](fixtures/README.md) and E51/E52 lock exact findings,
+  safe/fixed silence, provenance, dispatch, and same-path resolution/reintroduction.
 - **Client-side authorization that trusts `user_metadata` is flagged** (`ci-ai-client-metadata-authz`).
   CodeInspectus detects an authorization decision that reads client-writable Supabase
   `user_metadata` — e.g. `if (user.user_metadata.role === 'admin')` — at **high** severity,
@@ -322,10 +419,12 @@ eligible packages it analyzed, what it deliberately skipped, and the bundled sna
 
 Plainly, what runs on what. The commodity engines are broad; the **CodeInspectus
 native checks are predominantly JavaScript/TypeScript, plus targeted Flutter/Dart,
-Android/iOS configuration, React Native, Expo, and Python AI/API packs**. A Python repository gets
-native coverage only for the six documented framework/source shapes; Go, Rust, and other
-unsupported native-pack ecosystems still receive the selected commodity-engine coverage but no
-native pack applies. Plain Dart without Flutter also does not activate the Flutter source pack
+Android/iOS configuration, React Native, Expo, Python AI/API, and one-rule Go, Java, C#, PHP, Rust,
+and Ruby AI packs, plus Firebase Security Rules and GitHub Actions workflow configuration packs**. A Python
+repository gets native coverage only for the ten documented framework/source shapes; a Go/OpenAI,
+Java/OpenAI, C#/OpenAI, PHP/openai-php, Rust/async-openai, or Ruby/OpenAI repository gets only its one documented
+tool-execution rule. Other unsupported native-pack ecosystems still receive the selected
+commodity-engine coverage but no native pack applies. Plain Dart without Flutter also does not activate the Flutter source pack
 (the separate native Pub SCA/SBOM engine can still run). This is stated so you don't infer broader
 coverage than the executed pack reports.
 
@@ -335,13 +434,21 @@ coverage than the executed pack reports.
 | **Dependencies (CVEs/SCA), IaC misconfig, SBOM, license** — Trivy | vulnerable deps, infra misconfig, bill of materials | **Many language & package ecosystems and IaC formats** — see [Trivy's docs](https://trivy.dev). |
 | **Native Pub SCA/SBOM** — CodeInspectus Pub | exact locked-version matches against the bundled advisory snapshot; native Pub inventory and Trivy merge/fallback | **Dart/Flutter `pubspec.lock` only.** Official `pub.dev`/legacy official-host packages are matched by exact enumerated version. Custom registries, Git, path, SDK, malformed, oversized, and unreadable inputs are excluded and reported. No generic SemVer inference, reachability claim, license inference, or complete dependency-graph claim. |
 | **SAST** — Opengrep + CodeInspectus `security-baseline` | injection, XSS, SSRF, weak crypto, insecure deserialization, explicit CORS misconfiguration | **JavaScript, TypeScript, Python.** CodeInspectus ships its own MIT ruleset and runs Opengrep with **no network registry packs**, so SAST coverage is exactly these languages — deliberately narrower than Opengrep's full engine. |
-| **Native JavaScript/TypeScript pack** | client-side secret/bundle exposure, Supabase RLS, prompt-injection sinks, client-writable `user_metadata` authz, unsanitized-output XSS, API response/error leaks, unsafe request writes, sensitive logging, explicit runtime-control misconfiguration | **JavaScript / TypeScript** (incl. `.jsx/.tsx/.mjs/.cjs`; client-secret checks also read `.vue/.svelte/.astro/.html`). Supabase RLS analyzes `.sql` plus `.ts/.js` Edge Functions; runtime-control evidence also reads recognized configuration formats. |
+| **Native JavaScript/TypeScript pack** | client-side secret/bundle exposure, Supabase RLS, prompt-injection sinks, model tool arguments reaching Node shell execution, client-writable `user_metadata` authz, unsanitized-output XSS, API response/error leaks, unsafe request writes, sensitive logging, explicit runtime-control misconfiguration | **JavaScript / TypeScript** (incl. `.jsx/.tsx/.mjs/.cjs`; client-secret checks also read `.vue/.svelte/.astro/.html`). Supabase RLS analyzes `.sql` plus `.ts/.js` Edge Functions; runtime-control evidence also reads recognized configuration formats. Model-tool command flow is intrafile and bounded to direct flow or one named wrapper; it does not resolve cross-module dispatch or runtime approval/sandbox state. |
 | **Native Flutter/Dart pack** | disabled TLS verification, sensitive SharedPreferences writes, untrusted JavaScript-enabled WebView navigation, sensitive logs, Supabase privileged client keys, cleartext production endpoints | **Flutter projects only.** Token-aware, source-ordered intrafile Dart analysis; no type resolution, path-sensitive branch merge, complete dataflow, or runtime mobile testing. Pub SCA/SBOM is reported by the separate native Pub engine. File/total bounds and omissions are explicit in pack coverage. |
 | **Native Android configuration pack** | debuggable release manifests, effective cleartext traffic, production user-CA trust, exported AndroidX FileProvider | **Android project evidence only.** Bounded structured XML with supported main-to-release precedence; no Gradle execution, arbitrary flavor/DSL evaluation, full manifest merger, runtime testing, or complete Android review. |
 | **Native iOS configuration pack** | global ATS arbitrary loads, insecure domain exceptions, weak TLS policy, disabled default data protection | **iOS project evidence only.** Bounded XML plist/entitlements parsing plus literal Release/AppStore Xcode references; no Xcode execution, dynamic setting expansion, provisioning-profile inspection, runtime testing, or complete iOS review. |
 | **Native React Native pack** | sensitive AsyncStorage writes; untrusted, mixed-content, or file-origin WebView configurations | **Exact React Native dependency or statically proven Expo project evidence.** Expo uses React Native, so proven Expo evidence activates both packs; bare React Native evidence does not activate Expo rules. Bounded token/structure-aware JS/TS/JSX analysis; no module execution, type resolution, whole-program flow, dynamic-prop evaluation, runtime testing, or complete React Native review. |
 | **Native Expo pack** | server secrets exposed through public app config; unsigned cleartext production updates | **Exact Expo dependency or explicit top-level `expo` config evidence only; generic `name` + `slug` fields do not activate it.** Bounded root and nested-package discovery, comments/trailing-comma-aware JSON, and non-executing direct-object JavaScript/TypeScript config parsing; dynamic config is omitted and reported, never evaluated. |
-| **Native Python AI/API pack** | hardcoded signing secrets; credentialed wildcard CORS; untrusted file responses, redirects, and template source; LLM output returned as unsafe HTML | **Python with bounded Django, Flask, FastAPI, Starlette, Jinja2, OpenAI, or Anthropic evidence.** Non-executing Lezer-gated intrafile analysis; no type resolution, module graph, interprocedural/path-sensitive flow, complete Python review, or runtime proof. Unsupported syntax and bounded-out input fail closed and are reported in pack coverage. |
+| **Native Python AI/API pack** | hardcoded signing secrets; credentialed wildcard CORS; untrusted file responses, redirects, and template source; LLM output returned as unsafe HTML; explicit dangerous LangChain FAISS deserialization; request-controlled LangChain web-loader fetches; prompt-injection sinks; model tool arguments reaching Python shell execution | **Python with bounded Django, Flask, FastAPI, Starlette, Jinja2, OpenAI, Anthropic, or LangChain evidence.** Non-executing Lezer-gated intrafile analysis; no type resolution, module graph, general interprocedural/path-sensitive flow, artifact-trust proof, complete SSRF/agent guard analysis, complete Python review, or runtime proof. Tool execution supports direct flow and one named local wrapper, not generic/cross-module dispatch. Unsupported syntax and bounded-out input fail closed and are reported in pack coverage. |
+| **Native Go AI pack** | model-produced OpenAI Go tool arguments reaching a recognized `os/exec` shell invocation | **Go with the exact official `github.com/openai/openai-go` module only.** One bounded, non-executing, intrafile medium-confidence rule; no general Go security coverage, other model SDKs, type/module resolution, cross-module flow, runtime approval/sandbox proof, or complete agent review. |
+| **Native Java AI pack** | model-produced OpenAI Java tool arguments reaching an actually-started recognized `ProcessBuilder` or `Runtime` shell invocation | **Java with exact official `com.openai:openai-java` or `openai-java-core` dependency evidence only.** One bounded, non-executing, intrafile medium-confidence rule; no general Java security coverage, Spring AI/LangChain4j/Azure OpenAI support, type/module resolution, cross-module flow, Java text-block parsing, runtime approval/sandbox proof, or complete agent review. |
+| **Native C# AI pack** | model-produced official OpenAI .NET tool arguments reaching an actually-started recognized `System.Diagnostics.Process` shell invocation | **C# with exact official `OpenAI` NuGet package evidence only.** One bounded, non-executing, intrafile medium-confidence rule; no general C# security coverage, Semantic Kernel/Azure OpenAI support, type/project-reference resolution, cross-file flow, raw-string-content analysis, runtime approval/sandbox proof, or complete agent review. |
+| **Native PHP AI pack** | model-produced OpenAI PHP ecosystem tool arguments reaching `exec`, `system`, `shell_exec`, or `passthru` | **PHP with exact community-maintained `openai-php/client` or `openai-php/laravel` Composer evidence only.** One bounded, non-executing, intrafile medium-confidence rule; no general PHP security coverage, official-SDK claim, type/Composer-graph resolution, cross-file flow, generic callable dispatch, runtime approval/sandbox proof, or complete agent review. |
+| **Native Rust AI pack** | model-produced community `async-openai` tool arguments reaching recognized standard/Tokio process or Bollard Docker exec shell invocations | **Rust with exact community-maintained `async-openai` Cargo dependency evidence only.** One bounded, non-executing, intrafile medium-confidence rule; no general Rust security coverage, official-SDK claim, rustc/type/Cargo-graph resolution, cross-crate flow, generic dispatch, runtime container/approval/sandbox proof, or complete agent review. |
+| **Native Ruby AI pack** | model-produced official OpenAI Ruby tool arguments reaching `system`, `exec`, `IO.popen`, or import-proven Open3 shell execution | **Ruby with exact official production `openai` Gemfile or runtime gemspec evidence only; lockfile-only evidence does not activate.** One bounded, non-executing, intrafile medium-confidence rule; no general Ruby security coverage, Bundler/type resolution, cross-file flow, backtick/percent-x/spawn coverage, runtime approval/sandbox proof, or complete agent review. |
+| **Native Firebase configuration pack** | literal unconditional public writes in Cloud Firestore, Cloud Storage, and Realtime Database Security Rules | **Firebase project/config/rule evidence only.** Three bounded, non-executing, high-confidence rules; public reads and non-literal conditions stay silent. No helper-function evaluation, deployed-policy/IAM/App Check proof, runtime testing, or complete Firebase review. |
+| **Native GitHub Actions workflow pack** | direct attacker-controlled GitHub context interpolation in `run`; exact `pull_request_target` untrusted checkout-and-execute chains | **Direct root `.github/workflows/*.yml`/`.yaml` files only.** Two bounded, non-executing rules with strict YAML 1.2 parsing. Safe `env`/`with` indirection, normal `pull_request`, checkout without execution, and protected checkout v7 stay silent. No general taint, custom-action, artifact, runner, deployed-policy, or complete Actions review. |
 
 ## Compliance frameworks (code-visible subset)
 
@@ -387,7 +494,7 @@ trademark**.
 ```bash
 npm install
 npm run build      # tsc --noEmit && tsup  (must compile clean)
-npm run eval       # 26 MCP stdio evals across the shipped verification fixtures
+npm run eval       # 53 MCP stdio evals across the shipped verification fixtures
 npm run inspector  # npx @modelcontextprotocol/inspector node dist/index.js
 ```
 

@@ -1,7 +1,7 @@
 // FIXTURE — planted issue #5: prompt-injection sink. Untrusted req.body input
 // concatenated into an LLM system prompt, AND the call grants tool access
 // (excessive agency). Detected by: CodeInspectus AI prompt-injection check
-// (ci-ai-prompt-injection-sink). CWE-1426; OWASP LLM01 + LLM06.
+// (ci-ai-prompt-injection-sink). CWE-1427; OWASP LLM01 + LLM06.
 import OpenAI from "openai";
 
 const openai = new OpenAI();

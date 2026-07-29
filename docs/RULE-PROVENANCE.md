@@ -10,8 +10,11 @@
 > versions. Where this document and any other doc disagree on a count or a version, the
 > two files above win and this document is the one to correct.
 
-_Last refreshed: Python AI/API native pack (2026-07-26) — recorded six original structural rules
-and their first-party pack ownership. The React Native/Expo refresh recorded six original
+_Last refreshed: GitHub Actions, Firebase, Ruby, Rust, PHP, C#, Java, Go, JavaScript/TypeScript unsafe tool execution, and Python AI/API native packs
+(2026-07-28) — recorded the original bounded GitHub Actions workflow rules, Firebase configuration rules, Ruby, Rust, PHP, C#, Java, Go, JavaScript, and Python model-tool-argument-to-shell rules and ten original Python structural rules
+and their first-party pack ownership, including the exact LangChain FAISS dangerous-deserialization
+opt-in, request-controlled WebBaseLoader fetch, and bounded OpenAI/Anthropic prompt-injection sink.
+The React Native/Expo refresh recorded six original
 framework-specific structural rules. The Android/iOS refresh
 recorded eight original repository-configuration rules. The Flutter/Dart refresh
 recorded six original token-aware structural rules. Project CI Enhancement 2
@@ -21,33 +24,41 @@ CORS rule, and compared the CORS rule with the closest current Semgrep registry 
 re-audit of the existing rules was performed this session**. Prior
 full provenance pass: CG-08 (2026-06-23) audit + the CG-39 sweep, against
 `detection-db/manifest.json`, `engines.lock.json`, `detection-db/**`, `src/ai-checks/**`,
-and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api}/**`._
+and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api,go,java,csharp,php,rust,ruby,firebase,github-actions}/**`._
 
 ---
 
-## Reconciled detection count — **70 active CodeInspectus detections**
+## Reconciled detection count — **86 active CodeInspectus detections**
 
-`detection-db/manifest.json` `custom_rules` has **70** entries:
+`detection-db/manifest.json` `custom_rules` has **86** entries:
 
 | Group | Count | Engine | Kind | Where |
 |---|---:|---|---|---|
-| JavaScript/TypeScript native rules | **21** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
+| JavaScript/TypeScript native rules | **22** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
 | Flutter/Dart native rules | **6** | `codeinspectus-ai` | `ai` | `src/packs/flutter/*.ts` |
 | Android configuration native rules | **4** | `codeinspectus-ai` | `ai` | `src/packs/android/*.ts` |
 | iOS configuration native rules | **4** | `codeinspectus-ai` | `ai` | `src/packs/ios/*.ts` |
 | React Native native rules | **4** | `codeinspectus-ai` | `ai` | `src/packs/react-native/*.ts` |
 | Expo native rules | **2** | `codeinspectus-ai` | `ai` | `src/packs/expo/*.ts` |
-| Python AI/API native rules | **6** | `codeinspectus-ai` | `ai` | `src/packs/python-ai-api/*.ts` |
+| Python AI/API native rules | **10** | `codeinspectus-ai` | `ai` | `src/packs/python-ai-api/*.ts` |
+| Go AI native rules | **1** | `codeinspectus-ai` | `ai` | `src/packs/go/*.ts` |
+| Java AI native rules | **1** | `codeinspectus-ai` | `ai` | `src/packs/java/*.ts` |
+| C# AI native rules | **1** | `codeinspectus-ai` | `ai` | `src/packs/csharp/*.ts` |
+| PHP AI native rules | **1** | `codeinspectus-ai` | `ai` | `src/packs/php/*.ts` |
+| Rust AI native rules | **1** | `codeinspectus-ai` | `ai` | `src/packs/rust/*.ts` |
+| Ruby AI native rules | **1** | `codeinspectus-ai` | `ai` | `src/packs/ruby/*.ts` |
+| Firebase configuration native rules | **3** | `codeinspectus-ai` | `ai` | `src/packs/firebase/*.ts` |
+| GitHub Actions workflow native rules | **2** | `codeinspectus-ai` | `ai` | `src/packs/github-actions/*.ts` |
 | JavaScript baseline native rules | **2** | `codeinspectus-ai` | `sast` | `src/packs/javascript-baseline/*.ts` |
 | Opengrep-owned SAST rules | **18** | `opengrep` | `sast` | `detection-db/opengrep-rules/security-baseline/` |
 | Gitleaks secret rules | **3** | `gitleaks` | `secret` | `detection-db/gitleaks/codeinspectus.toml` |
-| **Total** | **70** | — | — | — |
+| **Total** | **86** | — | — | — |
 
 Verified physical counts: 20 Opengrep YAML rule ids and 3 Gitleaks rule ids are greppable on disk.
-The catalog assigns 49 rule IDs to eight native packs and 18 to Opengrep; the two promoted native
+The catalog assigns 65 rule IDs to sixteen native packs and 18 to Opengrep; the two promoted native
 SAST IDs retain physically active Opengrep fallbacks and are not double-counted.
 
-The authoritative current figure is **70**, decomposing as **49 first-party native rules +
+The authoritative current figure is **86**, decomposing as **65 first-party native rules +
 18 Opengrep-owned SAST + 3 Gitleaks** (single source of truth: `detection-db/manifest.json`).
 CG-25b added two original
 CodeInspectus detections: `ci-ai-llm-key-browser-exposed` (B-11; `dangerouslyAllowBrowser: true`) and
@@ -73,6 +84,9 @@ TypeScript evidence analyzers (`ci-ai-security-header-disabled`,
 `ci-ai-supabase-captcha-token-missing`). They were authored from the maintainer's
 three-state evidence contract and current primary framework documentation, not from a
 third-party detection corpus. No registry rule expression was referenced or copied. The
+unsafe tool-execution rule was independently authored from the local precision contract and
+public API idioms, then validated against pinned public repositories; no third-party rule
+expression or source implementation was copied. The
 Flutter/Dart pack adds six independently authored TypeScript analyzers for Dart source:
 `ci-flutter-tls-verification-disabled`, `ci-flutter-sensitive-shared-preferences`,
 `ci-flutter-webview-untrusted-content`, `ci-flutter-sensitive-log`,
@@ -98,16 +112,75 @@ CodeInspectus from the maintainer's detector contracts and primary React Native,
 WebView, and Expo configuration/update documentation. They were not ported, translated, or derived
 from Opengrep, Semgrep, Trivy, or another detection corpus. This is an original first-party
 authorship record under the existing self-diligence frame, not an independent legal clearance.
-The Python AI/API pack adds six independently authored TypeScript structural rules:
+The Python AI/API pack adds ten independently authored TypeScript structural rules:
 `ci-python-hardcoded-signing-secret`, `ci-python-credentialed-cors-all-origins`,
 `ci-python-untrusted-file-response`, `ci-python-untrusted-redirect`,
-`ci-python-untrusted-template-source`, and `ci-python-llm-output-dangerous-html`. They were written
+`ci-python-untrusted-template-source`, `ci-python-llm-output-dangerous-html`,
+`ci-python-faiss-dangerous-deserialization`, `ci-python-langchain-web-loader-ssrf`, and
+`ci-python-prompt-injection-sink`, and `ci-python-llm-tool-argument-command-execution`. They were written
 for CodeInspectus from the maintainer's detector contracts and primary Python framework/API
-documentation. They were not ported, translated, or derived from Opengrep, Semgrep, Trivy, or
+documentation, including LangChain's documented FAISS and WebBaseLoader contracts, Python's pickle
+warning, and OWASP's SSRF and GenAI prompt-injection/excessive-agency guidance.
+They were not ported, translated, or derived from Opengrep, Semgrep, Trivy, or
 another detection corpus. The Lezer Python parser and smol-toml dependency licenses are reproduced
 in `THIRD-PARTY-NOTICES.md`; those parsing libraries do not supply detection rules. This is an
 original first-party authorship record under the existing self-diligence frame, not an independent
 legal clearance.
+The Go AI pack adds one independently authored TypeScript structural rule,
+`ci-go-llm-tool-argument-command-execution`. It was written for CodeInspectus from the maintainer's
+detector contract, the official OpenAI Go SDK data shape, Go `os/exec` semantics, and OWASP
+improper-output-handling/excessive-agency guidance. It was not ported, translated, or derived from
+Opengrep, Semgrep, Trivy, or another detection corpus. This is an original first-party authorship
+record under the existing self-diligence frame, not an independent legal clearance.
+The Java AI pack adds one independently authored TypeScript structural rule,
+`ci-java-llm-tool-argument-command-execution`. It was written for CodeInspectus from the
+maintainer's detector contract, the official OpenAI Java SDK data shape, Java process semantics,
+and OWASP improper-output-handling/excessive-agency guidance. It was not ported, translated, or
+derived from Opengrep, Semgrep, Trivy, or another detection corpus. This is an original
+first-party authorship record under the existing self-diligence frame, not an independent legal
+clearance.
+The C# AI pack adds one independently authored TypeScript structural rule,
+`ci-csharp-llm-tool-argument-command-execution`. It was written for CodeInspectus from the
+maintainer's detector contract, the official OpenAI .NET SDK data shape, .NET process semantics,
+and OWASP improper-output-handling/excessive-agency guidance. It was not ported, translated, or
+derived from Opengrep, Semgrep, Trivy, or another detection corpus. This is an original
+first-party authorship record under the existing self-diligence frame, not an independent legal
+clearance.
+The PHP AI pack adds one independently authored TypeScript structural rule,
+`ci-php-llm-tool-argument-command-execution`. It was written for CodeInspectus from the maintainer's
+detector contract, the community-maintained `openai-php/client` tool-call data shape, PHP command
+execution semantics, and OWASP improper-output-handling/excessive-agency guidance. It was not
+ported, translated, or derived from Opengrep, Semgrep, Trivy, or another detection corpus. The PHP
+client is not represented as an official OpenAI SDK. This is an original first-party authorship
+record under the existing self-diligence frame, not an independent legal clearance.
+The Rust AI pack adds one independently authored TypeScript structural rule,
+`ci-rust-llm-tool-argument-command-execution`. It was written for CodeInspectus from the
+maintainer's detector contract, the community-maintained `async-openai` tool-call data shape,
+standard/Tokio process and Bollard Docker exec semantics, and OWASP improper-output-handling/
+excessive-agency guidance. It was not ported, translated, or derived from Opengrep, Semgrep,
+Trivy, or another detection corpus. `async-openai` is not represented as an official OpenAI SDK.
+This is an original first-party authorship record under the existing self-diligence frame, not an
+independent legal clearance.
+The Ruby AI pack adds one independently authored TypeScript structural rule,
+`ci-ruby-llm-tool-argument-command-execution`. It was written for CodeInspectus from the
+maintainer's detector contract, the official OpenAI Ruby SDK Chat/Responses tool-call data shapes,
+Ruby process/Open3 semantics, and OWASP improper-output-handling/excessive-agency guidance. It was
+not ported, translated, or derived from Opengrep, Semgrep, Trivy, or another detection corpus. This
+is an original first-party authorship record under the existing self-diligence frame, not an
+independent legal clearance.
+The Firebase configuration pack adds three independently authored TypeScript structural rules for
+literal unconditional public writes in Firestore, Cloud Storage, and Realtime Database Security
+Rules. They were written for CodeInspectus from the maintainer's precision contract and Firebase's
+documented rule semantics, not ported, translated, or derived from Opengrep, Semgrep, Trivy, or
+another detection corpus. This is an original first-party authorship record under the existing
+self-diligence frame, not an independent legal clearance.
+The GitHub Actions workflow pack adds two independently authored TypeScript structural rules for
+direct attacker-controlled GitHub context interpolation in shell steps and exact privileged
+pull-request checkout-and-execute chains. They were written for CodeInspectus from the maintainer's
+precision contract and GitHub's documented Actions security model, not ported, translated, or
+derived from Opengrep, Semgrep, Trivy, or another detection corpus. The `yaml` parser supplies
+syntax parsing only. This is an original first-party authorship record under the existing
+self-diligence frame, not an independent legal clearance.
 The JavaScript baseline implementation is independently authored TypeScript. After exact shadow
 parity, `ci-baseline-weak-hash` and `ci-baseline-weak-cipher` moved to the native SAST pack. Both
 original YAML rules remain active as reconciliation references and fallbacks. Exact pairs surface
@@ -120,7 +193,7 @@ are confirmed exploitable vulnerabilities.
 
 ## Provenance summary (the headline for counsel)
 
-- **All 70 custom detections are CodeInspectus-original work, licensed MIT.** In
+- **All 86 custom detections are CodeInspectus-original work, licensed MIT.** In
   `manifest.json` every `custom_rules` entry carries `"source": "codeinspectus-custom"`,
   and the Opengrep ruleset carries `"source": "codeinspectus-mit"` / `"license": "MIT"`.
 - **No detection copies copyrightable expression from a third-party corpus.** For the Opengrep
@@ -223,13 +296,13 @@ Gitleaks' own MIT default rules run alongside these three.)
 | `codeinspectus-supabase-service-role` | CWE-798 | Supabase service_role JWT (bypasses RLS) |
 | `codeinspectus-anthropic-key` | CWE-798 | Anthropic API key |
 
-## Inventory — first-party native rules (49) — the moat
+## Inventory — first-party native rules (65) — the moat
 
-Paths: `src/ai-checks/*.ts` and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api,javascript-baseline}/*.ts`
+Paths: `src/ai-checks/*.ts` and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api,go,java,csharp,php,rust,ruby,firebase,github-actions,javascript-baseline}/*.ts`
 (TypeScript implementations).
 **Origin: CodeInspectus-original · License: MIT · Derived-from: none.**
 
-### JavaScript/TypeScript pack (21)
+### JavaScript/TypeScript pack (22)
 
 | Rule id | File | CWE | What it flags |
 |---|---|---|---|
@@ -243,7 +316,8 @@ Paths: `src/ai-checks/*.ts` and `src/packs/{flutter,android,ios,react-native,exp
 | `ci-ai-rls-inverted-auth` | `supabase-rls.ts` | CWE-863 | RLS policy tests aud/role instead of user identity |
 | `ci-ai-edge-fn-no-auth` | `supabase-rls.ts` | CWE-862 | Supabase Edge Function with no auth verification |
 | `ci-ai-storage-rls-public` | `supabase-rls.ts` | CWE-863 / 285 | Permissive `USING (true)` policy on `storage.objects` (public bucket files) |
-| `ci-ai-prompt-injection-sink` | `prompt-injection.ts` | CWE-1426 | Potential prompt-injection sink |
+| `ci-ai-prompt-injection-sink` | `prompt-injection.ts` | CWE-1427 | Potential prompt-injection sink |
+| `ci-ai-llm-tool-argument-command-execution` | `unsafe-tool-execution.ts` | CWE-78 / 1426 | Model-produced tool argument reaches import-proven Node shell execution without a visible checked guard |
 | `ci-ai-client-metadata-authz` | `metadata-authz.ts` | CWE-639 / 284 | Authorization decision trusts client-writable Supabase `user_metadata` |
 | `ci-ai-llm-output-dangerous-html` | `llm-dangerous-html.ts` | CWE-79 / 116 | Untrusted or model output rendered into a React raw-HTML `__html` sink |
 | `ci-ai-client-error-leak` | `api-boundary.ts` | CWE-209 | Raw/internal error detail returned to an API client |
@@ -346,13 +420,15 @@ security coverage.
 | `ci-expo-secret-in-public-config` | `config.ts` | CWE-798 / 312 | A non-public server secret environment value is exposed through public Expo application config |
 | `ci-expo-unsigned-cleartext-updates` | `config.ts` | CWE-494 / 319 | Enabled Expo updates use a cleartext production URL without a literal code-signing certificate |
 
-### Python AI/API pack (6)
+### Python AI/API pack (10)
 
-Applicability requires bounded Python/package/framework evidence. All six rules emit only the
-documented exact high-confidence source/sink or literal-configuration shapes. The pack uses a Lezer syntax gate
+Applicability requires bounded Python/package/framework evidence. Eight rules emit only the
+documented exact high-confidence source/sink or literal-configuration shapes; the prompt-injection
+and model-tool shell-execution rules emit medium-confidence potential-risk findings. The pack uses a Lezer syntax gate
 and source-ordered intrafile analysis without importing or executing target code. It does not
 provide type resolution, a module graph, interprocedural flow, or path-sensitive branch merging.
-Format strings and leading-tab indentation currently fail closed. Generated, migration,
+Lezer-validated format strings are opaque dynamic values whose replacement expressions are not
+inspected; leading-tab indentation fails closed. Generated, migration,
 dependency, build, test, fixture, demo, sample, and example trees are excluded from project-root
 scans; unsupported, malformed, symlinked, unreadable, oversized, and bounded-out input is reported
 as a coverage limitation rather than inferred safe.
@@ -365,6 +441,148 @@ as a coverage limitation rather than inferred safe.
 | `ci-python-untrusted-redirect` | `redirect.ts` | CWE-601 | Proven request input reaches a framework redirect sink without a supported destination boundary |
 | `ci-python-untrusted-template-source` | `template-source.ts` | CWE-1336 / 94 | Proven request input becomes dynamic Jinja template source and is rendered |
 | `ci-python-llm-output-dangerous-html` | `llm-html.ts` | CWE-79 / 116 | Proven OpenAI/Anthropic output reaches an HTML response without supported sanitization |
+| `ci-python-faiss-dangerous-deserialization` | `faiss-deserialization.ts` | CWE-502 | A proven LangChain FAISS load explicitly enables pickle deserialization; exploitability depends on artifact origin and integrity |
+| `ci-python-langchain-web-loader-ssrf` | `langchain-web-loader-ssrf.ts` | CWE-918 | A proven LangChain WebBaseLoader fetches a complete URL derived from web request input; network and runtime boundaries remain unverified |
+| `ci-python-prompt-injection-sink` | `prompt-injection.ts` | CWE-1427 | Framework-proven request input reaches privileged OpenAI/Anthropic instructions, or tool-enabled prompt input; caller authorization and runtime tool controls remain unverified |
+| `ci-python-llm-tool-argument-command-execution` | `unsafe-tool-execution.ts` | CWE-78 / 1426 | Model-produced OpenAI/Anthropic tool arguments reach a proven Python shell API directly or through one named wrapper without a visible checked guard |
+
+### Go AI pack (1)
+
+Applicability requires both Go source/module evidence and the exact official
+`github.com/openai/openai-go` module. The pack performs bounded, source-ordered intrafile analysis
+without building or executing target code. It recognizes direct aliases, `encoding/json.Unmarshal`,
+one local parsing helper, and one local command wrapper; checked rejection/approval or allowlist
+guards and validated replacement values suppress findings. It does not provide general Go SAST,
+type or module resolution, cross-module flow, support for other model SDKs, runtime sandbox proof, or
+complete agent/tool security coverage. Symlinked, malformed, unreadable, oversized, generated,
+test/example, and bounded-out source is skipped or reported according to the pack limitations.
+
+| Rule id | File | CWE | What it flags |
+|---|---|---|---|
+| `ci-go-llm-tool-argument-command-execution` | `unsafe-tool-execution.ts` | CWE-78 / 1426 | Official OpenAI Go tool-call arguments reach an import-proven recognized `os/exec` shell invocation without a visible checked guard |
+
+### Java AI pack (1)
+
+Applicability requires Java source/build evidence and an exact official `com.openai:openai-java`
+or `com.openai:openai-java-core` dependency. The pack performs bounded, source-ordered intrafile
+analysis without building or executing target code. It recognizes official imported tool-call
+argument types, direct aliases, one local parsing helper, and one local command wrapper. A
+`ProcessBuilder` must actually be started; checked rejection/approval or allowlist guards and
+validated replacement values suppress findings. It does not provide general Java SAST, type/module
+resolution, support Spring AI/LangChain4j/Azure OpenAI, or prove runtime authorization/sandboxing.
+Java text blocks and malformed, symlinked, unreadable, oversized, generated, test/example, or
+bounded-out source fail closed or are reported according to the pack limitations.
+
+| Rule id | File | CWE | What it flags |
+|---|---|---|---|
+| `ci-java-llm-tool-argument-command-execution` | `unsafe-tool-execution.ts` | CWE-78 / 1426 | Official OpenAI Java tool-call arguments reach an actually-started recognized Java shell invocation without a visible checked guard |
+
+### C# AI pack (1)
+
+Applicability requires C# source/project evidence and an exact official `OpenAI` NuGet package
+reference. The pack performs bounded, intrafile analysis without compiling or executing target
+code. It recognizes official `ChatToolCall.FunctionArguments`, direct aliases, supported
+`System.Text.Json` dictionary/property extraction, one local parsing helper, and one local command
+wrapper. `System.Diagnostics.Process` must actually be started with a recognized shell and command
+flag; checked rejection/approval or allowlist guards and validated replacement values suppress
+findings. It does not provide general C# SAST, resolve types or project references, support Semantic
+Kernel/Azure OpenAI, trace cross-file flow, inspect raw-string contents, or prove runtime
+authorization/sandboxing. Malformed raw strings and symlinked, unreadable, oversized, generated,
+test/example, build, or bounded-out source fail closed or are reported according to pack limits.
+
+| Rule id | File | CWE | What it flags |
+|---|---|---|---|
+| `ci-csharp-llm-tool-argument-command-execution` | `unsafe-tool-execution.ts` | CWE-78 / 1426 | Official OpenAI .NET tool-call arguments reach an actually-started recognized `System.Diagnostics.Process` shell invocation without a visible checked guard |
+
+### PHP AI pack (1)
+
+Applicability requires PHP source/Composer evidence and exact `openai-php/client` or
+`openai-php/laravel` package evidence. These packages are community maintained, not official
+OpenAI SDKs. The pack performs bounded, intrafile analysis without installing dependencies or
+executing target code. It recognizes tool-call `function->arguments`, direct aliases, associative
+`json_decode` extraction, one local parsing helper, one local command wrapper, and one exact mapped
+variadic method dispatch reaching `exec`, `system`, `shell_exec`, or `passthru`. Checked approval
+or full-command allowlists and validated replacement values suppress findings; a first-token
+executable check does not neutralize metacharacters in the rest of a command. It does not provide
+general PHP SAST, resolve types or the Composer graph, trace cross-file flow, support generic
+callable dispatch, or prove runtime authorization/sandboxing. Heredoc/nowdoc, malformed, symlinked,
+unreadable, oversized, generated, test/example, build, or bounded-out source fails closed or is
+reported according to pack limits.
+
+| Rule id | File | CWE | What it flags |
+|---|---|---|---|
+| `ci-php-llm-tool-argument-command-execution` | `unsafe-tool-execution.ts` | CWE-78 / 1426 | Community OpenAI PHP ecosystem tool-call arguments reach a PHP command-execution sink without a visible checked guard |
+
+### Rust AI pack (1)
+
+Applicability requires Rust source/Cargo evidence and exact `async-openai` dependency evidence.
+The crate is community maintained, not an official OpenAI SDK. The pack performs bounded,
+source-ordered intrafile analysis without fetching crates, invoking rustc, building, or executing
+target code. It recognizes imported async-openai tool-call arguments, direct aliases,
+`serde_json` extraction, one recognized `generate_function_call` result, one local command
+wrapper, import-proven standard/Tokio process shells, and literal Bollard Docker exec shell
+vectors paired with `create_exec` and `start_exec`. Checked approval/allowlist rejection and
+validated replacement values suppress findings. It does not provide general Rust SAST, resolve
+types or the Cargo graph, trace cross-crate flow, support generic dispatch, or prove runtime
+container isolation, authorization, or sandboxing. Malformed, symlinked, unreadable, oversized,
+generated, test/example, build, or bounded-out source fails closed or is reported according to
+pack limits.
+
+| Rule id | File | CWE | What it flags |
+|---|---|---|---|
+| `ci-rust-llm-tool-argument-command-execution` | `unsafe-tool-execution.ts` | CWE-78 / 1426 | Community async-openai tool-call arguments reach a recognized Rust process or Bollard Docker exec shell invocation without a visible checked guard |
+
+### Ruby AI pack (1)
+
+Applicability requires Ruby source/Bundler evidence and the exact official `openai` gem in a
+production Gemfile or runtime gemspec dependency. Gemfile.lock alone does not activate the pack
+because Bundler lockfiles do not preserve dependency groups. The pack performs bounded, source-ordered
+intrafile analysis without installing gems or executing target code. It recognizes Chat tool-call
+`function.arguments`, explicitly typed Responses function-tool `.arguments`, direct aliases,
+`JSON.parse` command extraction, one local parsing helper, and one local command wrapper reaching
+`system`, `exec`, `IO.popen`, or import-proven Open3 single-string or explicit shell-vector calls.
+Checked approval/full-command allowlists and validated replacement values suppress findings. It
+does not provide general Ruby SAST, resolve types or the Bundler graph, trace cross-file flow,
+support backticks/percent-x/spawn APIs, or prove runtime authorization/sandboxing. Heredocs,
+malformed, symlinked, unreadable, oversized, generated, spec/test/example, build, or bounded-out
+source fails closed or is reported according to pack limits.
+
+| Rule id | File | CWE | What it flags |
+|---|---|---|---|
+| `ci-ruby-llm-tool-argument-command-execution` | `unsafe-tool-execution.ts` | CWE-78 / 1426 | Official OpenAI Ruby tool-call arguments reach a recognized Ruby command-execution sink without a visible checked guard |
+
+### Firebase configuration pack (3)
+
+Applicability requires Firebase project, package, or recognized rule-file evidence. The pack
+performs bounded, read-only parsing without invoking Firebase tooling or executing target code.
+Firestore and Cloud Storage findings require exact service declarations plus a literal
+write/create/update/delete grant with no condition or a condition exactly equal to `true`;
+Realtime Database findings require strict JSON and a `.write` value of boolean or exact string
+`true`. Public reads and non-literal conditions stay silent. The pack does not evaluate helper
+functions, deployed policy, IAM, App Check, or runtime access.
+
+| Rule id | File | CWE | What it flags |
+|---|---|---|---|
+| `ci-firebase-firestore-public-write` | `firebase-config.ts` | CWE-862 / 285 | A literal unconditional public write grant in Cloud Firestore Security Rules |
+| `ci-firebase-storage-public-write` | `firebase-config.ts` | CWE-862 / 285 | A literal unconditional public write grant in Cloud Storage Security Rules |
+| `ci-firebase-realtime-database-public-write` | `firebase-config.ts` | CWE-862 / 285 | A Realtime Database `.write` rule set to boolean or exact string `true` |
+
+### GitHub Actions workflow pack (2)
+
+Applicability requires direct root `.github/workflows/*.yml` or `.yaml` evidence. The pack uses
+strict YAML 1.2 parsing and bounded, no-follow loading without executing workflows or target code.
+The expression rule requires a documented attacker-controlled `github` context directly in `run`;
+safe intermediate `env` and action `with` values stay silent. The pwn-request rule requires exact
+`pull_request_target`, untrusted pull-request checkout into the default workspace, and subsequent
+execution of checked-out code or a local action. Protected checkout v7 stays silent unless its
+unsafe opt-in is explicit. General expression aliases, custom actions, inter-step/artifact flows,
+non-checkout fetches, alternate checkout paths, runner state, deployed policy, and complete workflow
+review are outside the contract.
+
+| Rule id | File | CWE | What it flags |
+|---|---|---|---|
+| `ci-github-actions-untrusted-expression-command` | `workflow-security.ts` | CWE-78 / 94 | Direct attacker-controlled GitHub event context interpolated into a shell `run` step |
+| `ci-github-actions-pwn-request` | `workflow-security.ts` | CWE-94 / 829 | Privileged `pull_request_target` workflow checks out an untrusted PR ref and then executes checked-out code |
 
 ### JavaScript baseline SAST pack (2)
 

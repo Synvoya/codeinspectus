@@ -172,14 +172,20 @@ Same control set for all three (authorization family). Rows identical; listed on
 | CIS 16.1 | medium | "Secure Application Development Process" | (b) Process-level; 16.12 may fit better. |
 | OWASP A03:2021 | **low** | "Injection" (CWE View **1347** — UNVERIFIED) | (a) Category firm; View ID unverified. |
 
-### CWE-1426 — Improper handling of untrusted input to an LLM
+### CWE-1426 — Improper validation of generative-AI output
 
 | Control | Conf. | Source citation | Rationale |
 |---|---|---|---|
 | ISO A.8.28 | medium | "Secure coding" | (a/b) Generic secure-coding fit for a novel weakness class; loose. |
 | ISO A.8.26 | medium | "Application security requirements" | (b) Wants a GRC/audit eye. |
 | NIST PR.PS-06 | medium | "Secure software development practices" | (b) Wants a GRC/audit eye. |
-| OWASP LLM01:2025 | high | "Prompt Injection" | (a) Canonical — this is *the* prompt-injection category. |
+| OWASP LLM05:2025 | high | "Improper Output Handling" | (a) Canonical for unvalidated generative-AI output. |
+
+Prompt-injection findings use **CWE-1427** and carry explicit OWASP LLM01 metadata (plus LLM06
+when tool access is configured). CWE-1427 is intentionally not given generic ISO/NIST control
+mappings in `data/cwe_to_controls.json` without a separate maintainer policy review.
+The unsafe model-tool execution rules use CWE-1426 only for the downstream model-output
+validation failure, alongside primary CWE-78 and explicit OWASP LLM05/LLM06 metadata.
 
 ### CWE-327 — Broken / risky crypto algorithm
 
@@ -293,8 +299,9 @@ This is a solo, free, community project; integrity rests on never over-claiming.
   **not referenced** by any `cwe_map`/bucket row. Either wire it in or drop it from the
   code-visible list — a listed-but-unused control overstates the surface.
 - **`CIS 2.1` (Software Inventory)** likewise listed but unused after the SBOM relabel.
-- **`OWASP LLM06:2025` (Excessive Agency)** listed in `code_visible_controls` but no CWE maps
-  to it yet (no excessive-agency detector exists). Listed-but-unused.
+- **`OWASP LLM06:2025` (Excessive Agency)** is emitted explicitly by prompt/tool-aware rules,
+  including model-produced tool arguments reaching a shell sink. It remains intentionally absent
+  from the generic CWE map because agency depends on rule-specific execution context.
 - These are **not bugs**; they are honest gaps to close before the controls are shown to a
   user as "in scope."
 

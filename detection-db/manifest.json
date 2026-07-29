@@ -1,7 +1,7 @@
 {
   "name": "CodeInspectus Detection Database",
-  "version": "1.0.0",
-  "date": "2026-07-27",
+  "version": "1.13.0",
+  "date": "2026-07-28",
   "description": "CodeInspectus's curated first-party detections. Native packs cover bounded AI/framework checks plus selected reconciled SAST rules; bundled external engines remain additive fallbacks and broader scanners.",
   "engine_versions": {
     "opengrep": "1.23.0",
@@ -114,7 +114,17 @@
       "pack_id": "javascript-typescript",
       "name": "Potential prompt-injection sink",
       "kind": "ai",
-      "cwe": ["CWE-1426"],
+      "cwe": ["CWE-1427"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-llm-tool-argument-command-execution",
+      "engine": "codeinspectus-ai",
+      "pack_id": "javascript-typescript",
+      "name": "Model-produced tool argument reaches shell execution",
+      "kind": "ai",
+      "cwe": ["CWE-78", "CWE-1426"],
+      "owasp_llm": ["LLM05:2025", "LLM06:2025"],
       "source": "codeinspectus-custom"
     },
     {
@@ -481,6 +491,168 @@
       "kind": "ai",
       "severity": "high",
       "cwe": ["CWE-79", "CWE-116"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-python-faiss-dangerous-deserialization",
+      "engine": "codeinspectus-ai",
+      "pack_id": "python-ai-api",
+      "name": "LangChain FAISS dangerous deserialization enabled",
+      "kind": "ai",
+      "severity": "high",
+      "cwe": ["CWE-502"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-python-langchain-web-loader-ssrf",
+      "engine": "codeinspectus-ai",
+      "pack_id": "python-ai-api",
+      "name": "Request input controls a LangChain web loader",
+      "kind": "ai",
+      "severity": "high",
+      "cwe": ["CWE-918"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-python-prompt-injection-sink",
+      "engine": "codeinspectus-ai",
+      "pack_id": "python-ai-api",
+      "name": "Potential Python prompt-injection sink",
+      "kind": "ai",
+      "severity": "high",
+      "cwe": ["CWE-1427"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-python-llm-tool-argument-command-execution",
+      "engine": "codeinspectus-ai",
+      "pack_id": "python-ai-api",
+      "name": "Python model-produced tool argument reaches shell execution",
+      "kind": "ai",
+      "severity": "high",
+      "cwe": ["CWE-78", "CWE-1426"],
+      "owasp_llm": ["LLM05:2025", "LLM06:2025"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-go-llm-tool-argument-command-execution",
+      "engine": "codeinspectus-ai",
+      "pack_id": "go-ai",
+      "name": "Go model-produced tool argument reaches shell execution",
+      "kind": "ai",
+      "severity": "high",
+      "cwe": ["CWE-78", "CWE-1426"],
+      "owasp_llm": ["LLM05:2025", "LLM06:2025"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-java-llm-tool-argument-command-execution",
+      "engine": "codeinspectus-ai",
+      "pack_id": "java-ai",
+      "name": "Java model-produced tool argument reaches shell execution",
+      "kind": "ai",
+      "severity": "high",
+      "cwe": ["CWE-78", "CWE-1426"],
+      "owasp_llm": ["LLM05:2025", "LLM06:2025"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-csharp-llm-tool-argument-command-execution",
+      "engine": "codeinspectus-ai",
+      "pack_id": "csharp-ai",
+      "name": "C# model-produced tool argument reaches shell execution",
+      "kind": "ai",
+      "severity": "high",
+      "cwe": ["CWE-78", "CWE-1426"],
+      "owasp_llm": ["LLM05:2025", "LLM06:2025"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-php-llm-tool-argument-command-execution",
+      "engine": "codeinspectus-ai",
+      "pack_id": "php-ai",
+      "name": "PHP model-produced tool argument reaches command execution",
+      "kind": "ai",
+      "severity": "high",
+      "cwe": ["CWE-78", "CWE-1426"],
+      "owasp_llm": ["LLM05:2025", "LLM06:2025"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-rust-llm-tool-argument-command-execution",
+      "engine": "codeinspectus-ai",
+      "pack_id": "rust-ai",
+      "name": "Rust model-produced tool argument reaches shell execution",
+      "kind": "ai",
+      "severity": "high",
+      "cwe": ["CWE-78", "CWE-1426"],
+      "owasp_llm": ["LLM05:2025", "LLM06:2025"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ruby-llm-tool-argument-command-execution",
+      "engine": "codeinspectus-ai",
+      "pack_id": "ruby-ai",
+      "name": "Ruby model-produced tool argument reaches command execution",
+      "kind": "ai",
+      "severity": "high",
+      "cwe": ["CWE-78", "CWE-1426"],
+      "owasp_llm": ["LLM05:2025", "LLM06:2025"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-firebase-firestore-public-write",
+      "engine": "codeinspectus-ai",
+      "pack_id": "firebase",
+      "name": "Cloud Firestore rule allows public writes",
+      "kind": "ai",
+      "severity": "critical",
+      "cwe": ["CWE-862", "CWE-285"],
+      "owasp_web": ["A01:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-firebase-storage-public-write",
+      "engine": "codeinspectus-ai",
+      "pack_id": "firebase",
+      "name": "Cloud Storage rule allows public writes",
+      "kind": "ai",
+      "severity": "critical",
+      "cwe": ["CWE-862", "CWE-285"],
+      "owasp_web": ["A01:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-firebase-realtime-database-public-write",
+      "engine": "codeinspectus-ai",
+      "pack_id": "firebase",
+      "name": "Realtime Database rule allows public writes",
+      "kind": "ai",
+      "severity": "critical",
+      "cwe": ["CWE-862", "CWE-285"],
+      "owasp_web": ["A01:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-github-actions-untrusted-expression-command",
+      "engine": "codeinspectus-ai",
+      "pack_id": "github-actions",
+      "name": "GitHub Actions script interpolates attacker-controlled event data",
+      "kind": "ai",
+      "severity": "high",
+      "cwe": ["CWE-78", "CWE-94"],
+      "owasp_web": ["A03:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-github-actions-pwn-request",
+      "engine": "codeinspectus-ai",
+      "pack_id": "github-actions",
+      "name": "Privileged GitHub Actions workflow executes untrusted pull request code",
+      "kind": "ai",
+      "severity": "critical",
+      "cwe": ["CWE-94", "CWE-829"],
+      "owasp_web": ["A08:2021"],
       "source": "codeinspectus-custom"
     },
     {

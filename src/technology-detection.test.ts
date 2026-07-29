@@ -29,6 +29,40 @@ afterEach(async () => {
 });
 
 describe("detectTechnologies", () => {
+  test("detects Firebase from deployable rule/config paths and exact package dependencies", async () => {
+    const configured = await temporaryProject();
+    await put(configured, "firebase.json", '{"firestore":{"rules":"firestore.rules"}}\n');
+    await put(configured, "firestore.rules", "service cloud.firestore {}\n");
+    const packaged = await temporaryProject();
+    await put(packaged, "package.json", JSON.stringify({ dependencies: { firebase: "12.0.0" } }));
+
+    const configuredResult = await detectTechnologies(configured);
+    const packagedResult = await detectTechnologies(packaged);
+
+    expect(configuredResult.detected_technologies).toEqual([{
+      id: "firebase",
+      kind: "platform",
+      confidence: "high",
+      evidence: ["firebase.json", "firestore.rules"],
+    }]);
+    expect(packagedResult.detected_technologies).toEqual([{
+      id: "firebase",
+      kind: "platform",
+      confidence: "high",
+      evidence: ["package.json"],
+    }]);
+  });
+
+  test("rejects Firebase filename/package lookalikes and non-production rule paths", async () => {
+    const project = await temporaryProject();
+    await put(project, "firebase.json.bak", "{}\n");
+    await put(project, "custom-firestore.rules", "service cloud.firestore {}\n");
+    await put(project, "tests/firestore.rules", "service cloud.firestore {}\n");
+    await put(project, "package.json", JSON.stringify({ dependencies: { firebaseish: "1.0.0" } }));
+
+    expect(ids(await detectTechnologies(project))).toEqual([]);
+  });
+
   test("detects JavaScript, TypeScript, SQL, React, Next.js, and Supabase from repository evidence", async () => {
     const project = await temporaryProject();
     await put(project, "src/worker.js", "export const worker = true;\n");
@@ -678,6 +712,7 @@ describe("detectTechnologies", () => {
       "Jinja2>=3.1",
       "openai>=1.0",
       "anthropic>=0.40",
+      "langchain-community>=0.3",
       "not-fastapi==1.0",
       "",
     ].join("\n"));
@@ -685,11 +720,343 @@ describe("detectTechnologies", () => {
     const result = await detectTechnologies(project);
 
     expect(ids(result)).toEqual([
-      "python", "fastapi", "starlette", "flask", "django", "jinja2", "openai", "anthropic",
+      "python", "fastapi", "starlette", "flask", "django", "jinja2", "openai", "anthropic", "langchain",
     ]);
     expect(result.detected_technologies.find((technology) => technology.id === "flask")?.confidence)
       .toBe("medium");
     expect(result.limitations).toEqual([]);
+  });
+
+  test("detects Go and the exact official OpenAI Go module", async () => {
+    const project = await temporaryProject();
+    await put(project, "cmd/agent/main.go", "package main\n");
+    await put(project, "go.mod", [
+      "module example.com/agent",
+      "",
+      "go 1.24",
+      "",
+      "require (",
+      "  github.com/openai/openai-go/v3 v3.16.0",
+      "  github.com/example/openai-go-helper v1.0.0",
+      ")",
+      "",
+    ].join("\n"));
+
+    const result = await detectTechnologies(project);
+
+    expect(ids(result)).toEqual(["go", "openai"]);
+    expect(result.detected_technologies.find((technology) => technology.id === "openai")?.evidence)
+      .toEqual(["go.mod"]);
+    expect(result.limitations).toEqual([]);
+  });
+
+  test("does not infer OpenAI from a near-name Go module", async () => {
+    const project = await temporaryProject();
+    await put(project, "go.mod", [
+      "module example.com/agent",
+      "go 1.24",
+      "require github.com/example/openai-go v1.0.0",
+      "",
+    ].join("\n"));
+
+    expect(ids(await detectTechnologies(project))).toEqual(["go"]);
+  });
+
+  test("supports a direct Go source target without requiring a manifest", async () => {
+    const project = await temporaryProject();
+    const file = await put(project, "nested/main.go", "package main\n");
+
+    const result = await detectTechnologies(file);
+
+    expect(result.detected_technologies).toEqual([{
+      id: "go",
+      kind: "language",
+      confidence: "high",
+      evidence: ["main.go"],
+    }]);
+  });
+
+  test("detects Java and the exact official OpenAI Java Maven artifact", async () => {
+    const project = await temporaryProject();
+    await put(project, "src/main/java/example/Agent.java", "package example;\n");
+    await put(project, "pom.xml", [
+      "<project>",
+      "  <dependencies>",
+      "    <dependency>",
+      "      <groupId>com.openai</groupId>",
+      "      <artifactId>openai-java</artifactId>",
+      "      <version>4.43.0</version>",
+      "    </dependency>",
+      "  </dependencies>",
+      "</project>",
+      "",
+    ].join("\n"));
+
+    const result = await detectTechnologies(project);
+
+    expect(ids(result)).toEqual(["java", "openai"]);
+    expect(result.detected_technologies.find((technology) => technology.id === "openai")?.evidence)
+      .toEqual(["pom.xml"]);
+    expect(result.limitations).toEqual([]);
+  });
+
+  test("does not infer OpenAI from near-name or wrong-group Maven artifacts", async () => {
+    const project = await temporaryProject();
+    await put(project, "pom.xml", [
+      "<project><dependencies>",
+      "<dependency><groupId>com.example</groupId><artifactId>openai-java</artifactId></dependency>",
+      "<dependency><groupId>com.openai</groupId><artifactId>openai-java-helper</artifactId></dependency>",
+      "</dependencies></project>",
+      "",
+    ].join("\n"));
+
+    expect(ids(await detectTechnologies(project))).toEqual(["java"]);
+  });
+
+  test("detects the exact official OpenAI Java Gradle coordinate", async () => {
+    const project = await temporaryProject();
+    await put(project, "build.gradle.kts", [
+      "plugins { java }",
+      "dependencies { implementation(\"com.openai:openai-java-core:4.43.0\") }",
+      "",
+    ].join("\n"));
+
+    expect(ids(await detectTechnologies(project))).toEqual(["java", "openai"]);
+  });
+
+  test("supports a direct Java source target without requiring a manifest", async () => {
+    const project = await temporaryProject();
+    const file = await put(project, "nested/Agent.java", "package nested;\n");
+
+    const result = await detectTechnologies(file);
+
+    expect(result.detected_technologies).toEqual([{
+      id: "java",
+      kind: "language",
+      confidence: "high",
+      evidence: ["Agent.java"],
+    }]);
+  });
+
+  test("detects C# and the exact official OpenAI NuGet package", async () => {
+    const project = await temporaryProject();
+    await put(project, "src/Agent.cs", "namespace Agent;\n");
+    await put(project, "Agent.csproj", [
+      '<Project Sdk="Microsoft.NET.Sdk">',
+      "  <ItemGroup>",
+      '    <PackageReference Include="OpenAI" Version="2.9.1" />',
+      "  </ItemGroup>",
+      "</Project>",
+      "",
+    ].join("\n"));
+
+    const result = await detectTechnologies(project);
+
+    expect(ids(result)).toEqual(["csharp", "openai"]);
+    expect(result.detected_technologies.find((technology) => technology.id === "openai")?.evidence)
+      .toEqual(["Agent.csproj"]);
+    expect(result.limitations).toEqual([]);
+  });
+
+  test("does not infer OpenAI from near-name or commented C# package references", async () => {
+    const project = await temporaryProject();
+    await put(project, "Agent.csproj", [
+      '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup>',
+      '  <PackageReference Include="OpenAI.Extensions" Version="1.0.0" />',
+      '  <!-- <PackageReference Include="OpenAI" Version="2.9.1" /> -->',
+      "</ItemGroup></Project>",
+      "",
+    ].join("\n"));
+
+    expect(ids(await detectTechnologies(project))).toEqual(["csharp"]);
+  });
+
+  test("supports a direct C# source target without requiring a project file", async () => {
+    const project = await temporaryProject();
+    const file = await put(project, "nested/Agent.cs", "namespace Nested;\n");
+
+    const result = await detectTechnologies(file);
+
+    expect(result.detected_technologies).toEqual([{
+      id: "csharp",
+      kind: "language",
+      confidence: "high",
+      evidence: ["Agent.cs"],
+    }]);
+  });
+
+  test("detects PHP and the exact OpenAI PHP ecosystem Composer package", async () => {
+    const project = await temporaryProject();
+    await put(project, "src/Agent.php", "<?php class Agent {}\n");
+    await put(project, "composer.json", JSON.stringify({
+      require: { php: "^8.2", "openai-php/client": "^0.20" },
+    }));
+
+    const result = await detectTechnologies(project);
+
+    expect(ids(result)).toEqual(["php", "openai"]);
+    expect(result.detected_technologies.find((technology) => technology.id === "openai")?.evidence)
+      .toEqual(["composer.json"]);
+    expect(result.limitations).toEqual([]);
+  });
+
+  test("does not infer OpenAI from near-name PHP packages or unrelated manifest text", async () => {
+    const project = await temporaryProject();
+    await put(project, "src/Agent.php", "<?php // openai-php/client\n");
+    await put(project, "composer.json", JSON.stringify({
+      require: { "example/openai-php-client": "1.0.0" },
+      description: "openai-php/client",
+    }));
+
+    expect(ids(await detectTechnologies(project))).toEqual(["php"]);
+  });
+
+  test("supports a direct PHP source target without requiring Composer", async () => {
+    const project = await temporaryProject();
+    const file = await put(project, "nested/Agent.php", "<?php class Agent {}\n");
+
+    const result = await detectTechnologies(file);
+
+    expect(result.detected_technologies).toEqual([{
+      id: "php",
+      kind: "language",
+      confidence: "high",
+      evidence: ["Agent.php"],
+    }]);
+  });
+
+  test("detects Rust and the exact async-openai Cargo dependency", async () => {
+    const project = await temporaryProject();
+    await put(project, "src/main.rs", "fn main() {}\n");
+    await put(project, "Cargo.toml", [
+      "[package]",
+      'name = "agent"',
+      "[dependencies]",
+      'async-openai = { version = "0.29", features = ["byot"] }',
+      "",
+    ].join("\n"));
+
+    const result = await detectTechnologies(project);
+
+    expect(ids(result)).toEqual(["rust", "openai"]);
+    expect(result.detected_technologies.find((technology) => technology.id === "openai")?.evidence)
+      .toEqual(["Cargo.toml"]);
+    expect(result.limitations).toEqual([]);
+  });
+
+  test("does not infer OpenAI from near-name, dev-only, or commented Rust dependencies", async () => {
+    const project = await temporaryProject();
+    await put(project, "src/main.rs", "// async-openai\nfn main() {}\n");
+    await put(project, "Cargo.toml", [
+      "[package]",
+      'name = "async-openai-example"',
+      "[dependencies]",
+      'async-openai-extra = "1"',
+      '# async-openai = "0.29"',
+      "[dev-dependencies]",
+      'async-openai = "0.29"',
+      "",
+    ].join("\n"));
+
+    expect(ids(await detectTechnologies(project))).toEqual(["rust"]);
+  });
+
+  test("supports a direct Rust source target without requiring Cargo", async () => {
+    const project = await temporaryProject();
+    const file = await put(project, "nested/main.rs", "fn main() {}\n");
+
+    const result = await detectTechnologies(file);
+
+    expect(result.detected_technologies).toEqual([{
+      id: "rust",
+      kind: "language",
+      confidence: "high",
+      evidence: ["main.rs"],
+    }]);
+  });
+
+  test("detects Ruby and the exact official OpenAI gem", async () => {
+    const project = await temporaryProject();
+    await put(project, "lib/agent.rb", "class Agent; end\n");
+    await put(project, "Gemfile", [
+      'source "https://rubygems.org"',
+      'gem "openai", "~> 0.72"',
+      'gem "openai-helper"',
+      "",
+    ].join("\n"));
+
+    const result = await detectTechnologies(project);
+
+    expect(ids(result)).toEqual(["ruby", "openai"]);
+    expect(result.detected_technologies.find((technology) => technology.id === "openai")?.evidence)
+      .toEqual(["Gemfile"]);
+    expect(result.limitations).toEqual([]);
+  });
+
+  test("does not infer runtime OpenAI from a group-less lockfile but detects a runtime gemspec dependency", async () => {
+    const locked = await temporaryProject();
+    await put(locked, "Gemfile.lock", [
+      "GEM", "  specs:", "    openai (0.72.0)", "DEPENDENCIES", "  openai (~> 0.72)", "",
+    ].join("\n"));
+    expect(ids(await detectTechnologies(locked))).toEqual(["ruby"]);
+
+    const gemspec = await temporaryProject();
+    await put(gemspec, "agent.gemspec", 'spec.add_runtime_dependency "openai", "~> 0.72"\n');
+    expect(ids(await detectTechnologies(gemspec))).toEqual(["ruby", "openai"]);
+  });
+
+  test("does not infer OpenAI from near-name, commented, or development-only Ruby gems", async () => {
+    const project = await temporaryProject();
+    await put(project, "Gemfile", [
+      '# gem "openai"',
+      'gem "ruby-openai"',
+      'gem "openai-helper"',
+      'group :development, :test do',
+      '  gem "openai"',
+      "end",
+      "",
+    ].join("\n"));
+    await put(project, "agent.gemspec", 'spec.add_development_dependency "openai"\n');
+
+    expect(ids(await detectTechnologies(project))).toEqual(["ruby"]);
+  });
+
+  test("supports a direct Ruby source target without requiring Bundler", async () => {
+    const project = await temporaryProject();
+    const file = await put(project, "nested/agent.rb", "class Agent; end\n");
+
+    const result = await detectTechnologies(file);
+
+    expect(result.detected_technologies).toEqual([{
+      id: "ruby",
+      kind: "language",
+      confidence: "high",
+      evidence: ["agent.rb"],
+    }]);
+  });
+
+  test("detects GitHub Actions only from direct workflow files", async () => {
+    const project = await temporaryProject();
+    await put(project, ".github/workflows/ci.yml", "on: push\njobs: {}\n");
+    await put(project, ".github/workflows/nested/ignored.yaml", "on: push\njobs: {}\n");
+    await put(project, "docs/.github/workflows/example.yml", "on: push\njobs: {}\n");
+
+    const result = await detectTechnologies(project);
+    expect(result.detected_technologies).toContainEqual({
+      id: "github-actions",
+      kind: "platform",
+      confidence: "high",
+      evidence: [".github/workflows/ci.yml"],
+    });
+  });
+
+  test("supports a direct GitHub Actions workflow target and rejects lookalike YAML", async () => {
+    const project = await temporaryProject();
+    const workflow = await put(project, ".github/workflows/ci.yaml", "on: push\njobs: {}\n");
+    const lookalike = await put(project, "workflows/ci.yaml", "on: push\njobs: {}\n");
+
+    expect(ids(await detectTechnologies(workflow))).toEqual(["github-actions"]);
+    expect(ids(await detectTechnologies(lookalike))).toEqual([]);
   });
 
   test("reads PEP 621 and Poetry dependencies without matching unrelated TOML text", async () => {

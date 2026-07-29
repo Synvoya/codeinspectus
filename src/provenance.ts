@@ -25,6 +25,22 @@ export const EXPO_PACK_DISPATCH_COMPONENT = "pack:expo:dispatch";
 export const EXPO_CONFIG_PARSER_COMPONENT = "expo:static-config-parser";
 export const PYTHON_AI_API_PACK_DISPATCH_COMPONENT = "pack:python-ai-api:dispatch";
 export const PYTHON_LEZER_PARSER_COMPONENT = "python:lezer-structural-parser";
+export const GO_AI_PACK_DISPATCH_COMPONENT = "pack:go-ai:dispatch";
+export const GO_STRUCTURAL_PARSER_COMPONENT = "go:bounded-structural-parser";
+export const JAVA_AI_PACK_DISPATCH_COMPONENT = "pack:java-ai:dispatch";
+export const JAVA_STRUCTURAL_PARSER_COMPONENT = "java:bounded-structural-parser";
+export const CSHARP_AI_PACK_DISPATCH_COMPONENT = "pack:csharp-ai:dispatch";
+export const CSHARP_STRUCTURAL_PARSER_COMPONENT = "csharp:bounded-structural-parser";
+export const PHP_AI_PACK_DISPATCH_COMPONENT = "pack:php-ai:dispatch";
+export const PHP_STRUCTURAL_PARSER_COMPONENT = "php:bounded-structural-parser";
+export const RUST_AI_PACK_DISPATCH_COMPONENT = "pack:rust-ai:dispatch";
+export const RUST_STRUCTURAL_PARSER_COMPONENT = "rust:bounded-structural-parser";
+export const RUBY_AI_PACK_DISPATCH_COMPONENT = "pack:ruby-ai:dispatch";
+export const RUBY_STRUCTURAL_PARSER_COMPONENT = "ruby:bounded-structural-parser";
+export const FIREBASE_PACK_DISPATCH_COMPONENT = "pack:firebase:dispatch";
+export const FIREBASE_RULES_PARSER_COMPONENT = "firebase:bounded-rules-parser";
+export const GITHUB_ACTIONS_PACK_DISPATCH_COMPONENT = "pack:github-actions:dispatch";
+export const GITHUB_ACTIONS_YAML_PARSER_COMPONENT = "github-actions:yaml-workflow-parser";
 export const JAVASCRIPT_BASELINE_PACK_DISPATCH_COMPONENT = "pack:javascript-baseline:dispatch";
 export const JAVASCRIPT_BASELINE_PARSER_COMPONENT = "javascript:bounded-structural-parser";
 export const NATIVE_SAST_RECONCILIATION_COMPONENT = "native-sast:opengrep-reconciliation";
@@ -38,7 +54,8 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   "ai:client-secrets": "3:source-built-and-oversized-bundle-secret-state",
   "ai:supabase-rls-policy-state": "2:effective-migration-state",
   "ai:supabase-edge-auth": "2:edge-scan-independent-of-sql-project-gate",
-  "ai:prompt-injection": "1:prompt-sink-analysis",
+  "ai:prompt-injection": "2:prompt-sink-analysis-cwe-1427",
+  "ai:unsafe-tool-execution": "1:proven-model-tool-arguments-to-node-shell",
   "ai:client-metadata-authz": "1:client-metadata-authz",
   "ai:llm-dangerous-html": "1:dangerous-html-flow",
   "ai:client-error-leak": "1:client-response-error-detail",
@@ -80,7 +97,7 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   "ai:expo-secret-in-public-config": "1:sensitive-server-env-in-public-expo-config",
   "ai:expo-unsigned-cleartext-updates": "1:unsigned-cleartext-production-expo-updates",
   [PYTHON_AI_API_PACK_DISPATCH_COMPONENT]: "1:python-ai-api-pack-dispatch",
-  [PYTHON_LEZER_PARSER_COMPONENT]: "1:bounded-lezer-gated-python-structural-parser",
+  [PYTHON_LEZER_PARSER_COMPONENT]: "2:bounded-lezer-gated-python-structural-parser-opaque-format-strings",
   [JAVASCRIPT_BASELINE_PACK_DISPATCH_COMPONENT]: "1:javascript-baseline-pack-dispatch",
   [JAVASCRIPT_BASELINE_PARSER_COMPONENT]: "1:bounded-javascript-typescript-structural-parser",
   [NATIVE_SAST_RECONCILIATION_COMPONENT]: "1:exact-opengrep-pre-dedup-reconciliation",
@@ -92,6 +109,37 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   "ai:python-untrusted-redirect": "1:request-controlled-complete-redirect-target",
   "ai:python-untrusted-template-source": "1:request-controlled-template-compilation",
   "ai:python-llm-output-dangerous-html": "1:proven-sdk-output-html-response-flow",
+  "ai:python-faiss-dangerous-deserialization": "1:proven-langchain-faiss-pickle-opt-in",
+  "ai:python-langchain-web-loader-ssrf": "1:request-controlled-complete-url-proven-web-loader-fetch",
+  "ai:python-prompt-injection": "2:request-controlled-privileged-prompt-or-tool-enabled-input-cwe-1427",
+  "ai:python-unsafe-tool-execution": "1:proven-model-tool-arguments-to-python-shell",
+  [GO_AI_PACK_DISPATCH_COMPONENT]: "1:go-ai-pack-dispatch",
+  [GO_STRUCTURAL_PARSER_COMPONENT]: "1:bounded-source-ordered-go-structural-parser",
+  "ai:go-unsafe-tool-execution": "1:proven-openai-tool-arguments-to-go-shell",
+  [JAVA_AI_PACK_DISPATCH_COMPONENT]: "1:java-ai-pack-dispatch",
+  [JAVA_STRUCTURAL_PARSER_COMPONENT]: "1:bounded-source-ordered-java-structural-parser",
+  "ai:java-unsafe-tool-execution": "1:proven-openai-tool-arguments-to-started-java-shell",
+  [CSHARP_AI_PACK_DISPATCH_COMPONENT]: "1:csharp-ai-pack-dispatch",
+  [CSHARP_STRUCTURAL_PARSER_COMPONENT]: "2:bounded-source-ordered-csharp-structural-parser-with-typed-tool-parameters",
+  "ai:csharp-unsafe-tool-execution": "2:proven-openai-tool-arguments-to-started-csharp-shell-direct-deserialization",
+  [PHP_AI_PACK_DISPATCH_COMPONENT]: "1:php-ai-pack-dispatch",
+  [PHP_STRUCTURAL_PARSER_COMPONENT]: "1:bounded-php-structural-parser",
+  "ai:php-unsafe-tool-execution": "1:proven-openai-php-tool-arguments-to-command-execution",
+  [RUST_AI_PACK_DISPATCH_COMPONENT]: "1:rust-ai-pack-dispatch",
+  [RUST_STRUCTURAL_PARSER_COMPONENT]: "1:bounded-source-ordered-rust-structural-parser-multiline-strings",
+  "ai:rust-unsafe-tool-execution": "1:proven-async-openai-tool-arguments-to-rust-shell",
+  [RUBY_AI_PACK_DISPATCH_COMPONENT]: "1:ruby-ai-pack-dispatch",
+  [RUBY_STRUCTURAL_PARSER_COMPONENT]: "1:bounded-ruby-structural-parser-string-masked",
+  "ai:ruby-unsafe-tool-execution": "1:proven-official-openai-ruby-tool-arguments-to-shell",
+  [FIREBASE_PACK_DISPATCH_COMPONENT]: "1:firebase-pack-dispatch",
+  [FIREBASE_RULES_PARSER_COMPONENT]: "1:bounded-firestore-storage-rules-and-strict-rtdb-json-parser",
+  "ai:firebase-firestore-public-write": "1:literal-unconditional-firestore-write-grant",
+  "ai:firebase-storage-public-write": "1:literal-unconditional-storage-write-grant",
+  "ai:firebase-realtime-database-public-write": "1:literal-unconditional-rtdb-write-grant",
+  [GITHUB_ACTIONS_PACK_DISPATCH_COMPONENT]: "1:github-actions-pack-dispatch",
+  [GITHUB_ACTIONS_YAML_PARSER_COMPONENT]: "1:bounded-strict-yaml12-workflow-parser",
+  "ai:github-actions-expression-injection": "1:documented-untrusted-context-direct-run-interpolation",
+  "ai:github-actions-pwn-request": "1:pre-v7-privileged-untrusted-checkout-and-workspace-execution",
   [PUB_LOCKFILE_PARSER_COMPONENT]: "1:bounded-pub-lockfile-parser",
   [PUB_MATCHER_COMPONENT]: "1:exact-enumerated-osv-version-membership",
 };
@@ -108,6 +156,7 @@ const AI_RULE_COMPONENT: Record<string, string> = {
   "ci-ai-rls-inverted-auth": "ai:supabase-rls-policy-state",
   "ci-ai-edge-fn-no-auth": "ai:supabase-edge-auth",
   "ci-ai-prompt-injection-sink": "ai:prompt-injection",
+  "ci-ai-llm-tool-argument-command-execution": "ai:unsafe-tool-execution",
   "ci-ai-client-metadata-authz": "ai:client-metadata-authz",
   "ci-ai-llm-output-dangerous-html": "ai:llm-dangerous-html",
   "ci-ai-client-error-leak": "ai:client-error-leak",
@@ -162,6 +211,45 @@ const PYTHON_AI_API_RULE_COMPONENT: Record<string, string> = {
   "ci-python-untrusted-redirect": "ai:python-untrusted-redirect",
   "ci-python-untrusted-template-source": "ai:python-untrusted-template-source",
   "ci-python-llm-output-dangerous-html": "ai:python-llm-output-dangerous-html",
+  "ci-python-faiss-dangerous-deserialization": "ai:python-faiss-dangerous-deserialization",
+  "ci-python-langchain-web-loader-ssrf": "ai:python-langchain-web-loader-ssrf",
+  "ci-python-prompt-injection-sink": "ai:python-prompt-injection",
+  "ci-python-llm-tool-argument-command-execution": "ai:python-unsafe-tool-execution",
+};
+
+const GO_AI_RULE_COMPONENT: Record<string, string> = {
+  "ci-go-llm-tool-argument-command-execution": "ai:go-unsafe-tool-execution",
+};
+
+const JAVA_AI_RULE_COMPONENT: Record<string, string> = {
+  "ci-java-llm-tool-argument-command-execution": "ai:java-unsafe-tool-execution",
+};
+
+const CSHARP_AI_RULE_COMPONENT: Record<string, string> = {
+  "ci-csharp-llm-tool-argument-command-execution": "ai:csharp-unsafe-tool-execution",
+};
+
+const PHP_AI_RULE_COMPONENT: Record<string, string> = {
+  "ci-php-llm-tool-argument-command-execution": "ai:php-unsafe-tool-execution",
+};
+
+const RUST_AI_RULE_COMPONENT: Record<string, string> = {
+  "ci-rust-llm-tool-argument-command-execution": "ai:rust-unsafe-tool-execution",
+};
+
+const RUBY_AI_RULE_COMPONENT: Record<string, string> = {
+  "ci-ruby-llm-tool-argument-command-execution": "ai:ruby-unsafe-tool-execution",
+};
+
+const FIREBASE_RULE_COMPONENT: Record<string, string> = {
+  "ci-firebase-firestore-public-write": "ai:firebase-firestore-public-write",
+  "ci-firebase-storage-public-write": "ai:firebase-storage-public-write",
+  "ci-firebase-realtime-database-public-write": "ai:firebase-realtime-database-public-write",
+};
+
+const GITHUB_ACTIONS_RULE_COMPONENT: Record<string, string> = {
+  "ci-github-actions-untrusted-expression-command": "ai:github-actions-expression-injection",
+  "ci-github-actions-pwn-request": "ai:github-actions-pwn-request",
 };
 
 export function signature(value: string | Buffer): string {
@@ -206,7 +294,11 @@ export function aiComponentForRule(ruleId: string): string {
   return AI_RULE_COMPONENT[ruleId] ?? FLUTTER_RULE_COMPONENT[ruleId] ??
     ANDROID_RULE_COMPONENT[ruleId] ?? IOS_RULE_COMPONENT[ruleId] ??
     REACT_NATIVE_RULE_COMPONENT[ruleId] ?? EXPO_RULE_COMPONENT[ruleId] ??
-    PYTHON_AI_API_RULE_COMPONENT[ruleId] ?? "ai:unmapped-rule";
+    PYTHON_AI_API_RULE_COMPONENT[ruleId] ?? GO_AI_RULE_COMPONENT[ruleId] ??
+    JAVA_AI_RULE_COMPONENT[ruleId] ?? CSHARP_AI_RULE_COMPONENT[ruleId] ??
+    PHP_AI_RULE_COMPONENT[ruleId] ?? RUST_AI_RULE_COMPONENT[ruleId] ??
+    RUBY_AI_RULE_COMPONENT[ruleId] ?? FIREBASE_RULE_COMPONENT[ruleId] ??
+    GITHUB_ACTIONS_RULE_COMPONENT[ruleId] ?? "ai:unmapped-rule";
 }
 
 export function aiFindingComponents(ruleId: string, scannerKind: "ai" | "sast" = "ai"): string[] {
@@ -276,6 +368,78 @@ export function aiFindingComponents(ruleId: string, scannerKind: "ai" | "sast" =
       PYTHON_AI_API_PACK_DISPATCH_COMPONENT,
       PYTHON_LEZER_PARSER_COMPONENT,
       pythonComponent,
+    ];
+  }
+  const goComponent = GO_AI_RULE_COMPONENT[ruleId];
+  if (goComponent) {
+    return [
+      PIPELINE_COMPONENT,
+      GO_AI_PACK_DISPATCH_COMPONENT,
+      GO_STRUCTURAL_PARSER_COMPONENT,
+      goComponent,
+    ];
+  }
+  const javaComponent = JAVA_AI_RULE_COMPONENT[ruleId];
+  if (javaComponent) {
+    return [
+      PIPELINE_COMPONENT,
+      JAVA_AI_PACK_DISPATCH_COMPONENT,
+      JAVA_STRUCTURAL_PARSER_COMPONENT,
+      javaComponent,
+    ];
+  }
+  const csharpComponent = CSHARP_AI_RULE_COMPONENT[ruleId];
+  if (csharpComponent) {
+    return [
+      PIPELINE_COMPONENT,
+      CSHARP_AI_PACK_DISPATCH_COMPONENT,
+      CSHARP_STRUCTURAL_PARSER_COMPONENT,
+      csharpComponent,
+    ];
+  }
+  const phpComponent = PHP_AI_RULE_COMPONENT[ruleId];
+  if (phpComponent) {
+    return [
+      PIPELINE_COMPONENT,
+      PHP_AI_PACK_DISPATCH_COMPONENT,
+      PHP_STRUCTURAL_PARSER_COMPONENT,
+      phpComponent,
+    ];
+  }
+  const rustComponent = RUST_AI_RULE_COMPONENT[ruleId];
+  if (rustComponent) {
+    return [
+      PIPELINE_COMPONENT,
+      RUST_AI_PACK_DISPATCH_COMPONENT,
+      RUST_STRUCTURAL_PARSER_COMPONENT,
+      rustComponent,
+    ];
+  }
+  const rubyComponent = RUBY_AI_RULE_COMPONENT[ruleId];
+  if (rubyComponent) {
+    return [
+      PIPELINE_COMPONENT,
+      RUBY_AI_PACK_DISPATCH_COMPONENT,
+      RUBY_STRUCTURAL_PARSER_COMPONENT,
+      rubyComponent,
+    ];
+  }
+  const firebaseComponent = FIREBASE_RULE_COMPONENT[ruleId];
+  if (firebaseComponent) {
+    return [
+      PIPELINE_COMPONENT,
+      FIREBASE_PACK_DISPATCH_COMPONENT,
+      FIREBASE_RULES_PARSER_COMPONENT,
+      firebaseComponent,
+    ];
+  }
+  const githubActionsComponent = GITHUB_ACTIONS_RULE_COMPONENT[ruleId];
+  if (githubActionsComponent) {
+    return [
+      PIPELINE_COMPONENT,
+      GITHUB_ACTIONS_PACK_DISPATCH_COMPONENT,
+      GITHUB_ACTIONS_YAML_PARSER_COMPONENT,
+      githubActionsComponent,
     ];
   }
   return [PIPELINE_COMPONENT, AI_INVOCATION_COMPONENT, aiComponentForRule(ruleId)];

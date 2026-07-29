@@ -40,6 +40,38 @@ const PYTHON_AI_API_FIXTURE = resolve(process.cwd(), "fixtures/python-ai-api-cor
 const PYTHON_AI_API_TP_FIXTURE = resolve(PYTHON_AI_API_FIXTURE, "tp");
 const PYTHON_AI_API_FP_FIXTURE = resolve(PYTHON_AI_API_FIXTURE, "fp");
 const PYTHON_AI_API_FIXED_FIXTURE = resolve(PYTHON_AI_API_FIXTURE, "fixed");
+const GO_AI_FIXTURE = resolve(process.cwd(), "fixtures/go-ai-corpus");
+const GO_AI_TP_FIXTURE = resolve(GO_AI_FIXTURE, "tp");
+const GO_AI_FP_FIXTURE = resolve(GO_AI_FIXTURE, "fp");
+const GO_AI_FIXED_FIXTURE = resolve(GO_AI_FIXTURE, "fixed");
+const JAVA_AI_FIXTURE = resolve(process.cwd(), "fixtures/java-ai-corpus");
+const JAVA_AI_TP_FIXTURE = resolve(JAVA_AI_FIXTURE, "tp");
+const JAVA_AI_FP_FIXTURE = resolve(JAVA_AI_FIXTURE, "fp");
+const JAVA_AI_FIXED_FIXTURE = resolve(JAVA_AI_FIXTURE, "fixed");
+const CSHARP_AI_FIXTURE = resolve(process.cwd(), "fixtures/csharp-ai-corpus");
+const CSHARP_AI_TP_FIXTURE = resolve(CSHARP_AI_FIXTURE, "tp");
+const CSHARP_AI_FP_FIXTURE = resolve(CSHARP_AI_FIXTURE, "fp");
+const CSHARP_AI_FIXED_FIXTURE = resolve(CSHARP_AI_FIXTURE, "fixed");
+const PHP_AI_FIXTURE = resolve(process.cwd(), "fixtures/php-ai-corpus");
+const PHP_AI_TP_FIXTURE = resolve(PHP_AI_FIXTURE, "tp");
+const PHP_AI_FP_FIXTURE = resolve(PHP_AI_FIXTURE, "fp");
+const PHP_AI_FIXED_FIXTURE = resolve(PHP_AI_FIXTURE, "fixed");
+const RUST_AI_FIXTURE = resolve(process.cwd(), "fixtures/rust-ai-corpus");
+const RUST_AI_TP_FIXTURE = resolve(RUST_AI_FIXTURE, "tp");
+const RUST_AI_FP_FIXTURE = resolve(RUST_AI_FIXTURE, "fp");
+const RUST_AI_FIXED_FIXTURE = resolve(RUST_AI_FIXTURE, "fixed");
+const RUBY_AI_FIXTURE = resolve(process.cwd(), "fixtures/ruby-ai-corpus");
+const RUBY_AI_TP_FIXTURE = resolve(RUBY_AI_FIXTURE, "tp");
+const RUBY_AI_FP_FIXTURE = resolve(RUBY_AI_FIXTURE, "fp");
+const RUBY_AI_FIXED_FIXTURE = resolve(RUBY_AI_FIXTURE, "fixed");
+const FIREBASE_CONFIG_FIXTURE = resolve(process.cwd(), "fixtures/firebase-config-corpus");
+const FIREBASE_CONFIG_TP_FIXTURE = resolve(FIREBASE_CONFIG_FIXTURE, "tp");
+const FIREBASE_CONFIG_FP_FIXTURE = resolve(FIREBASE_CONFIG_FIXTURE, "fp");
+const FIREBASE_CONFIG_FIXED_FIXTURE = resolve(FIREBASE_CONFIG_FIXTURE, "fixed");
+const GITHUB_ACTIONS_FIXTURE = resolve(process.cwd(), "fixtures/github-actions-corpus");
+const GITHUB_ACTIONS_TP_FIXTURE = resolve(GITHUB_ACTIONS_FIXTURE, "tp");
+const GITHUB_ACTIONS_FP_FIXTURE = resolve(GITHUB_ACTIONS_FIXTURE, "fp");
+const GITHUB_ACTIONS_FIXED_FIXTURE = resolve(GITHUB_ACTIONS_FIXTURE, "fixed");
 const OPENGREP_SHADOW_FIXTURE = resolve(process.cwd(), "fixtures/opengrep-shadow-corpus");
 // INTENTIONAL FAKE TEST DATA (planted fixture value; the evals below assert it is
 // detected and redacted) -- not a real credential; allowlisted in /.gitleaks.toml.
@@ -168,6 +200,10 @@ const PYTHON_AI_API_RULES = [
   { file: "src/04_redirect.py", id: "ci-python-untrusted-redirect", severity: "medium", kind: "ai", cwe: ["CWE-601"], confidence: "high", component: "ai:python-untrusted-redirect" },
   { file: "src/05_template_source.py", id: "ci-python-untrusted-template-source", severity: "high", kind: "ai", cwe: ["CWE-1336", "CWE-94"], confidence: "high", component: "ai:python-untrusted-template-source" },
   { file: "src/06_llm_html.py", id: "ci-python-llm-output-dangerous-html", severity: "high", kind: "ai", cwe: ["CWE-79", "CWE-116"], confidence: "high", component: "ai:python-llm-output-dangerous-html" },
+  { file: "src/07_faiss_deserialization.py", id: "ci-python-faiss-dangerous-deserialization", severity: "high", kind: "ai", cwe: ["CWE-502"], confidence: "high", component: "ai:python-faiss-dangerous-deserialization" },
+  { file: "src/08_langchain_web_loader_ssrf.py", id: "ci-python-langchain-web-loader-ssrf", severity: "high", kind: "ai", cwe: ["CWE-918"], confidence: "high", component: "ai:python-langchain-web-loader-ssrf" },
+  { file: "src/09_prompt_injection.py", id: "ci-python-prompt-injection-sink", severity: "high", kind: "ai", cwe: ["CWE-1427"], confidence: "medium", component: "ai:python-prompt-injection" },
+  { file: "src/10_unsafe_tool_execution.py", id: "ci-python-llm-tool-argument-command-execution", severity: "high", kind: "ai", cwe: ["CWE-78", "CWE-1426"], confidence: "medium", component: "ai:python-unsafe-tool-execution" },
 ] as const;
 
 const PUB_TP_ADVISORIES = [
@@ -261,8 +297,8 @@ const REACT_NATIVE_EXPO_COMPONENT_SIGNATURES: Readonly<Record<string, string>> =
 
 const PYTHON_AI_API_PACK_LIMITATIONS = [
   "Token-aware, source-ordered intrafile Python analysis with a bounded Lezer syntax gate; it has no type checker, module graph, interprocedural flow, path-sensitive branch merge, or claim of complete Python security coverage.",
-  "The six rules cover exact Django, Flask, FastAPI, Starlette, Jinja, OpenAI, and Anthropic source shapes only; unsupported aliases, computed values, dynamic imports, spreads, and flows beyond the documented bounded aliases fail closed.",
-  "Format strings and leading tab indentation are currently unsupported: Python 3.12 nested same-delimiter replacement strings and mixed tab-stop indentation are skipped and reported rather than risking literal text or conditional bindings being analyzed as executable direct scope.",
+  "The ten rules cover exact Django, Flask, FastAPI, Starlette, Jinja, OpenAI, Anthropic, LangChain, and Python OS-command source/sink shapes only; unsupported aliases, computed values, dynamic imports, spreads, generic dispatch, and flows beyond the documented bounded aliases fail closed.",
+  "Lezer-validated format strings are tokenized as opaque dynamic strings, so replacement expressions are not inspected; leading tab indentation remains unsupported and mixed tab-stop indentation is skipped and reported rather than risking conditional bindings being analyzed as executable direct scope.",
   "Generated, migration, dependency, build, test, fixture, demo, sample, and example trees and conventional test files are excluded from project-root scans unless a supported source file is scanned directly.",
   "Symbolic links, unsupported encodings, generated headers, unreadable or malformed files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/1,000,000-token/1,000,000-node/32-level project bounds are skipped and reported in pack coverage.",
   "The pack parses repository evidence only, never imports or executes target Python, and does not replace dependency, runtime, or penetration testing.",
@@ -271,13 +307,242 @@ const PYTHON_AI_API_PACK_LIMITATIONS = [
 const PYTHON_AI_API_COMPONENT_SIGNATURES: Readonly<Record<string, string>> = {
   "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
   "pack:python-ai-api:dispatch": "sha256:25fc9425b3ffcf2bc1f15178e39000687fb2e261d1cb938f0a77a59828a1b9dd",
-  "python:lezer-structural-parser": "sha256:4abf638d02d334cd6a8e667f573179f2fbba89f11a3ce415a11ec91003b1824f",
+  "python:lezer-structural-parser": "sha256:b0900353bfd17c0b4d4e57fa26c24d2028496a491dd879c5e401d5f69adeecf8",
   "ai:python-hardcoded-signing-secret": "sha256:9381fb56d3598c1f478fba84a9b0db960f879d0b6aa8bda021a57c016d601c3a",
   "ai:python-credentialed-cors": "sha256:46477b8b3f9abff6ce4e771aaf3830721e26c31481ccce82751278930b584adf",
   "ai:python-untrusted-file-response": "sha256:f77122fe93de07f380fca77b64f72cd7860c61c5a5255e48e928cb269e186d54",
   "ai:python-untrusted-redirect": "sha256:ab6e8662a4039b7138c0468d779db948a1ef40271b0d6d700fb569166275b3b5",
   "ai:python-untrusted-template-source": "sha256:0592921975193cdb4ca77cf885051efad80b327bc78fc2cbaa90c19e4524806e",
   "ai:python-llm-output-dangerous-html": "sha256:c0ad9bab6d078faf4f2946b384ad8ce31c44729fee65049d38d41d26271da1d4",
+  "ai:python-faiss-dangerous-deserialization": "sha256:43c272019a5f1b55134069fd78a86cd2a2e3f7e7cd40d3f5b5c81f9f5d7ca6ad",
+  "ai:python-langchain-web-loader-ssrf": "sha256:fc0a8cb494a013673039c15cc7b510626512beab2ec8271c81a63335c42366d0",
+  "ai:python-prompt-injection": "sha256:81e7a02901ab455dd89ba8fb60a5c8366ee8b98ba6bf4a54b3d909bbd524ba20",
+  "ai:python-unsafe-tool-execution": "sha256:2edfb092c8fab55b2e1ebdf11c1d13c576597a5018cfcb0ebe802d2c55bc0203",
+};
+
+const GO_AI_RULE = {
+  file: "src/main.go",
+  id: "ci-go-llm-tool-argument-command-execution",
+  severity: "high",
+  kind: "ai",
+  cwe: ["CWE-78", "CWE-1426"],
+  confidence: "medium",
+  owaspLlm: ["LLM05:2025", "LLM06:2025"],
+  component: "ai:go-unsafe-tool-execution",
+} as const;
+
+const GO_AI_PACK_LIMITATIONS = [
+  "Token-aware, source-ordered intrafile Go analysis without a type checker, module graph, path-sensitive branch merge, or claim of complete Go security coverage.",
+  "The rule covers exact official OpenAI Go Chat Completions tool-call arguments reaching import-proven os/exec shell interpreters; Anthropic, Gemini, custom model types, generic dispatch, renamed external wrappers, and cross-module flow fail closed.",
+  "Dataflow is bounded to direct aliases, encoding/json unmarshal, one local JSON parsing helper, and one local command wrapper; checked approval/allowlist rejection and validated replacement values suppress findings.",
+  "Generated, dependency, build, test, fixture, demo, sample, and example trees and conventional _test.go/generated files are excluded from project-root scans unless a supported source file is scanned directly.",
+  "Symbolic links, unsupported encodings, malformed strings/comments, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; individual structural expressions are capped at 64 KiB.",
+  "The pack parses repository evidence only, never builds or executes target Go, and does not replace dependency, runtime, sandbox, or penetration testing.",
+] as const;
+
+const GO_AI_COMPONENT_SIGNATURES: Readonly<Record<string, string>> = {
+  "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
+  "pack:go-ai:dispatch": "sha256:6cbbc85ac343288606d333f362e0efa10d98fae6e10ee4f39ac2ec3e09289d24",
+  "go:bounded-structural-parser": "sha256:6e8f71ff7992a99bf8f56e0b565de70bb97c1cf758e9640a19b610417f9254fb",
+  "ai:go-unsafe-tool-execution": "sha256:147e1bf42da903fd3f25a9f1ca4bc87fd0a49344429d6ce65432dd2caa1ee606",
+};
+
+const JAVA_AI_RULE = {
+  file: "src/main/java/example/Agent.java",
+  id: "ci-java-llm-tool-argument-command-execution",
+  severity: "high",
+  kind: "ai",
+  cwe: ["CWE-78", "CWE-1426"],
+  confidence: "medium",
+  owaspLlm: ["LLM05:2025", "LLM06:2025"],
+  component: "ai:java-unsafe-tool-execution",
+} as const;
+
+const JAVA_AI_PACK_LIMITATIONS = [
+  "Token-aware, source-ordered intrafile Java analysis without a type checker, module graph, path-sensitive branch merge, or claim of complete Java security coverage.",
+  "The rule covers exact official OpenAI Java tool-call argument types reaching an actually-started recognized ProcessBuilder or Runtime shell interpreter; Spring AI, LangChain4j, Azure OpenAI, other model types, generic dispatch, and cross-module flow fail closed.",
+  "Dataflow is bounded to direct aliases, one local parsing helper, and one local command wrapper; checked approval/allowlist rejection and validated replacement values suppress findings.",
+  "Generated, dependency, build, test, fixture, demo, sample, and top-level example trees and conventional Java test/generated files are excluded from project-root scans unless a supported source file is scanned directly.",
+  "Symbolic links, unsupported encodings, malformed strings/comments, Java text blocks, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; individual structural expressions are capped at 64 KiB.",
+  "The pack parses repository evidence only, never builds or executes target Java, and does not replace dependency, runtime, sandbox, or penetration testing.",
+] as const;
+
+const JAVA_AI_COMPONENT_SIGNATURES: Readonly<Record<string, string>> = {
+  "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
+  "pack:java-ai:dispatch": "sha256:53b46f20e876320207801dd71b2d50798445213de2a166381e729998e541cd05",
+  "java:bounded-structural-parser": "sha256:aaacb6ad72981025fd5dfeb36b069be7501a8b7c6e5f9a543d677e49090bd912",
+  "ai:java-unsafe-tool-execution": "sha256:687fdfc3620ba571e5a4107a4d2ed1b9bb438cc082fbc5c3da26c8266f37dfdd",
+};
+
+const CSHARP_AI_RULE = {
+  file: "Agent.cs",
+  id: "ci-csharp-llm-tool-argument-command-execution",
+  severity: "high",
+  kind: "ai",
+  cwe: ["CWE-78", "CWE-1426"],
+  confidence: "medium",
+  owaspLlm: ["LLM05:2025", "LLM06:2025"],
+  component: "ai:csharp-unsafe-tool-execution",
+} as const;
+
+const CSHARP_AI_PACK_LIMITATIONS = [
+  "Token-aware, source-ordered intrafile C# analysis without a compiler, semantic model, project graph, path-sensitive branch merge, or claim of complete .NET security coverage.",
+  "The rule covers exact official OpenAI .NET ChatToolCall FunctionArguments reaching an actually-started recognized System.Diagnostics.Process shell; Azure OpenAI, Semantic Kernel, Microsoft.Extensions.AI, other model types, generic dispatch, and cross-project flow fail closed.",
+  "Dataflow is bounded to direct aliases, System.Text.Json dictionary/property extraction, one local parsing helper, and one local command wrapper; checked approval/allowlist rejection and validated replacement values suppress findings.",
+  "Generated, dependency, build, publish, test, fixture, demo, sample, and example trees and conventional C# test/generated files are excluded from project-root scans unless a supported source file is scanned directly.",
+  "Symbolic links, unsupported encodings, malformed strings/comments, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; raw string contents are treated as opaque and individual structural expressions are capped at 64 KiB.",
+  "The pack parses repository evidence only, never restores, builds, or executes target .NET code, and does not replace dependency, runtime, sandbox, or penetration testing.",
+] as const;
+
+const CSHARP_AI_COMPONENT_SIGNATURES: Readonly<Record<string, string>> = {
+  "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
+  "pack:csharp-ai:dispatch": "sha256:21f516ef1895a1191e8ac4a6b4675f96999fe8d780c56300ce6debc745ce3819",
+  "csharp:bounded-structural-parser": "sha256:2f3cc2240e2ee15030469d80fafc72f001eb8d3d19d91f0e1d7aac6950a4051f",
+  "ai:csharp-unsafe-tool-execution": "sha256:92191655ff218b54dc31c16e26f04d3544e3a94f409b6909bfb3c3ea7f85c2f9",
+};
+
+const PHP_AI_RULE = {
+  file: "Agent.php",
+  id: "ci-php-llm-tool-argument-command-execution",
+  severity: "high",
+  kind: "ai",
+  cwe: ["CWE-78", "CWE-1426"],
+  confidence: "medium",
+  owaspLlm: ["LLM05:2025", "LLM06:2025"],
+  component: "ai:php-unsafe-tool-execution",
+} as const;
+
+const PHP_AI_PACK_LIMITATIONS = [
+  "Bounded intrafile PHP analysis without a PHP parser, type resolver, Composer graph, path-sensitive branch merge, or claim of complete PHP security coverage.",
+  "The rule covers exact openai-php/client or openai-php/laravel package evidence and tool-call function arguments reaching exec, system, shell_exec, or passthru; other clients, generic callables, and cross-file flow fail closed.",
+  "Dataflow is bounded to direct aliases, associative json_decode extraction, one local parsing helper, one local command wrapper, and one exact mapped variadic method dispatch; checked approval/full-command allowlists and validated replacement values suppress findings.",
+  "Custom validation helpers are not assumed safe; first-token executable checks do not neutralize shell metacharacters in the remaining command string.",
+  "Generated, dependency, cache, build, test, fixture, demo, sample, and example trees and conventional PHP test/generated files are excluded from project-root scans unless a supported source file is scanned directly.",
+  "Symbolic links, unsupported encodings, heredoc/nowdoc or malformed strings/comments, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; structural expressions are capped at 64 KiB.",
+  "The pack parses repository evidence only, never installs dependencies or executes target PHP, and does not replace dependency, runtime, sandbox, or penetration testing.",
+] as const;
+
+const PHP_AI_COMPONENT_SIGNATURES: Readonly<Record<string, string>> = {
+  "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
+  "pack:php-ai:dispatch": "sha256:44aa9fa34f5c0b53c491c771952d84ab1aaa178798025dd47102a13ff2b39e69",
+  "php:bounded-structural-parser": "sha256:fb4f8ef79ec4a77caa4a6ce45371baba2cb82f158b12c1f15ea6c3aef9473eb3",
+  "ai:php-unsafe-tool-execution": "sha256:30f1d918b42fb730c688da0737617e621df0f5ff1384c763ed62b55ec83ec361",
+};
+
+const RUST_AI_RULE = {
+  file: "src/main.rs",
+  id: "ci-rust-llm-tool-argument-command-execution",
+  severity: "high",
+  kind: "ai",
+  cwe: ["CWE-78", "CWE-1426"],
+  confidence: "medium",
+  owaspLlm: ["LLM05:2025", "LLM06:2025"],
+  component: "ai:rust-unsafe-tool-execution",
+} as const;
+
+const RUST_AI_PACK_LIMITATIONS = [
+  "Token-aware, source-ordered intrafile Rust analysis without rustc, a Rust parser, type resolution, a Cargo graph, path-sensitive branch merge, or claim of complete Rust security coverage.",
+  "The rule covers exact community async-openai package evidence and recognized tool-call arguments reaching an import-proven standard/tokio process shell or a literal bollard Docker exec shell vector; other clients, generic dispatch, renamed external wrappers, and cross-crate flow fail closed.",
+  "Dataflow is bounded to direct aliases, serde_json extraction, one recognized generate_function_call result, and one local command wrapper; checked approval/allowlist rejection and validated replacement values suppress findings.",
+  "Generated, dependency, build, benchmark, test, fixture, demo, sample, and example trees and conventional Rust test/generated files are excluded from project-root scans unless a supported source file is scanned directly.",
+  "Symbolic links, unsupported encodings, malformed strings/comments, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; individual structural expressions are capped at 64 KiB.",
+  "The pack parses repository evidence only, never fetches crates, builds, or executes target Rust, and does not replace dependency, runtime, sandbox, container-isolation, or penetration testing.",
+] as const;
+
+const RUST_AI_COMPONENT_SIGNATURES: Readonly<Record<string, string>> = {
+  "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
+  "pack:rust-ai:dispatch": "sha256:0834394e6a589b909a47a7ab34802df959354e2dc1258d9ea8700ad3076a4ece",
+  "rust:bounded-structural-parser": "sha256:4939aeeeb022c79e485dcdc45bfdd73980ec9b2a940fd1b45e75d856507dd1b2",
+  "ai:rust-unsafe-tool-execution": "sha256:b63a5bce3f237ab50aa2c3b134431ffe4ee30a95d8239e1ad91d216b8a5bb1f8",
+};
+
+const RUBY_AI_RULE = {
+  file: "agent.rb",
+  id: "ci-ruby-llm-tool-argument-command-execution",
+  severity: "high",
+  kind: "ai",
+  cwe: ["CWE-78", "CWE-1426"],
+  confidence: "medium",
+  owaspLlm: ["LLM05:2025", "LLM06:2025"],
+  component: "ai:ruby-unsafe-tool-execution",
+} as const;
+
+const RUBY_AI_PACK_LIMITATIONS = [
+  "Source-ordered intrafile Ruby analysis without a Ruby parser, type resolver, Bundler graph, path-sensitive branch merge, or claim of complete Ruby security coverage.",
+  "The rule requires exact official openai production Gemfile or runtime gemspec evidence and covers Chat tool-call function arguments or explicitly typed Responses function-tool arguments reaching system, exec, IO.popen, or import-proven Open3 shell execution; lockfile-only and development-only dependencies, other clients, generic argument objects, backticks, percent-x literals, spawn APIs, and cross-file flow fail closed.",
+  "Dataflow is bounded to direct aliases, JSON.parse command extraction, one local parsing helper, and one local command wrapper; checked approval/full-command allowlists and validated replacement values suppress findings.",
+  "Generated, dependency, cache, build, test, spec, fixture, demo, sample, and example trees and conventional Ruby test/spec/generated files are excluded from project-root scans unless a supported source file is scanned directly.",
+  "Symbolic links, unsupported encodings, heredocs, malformed strings/comments, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; structural expressions are capped at 64 KiB.",
+  "The pack parses repository evidence only, never installs gems or executes target Ruby, and does not replace dependency, runtime, sandbox, or penetration testing.",
+] as const;
+
+const RUBY_AI_COMPONENT_SIGNATURES: Readonly<Record<string, string>> = {
+  "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
+  "pack:ruby-ai:dispatch": "sha256:1465e634819da647c7b359ee15c53480aab71876b938a4122ad4c1e55a17dfd5",
+  "ruby:bounded-structural-parser": "sha256:282b5d4d8c11046396b4ac1cd978168aef82534ee31cdc3db86910424d155d20",
+  "ai:ruby-unsafe-tool-execution": "sha256:44b95fb03e402cfc02447f1a54ba0cbe7be625bcb549b97c43c5dda22b41cf07",
+};
+
+const FIREBASE_CONFIG_RULES = [
+  { file: "database.rules.json", id: "ci-firebase-realtime-database-public-write", component: "ai:firebase-realtime-database-public-write", line: 6 },
+  { file: "firestore.rules", id: "ci-firebase-firestore-public-write", component: "ai:firebase-firestore-public-write", line: 6 },
+  { file: "storage.rules", id: "ci-firebase-storage-public-write", component: "ai:firebase-storage-public-write", line: 5 },
+] as const;
+
+const FIREBASE_PACK_LIMITATIONS = [
+  "Detects only literal unconditional public write grants in checked-in Cloud Firestore, Cloud Storage, and Realtime Database Security Rules; public reads, semantic helper functions, runtime policy state, IAM, App Check, and complete Firebase security coverage are outside this pack.",
+  "Cloud Firestore and Cloud Storage analysis requires exact service declarations and literal allow write/create/update/delete statements with no condition or a condition that is exactly true; other expressions fail closed.",
+  "Realtime Database analysis requires strict JSON and recognizes only .write values that are boolean true or the exact string true; dynamic expressions are not evaluated.",
+  "Directory scans inspect .rules files and database.rules.json while excluding test, example, sample, dependency, generated, build, vendor, and cache trees; custom non-.rules filenames are not discovered.",
+  "Files over 1 MiB and discovery beyond 1,000 rule files, 32 MiB total, 50,000 entries, or 32 levels are skipped and reported in pack coverage.",
+  "Symbolic links and symbolic-link ancestors are skipped and never followed; target code and Firebase tooling are never executed.",
+] as const;
+
+const FIREBASE_COMPONENT_SIGNATURES: Readonly<Record<string, string>> = {
+  "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
+  "pack:firebase:dispatch": "sha256:6dd4579434dbe4aea4ad1447622635672bd31b17b8f9f144e8d4b4aeb820f56d",
+  "firebase:bounded-rules-parser": "sha256:8e5d2044f2d1e09ff06d3fecae9a82b760247df1b7f12e5e5ae8016209443765",
+  "ai:firebase-firestore-public-write": "sha256:bda1ab89f677e74ccc5ee4b914173fd2e8fb6c1decfaa10c8e4de4d2a08ee4e3",
+  "ai:firebase-storage-public-write": "sha256:c6fb9ed52de8f3d7a4083319f9a55080be354dd3857e66f9455080875a6059ee",
+  "ai:firebase-realtime-database-public-write": "sha256:afd70f134a2a1acddac482a26289251c25b2a51aeab4ed88b75bdb8500fd3098",
+};
+
+const GITHUB_ACTIONS_RULES = [
+  {
+    file: ".github/workflows/pwn.yml",
+    line: 11,
+    id: "ci-github-actions-pwn-request",
+    severity: "critical",
+    cwe: ["CWE-94", "CWE-829"],
+    owaspWeb: ["A03:2021", "A08:2021"],
+    component: "ai:github-actions-pwn-request",
+  },
+  {
+    file: ".github/workflows/expression.yml",
+    line: 10,
+    id: "ci-github-actions-untrusted-expression-command",
+    severity: "high",
+    cwe: ["CWE-78", "CWE-94"],
+    owaspWeb: ["A03:2021"],
+    component: "ai:github-actions-expression-injection",
+  },
+] as const;
+
+const GITHUB_ACTIONS_PACK_LIMITATIONS = [
+  "Detects two exact GitHub Actions workflow risks: attacker-controlled GitHub context expressions embedded directly in run scripts, and pull_request_target workflows that check out and execute untrusted pull request code.",
+  "Expression injection covers a documented static set of issue, pull request, comment, review, page, commit, email, name, and head-ref properties; bracket notation, aliases, custom actions, generated scripts, and inter-step dataflow are outside this pack.",
+  "Pwn-request analysis requires pull_request_target, a recognized untrusted actions/checkout ref, checkout v1-v6 or explicit allow-unsafe-pr-checkout, the default workspace, and a subsequent recognized build/test/script command or local action.",
+  "workflow_run, issue_comment code fetches, downloaded artifacts, non-checkout git/gh fetches, non-default checkout paths, self-hosted runner isolation, deployed repository settings, organization policy, and complete CI/CD security coverage are outside this pack.",
+  "Only direct .github/workflows/*.yml and *.yaml files are parsed as strict YAML 1.2; malformed, unsupported, unreadable, symbolic-link, or oversized workflows fail closed and are reported in pack coverage.",
+  "Workflow reads are bounded to 1 MiB per file, 512 files, and 16 MiB total; target actions, expressions, scripts, and repository code are never evaluated or executed.",
+] as const;
+
+const GITHUB_ACTIONS_COMPONENT_SIGNATURES: Readonly<Record<string, string>> = {
+  "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
+  "pack:github-actions:dispatch": "sha256:4c6d22343e56aed91e1e60bf8bed705215611289ee544be2469f955eacfa2277",
+  "github-actions:yaml-workflow-parser": "sha256:0dd39cf27e0ea7e5a74307c358d5331277c0487b37ffb1c3a4a7c1688f979508",
+  "ai:github-actions-expression-injection": "sha256:9ce6f791745bca7b121eb230a1fb5953348b3bcf94b933286ed5a7820dc0bcbc",
+  "ai:github-actions-pwn-request": "sha256:b9edf2d17656fe46595ed64e77e978e69c6fc9901ed0146ed9c7050c92e4f15e",
 };
 
 // ── Minimal MCP stdio client ────────────────────────────────────────────────
@@ -397,12 +662,12 @@ function assertFlutterExecutionEnvelope(
   );
   assert(javascript?.state === "ran", `${label}: JavaScript/TypeScript pack did not report ran`);
   assert(
-    javascript.analyzers.registered === 7 && javascript.analyzers.ran === 7,
-    `${label}: JavaScript/TypeScript analyzer coverage was not 7/7`,
+    javascript.analyzers.registered === 8 && javascript.analyzers.ran === 8,
+    `${label}: JavaScript/TypeScript analyzer coverage was not 8/8`,
   );
   assert(
-    javascript.rules.registered === 21 && javascript.rules.ran === 21,
-    `${label}: JavaScript/TypeScript rule coverage was not 21/21`,
+    javascript.rules.registered === 22 && javascript.rules.ran === 22,
+    `${label}: JavaScript/TypeScript rule coverage was not 22/22`,
   );
 
   if (!expectEngineDetails) return;
@@ -411,8 +676,8 @@ function assertFlutterExecutionEnvelope(
   );
   assert(aiEngines.length === 1, `${label}: expected exactly one AI engine run record`);
   assert(
-    aiEngines[0].ran === true && aiEngines[0].version === "5.0.0",
-    `${label}: expected codeinspectus-ai@5.0.0 to run`,
+    aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
+    `${label}: expected codeinspectus-ai@5.13.0 to run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -544,8 +809,8 @@ function assertMobileExecutionEnvelope(
   );
   assert(
     javascript?.state === "ran" &&
-      javascript.analyzers.ran === 7 &&
-      javascript.rules.ran === 21,
+      javascript.analyzers.ran === 8 &&
+      javascript.rules.ran === 22,
     `${label}: unconditional JavaScript/TypeScript pack coverage changed`,
   );
   if (!expectEngineDetails) return;
@@ -553,8 +818,8 @@ function assertMobileExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.0.0",
-    `${label}: expected exactly one codeinspectus-ai@5.0.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
+    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -689,8 +954,8 @@ function assertReactNativeExpoExecutionEnvelope(
   );
   assert(
     javascript?.state === "ran" &&
-      javascript.analyzers.ran === 7 &&
-      javascript.rules.ran === 21,
+      javascript.analyzers.ran === 8 &&
+      javascript.rules.ran === 22,
     `${label}: JavaScript/TypeScript pack coverage changed`,
   );
   for (const packId of ["flutter", "android", "ios"]) {
@@ -703,8 +968,8 @@ function assertReactNativeExpoExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.0.0",
-    `${label}: expected exactly one codeinspectus-ai@5.0.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
+    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -806,18 +1071,18 @@ function assertPythonAiApiExecutionEnvelope(
     (result.detected_technologies ?? []).map((technology: any) => technology.id),
   );
   for (const technology of [
-    "python", "fastapi", "starlette", "flask", "django", "jinja2", "openai", "anthropic",
+    "python", "fastapi", "starlette", "flask", "django", "jinja2", "openai", "anthropic", "langchain",
   ]) assert(technologies.has(technology), `${label}: ${technology} technology detection missing`);
 
   const pack = result.pack_coverage?.find((candidate: any) => candidate.pack_id === "python-ai-api");
   assert(pack?.state === "ran", `${label}: Python AI/API pack did not report ran`);
   assert(
-    pack.analyzers.registered === 6 && pack.analyzers.ran === 6,
-    `${label}: Python AI/API analyzer coverage was not 6/6`,
+    pack.analyzers.registered === 10 && pack.analyzers.ran === 10,
+    `${label}: Python AI/API analyzer coverage was not 10/10`,
   );
   assert(
-    pack.rules.registered === 6 && pack.rules.ran === 6,
-    `${label}: Python AI/API rule coverage was not 6/6`,
+    pack.rules.registered === 10 && pack.rules.ran === 10,
+    `${label}: Python AI/API rule coverage was not 10/10`,
   );
   assertExactJson(pack.languages, ["python"], `${label}: Python language metadata changed`);
   assertExactJson(pack.limitations, PYTHON_AI_API_PACK_LIMITATIONS, `${label}: Python limitations changed`);
@@ -832,8 +1097,8 @@ function assertPythonAiApiExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.0.0",
-    `${label}: expected exactly one codeinspectus-ai@5.0.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
+    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -842,7 +1107,7 @@ function assertPythonAiApiExecutionEnvelope(
 }
 
 function assertExactPythonAiApiRuleIds(findings: any[], label: string): void {
-  assert(findings.length === 6, `${label}: expected six Python AI/API findings, got ${findings.length}`);
+  assert(findings.length === 10, `${label}: expected ten Python AI/API findings, got ${findings.length}`);
   assertExactJson(
     findings.map((finding) => finding.rule_id).sort(),
     PYTHON_AI_API_RULES.map((rule) => rule.id).sort(),
@@ -854,9 +1119,9 @@ function assertPythonAiApiTpScan(result: any, label: string): void {
   const findings: any[] = result.findings ?? [];
   assertExactPythonAiApiRuleIds(findings, label);
   assert(
-    result.summary?.total === 6 && result.summary.high === 5 && result.summary.medium === 1 &&
+    result.summary?.total === 10 && result.summary.high === 9 && result.summary.medium === 1 &&
       result.summary.critical === 0 && result.summary.low === 0 && result.summary.info === 0,
-    `${label}: expected severity totals 5 high / 1 medium`,
+    `${label}: expected severity totals 9 high / 1 medium`,
   );
   for (const expected of PYTHON_AI_API_RULES) {
     const matches = findings.filter((finding) =>
@@ -894,6 +1159,728 @@ function assertPythonAiApiTpScan(result: any, label: string): void {
   assert(secret?.is_secret === true && /^sha256:[a-f0-9]{64}$/.test(secret.secret_value_hash ?? ""), `${label}: signing-secret redaction metadata missing`);
   assert(!findings.some((finding) => /(?:^|\/)(?:tests|examples)\//.test(finding.location?.file ?? "")), `${label}: excluded corpus content produced a finding`);
   assert(!JSON.stringify(result).includes(PYTHON_REDACTION_SENTINEL), `${label}: Python redaction sentinel leaked`);
+}
+
+function assertGoAiExecutionEnvelope(
+  result: any,
+  label: string,
+  expectEngineDetails = true,
+): void {
+  const technologies = new Set(
+    (result.detected_technologies ?? []).map((technology: any) => technology.id),
+  );
+  assert(technologies.has("go"), `${label}: Go technology detection missing`);
+  assert(technologies.has("openai"), `${label}: OpenAI framework detection missing`);
+
+  const pack = result.pack_coverage?.find((candidate: any) => candidate.pack_id === "go-ai");
+  assert(pack?.state === "ran", `${label}: Go AI pack did not report ran`);
+  assert(
+    pack.analyzers.registered === 1 && pack.analyzers.ran === 1,
+    `${label}: Go AI analyzer coverage was not 1/1`,
+  );
+  assert(
+    pack.rules.registered === 1 && pack.rules.ran === 1,
+    `${label}: Go AI rule coverage was not 1/1`,
+  );
+  assertExactJson(pack.languages, ["go"], `${label}: Go language metadata changed`);
+  assertExactJson(pack.frameworks, ["openai"], `${label}: Go framework metadata changed`);
+  assertExactJson(pack.limitations, GO_AI_PACK_LIMITATIONS, `${label}: Go limitations changed`);
+  assert(pack.note === undefined, `${label}: unexpected Go execution limitation: ${pack.note}`);
+
+  for (const packId of ["flutter", "android", "ios", "react-native", "expo", "python-ai-api"]) {
+    const other = result.pack_coverage?.find((candidate: any) => candidate.pack_id === packId);
+    assert(other?.state === "not_applicable", `${label}: unexpectedly activated the ${packId} pack`);
+  }
+  if (!expectEngineDetails) return;
+  const aiEngines = (result.engine_details ?? []).filter(
+    (engine: any) => engine.engine === "codeinspectus-ai",
+  );
+  assert(
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
+    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+  );
+  assert(
+    (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
+    `${label}: AI-only scan unexpectedly ran an external engine`,
+  );
+}
+
+function assertGoAiFindings(findings: any[], label: string): void {
+  assert(findings.length === 3, `${label}: expected three Go AI findings, got ${findings.length}`);
+  assertExactJson(
+    findings.map((finding) => finding.rule_id),
+    [GO_AI_RULE.id, GO_AI_RULE.id, GO_AI_RULE.id],
+    `${label}: Go AI rule IDs changed`,
+  );
+  assertExactJson(
+    findings.map((finding) => finding.location?.start_line),
+    [22, 36, 50],
+    `${label}: Go AI source identities changed`,
+  );
+  for (const finding of findings) {
+    assert(finding.location?.file === GO_AI_RULE.file, `${label}: Go AI file changed`);
+    assert(finding.severity === GO_AI_RULE.severity, `${label}: Go AI severity changed`);
+    assert(finding.finding_kind === GO_AI_RULE.kind, `${label}: Go AI finding kind changed`);
+    assert(finding.confidence === GO_AI_RULE.confidence, `${label}: Go AI confidence changed`);
+    assertExactJson(finding.cwe, GO_AI_RULE.cwe, `${label}: Go AI CWE mapping changed`);
+    assertExactJson(finding.owasp_llm, GO_AI_RULE.owaspLlm, `${label}: Go AI OWASP LLM mapping changed`);
+    assert(finding.engine === "codeinspectus-ai", `${label}: Go AI engine changed`);
+    assertExactJson(finding.engines, ["codeinspectus-ai"], `${label}: Go AI engines changed`);
+    assert(
+      finding.location?.snippet?.includes("[VALUE REDACTED]"),
+      `${label}: Go AI source value was not redacted`,
+    );
+    assert(
+      typeof finding.remediation?.summary === "string" && finding.remediation.summary.length > 0 &&
+        Array.isArray(finding.remediation.steps) && finding.remediation.steps.length > 0 &&
+        Array.isArray(finding.remediation.references) && finding.remediation.references.length > 0,
+      `${label}: Go AI remediation is incomplete`,
+    );
+    const components = [
+      "codeinspectus:pipeline",
+      "pack:go-ai:dispatch",
+      "go:bounded-structural-parser",
+      GO_AI_RULE.component,
+    ];
+    assertExactJson(finding.producer_components, components, `${label}: Go AI components changed`);
+  }
+}
+
+function assertGoAiTpScan(result: any, label: string): void {
+  const findings: any[] = result.findings ?? [];
+  assertGoAiFindings(findings, label);
+  assert(
+    result.summary?.total === 3 && result.summary.high === 3 &&
+      result.summary.critical === 0 && result.summary.medium === 0 &&
+      result.summary.low === 0 && result.summary.info === 0,
+    `${label}: expected severity totals 3 high`,
+  );
+  for (const [component, signature] of Object.entries(GO_AI_COMPONENT_SIGNATURES)) {
+    assert(
+      result.component_signatures?.[component] === signature,
+      `${label}: ${component} signature changed or is missing`,
+    );
+  }
+}
+
+function assertJavaAiExecutionEnvelope(
+  result: any,
+  label: string,
+  expectEngineDetails = true,
+): void {
+  const technologies = new Set(
+    (result.detected_technologies ?? []).map((technology: any) => technology.id),
+  );
+  assert(technologies.has("java"), `${label}: Java technology detection missing`);
+  assert(technologies.has("openai"), `${label}: OpenAI framework detection missing`);
+
+  const pack = result.pack_coverage?.find((candidate: any) => candidate.pack_id === "java-ai");
+  assert(pack?.state === "ran", `${label}: Java AI pack did not report ran`);
+  assert(
+    pack.analyzers.registered === 1 && pack.analyzers.ran === 1,
+    `${label}: Java AI analyzer coverage was not 1/1`,
+  );
+  assert(
+    pack.rules.registered === 1 && pack.rules.ran === 1,
+    `${label}: Java AI rule coverage was not 1/1`,
+  );
+  assertExactJson(pack.languages, ["java"], `${label}: Java language metadata changed`);
+  assertExactJson(pack.frameworks, ["openai"], `${label}: Java framework metadata changed`);
+  assertExactJson(pack.limitations, JAVA_AI_PACK_LIMITATIONS, `${label}: Java limitations changed`);
+  assert(pack.note === undefined, `${label}: unexpected Java execution limitation: ${pack.note}`);
+
+  for (const packId of ["flutter", "android", "ios", "react-native", "expo", "python-ai-api", "go-ai"]) {
+    const other = result.pack_coverage?.find((candidate: any) => candidate.pack_id === packId);
+    assert(other?.state === "not_applicable", `${label}: unexpectedly activated the ${packId} pack`);
+  }
+  if (!expectEngineDetails) return;
+  const aiEngines = (result.engine_details ?? []).filter(
+    (engine: any) => engine.engine === "codeinspectus-ai",
+  );
+  assert(
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
+    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+  );
+  assert(
+    (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
+    `${label}: AI-only scan unexpectedly ran an external engine`,
+  );
+}
+
+function assertJavaAiFindings(findings: any[], label: string): void {
+  assert(findings.length === 3, `${label}: expected three Java AI findings, got ${findings.length}`);
+  assertExactJson(
+    findings.map((finding) => finding.rule_id),
+    [JAVA_AI_RULE.id, JAVA_AI_RULE.id, JAVA_AI_RULE.id],
+    `${label}: Java AI rule IDs changed`,
+  );
+  assertExactJson(
+    findings.map((finding) => finding.location?.start_line),
+    [12, 17, 23],
+    `${label}: Java AI source identities changed`,
+  );
+  for (const finding of findings) {
+    assert(finding.location?.file === JAVA_AI_RULE.file, `${label}: Java AI file changed`);
+    assert(finding.severity === JAVA_AI_RULE.severity, `${label}: Java AI severity changed`);
+    assert(finding.finding_kind === JAVA_AI_RULE.kind, `${label}: Java AI finding kind changed`);
+    assert(finding.confidence === JAVA_AI_RULE.confidence, `${label}: Java AI confidence changed`);
+    assertExactJson(finding.cwe, JAVA_AI_RULE.cwe, `${label}: Java AI CWE mapping changed`);
+    assertExactJson(finding.owasp_llm, JAVA_AI_RULE.owaspLlm, `${label}: Java AI OWASP LLM mapping changed`);
+    assert(finding.engine === "codeinspectus-ai", `${label}: Java AI engine changed`);
+    assertExactJson(finding.engines, ["codeinspectus-ai"], `${label}: Java AI engines changed`);
+    assert(
+      finding.location?.snippet?.includes("[VALUE REDACTED]"),
+      `${label}: Java AI source value was not redacted`,
+    );
+    assert(
+      typeof finding.remediation?.summary === "string" && finding.remediation.summary.length > 0 &&
+        Array.isArray(finding.remediation.steps) && finding.remediation.steps.length > 0 &&
+        Array.isArray(finding.remediation.references) && finding.remediation.references.length > 0,
+      `${label}: Java AI remediation is incomplete`,
+    );
+    const components = [
+      "codeinspectus:pipeline",
+      "pack:java-ai:dispatch",
+      "java:bounded-structural-parser",
+      JAVA_AI_RULE.component,
+    ];
+    assertExactJson(finding.producer_components, components, `${label}: Java AI components changed`);
+  }
+}
+
+function assertJavaAiTpScan(result: any, label: string): void {
+  const findings: any[] = result.findings ?? [];
+  assertJavaAiFindings(findings, label);
+  assert(
+    result.summary?.total === 3 && result.summary.high === 3 &&
+      result.summary.critical === 0 && result.summary.medium === 0 &&
+      result.summary.low === 0 && result.summary.info === 0,
+    `${label}: expected severity totals 3 high`,
+  );
+  for (const [component, signature] of Object.entries(JAVA_AI_COMPONENT_SIGNATURES)) {
+    assert(
+      result.component_signatures?.[component] === signature,
+      `${label}: ${component} signature changed or is missing`,
+    );
+  }
+}
+
+function assertCsharpAiExecutionEnvelope(
+  result: any,
+  label: string,
+  expectEngineDetails = true,
+): void {
+  const technologies = new Set(
+    (result.detected_technologies ?? []).map((technology: any) => technology.id),
+  );
+  assert(technologies.has("csharp"), `${label}: C# technology detection missing`);
+  assert(technologies.has("openai"), `${label}: OpenAI framework detection missing`);
+
+  const pack = result.pack_coverage?.find((candidate: any) => candidate.pack_id === "csharp-ai");
+  assert(pack?.state === "ran", `${label}: C# AI pack did not report ran`);
+  assert(pack.analyzers.registered === 1 && pack.analyzers.ran === 1, `${label}: C# AI analyzer coverage was not 1/1`);
+  assert(pack.rules.registered === 1 && pack.rules.ran === 1, `${label}: C# AI rule coverage was not 1/1`);
+  assertExactJson(pack.languages, ["csharp"], `${label}: C# language metadata changed`);
+  assertExactJson(pack.frameworks, ["openai"], `${label}: C# framework metadata changed`);
+  assertExactJson(pack.limitations, CSHARP_AI_PACK_LIMITATIONS, `${label}: C# limitations changed`);
+  assert(pack.note === undefined, `${label}: unexpected C# execution limitation: ${pack.note}`);
+
+  for (const packId of ["flutter", "android", "ios", "react-native", "expo", "python-ai-api", "go-ai", "java-ai"]) {
+    const other = result.pack_coverage?.find((candidate: any) => candidate.pack_id === packId);
+    assert(other?.state === "not_applicable", `${label}: unexpectedly activated the ${packId} pack`);
+  }
+  if (!expectEngineDetails) return;
+  const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
+  assert(
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
+    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+  );
+  assert(
+    (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
+    `${label}: AI-only scan unexpectedly ran an external engine`,
+  );
+}
+
+function assertCsharpAiFindings(findings: any[], label: string): void {
+  assert(findings.length === 3, `${label}: expected three C# AI findings, got ${findings.length}`);
+  assertExactJson(
+    findings.map((finding) => finding.rule_id),
+    [CSHARP_AI_RULE.id, CSHARP_AI_RULE.id, CSHARP_AI_RULE.id],
+    `${label}: C# AI rule IDs changed`,
+  );
+  assertExactJson(
+    findings.map((finding) => finding.location?.start_line),
+    [9, 12, 25],
+    `${label}: C# AI source identities changed`,
+  );
+  for (const finding of findings) {
+    assert(finding.location?.file === CSHARP_AI_RULE.file, `${label}: C# AI file changed`);
+    assert(finding.severity === CSHARP_AI_RULE.severity, `${label}: C# AI severity changed`);
+    assert(finding.finding_kind === CSHARP_AI_RULE.kind, `${label}: C# AI finding kind changed`);
+    assert(finding.confidence === CSHARP_AI_RULE.confidence, `${label}: C# AI confidence changed`);
+    assertExactJson(finding.cwe, CSHARP_AI_RULE.cwe, `${label}: C# AI CWE mapping changed`);
+    assertExactJson(finding.owasp_llm, CSHARP_AI_RULE.owaspLlm, `${label}: C# AI OWASP LLM mapping changed`);
+    assert(finding.engine === "codeinspectus-ai", `${label}: C# AI engine changed`);
+    assertExactJson(finding.engines, ["codeinspectus-ai"], `${label}: C# AI engines changed`);
+    assert(finding.location?.snippet?.includes("[VALUE REDACTED]"), `${label}: C# AI source value was not redacted`);
+    assert(
+      typeof finding.remediation?.summary === "string" && finding.remediation.summary.length > 0 &&
+        Array.isArray(finding.remediation.steps) && finding.remediation.steps.length > 0 &&
+        Array.isArray(finding.remediation.references) && finding.remediation.references.length > 0,
+      `${label}: C# AI remediation is incomplete`,
+    );
+    const components = [
+      "codeinspectus:pipeline",
+      "pack:csharp-ai:dispatch",
+      "csharp:bounded-structural-parser",
+      CSHARP_AI_RULE.component,
+    ];
+    assertExactJson(finding.producer_components, components, `${label}: C# AI components changed`);
+  }
+}
+
+function assertCsharpAiTpScan(result: any, label: string): void {
+  const findings: any[] = result.findings ?? [];
+  assertCsharpAiFindings(findings, label);
+  assert(
+    result.summary?.total === 3 && result.summary.high === 3 &&
+      result.summary.critical === 0 && result.summary.medium === 0 &&
+      result.summary.low === 0 && result.summary.info === 0,
+    `${label}: expected severity totals 3 high`,
+  );
+  for (const [component, signature] of Object.entries(CSHARP_AI_COMPONENT_SIGNATURES)) {
+    assert(result.component_signatures?.[component] === signature, `${label}: ${component} signature changed or is missing`);
+  }
+}
+
+function assertPhpAiExecutionEnvelope(
+  result: any,
+  label: string,
+  expectEngineDetails = true,
+): void {
+  const technologies = new Set(
+    (result.detected_technologies ?? []).map((technology: any) => technology.id),
+  );
+  assert(technologies.has("php"), `${label}: PHP technology detection missing`);
+  assert(technologies.has("openai"), `${label}: OpenAI framework detection missing`);
+
+  const pack = result.pack_coverage?.find((candidate: any) => candidate.pack_id === "php-ai");
+  assert(pack?.state === "ran", `${label}: PHP AI pack did not report ran`);
+  assert(pack.analyzers.registered === 1 && pack.analyzers.ran === 1, `${label}: PHP AI analyzer coverage was not 1/1`);
+  assert(pack.rules.registered === 1 && pack.rules.ran === 1, `${label}: PHP AI rule coverage was not 1/1`);
+  assertExactJson(pack.languages, ["php"], `${label}: PHP language metadata changed`);
+  assertExactJson(pack.frameworks, ["openai"], `${label}: PHP framework metadata changed`);
+  assertExactJson(pack.limitations, PHP_AI_PACK_LIMITATIONS, `${label}: PHP limitations changed`);
+  assert(pack.note === undefined, `${label}: unexpected PHP execution limitation: ${pack.note}`);
+
+  for (const packId of ["flutter", "android", "ios", "react-native", "expo", "python-ai-api", "go-ai", "java-ai", "csharp-ai"]) {
+    const other = result.pack_coverage?.find((candidate: any) => candidate.pack_id === packId);
+    assert(other?.state === "not_applicable", `${label}: unexpectedly activated the ${packId} pack`);
+  }
+  if (!expectEngineDetails) return;
+  const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
+  assert(
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
+    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+  );
+  assert(
+    (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
+    `${label}: AI-only scan unexpectedly ran an external engine`,
+  );
+}
+
+function assertPhpAiFindings(findings: any[], label: string): void {
+  assert(findings.length === 3, `${label}: expected three PHP AI findings, got ${findings.length}`);
+  assertExactJson(
+    findings.map((finding) => finding.rule_id),
+    [PHP_AI_RULE.id, PHP_AI_RULE.id, PHP_AI_RULE.id],
+    `${label}: PHP AI rule IDs changed`,
+  );
+  assertExactJson(
+    findings.map((finding) => finding.location?.start_line),
+    [7, 19, 42],
+    `${label}: PHP AI source identities changed`,
+  );
+  for (const finding of findings) {
+    assert(finding.location?.file === PHP_AI_RULE.file, `${label}: PHP AI file changed`);
+    assert(finding.severity === PHP_AI_RULE.severity, `${label}: PHP AI severity changed`);
+    assert(finding.finding_kind === PHP_AI_RULE.kind, `${label}: PHP AI finding kind changed`);
+    assert(finding.confidence === PHP_AI_RULE.confidence, `${label}: PHP AI confidence changed`);
+    assertExactJson(finding.cwe, PHP_AI_RULE.cwe, `${label}: PHP AI CWE mapping changed`);
+    assertExactJson(finding.owasp_llm, PHP_AI_RULE.owaspLlm, `${label}: PHP AI OWASP LLM mapping changed`);
+    assert(finding.engine === "codeinspectus-ai", `${label}: PHP AI engine changed`);
+    assertExactJson(finding.engines, ["codeinspectus-ai"], `${label}: PHP AI engines changed`);
+    assert(finding.location?.snippet?.includes("[VALUE REDACTED]"), `${label}: PHP AI source value was not redacted`);
+    assert(
+      typeof finding.remediation?.summary === "string" && finding.remediation.summary.length > 0 &&
+        Array.isArray(finding.remediation.steps) && finding.remediation.steps.length > 0 &&
+        Array.isArray(finding.remediation.references) && finding.remediation.references.length > 0,
+      `${label}: PHP AI remediation is incomplete`,
+    );
+    const components = [
+      "codeinspectus:pipeline",
+      "pack:php-ai:dispatch",
+      "php:bounded-structural-parser",
+      PHP_AI_RULE.component,
+    ];
+    assertExactJson(finding.producer_components, components, `${label}: PHP AI components changed`);
+  }
+}
+
+function assertPhpAiTpScan(result: any, label: string): void {
+  const findings: any[] = result.findings ?? [];
+  assertPhpAiFindings(findings, label);
+  assert(
+    result.summary?.total === 3 && result.summary.high === 3 &&
+      result.summary.critical === 0 && result.summary.medium === 0 &&
+      result.summary.low === 0 && result.summary.info === 0,
+    `${label}: expected severity totals 3 high`,
+  );
+  for (const [component, signature] of Object.entries(PHP_AI_COMPONENT_SIGNATURES)) {
+    assert(result.component_signatures?.[component] === signature, `${label}: ${component} signature changed or is missing`);
+  }
+}
+
+function assertRustAiExecutionEnvelope(
+  result: any,
+  label: string,
+  expectEngineDetails = true,
+): void {
+  const technologies = new Set(
+    (result.detected_technologies ?? []).map((technology: any) => technology.id),
+  );
+  assert(technologies.has("rust"), `${label}: Rust technology detection missing`);
+  assert(technologies.has("openai"), `${label}: OpenAI framework detection missing`);
+
+  const pack = result.pack_coverage?.find((candidate: any) => candidate.pack_id === "rust-ai");
+  assert(pack?.state === "ran", `${label}: Rust AI pack did not report ran`);
+  assert(pack.analyzers.registered === 1 && pack.analyzers.ran === 1, `${label}: Rust AI analyzer coverage was not 1/1`);
+  assert(pack.rules.registered === 1 && pack.rules.ran === 1, `${label}: Rust AI rule coverage was not 1/1`);
+  assertExactJson(pack.languages, ["rust"], `${label}: Rust language metadata changed`);
+  assertExactJson(pack.frameworks, ["openai"], `${label}: Rust framework metadata changed`);
+  assertExactJson(pack.limitations, RUST_AI_PACK_LIMITATIONS, `${label}: Rust limitations changed`);
+  assert(pack.note === undefined, `${label}: unexpected Rust execution limitation: ${pack.note}`);
+
+  for (const packId of ["flutter", "android", "ios", "react-native", "expo", "python-ai-api", "go-ai", "java-ai", "csharp-ai", "php-ai"]) {
+    const other = result.pack_coverage?.find((candidate: any) => candidate.pack_id === packId);
+    assert(other?.state === "not_applicable", `${label}: unexpectedly activated the ${packId} pack`);
+  }
+  if (!expectEngineDetails) return;
+  const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
+  assert(
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
+    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+  );
+  assert(
+    (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
+    `${label}: AI-only scan unexpectedly ran an external engine`,
+  );
+}
+
+function assertRustAiFindings(findings: any[], label: string): void {
+  assert(findings.length === 3, `${label}: expected three Rust AI findings, got ${findings.length}`);
+  assertExactJson(
+    findings.map((finding) => finding.rule_id),
+    [RUST_AI_RULE.id, RUST_AI_RULE.id, RUST_AI_RULE.id],
+    `${label}: Rust AI rule IDs changed`,
+  );
+  assertExactJson(
+    findings.map((finding) => finding.location?.start_line),
+    [8, 12, 25],
+    `${label}: Rust AI source identities changed`,
+  );
+  for (const finding of findings) {
+    assert(finding.location?.file === RUST_AI_RULE.file, `${label}: Rust AI file changed`);
+    assert(finding.severity === RUST_AI_RULE.severity, `${label}: Rust AI severity changed`);
+    assert(finding.finding_kind === RUST_AI_RULE.kind, `${label}: Rust AI finding kind changed`);
+    assert(finding.confidence === RUST_AI_RULE.confidence, `${label}: Rust AI confidence changed`);
+    assertExactJson(finding.cwe, RUST_AI_RULE.cwe, `${label}: Rust AI CWE mapping changed`);
+    assertExactJson(finding.owasp_llm, RUST_AI_RULE.owaspLlm, `${label}: Rust AI OWASP LLM mapping changed`);
+    assert(finding.engine === "codeinspectus-ai", `${label}: Rust AI engine changed`);
+    assertExactJson(finding.engines, ["codeinspectus-ai"], `${label}: Rust AI engines changed`);
+    assert(finding.location?.snippet?.includes("[VALUE REDACTED]"), `${label}: Rust AI source value was not redacted`);
+    assert(
+      typeof finding.remediation?.summary === "string" && finding.remediation.summary.length > 0 &&
+        Array.isArray(finding.remediation.steps) && finding.remediation.steps.length > 0 &&
+        Array.isArray(finding.remediation.references) && finding.remediation.references.length > 0,
+      `${label}: Rust AI remediation is incomplete`,
+    );
+    const components = [
+      "codeinspectus:pipeline",
+      "pack:rust-ai:dispatch",
+      "rust:bounded-structural-parser",
+      RUST_AI_RULE.component,
+    ];
+    assertExactJson(finding.producer_components, components, `${label}: Rust AI components changed`);
+  }
+}
+
+function assertRustAiTpScan(result: any, label: string): void {
+  const findings: any[] = result.findings ?? [];
+  assertRustAiFindings(findings, label);
+  assert(
+    result.summary?.total === 3 && result.summary.high === 3 &&
+      result.summary.critical === 0 && result.summary.medium === 0 &&
+      result.summary.low === 0 && result.summary.info === 0,
+    `${label}: expected severity totals 3 high`,
+  );
+  for (const [component, signature] of Object.entries(RUST_AI_COMPONENT_SIGNATURES)) {
+    assert(result.component_signatures?.[component] === signature, `${label}: ${component} signature changed or is missing`);
+  }
+}
+
+function assertRubyAiExecutionEnvelope(
+  result: any,
+  label: string,
+  expectEngineDetails = true,
+): void {
+  const technologies = new Set(
+    (result.detected_technologies ?? []).map((technology: any) => technology.id),
+  );
+  assert(technologies.has("ruby"), `${label}: Ruby technology detection missing`);
+  assert(technologies.has("openai"), `${label}: OpenAI framework detection missing`);
+
+  const pack = result.pack_coverage?.find((candidate: any) => candidate.pack_id === "ruby-ai");
+  assert(pack?.state === "ran", `${label}: Ruby AI pack did not report ran`);
+  assert(pack.analyzers.registered === 1 && pack.analyzers.ran === 1, `${label}: Ruby AI analyzer coverage was not 1/1`);
+  assert(pack.rules.registered === 1 && pack.rules.ran === 1, `${label}: Ruby AI rule coverage was not 1/1`);
+  assertExactJson(pack.languages, ["ruby"], `${label}: Ruby language metadata changed`);
+  assertExactJson(pack.frameworks, ["openai"], `${label}: Ruby framework metadata changed`);
+  assertExactJson(pack.limitations, RUBY_AI_PACK_LIMITATIONS, `${label}: Ruby limitations changed`);
+  assert(pack.note === undefined, `${label}: unexpected Ruby execution limitation: ${pack.note}`);
+
+  for (const packId of ["flutter", "android", "ios", "react-native", "expo", "python-ai-api", "go-ai", "java-ai", "csharp-ai", "php-ai", "rust-ai"]) {
+    const other = result.pack_coverage?.find((candidate: any) => candidate.pack_id === packId);
+    assert(other?.state === "not_applicable", `${label}: unexpectedly activated the ${packId} pack`);
+  }
+  if (!expectEngineDetails) return;
+  const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
+  assert(
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
+    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+  );
+  assert(
+    (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
+    `${label}: AI-only scan unexpectedly ran an external engine`,
+  );
+}
+
+function assertRubyAiFindings(findings: any[], label: string): void {
+  assert(findings.length === 3, `${label}: expected three Ruby AI findings, got ${findings.length}`);
+  assertExactJson(
+    findings.map((finding) => finding.rule_id),
+    [RUBY_AI_RULE.id, RUBY_AI_RULE.id, RUBY_AI_RULE.id],
+    `${label}: Ruby AI rule IDs changed`,
+  );
+  assertExactJson(
+    findings.map((finding) => finding.location?.start_line),
+    [8, 12, 30],
+    `${label}: Ruby AI source identities changed`,
+  );
+  for (const finding of findings) {
+    assert(finding.location?.file === RUBY_AI_RULE.file, `${label}: Ruby AI file changed`);
+    assert(finding.severity === RUBY_AI_RULE.severity, `${label}: Ruby AI severity changed`);
+    assert(finding.finding_kind === RUBY_AI_RULE.kind, `${label}: Ruby AI finding kind changed`);
+    assert(finding.confidence === RUBY_AI_RULE.confidence, `${label}: Ruby AI confidence changed`);
+    assertExactJson(finding.cwe, RUBY_AI_RULE.cwe, `${label}: Ruby AI CWE mapping changed`);
+    assertExactJson(finding.owasp_llm, RUBY_AI_RULE.owaspLlm, `${label}: Ruby AI OWASP LLM mapping changed`);
+    assert(finding.engine === "codeinspectus-ai", `${label}: Ruby AI engine changed`);
+    assertExactJson(finding.engines, ["codeinspectus-ai"], `${label}: Ruby AI engines changed`);
+    assert(finding.location?.snippet?.includes("[VALUE REDACTED]"), `${label}: Ruby AI source value was not redacted`);
+    assert(
+      typeof finding.remediation?.summary === "string" && finding.remediation.summary.length > 0 &&
+        Array.isArray(finding.remediation.steps) && finding.remediation.steps.length > 0 &&
+        Array.isArray(finding.remediation.references) && finding.remediation.references.length > 0,
+      `${label}: Ruby AI remediation is incomplete`,
+    );
+    const components = [
+      "codeinspectus:pipeline",
+      "pack:ruby-ai:dispatch",
+      "ruby:bounded-structural-parser",
+      RUBY_AI_RULE.component,
+    ];
+    assertExactJson(finding.producer_components, components, `${label}: Ruby AI components changed`);
+  }
+}
+
+function assertRubyAiTpScan(result: any, label: string): void {
+  const findings: any[] = result.findings ?? [];
+  assertRubyAiFindings(findings, label);
+  assert(
+    result.summary?.total === 3 && result.summary.high === 3 &&
+      result.summary.critical === 0 && result.summary.medium === 0 &&
+      result.summary.low === 0 && result.summary.info === 0,
+    `${label}: expected severity totals 3 high`,
+  );
+  for (const [component, signature] of Object.entries(RUBY_AI_COMPONENT_SIGNATURES)) {
+    assert(result.component_signatures?.[component] === signature, `${label}: ${component} signature changed or is missing`);
+  }
+}
+
+function assertFirebaseExecutionEnvelope(
+  result: any,
+  label: string,
+  expectEngineDetails = true,
+): void {
+  const technologies = new Set(
+    (result.detected_technologies ?? []).map((technology: any) => technology.id),
+  );
+  assert(technologies.has("firebase"), `${label}: Firebase technology detection missing`);
+
+  const pack = result.pack_coverage?.find((candidate: any) => candidate.pack_id === "firebase");
+  assert(pack?.state === "ran", `${label}: Firebase pack did not report ran`);
+  assert(pack.analyzers.registered === 1 && pack.analyzers.ran === 1, `${label}: Firebase analyzer coverage was not 1/1`);
+  assert(pack.rules.registered === 3 && pack.rules.ran === 3, `${label}: Firebase rule coverage was not 3/3`);
+  assertExactJson(pack.languages, ["firebase-rules", "json"], `${label}: Firebase language metadata changed`);
+  assertExactJson(pack.frameworks, [], `${label}: Firebase framework metadata changed`);
+  assertExactJson(pack.platforms, ["firebase"], `${label}: Firebase platform metadata changed`);
+  assertExactJson(pack.limitations, FIREBASE_PACK_LIMITATIONS, `${label}: Firebase limitations changed`);
+  assert(pack.note === undefined, `${label}: unexpected Firebase execution limitation: ${pack.note}`);
+
+  for (const packId of ["flutter", "android", "ios", "react-native", "expo", "python-ai-api", "go-ai", "java-ai", "csharp-ai", "php-ai", "rust-ai", "ruby-ai"]) {
+    const other = result.pack_coverage?.find((candidate: any) => candidate.pack_id === packId);
+    assert(other?.state === "not_applicable", `${label}: unexpectedly activated the ${packId} pack`);
+  }
+  if (!expectEngineDetails) return;
+  const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
+  assert(
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
+    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+  );
+  assert(
+    (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
+    `${label}: AI-only scan unexpectedly ran an external engine`,
+  );
+}
+
+function assertFirebaseFindings(findings: any[], label: string): void {
+  assert(findings.length === 3, `${label}: expected three Firebase findings, got ${findings.length}`);
+  assertExactJson(
+    findings.map((finding) => finding.rule_id),
+    FIREBASE_CONFIG_RULES.map((rule) => rule.id),
+    `${label}: Firebase rule IDs changed`,
+  );
+  for (let index = 0; index < findings.length; index++) {
+    const finding = findings[index];
+    const expected = FIREBASE_CONFIG_RULES[index]!;
+    assert(finding.location?.file === expected.file, `${label}: ${expected.id} file changed`);
+    assert(finding.location?.start_line === expected.line, `${label}: ${expected.id} line changed`);
+    assert(finding.severity === "critical", `${label}: ${expected.id} severity changed`);
+    assert(finding.finding_kind === "ai", `${label}: ${expected.id} finding kind changed`);
+    assert(finding.confidence === "high", `${label}: ${expected.id} confidence changed`);
+    assertExactJson(finding.cwe, ["CWE-862", "CWE-285"], `${label}: ${expected.id} CWE mapping changed`);
+    assertExactJson(finding.owasp_web, ["A01:2021"], `${label}: ${expected.id} OWASP mapping changed`);
+    assert(finding.engine === "codeinspectus-ai", `${label}: ${expected.id} engine changed`);
+    assertExactJson(finding.engines, ["codeinspectus-ai"], `${label}: ${expected.id} engines changed`);
+    assert(
+      typeof finding.remediation?.summary === "string" && finding.remediation.summary.length > 0 &&
+        Array.isArray(finding.remediation.steps) && finding.remediation.steps.length > 0 &&
+        Array.isArray(finding.remediation.references) && finding.remediation.references.length > 0,
+      `${label}: ${expected.id} remediation is incomplete`,
+    );
+    assertExactJson(finding.producer_components, [
+      "codeinspectus:pipeline",
+      "pack:firebase:dispatch",
+      "firebase:bounded-rules-parser",
+      expected.component,
+    ], `${label}: ${expected.id} components changed`);
+  }
+}
+
+function assertFirebaseTpScan(result: any, label: string): void {
+  assertFirebaseFindings(result.findings ?? [], label);
+  assert(
+    result.summary?.total === 3 && result.summary.critical === 3 &&
+      result.summary.high === 0 && result.summary.medium === 0 &&
+      result.summary.low === 0 && result.summary.info === 0,
+    `${label}: expected severity totals 3 critical`,
+  );
+  for (const [component, signature] of Object.entries(FIREBASE_COMPONENT_SIGNATURES)) {
+    assert(result.component_signatures?.[component] === signature, `${label}: ${component} signature changed or is missing`);
+  }
+}
+
+function assertGithubActionsExecutionEnvelope(
+  result: any,
+  label: string,
+  expectEngineDetails = true,
+): void {
+  const technology = (result.detected_technologies ?? []).find(
+    (candidate: any) => candidate.id === "github-actions",
+  );
+  assert(technology?.kind === "platform", `${label}: GitHub Actions platform detection missing`);
+
+  const pack = result.pack_coverage?.find((candidate: any) => candidate.pack_id === "github-actions");
+  assert(pack?.state === "ran", `${label}: GitHub Actions pack did not report ran`);
+  assert(pack.analyzers.registered === 1 && pack.analyzers.ran === 1, `${label}: GitHub Actions analyzer coverage was not 1/1`);
+  assert(pack.rules.registered === 2 && pack.rules.ran === 2, `${label}: GitHub Actions rule coverage was not 2/2`);
+  assertExactJson(pack.languages, ["yaml"], `${label}: GitHub Actions language metadata changed`);
+  assertExactJson(pack.frameworks, [], `${label}: GitHub Actions framework metadata changed`);
+  assertExactJson(pack.platforms, ["github-actions"], `${label}: GitHub Actions platform metadata changed`);
+  assertExactJson(pack.limitations, GITHUB_ACTIONS_PACK_LIMITATIONS, `${label}: GitHub Actions limitations changed`);
+  assert(pack.note === undefined, `${label}: unexpected GitHub Actions execution limitation: ${pack.note}`);
+
+  for (const packId of ["flutter", "android", "ios", "react-native", "expo", "python-ai-api", "go-ai", "java-ai", "csharp-ai", "php-ai", "rust-ai", "ruby-ai", "firebase"]) {
+    const other = result.pack_coverage?.find((candidate: any) => candidate.pack_id === packId);
+    assert(other?.state === "not_applicable", `${label}: unexpectedly activated the ${packId} pack`);
+  }
+  if (!expectEngineDetails) return;
+  const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
+  assert(
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
+    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+  );
+  assert(
+    (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
+    `${label}: AI-only scan unexpectedly ran an external engine`,
+  );
+}
+
+function assertGithubActionsFindings(findings: any[], label: string): void {
+  assert(findings.length === 2, `${label}: expected two GitHub Actions findings, got ${findings.length}`);
+  assertExactJson(
+    findings.map((finding) => finding.rule_id),
+    GITHUB_ACTIONS_RULES.map((rule) => rule.id),
+    `${label}: GitHub Actions rule IDs changed`,
+  );
+  for (let index = 0; index < findings.length; index++) {
+    const finding = findings[index];
+    const expected = GITHUB_ACTIONS_RULES[index]!;
+    assert(finding.location?.file === expected.file, `${label}: ${expected.id} file changed`);
+    assert(finding.location?.start_line === expected.line, `${label}: ${expected.id} line changed`);
+    assert(finding.severity === expected.severity, `${label}: ${expected.id} severity changed`);
+    assert(finding.finding_kind === "ai", `${label}: ${expected.id} finding kind changed`);
+    assert(finding.confidence === "high", `${label}: ${expected.id} confidence changed`);
+    assertExactJson(finding.cwe, expected.cwe, `${label}: ${expected.id} CWE mapping changed`);
+    assertExactJson(finding.owasp_web, expected.owaspWeb, `${label}: ${expected.id} OWASP mapping changed`);
+    assert(finding.engine === "codeinspectus-ai", `${label}: ${expected.id} engine changed`);
+    assertExactJson(finding.engines, ["codeinspectus-ai"], `${label}: ${expected.id} engines changed`);
+    assert(
+      typeof finding.remediation?.summary === "string" && finding.remediation.summary.length > 0 &&
+        Array.isArray(finding.remediation.steps) && finding.remediation.steps.length > 0 &&
+        Array.isArray(finding.remediation.references) && finding.remediation.references.length > 0,
+      `${label}: ${expected.id} remediation is incomplete`,
+    );
+    assertExactJson(finding.producer_components, [
+      "codeinspectus:pipeline",
+      "pack:github-actions:dispatch",
+      "github-actions:yaml-workflow-parser",
+      expected.component,
+    ], `${label}: ${expected.id} components changed`);
+  }
+}
+
+function assertGithubActionsTpScan(result: any, label: string): void {
+  assertGithubActionsFindings(result.findings ?? [], label);
+  assert(
+    result.summary?.total === 2 && result.summary.critical === 1 &&
+      result.summary.high === 1 && result.summary.medium === 0 &&
+      result.summary.low === 0 && result.summary.info === 0,
+    `${label}: expected severity totals 1 critical and 1 high`,
+  );
+  for (const [component, signature] of Object.entries(GITHUB_ACTIONS_COMPONENT_SIGNATURES)) {
+    assert(result.component_signatures?.[component] === signature, `${label}: ${component} signature changed or is missing`);
+  }
 }
 
 async function replaceFixtureDirectory(source: string, target: string): Promise<void> {
@@ -989,8 +1976,8 @@ async function main() {
         assert(scan.detected_technologies.some((technology: any) => technology.id === "typescript"), "fixture TypeScript was not detected");
         const nativePack = scan.pack_coverage.find((pack: any) => pack.pack_id === "javascript-typescript");
         assert(nativePack?.state === "ran", `expected JavaScript/TypeScript pack to run, got ${nativePack?.state}`);
-        assert(nativePack.analyzers.registered === 7 && nativePack.analyzers.ran === 7, "native analyzer execution counts are wrong");
-        assert(nativePack.rules.registered === 21 && nativePack.rules.ran === 21, "native rule execution counts are wrong");
+        assert(nativePack.analyzers.registered === 8 && nativePack.analyzers.ran === 8, "native analyzer execution counts are wrong");
+        assert(nativePack.rules.registered === 22 && nativePack.rules.ran === 22, "native rule execution counts are wrong");
         const flutterPack = scan.pack_coverage.find((pack: any) => pack.pack_id === "flutter");
         assert(flutterPack?.state === "not_applicable", `expected Flutter pack to be not_applicable, got ${flutterPack?.state}`);
         assert(flutterPack.analyzers.registered === 6 && flutterPack.analyzers.ran === 0, "non-applicable Flutter analyzer counts are wrong");
@@ -1064,13 +2051,25 @@ async function main() {
       },
     },
     {
-      id: "E08 prompt-injection sink + excessive agency (LLM01+LLM06, CWE-1426)",
+      id: "E08 prompt-injection sink + excessive agency (LLM01+LLM06, CWE-1427)",
       fn: () => {
         const f = find((x) => x.rule_id === "ci-ai-prompt-injection-sink");
         assert(!!f, "prompt-injection sink not detected");
-        assert(f.cwe.includes("CWE-1426"), "expected CWE-1426");
+        assert(f.cwe.includes("CWE-1427"), "expected CWE-1427");
         assert(f.owasp_llm?.includes("LLM01:2025") && f.owasp_llm?.includes("LLM06:2025"), "expected LLM01 + LLM06");
         assert(f.confidence === "medium", "prompt-injection must be medium confidence (honest scope)");
+      },
+    },
+    {
+      id: "E08b model-produced tool argument reaches shell execution (LLM05+LLM06)",
+      fn: () => {
+        const matches = findings.filter((x) => x.rule_id === "ci-ai-llm-tool-argument-command-execution");
+        assert(matches.length === 1, `expected one unsafe tool-execution finding, got ${matches.length}`);
+        const f = matches[0];
+        assert(f.location.file === "src/agent.ts" && f.location.start_line === 9, "unsafe tool-execution sink location drifted");
+        assert(f.severity === "high" && f.confidence === "medium", "unsafe tool-execution severity/confidence drifted");
+        assert(f.cwe.includes("CWE-78") && f.cwe.includes("CWE-1426"), "expected CWE-78 + CWE-1426");
+        assert(f.owasp_llm?.includes("LLM05:2025") && f.owasp_llm?.includes("LLM06:2025"), "expected LLM05 + LLM06");
       },
     },
     {
@@ -1126,7 +2125,7 @@ async function main() {
         assert(re.summary.remaining > 0, "expected findings to remain");
         assert(re.detected_technologies.some((technology: any) => technology.id === "typescript"), "rescan lost detected technologies");
         const coverage = re.pack_coverage.find((pack: any) => pack.pack_id === "javascript-typescript");
-        assert(coverage?.state === "ran" && coverage.rules.ran === 21, "rescan lost native-pack execution coverage");
+        assert(coverage?.state === "ran" && coverage.analyzers.ran === 8 && coverage.rules.ran === 22, "rescan lost native-pack execution coverage");
         const flutterCoverage = re.pack_coverage.find((pack: any) => pack.pack_id === "flutter");
         assert(flutterCoverage?.state === "not_applicable" && flutterCoverage.rules.ran === 0, "rescan lost non-applicable Flutter-pack coverage");
         for (const packId of ["react-native", "expo"]) {
@@ -1139,15 +2138,17 @@ async function main() {
       id: "E14 list_rules exposes the AI-code moat rules + DB version",
       fn: async () => {
         const lr = (await client.callTool("codeinspectus_list_rules", {})).structuredContent;
-        assert(lr.custom_rule_count === 70, `expected 70 custom rules, got ${lr.custom_rule_count}`);
-        assert(lr.detection_db_version === "1.0.0", `expected detection DB 1.0.0, got ${lr.detection_db_version}`);
-        assert(lr.detection_db_date === "2026-07-27", `unexpected detection DB date ${lr.detection_db_date}`);
+        assert(lr.custom_rule_count === 86, `expected 86 custom rules, got ${lr.custom_rule_count}`);
+        assert(lr.detection_db_version === "1.13.0", `expected detection DB 1.13.0, got ${lr.detection_db_version}`);
+        assert(lr.detection_db_date === "2026-07-28", `unexpected detection DB date ${lr.detection_db_date}`);
         assert(lr.custom_rules.some((r: any) => r.id === "ci-ai-rls-using-true"), "missing ci-ai-rls-using-true in list_rules");
         const boundary = lr.custom_rules.find((r: any) => r.id === "ci-ai-client-error-leak");
         assert(boundary?.owasp_web?.includes("A05:2021") && boundary?.owasp_api?.includes("API8:2023"), "new rules must expose OWASP Web/API mappings");
         const nativeRules = lr.custom_rules.filter((rule: any) => rule.engine === "codeinspectus-ai");
-        assert(nativeRules.length === 49, `expected 49 native rules, got ${nativeRules.length}`);
-        assert(nativeRules.filter((rule: any) => rule.pack_id === "javascript-typescript").length === 21, "JavaScript/TypeScript native rule ownership is wrong");
+        assert(nativeRules.length === 65, `expected 65 native rules, got ${nativeRules.length}`);
+        assert(nativeRules.filter((rule: any) => rule.pack_id === "javascript-typescript").length === 22, "JavaScript/TypeScript native rule ownership is wrong");
+        const unsafeTool = nativeRules.find((rule: any) => rule.id === "ci-ai-llm-tool-argument-command-execution");
+        assert(unsafeTool?.owasp_llm?.includes("LLM05:2025") && unsafeTool?.owasp_llm?.includes("LLM06:2025"), "unsafe tool execution rule metadata is missing");
         const flutterRules = nativeRules.filter((rule: any) => rule.pack_id === "flutter");
         assert(flutterRules.length === 6, "Flutter native rule ownership is wrong");
         assertExactJson(
@@ -1162,7 +2163,8 @@ async function main() {
           assertExactJson(rule.cwe, expected.cwe, `${expected.id} catalog CWE mapping changed`);
         }
         const nativePack = lr.native_packs.find((pack: any) => pack.id === "javascript-typescript");
-        assert(nativePack?.analyzer_count === 7 && nativePack.rule_count === 21, "list_rules JavaScript/TypeScript pack inventory is wrong");
+        assert(nativePack?.version === "1.3.0", "expected JavaScript/TypeScript pack 1.3.0");
+        assert(nativePack?.analyzer_count === 8 && nativePack.rule_count === 22, "list_rules JavaScript/TypeScript pack inventory is wrong");
         const baselinePack = lr.native_packs.find((pack: any) => pack.id === "javascript-baseline");
         assert(baselinePack?.scanner_kind === "sast" && baselinePack.analyzer_count === 1 && baselinePack.rule_count === 2, "list_rules JavaScript baseline pack inventory is wrong");
         const promotedRules = nativeRules.filter((rule: any) => rule.pack_id === "javascript-baseline");
@@ -1224,15 +2226,15 @@ async function main() {
           }
         }
         const pythonPack = lr.native_packs.find((pack: any) => pack.id === "python-ai-api");
-        assert(pythonPack?.version === "1.0.0", "expected Python AI/API pack 1.0.0");
+        assert(pythonPack?.version === "1.4.0", "expected Python AI/API pack 1.4.0");
         assert(
-          pythonPack.analyzer_count === 6 && pythonPack.rule_count === 6,
+          pythonPack.analyzer_count === 10 && pythonPack.rule_count === 10,
           "list_rules Python AI/API pack inventory is wrong",
         );
         assertExactJson(pythonPack.languages, ["python"], "list_rules Python languages changed");
         assertExactJson(
           pythonPack.frameworks,
-          ["fastapi", "starlette", "flask", "django", "jinja2", "openai", "anthropic"],
+          ["fastapi", "starlette", "flask", "django", "jinja2", "openai", "anthropic", "langchain"],
           "list_rules Python frameworks changed",
         );
         assertExactJson(pythonPack.platforms, [], "Python pack must not claim platform coverage");
@@ -1252,6 +2254,121 @@ async function main() {
           assert(rule?.severity === expected.severity, `${expected.id} catalog severity changed`);
           assertExactJson(rule.cwe, expected.cwe, `${expected.id} catalog CWE mapping changed`);
         }
+        const goPack = lr.native_packs.find((pack: any) => pack.id === "go-ai");
+        assert(goPack?.version === "1.0.0", "expected Go AI pack 1.0.0");
+        assert(goPack.analyzer_count === 1 && goPack.rule_count === 1, "list_rules Go AI pack inventory is wrong");
+        assertExactJson(goPack.languages, ["go"], "list_rules Go languages changed");
+        assertExactJson(goPack.frameworks, ["openai"], "list_rules Go frameworks changed");
+        assertExactJson(goPack.platforms, [], "Go pack must not claim platform coverage");
+        assertExactJson(goPack.limitations, GO_AI_PACK_LIMITATIONS, "list_rules Go limitations changed");
+        const goRules = nativeRules.filter((rule: any) => rule.pack_id === "go-ai");
+        assert(goRules.length === 1, "Go AI rule ownership changed");
+        const goRule = goRules[0];
+        assert(goRule.id === GO_AI_RULE.id, "Go AI rule ID changed");
+        assert(goRule.severity === GO_AI_RULE.severity, "Go AI catalog severity changed");
+        assertExactJson(goRule.cwe, GO_AI_RULE.cwe, "Go AI catalog CWE mapping changed");
+        assertExactJson(goRule.owasp_llm, GO_AI_RULE.owaspLlm, "Go AI catalog OWASP LLM mapping changed");
+        const javaPack = lr.native_packs.find((pack: any) => pack.id === "java-ai");
+        assert(javaPack?.version === "1.0.0", "expected Java AI pack 1.0.0");
+        assert(javaPack.analyzer_count === 1 && javaPack.rule_count === 1, "list_rules Java AI pack inventory is wrong");
+        assertExactJson(javaPack.languages, ["java"], "list_rules Java languages changed");
+        assertExactJson(javaPack.frameworks, ["openai"], "list_rules Java frameworks changed");
+        assertExactJson(javaPack.platforms, [], "Java pack must not claim platform coverage");
+        assertExactJson(javaPack.limitations, JAVA_AI_PACK_LIMITATIONS, "list_rules Java limitations changed");
+        const javaRules = nativeRules.filter((rule: any) => rule.pack_id === "java-ai");
+        assert(javaRules.length === 1, "Java AI rule ownership changed");
+        const javaRule = javaRules[0];
+        assert(javaRule.id === JAVA_AI_RULE.id, "Java AI rule ID changed");
+        assert(javaRule.severity === JAVA_AI_RULE.severity, "Java AI catalog severity changed");
+        assertExactJson(javaRule.cwe, JAVA_AI_RULE.cwe, "Java AI catalog CWE mapping changed");
+        assertExactJson(javaRule.owasp_llm, JAVA_AI_RULE.owaspLlm, "Java AI catalog OWASP LLM mapping changed");
+        const csharpPack = lr.native_packs.find((pack: any) => pack.id === "csharp-ai");
+        assert(csharpPack?.version === "1.0.0", "expected C# AI pack 1.0.0");
+        assert(csharpPack.analyzer_count === 1 && csharpPack.rule_count === 1, "list_rules C# AI pack inventory is wrong");
+        assertExactJson(csharpPack.languages, ["csharp"], "list_rules C# languages changed");
+        assertExactJson(csharpPack.frameworks, ["openai"], "list_rules C# frameworks changed");
+        assertExactJson(csharpPack.platforms, [], "C# pack must not claim platform coverage");
+        assertExactJson(csharpPack.limitations, CSHARP_AI_PACK_LIMITATIONS, "list_rules C# limitations changed");
+        const csharpRules = nativeRules.filter((rule: any) => rule.pack_id === "csharp-ai");
+        assert(csharpRules.length === 1, "C# AI rule ownership changed");
+        const csharpRule = csharpRules[0];
+        assert(csharpRule.id === CSHARP_AI_RULE.id, "C# AI rule ID changed");
+        assert(csharpRule.severity === CSHARP_AI_RULE.severity, "C# AI catalog severity changed");
+        assertExactJson(csharpRule.cwe, CSHARP_AI_RULE.cwe, "C# AI catalog CWE mapping changed");
+        assertExactJson(csharpRule.owasp_llm, CSHARP_AI_RULE.owaspLlm, "C# AI catalog OWASP LLM mapping changed");
+        const phpPack = lr.native_packs.find((pack: any) => pack.id === "php-ai");
+        assert(phpPack?.version === "1.0.0", "expected PHP AI pack 1.0.0");
+        assert(phpPack.analyzer_count === 1 && phpPack.rule_count === 1, "list_rules PHP AI pack inventory is wrong");
+        assertExactJson(phpPack.languages, ["php"], "list_rules PHP languages changed");
+        assertExactJson(phpPack.frameworks, ["openai"], "list_rules PHP frameworks changed");
+        assertExactJson(phpPack.platforms, [], "PHP pack must not claim platform coverage");
+        assertExactJson(phpPack.limitations, PHP_AI_PACK_LIMITATIONS, "list_rules PHP limitations changed");
+        const phpRules = nativeRules.filter((rule: any) => rule.pack_id === "php-ai");
+        assert(phpRules.length === 1, "PHP AI rule ownership changed");
+        const phpRule = phpRules[0];
+        assert(phpRule.id === PHP_AI_RULE.id, "PHP AI rule ID changed");
+        assert(phpRule.severity === PHP_AI_RULE.severity, "PHP AI catalog severity changed");
+        assertExactJson(phpRule.cwe, PHP_AI_RULE.cwe, "PHP AI catalog CWE mapping changed");
+        assertExactJson(phpRule.owasp_llm, PHP_AI_RULE.owaspLlm, "PHP AI catalog OWASP LLM mapping changed");
+        const rustPack = lr.native_packs.find((pack: any) => pack.id === "rust-ai");
+        assert(rustPack?.version === "1.0.0", "expected Rust AI pack 1.0.0");
+        assert(rustPack.analyzer_count === 1 && rustPack.rule_count === 1, "list_rules Rust AI pack inventory is wrong");
+        assertExactJson(rustPack.languages, ["rust"], "list_rules Rust languages changed");
+        assertExactJson(rustPack.frameworks, ["openai"], "list_rules Rust frameworks changed");
+        assertExactJson(rustPack.platforms, [], "Rust pack must not claim platform coverage");
+        assertExactJson(rustPack.limitations, RUST_AI_PACK_LIMITATIONS, "list_rules Rust limitations changed");
+        const rustRules = nativeRules.filter((rule: any) => rule.pack_id === "rust-ai");
+        assert(rustRules.length === 1, "Rust AI rule ownership changed");
+        const rustRule = rustRules[0];
+        assert(rustRule.id === RUST_AI_RULE.id, "Rust AI rule ID changed");
+        assert(rustRule.severity === RUST_AI_RULE.severity, "Rust AI catalog severity changed");
+        assertExactJson(rustRule.cwe, RUST_AI_RULE.cwe, "Rust AI catalog CWE mapping changed");
+        assertExactJson(rustRule.owasp_llm, RUST_AI_RULE.owaspLlm, "Rust AI catalog OWASP LLM mapping changed");
+        const rubyPack = lr.native_packs.find((pack: any) => pack.id === "ruby-ai");
+        assert(rubyPack?.version === "1.0.0", "expected Ruby AI pack 1.0.0");
+        assert(rubyPack.analyzer_count === 1 && rubyPack.rule_count === 1, "list_rules Ruby AI pack inventory is wrong");
+        assertExactJson(rubyPack.languages, ["ruby"], "list_rules Ruby languages changed");
+        assertExactJson(rubyPack.frameworks, ["openai"], "list_rules Ruby frameworks changed");
+        assertExactJson(rubyPack.platforms, [], "Ruby pack must not claim platform coverage");
+        assertExactJson(rubyPack.limitations, RUBY_AI_PACK_LIMITATIONS, "list_rules Ruby limitations changed");
+        const rubyRules = nativeRules.filter((rule: any) => rule.pack_id === "ruby-ai");
+        assert(rubyRules.length === 1, "Ruby AI rule ownership changed");
+        const rubyRule = rubyRules[0];
+        assert(rubyRule.id === RUBY_AI_RULE.id, "Ruby AI rule ID changed");
+        assert(rubyRule.severity === RUBY_AI_RULE.severity, "Ruby AI catalog severity changed");
+        assertExactJson(rubyRule.cwe, RUBY_AI_RULE.cwe, "Ruby AI catalog CWE mapping changed");
+        assertExactJson(rubyRule.owasp_llm, RUBY_AI_RULE.owaspLlm, "Ruby AI catalog OWASP LLM mapping changed");
+        const firebasePack = lr.native_packs.find((pack: any) => pack.id === "firebase");
+        assert(firebasePack?.version === "1.0.0", "expected Firebase pack 1.0.0");
+        assert(firebasePack.analyzer_count === 1 && firebasePack.rule_count === 3, "list_rules Firebase pack inventory is wrong");
+        assertExactJson(firebasePack.languages, ["firebase-rules", "json"], "list_rules Firebase languages changed");
+        assertExactJson(firebasePack.frameworks, [], "list_rules Firebase frameworks changed");
+        assertExactJson(firebasePack.platforms, ["firebase"], "list_rules Firebase platforms changed");
+        assertExactJson(firebasePack.limitations, FIREBASE_PACK_LIMITATIONS, "list_rules Firebase limitations changed");
+        const firebaseRules = nativeRules.filter((rule: any) => rule.pack_id === "firebase");
+        assert(firebaseRules.length === 3, "Firebase rule ownership changed");
+        assertExactJson(
+          firebaseRules.map((rule: any) => rule.id).sort(),
+          FIREBASE_CONFIG_RULES.map((rule) => rule.id).sort(),
+          "Firebase rule IDs changed",
+        );
+        assert(firebaseRules.every((rule: any) => rule.severity === "critical"), "Firebase catalog severity changed");
+        assert(firebaseRules.every((rule: any) => JSON.stringify(rule.cwe) === JSON.stringify(["CWE-862", "CWE-285"])), "Firebase catalog CWE mapping changed");
+        assert(firebaseRules.every((rule: any) => JSON.stringify(rule.owasp_web) === JSON.stringify(["A01:2021"])), "Firebase catalog OWASP mapping changed");
+        const githubActionsPack = lr.native_packs.find((pack: any) => pack.id === "github-actions");
+        assert(githubActionsPack?.version === "1.0.0", "expected GitHub Actions pack 1.0.0");
+        assert(githubActionsPack.analyzer_count === 1 && githubActionsPack.rule_count === 2, "list_rules GitHub Actions pack inventory is wrong");
+        assertExactJson(githubActionsPack.languages, ["yaml"], "list_rules GitHub Actions languages changed");
+        assertExactJson(githubActionsPack.frameworks, [], "list_rules GitHub Actions frameworks changed");
+        assertExactJson(githubActionsPack.platforms, ["github-actions"], "list_rules GitHub Actions platforms changed");
+        assertExactJson(githubActionsPack.limitations, GITHUB_ACTIONS_PACK_LIMITATIONS, "list_rules GitHub Actions limitations changed");
+        const githubActionsRules = nativeRules.filter((rule: any) => rule.pack_id === "github-actions");
+        assert(githubActionsRules.length === 2, "GitHub Actions rule ownership changed");
+        assertExactJson(
+          githubActionsRules.map((rule: any) => rule.id).sort(),
+          GITHUB_ACTIONS_RULES.map((rule) => rule.id).sort(),
+          "GitHub Actions rule IDs changed",
+        );
         const pubEngine = lr.engines.find((engine: any) => engine.engine === "codeinspectus-pub");
         assert(pubEngine?.version === "1.0.0" && pubEngine.available === true, "native Pub engine inventory is unavailable");
         const pubDb = lr.advisory_databases?.find((database: any) => database.engine === "codeinspectus-pub");
@@ -1300,7 +2417,7 @@ async function main() {
         const corsFindings: any[] = corsScan.findings;
         assert(corsScan.detected_technologies.some((technology: any) => technology.id === "typescript"), "technology detection must run on external-engine-only scans");
         const nativeCoverage = corsScan.pack_coverage;
-        assert(nativeCoverage.length === 8, `SAST-filtered scan must inventory all eight installed native packs, got ${nativeCoverage.length}`);
+        assert(nativeCoverage.length === 16, `SAST-filtered scan must inventory all sixteen installed native packs, got ${nativeCoverage.length}`);
         assert(nativeCoverage.filter((pack: any) => pack.scanner_kind === "ai").every((pack: any) => pack.state === "not_run" && pack.rules.ran === 0), "SAST-filtered scan must report every AI pack as not_run");
         const baselineCoverage = nativeCoverage.find((pack: any) => pack.pack_id === "javascript-baseline");
         assert(baselineCoverage?.state === "ran" && baselineCoverage.rules.ran === 2, "SAST-filtered scan did not run the JavaScript baseline pack");
@@ -1335,7 +2452,7 @@ async function main() {
         assert(boundaryFindings.every((x) => x.producer_components?.some((component: string) => component.startsWith("ai:"))), "API-boundary finding missing detector provenance");
         const serialized = JSON.stringify(boundaryScan);
         assert(!serialized.includes("provider failure") && !serialized.includes("database unavailable"), "API-boundary output leaked planted internal detail");
-        assert(boundaryScan.engine_details.some((x: any) => x.engine === "codeinspectus-ai" && x.version === "5.0.0"), "AI engine version was not bumped for expanded multi-pack coverage");
+        assert(boundaryScan.engine_details.some((x: any) => x.engine === "codeinspectus-ai" && x.version === "5.13.0"), "AI engine version was not bumped for expanded multi-pack coverage");
       },
     },
     {
@@ -1853,7 +2970,7 @@ async function main() {
           })).structuredContent;
           assertPythonAiApiExecutionEnvelope(resolved, "Python AI/API fixed rescan", false);
           assert(
-            resolved.summary.resolved === 6 &&
+            resolved.summary.resolved === 10 &&
               resolved.summary.remaining === 0 &&
               resolved.summary.introduced === 0 &&
               resolved.summary.not_rechecked === 0 &&
@@ -1876,7 +2993,7 @@ async function main() {
           assert(
             introduced.summary.resolved === 0 &&
               introduced.summary.remaining === 0 &&
-              introduced.summary.introduced === 6 &&
+              introduced.summary.introduced === 10 &&
               introduced.summary.not_rechecked === 0 &&
               introduced.partial === false,
             `Python AI/API reintroduced rescan diff was wrong: ${JSON.stringify(introduced.summary)}`,
@@ -1997,6 +3114,500 @@ async function main() {
             introduced.partial === false,
             `promotion reintroduction rescan was wrong: ${JSON.stringify(introduced.summary)}`,
           );
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E37 Go AI corpus is exact through the built MCP server",
+      fn: async () => {
+        const [tp, fp, fixed] = await Promise.all([
+          client.callTool("codeinspectus_scan", { path: GO_AI_TP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: GO_AI_FP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: GO_AI_FIXED_FIXTURE, scanners: ["ai"] }),
+        ]);
+        for (const [label, response] of [["TP", tp], ["FP", fp], ["fixed", fixed]] as const) {
+          assertGoAiExecutionEnvelope(response.structuredContent, `Go AI ${label}`);
+        }
+        assertGoAiTpScan(tp.structuredContent, "Go AI TP");
+        assert(fp.structuredContent.findings.length === 0, "Go AI FP corpus produced a finding");
+        assert(fixed.structuredContent.findings.length === 0, "Go AI fixed corpus produced a finding");
+      },
+    },
+    {
+      id: "E38 Go AI same-path TP-to-fixed-to-TP rescan proves resolution and introduction",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-go-ai-rescan-"));
+        const target = join(temporaryRoot, "project");
+        try {
+          await replaceFixtureDirectory(GO_AI_TP_FIXTURE, target);
+          const baseline = (await client.callTool("codeinspectus_scan", {
+            path: target,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertGoAiExecutionEnvelope(baseline, "Go AI rescan TP baseline");
+          assertGoAiTpScan(baseline, "Go AI rescan TP baseline");
+
+          await replaceFixtureDirectory(GO_AI_FIXED_FIXTURE, target);
+          const resolved = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: baseline.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertGoAiExecutionEnvelope(resolved, "Go AI fixed rescan", false);
+          assert(
+            resolved.summary.resolved === 3 && resolved.summary.remaining === 0 &&
+              resolved.summary.introduced === 0 && resolved.summary.not_rechecked === 0 &&
+              resolved.partial === false,
+            `Go AI fixed rescan diff was wrong: ${JSON.stringify(resolved.summary)}`,
+          );
+          assertGoAiFindings(resolved.resolved, "Go AI fixed rescan resolved bucket");
+
+          await replaceFixtureDirectory(GO_AI_TP_FIXTURE, target);
+          const introduced = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: resolved.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertGoAiExecutionEnvelope(introduced, "Go AI TP reintroduction", false);
+          assert(
+            introduced.summary.resolved === 0 && introduced.summary.remaining === 0 &&
+              introduced.summary.introduced === 3 && introduced.summary.not_rechecked === 0 &&
+              introduced.partial === false,
+            `Go AI reintroduced rescan diff was wrong: ${JSON.stringify(introduced.summary)}`,
+          );
+          assertGoAiFindings(introduced.introduced, "Go AI reintroduced rescan introduced bucket");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E39 Java AI corpus is exact through the built MCP server",
+      fn: async () => {
+        const [tp, fp, fixed] = await Promise.all([
+          client.callTool("codeinspectus_scan", { path: JAVA_AI_TP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: JAVA_AI_FP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: JAVA_AI_FIXED_FIXTURE, scanners: ["ai"] }),
+        ]);
+        for (const [label, response] of [["TP", tp], ["FP", fp], ["fixed", fixed]] as const) {
+          assertJavaAiExecutionEnvelope(response.structuredContent, `Java AI ${label}`);
+        }
+        assertJavaAiTpScan(tp.structuredContent, "Java AI TP");
+        assert(fp.structuredContent.findings.length === 0, "Java AI FP corpus produced a finding");
+        assert(fixed.structuredContent.findings.length === 0, "Java AI fixed corpus produced a finding");
+      },
+    },
+    {
+      id: "E40 Java AI same-path TP-to-fixed-to-TP rescan proves resolution and introduction",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-java-ai-rescan-"));
+        const target = join(temporaryRoot, "project");
+        try {
+          await replaceFixtureDirectory(JAVA_AI_TP_FIXTURE, target);
+          const baseline = (await client.callTool("codeinspectus_scan", {
+            path: target,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertJavaAiExecutionEnvelope(baseline, "Java AI rescan TP baseline");
+          assertJavaAiTpScan(baseline, "Java AI rescan TP baseline");
+
+          await replaceFixtureDirectory(JAVA_AI_FIXED_FIXTURE, target);
+          const resolved = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: baseline.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertJavaAiExecutionEnvelope(resolved, "Java AI fixed rescan", false);
+          assert(
+            resolved.summary.resolved === 3 && resolved.summary.remaining === 0 &&
+              resolved.summary.introduced === 0 && resolved.summary.not_rechecked === 0 &&
+              resolved.partial === false,
+            `Java AI fixed rescan diff was wrong: ${JSON.stringify(resolved.summary)}`,
+          );
+          assertJavaAiFindings(resolved.resolved, "Java AI fixed rescan resolved bucket");
+
+          await replaceFixtureDirectory(JAVA_AI_TP_FIXTURE, target);
+          const introduced = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: resolved.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertJavaAiExecutionEnvelope(introduced, "Java AI TP reintroduction", false);
+          assert(
+            introduced.summary.resolved === 0 && introduced.summary.remaining === 0 &&
+              introduced.summary.introduced === 3 && introduced.summary.not_rechecked === 0 &&
+              introduced.partial === false,
+            `Java AI reintroduced rescan diff was wrong: ${JSON.stringify(introduced.summary)}`,
+          );
+          assertJavaAiFindings(introduced.introduced, "Java AI reintroduced rescan introduced bucket");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E41 C# AI corpus is exact through the built MCP server",
+      fn: async () => {
+        const [tp, fp, fixed] = await Promise.all([
+          client.callTool("codeinspectus_scan", { path: CSHARP_AI_TP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: CSHARP_AI_FP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: CSHARP_AI_FIXED_FIXTURE, scanners: ["ai"] }),
+        ]);
+        for (const [label, response] of [["TP", tp], ["FP", fp], ["fixed", fixed]] as const) {
+          assertCsharpAiExecutionEnvelope(response.structuredContent, `C# AI ${label}`);
+        }
+        assertCsharpAiTpScan(tp.structuredContent, "C# AI TP");
+        assert(fp.structuredContent.findings.length === 0, "C# AI FP corpus produced a finding");
+        assert(fixed.structuredContent.findings.length === 0, "C# AI fixed corpus produced a finding");
+      },
+    },
+    {
+      id: "E42 C# AI same-path TP-to-fixed-to-TP rescan proves resolution and introduction",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-csharp-ai-rescan-"));
+        const target = join(temporaryRoot, "project");
+        try {
+          await replaceFixtureDirectory(CSHARP_AI_TP_FIXTURE, target);
+          const baseline = (await client.callTool("codeinspectus_scan", { path: target, scanners: ["ai"] })).structuredContent;
+          assertCsharpAiExecutionEnvelope(baseline, "C# AI rescan TP baseline");
+          assertCsharpAiTpScan(baseline, "C# AI rescan TP baseline");
+
+          await replaceFixtureDirectory(CSHARP_AI_FIXED_FIXTURE, target);
+          const resolved = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: baseline.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertCsharpAiExecutionEnvelope(resolved, "C# AI fixed rescan", false);
+          assert(
+            resolved.summary.resolved === 3 && resolved.summary.remaining === 0 &&
+              resolved.summary.introduced === 0 && resolved.summary.not_rechecked === 0 &&
+              resolved.partial === false,
+            `C# AI fixed rescan diff was wrong: ${JSON.stringify(resolved.summary)}`,
+          );
+          assertCsharpAiFindings(resolved.resolved, "C# AI fixed rescan resolved bucket");
+
+          await replaceFixtureDirectory(CSHARP_AI_TP_FIXTURE, target);
+          const introduced = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: resolved.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertCsharpAiExecutionEnvelope(introduced, "C# AI TP reintroduction", false);
+          assert(
+            introduced.summary.resolved === 0 && introduced.summary.remaining === 0 &&
+              introduced.summary.introduced === 3 && introduced.summary.not_rechecked === 0 &&
+              introduced.partial === false,
+            `C# AI reintroduced rescan diff was wrong: ${JSON.stringify(introduced.summary)}`,
+          );
+          assertCsharpAiFindings(introduced.introduced, "C# AI reintroduced rescan introduced bucket");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E43 PHP AI corpus is exact through the built MCP server",
+      fn: async () => {
+        const [tp, fp, fixed] = await Promise.all([
+          client.callTool("codeinspectus_scan", { path: PHP_AI_TP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: PHP_AI_FP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: PHP_AI_FIXED_FIXTURE, scanners: ["ai"] }),
+        ]);
+        for (const [label, response] of [["TP", tp], ["FP", fp], ["fixed", fixed]] as const) {
+          assertPhpAiExecutionEnvelope(response.structuredContent, `PHP AI ${label}`);
+        }
+        assertPhpAiTpScan(tp.structuredContent, "PHP AI TP");
+        assert(fp.structuredContent.findings.length === 0, "PHP AI FP corpus produced a finding");
+        assert(fixed.structuredContent.findings.length === 0, "PHP AI fixed corpus produced a finding");
+      },
+    },
+    {
+      id: "E44 PHP AI same-path TP-to-fixed-to-TP rescan proves resolution and introduction",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-php-ai-rescan-"));
+        const target = join(temporaryRoot, "project");
+        try {
+          await replaceFixtureDirectory(PHP_AI_TP_FIXTURE, target);
+          const baseline = (await client.callTool("codeinspectus_scan", { path: target, scanners: ["ai"] })).structuredContent;
+          assertPhpAiExecutionEnvelope(baseline, "PHP AI rescan TP baseline");
+          assertPhpAiTpScan(baseline, "PHP AI rescan TP baseline");
+
+          await replaceFixtureDirectory(PHP_AI_FIXED_FIXTURE, target);
+          const resolved = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: baseline.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertPhpAiExecutionEnvelope(resolved, "PHP AI fixed rescan", false);
+          assert(
+            resolved.summary.resolved === 3 && resolved.summary.remaining === 0 &&
+              resolved.summary.introduced === 0 && resolved.summary.not_rechecked === 0 &&
+              resolved.partial === false,
+            `PHP AI fixed rescan diff was wrong: ${JSON.stringify(resolved.summary)}`,
+          );
+          assertPhpAiFindings(resolved.resolved, "PHP AI fixed rescan resolved bucket");
+
+          await replaceFixtureDirectory(PHP_AI_TP_FIXTURE, target);
+          const introduced = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: resolved.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertPhpAiExecutionEnvelope(introduced, "PHP AI TP reintroduction", false);
+          assert(
+            introduced.summary.resolved === 0 && introduced.summary.remaining === 0 &&
+              introduced.summary.introduced === 3 && introduced.summary.not_rechecked === 0 &&
+              introduced.partial === false,
+            `PHP AI reintroduced rescan diff was wrong: ${JSON.stringify(introduced.summary)}`,
+          );
+          assertPhpAiFindings(introduced.introduced, "PHP AI reintroduced rescan introduced bucket");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E45 Rust AI corpus is exact through the built MCP server",
+      fn: async () => {
+        const [tp, fp, fixed] = await Promise.all([
+          client.callTool("codeinspectus_scan", { path: RUST_AI_TP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: RUST_AI_FP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: RUST_AI_FIXED_FIXTURE, scanners: ["ai"] }),
+        ]);
+        for (const [label, response] of [["TP", tp], ["FP", fp], ["fixed", fixed]] as const) {
+          assertRustAiExecutionEnvelope(response.structuredContent, `Rust AI ${label}`);
+        }
+        assertRustAiTpScan(tp.structuredContent, "Rust AI TP");
+        assert(fp.structuredContent.findings.length === 0, "Rust AI FP corpus produced a finding");
+        assert(fixed.structuredContent.findings.length === 0, "Rust AI fixed corpus produced a finding");
+      },
+    },
+    {
+      id: "E46 Rust AI same-path TP-to-fixed-to-TP rescan proves resolution and introduction",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-rust-ai-rescan-"));
+        const target = join(temporaryRoot, "project");
+        try {
+          await replaceFixtureDirectory(RUST_AI_TP_FIXTURE, target);
+          const baseline = (await client.callTool("codeinspectus_scan", { path: target, scanners: ["ai"] })).structuredContent;
+          assertRustAiExecutionEnvelope(baseline, "Rust AI rescan TP baseline");
+          assertRustAiTpScan(baseline, "Rust AI rescan TP baseline");
+
+          await replaceFixtureDirectory(RUST_AI_FIXED_FIXTURE, target);
+          const resolved = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: baseline.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertRustAiExecutionEnvelope(resolved, "Rust AI fixed rescan", false);
+          assert(
+            resolved.summary.resolved === 3 && resolved.summary.remaining === 0 &&
+              resolved.summary.introduced === 0 && resolved.summary.not_rechecked === 0 &&
+              resolved.partial === false,
+            `Rust AI fixed rescan diff was wrong: ${JSON.stringify(resolved.summary)}`,
+          );
+          assertRustAiFindings(resolved.resolved, "Rust AI fixed rescan resolved bucket");
+
+          await replaceFixtureDirectory(RUST_AI_TP_FIXTURE, target);
+          const introduced = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: resolved.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertRustAiExecutionEnvelope(introduced, "Rust AI TP reintroduction", false);
+          assert(
+            introduced.summary.resolved === 0 && introduced.summary.remaining === 0 &&
+              introduced.summary.introduced === 3 && introduced.summary.not_rechecked === 0 &&
+              introduced.partial === false,
+            `Rust AI reintroduced rescan diff was wrong: ${JSON.stringify(introduced.summary)}`,
+          );
+          assertRustAiFindings(introduced.introduced, "Rust AI reintroduced rescan introduced bucket");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E47 Ruby AI corpus is exact through the built MCP server",
+      fn: async () => {
+        const [tp, fp, fixed] = await Promise.all([
+          client.callTool("codeinspectus_scan", { path: RUBY_AI_TP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: RUBY_AI_FP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: RUBY_AI_FIXED_FIXTURE, scanners: ["ai"] }),
+        ]);
+        for (const [label, response] of [["TP", tp], ["FP", fp], ["fixed", fixed]] as const) {
+          assertRubyAiExecutionEnvelope(response.structuredContent, `Ruby AI ${label}`);
+        }
+        assertRubyAiTpScan(tp.structuredContent, "Ruby AI TP");
+        assert(fp.structuredContent.findings.length === 0, "Ruby AI FP corpus produced a finding");
+        assert(fixed.structuredContent.findings.length === 0, "Ruby AI fixed corpus produced a finding");
+      },
+    },
+    {
+      id: "E48 Ruby AI same-path TP-to-fixed-to-TP rescan proves resolution and introduction",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-ruby-ai-rescan-"));
+        const target = join(temporaryRoot, "project");
+        try {
+          await replaceFixtureDirectory(RUBY_AI_TP_FIXTURE, target);
+          const baseline = (await client.callTool("codeinspectus_scan", { path: target, scanners: ["ai"] })).structuredContent;
+          assertRubyAiExecutionEnvelope(baseline, "Ruby AI rescan TP baseline");
+          assertRubyAiTpScan(baseline, "Ruby AI rescan TP baseline");
+
+          await replaceFixtureDirectory(RUBY_AI_FIXED_FIXTURE, target);
+          const resolved = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: baseline.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertRubyAiExecutionEnvelope(resolved, "Ruby AI fixed rescan", false);
+          assert(
+            resolved.summary.resolved === 3 && resolved.summary.remaining === 0 &&
+              resolved.summary.introduced === 0 && resolved.summary.not_rechecked === 0 &&
+              resolved.partial === false,
+            `Ruby AI fixed rescan diff was wrong: ${JSON.stringify(resolved.summary)}`,
+          );
+          assertRubyAiFindings(resolved.resolved, "Ruby AI fixed rescan resolved bucket");
+
+          await replaceFixtureDirectory(RUBY_AI_TP_FIXTURE, target);
+          const introduced = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: resolved.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertRubyAiExecutionEnvelope(introduced, "Ruby AI TP reintroduction", false);
+          assert(
+            introduced.summary.resolved === 0 && introduced.summary.remaining === 0 &&
+              introduced.summary.introduced === 3 && introduced.summary.not_rechecked === 0 &&
+              introduced.partial === false,
+            `Ruby AI reintroduced rescan diff was wrong: ${JSON.stringify(introduced.summary)}`,
+          );
+          assertRubyAiFindings(introduced.introduced, "Ruby AI reintroduced rescan introduced bucket");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E49 Firebase configuration corpus is exact through the built MCP server",
+      fn: async () => {
+        const [tp, fp, fixed] = await Promise.all([
+          client.callTool("codeinspectus_scan", { path: FIREBASE_CONFIG_TP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: FIREBASE_CONFIG_FP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: FIREBASE_CONFIG_FIXED_FIXTURE, scanners: ["ai"] }),
+        ]);
+        for (const [label, response] of [["TP", tp], ["FP", fp], ["fixed", fixed]] as const) {
+          assertFirebaseExecutionEnvelope(response.structuredContent, `Firebase ${label}`);
+        }
+        assertFirebaseTpScan(tp.structuredContent, "Firebase TP");
+        assert(fp.structuredContent.findings.length === 0, "Firebase FP corpus produced a finding");
+        assert(fixed.structuredContent.findings.length === 0, "Firebase fixed corpus produced a finding");
+      },
+    },
+    {
+      id: "E50 Firebase same-path TP-to-fixed-to-TP rescan proves resolution and introduction",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-firebase-rescan-"));
+        const target = join(temporaryRoot, "project");
+        try {
+          await replaceFixtureDirectory(FIREBASE_CONFIG_TP_FIXTURE, target);
+          const baseline = (await client.callTool("codeinspectus_scan", { path: target, scanners: ["ai"] })).structuredContent;
+          assertFirebaseExecutionEnvelope(baseline, "Firebase rescan TP baseline");
+          assertFirebaseTpScan(baseline, "Firebase rescan TP baseline");
+
+          await replaceFixtureDirectory(FIREBASE_CONFIG_FIXED_FIXTURE, target);
+          const resolved = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: baseline.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertFirebaseExecutionEnvelope(resolved, "Firebase fixed rescan", false);
+          assert(
+            resolved.summary.resolved === 3 && resolved.summary.remaining === 0 &&
+              resolved.summary.introduced === 0 && resolved.summary.not_rechecked === 0 &&
+              resolved.partial === false,
+            `Firebase fixed rescan diff was wrong: ${JSON.stringify(resolved.summary)}`,
+          );
+          assertFirebaseFindings(resolved.resolved, "Firebase fixed rescan resolved bucket");
+
+          await replaceFixtureDirectory(FIREBASE_CONFIG_TP_FIXTURE, target);
+          const introduced = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: resolved.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertFirebaseExecutionEnvelope(introduced, "Firebase TP reintroduction", false);
+          assert(
+            introduced.summary.resolved === 0 && introduced.summary.remaining === 0 &&
+              introduced.summary.introduced === 3 && introduced.summary.not_rechecked === 0 &&
+              introduced.partial === false,
+            `Firebase reintroduced rescan diff was wrong: ${JSON.stringify(introduced.summary)}`,
+          );
+          assertFirebaseFindings(introduced.introduced, "Firebase reintroduced rescan introduced bucket");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E51 GitHub Actions workflow corpus is exact through the built MCP server",
+      fn: async () => {
+        const [tp, fp, fixed] = await Promise.all([
+          client.callTool("codeinspectus_scan", { path: GITHUB_ACTIONS_TP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: GITHUB_ACTIONS_FP_FIXTURE, scanners: ["ai"] }),
+          client.callTool("codeinspectus_scan", { path: GITHUB_ACTIONS_FIXED_FIXTURE, scanners: ["ai"] }),
+        ]);
+        for (const [label, response] of [["TP", tp], ["FP", fp], ["fixed", fixed]] as const) {
+          assertGithubActionsExecutionEnvelope(response.structuredContent, `GitHub Actions ${label}`);
+        }
+        assertGithubActionsTpScan(tp.structuredContent, "GitHub Actions TP");
+        assert(fp.structuredContent.findings.length === 0, "GitHub Actions FP corpus produced a finding");
+        assert(fixed.structuredContent.findings.length === 0, "GitHub Actions fixed corpus produced a finding");
+      },
+    },
+    {
+      id: "E52 GitHub Actions same-path TP-to-fixed-to-TP rescan proves resolution and introduction",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-github-actions-rescan-"));
+        const target = join(temporaryRoot, "project");
+        try {
+          await replaceFixtureDirectory(GITHUB_ACTIONS_TP_FIXTURE, target);
+          const baseline = (await client.callTool("codeinspectus_scan", { path: target, scanners: ["ai"] })).structuredContent;
+          assertGithubActionsExecutionEnvelope(baseline, "GitHub Actions rescan TP baseline");
+          assertGithubActionsTpScan(baseline, "GitHub Actions rescan TP baseline");
+
+          await replaceFixtureDirectory(GITHUB_ACTIONS_FIXED_FIXTURE, target);
+          const resolved = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: baseline.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertGithubActionsExecutionEnvelope(resolved, "GitHub Actions fixed rescan", false);
+          assert(
+            resolved.summary.resolved === 2 && resolved.summary.remaining === 0 &&
+              resolved.summary.introduced === 0 && resolved.summary.not_rechecked === 0 &&
+              resolved.partial === false,
+            `GitHub Actions fixed rescan diff was wrong: ${JSON.stringify(resolved.summary)}`,
+          );
+          assertGithubActionsFindings(resolved.resolved, "GitHub Actions fixed rescan resolved bucket");
+
+          await replaceFixtureDirectory(GITHUB_ACTIONS_TP_FIXTURE, target);
+          const introduced = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: resolved.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assertGithubActionsExecutionEnvelope(introduced, "GitHub Actions TP reintroduction", false);
+          assert(
+            introduced.summary.resolved === 0 && introduced.summary.remaining === 0 &&
+              introduced.summary.introduced === 2 && introduced.summary.not_rechecked === 0 &&
+              introduced.partial === false,
+            `GitHub Actions reintroduced rescan diff was wrong: ${JSON.stringify(introduced.summary)}`,
+          );
+          assertGithubActionsFindings(introduced.introduced, "GitHub Actions reintroduced rescan introduced bucket");
         } finally {
           await rm(temporaryRoot, { recursive: true, force: true });
         }

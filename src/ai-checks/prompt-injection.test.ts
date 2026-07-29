@@ -1,7 +1,7 @@
 /**
  * CG-43 — §6.3 prompt-injection analyzer public regression lock.
  *
- * §6.3 (ci-ai-prompt-injection-sink, CWE-1426 / OWASP LLM01, +LLM06 with tools) is the
+ * §6.3 (ci-ai-prompt-injection-sink, CWE-1427 / OWASP LLM01, +LLM06 with tools) is the
  * deliberately-conservative pillar: role- and tool-aware taint dataflow that fires only at
  * higher-risk positions and prefers silence on ambiguous flows (CG-06). Until now its only
  * regression lock was the internal corpus + CONTRACT.md; there was NO shipped test, and the
@@ -74,7 +74,7 @@ describe("§6.3 prompt-injection analyzer — public regression lock (CG-43)", (
     const f = hits[0]!;
     expect(f.severity).toBe(tp.severity);
     expect(f.confidence).toBe("medium"); // always medium — §6.3 honest-framing invariant
-    expect(f.cwe).toContain("CWE-1426");
+    expect(f.cwe).toContain("CWE-1427");
     expect(f.owasp_llm).toEqual(tp.owaspLlm);
     expect(f.title).toBe(TITLE_BASE + tp.titleSuffix);
     expect(f.engine).toBe("codeinspectus-ai");

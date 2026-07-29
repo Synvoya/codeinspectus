@@ -13,8 +13,8 @@
 #     engine-dependent and runs in the engine job below.
 #
 #   engine (linux/amd64) — fetches + cosign/checksum-verifies + SHA-pins the three
-#     engine binaries and pulls the Trivy vuln DB, then runs the FULL eval (E16-E18
-#     now execute, with E19-E33 pure-TS plus E34-E36 parity/promotion gates -> 36/36), the gitleaks-backed redaction-e2e, and a real
+#     engine binaries and pulls the Trivy vuln DB, then runs the FULL 53/53 eval suite with
+#     engine-backed, native-pack, parity, rescan, provenance, and redaction gates, plus the gitleaks-backed redaction-e2e and a real
 #     fixture scan. Proven feasible in CG-77 recon: every engine has a non-null
 #     linux-x64 pin and a fresh verified install reproduces the committed SHAs.
 #

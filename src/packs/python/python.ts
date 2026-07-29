@@ -149,6 +149,11 @@ export function parsePythonSource(path: string, source: string): PythonDocument 
   let tokenLimitExceeded = false;
   let nestingLimitExceeded = false;
   let formatStringUnsupported = false;
+  let syntaxError = false;
+  let cstNodeLimitExceeded = false;
+  let cstDepthLimitExceeded = false;
+  let cstNodeCount = 0;
+  const formatStringEnds = new Map<number, number>();
   let line = 1;
   let column = 1;
 
@@ -159,6 +164,38 @@ export function parsePythonSource(path: string, source: string): PythonDocument 
     }
     return pushToken(tokens, token);
   };
+
+  // Parse once up front. The syntax tree gives exact FormatString ranges, including
+  // PEP 701 nested same-delimiter strings. The bounded lexer keeps each validated
+  // range opaque, so replacement-field text can never become executable tokens.
+  try {
+    const cursor = pythonSyntaxParser.parse(source).cursor();
+    let nodes = 0;
+    let depth = 0;
+    let finished = false;
+    while (!finished) {
+      nodes++;
+      cstNodeCount = nodes;
+      if (cursor.type.isError) syntaxError = true;
+      if (cursor.type.name === "FormatString") formatStringEnds.set(cursor.from, cursor.to);
+      if (nodes > PYTHON_MAX_CST_NODES_PER_FILE) cstNodeLimitExceeded = true;
+      if (depth > PYTHON_MAX_CST_DEPTH) cstDepthLimitExceeded = true;
+      if (cstNodeLimitExceeded || cstDepthLimitExceeded) break;
+      if (cursor.firstChild()) {
+        depth++;
+        continue;
+      }
+      while (!cursor.nextSibling()) {
+        if (!cursor.parent()) {
+          finished = true;
+          break;
+        }
+        depth--;
+      }
+    }
+  } catch {
+    syntaxError = true;
+  }
 
   for (let index = 0; index < source.length;) {
     const character = source[index] ?? "";
@@ -200,14 +237,27 @@ export function parsePythonSource(path: string, source: string): PythonDocument 
       const startLine = line;
       const startColumn = column;
       const prefix = opening.prefix.toLowerCase();
-      // PEP 701 permits nested strings that reuse the outer f-string quote.
-      // The bounded lexer does not yet model replacement-field syntax, so
-      // continuing here could expose literal contents as executable tokens.
-      // Suppress the entire document until format-string ranges are modeled.
       if (prefix.includes("f")) {
-        formatStringUnsupported = true;
-        balanced = false;
-        break;
+        const end = formatStringEnds.get(start);
+        if (end === undefined || end <= start) {
+          formatStringUnsupported = true;
+          balanced = false;
+          break;
+        }
+        const raw = source.slice(start, end);
+        if (!add({
+          kind: "string",
+          value: "",
+          raw,
+          line: startLine,
+          column: startColumn,
+          dynamicString: true,
+        })) break;
+        const position = advancePosition(raw, line, column);
+        line = position.line;
+        column = position.column;
+        index = end;
+        continue;
       }
       const delimiter = opening.quote.repeat(opening.quoteLength);
       index += opening.openingLength;
@@ -315,37 +365,6 @@ export function parsePythonSource(path: string, source: string): PythonDocument 
 
   if (delimiterStack.length) balanced = false;
   if (tokenLimitExceeded || nestingLimitExceeded) balanced = false;
-  let syntaxError = false;
-  let cstNodeLimitExceeded = false;
-  let cstDepthLimitExceeded = false;
-  let cstNodeCount = 0;
-  try {
-    const cursor = pythonSyntaxParser.parse(source).cursor();
-      let nodes = 0;
-      let depth = 0;
-      let finished = false;
-      while (!finished) {
-        nodes++;
-        cstNodeCount = nodes;
-        if (cursor.type.isError) syntaxError = true;
-        if (nodes > PYTHON_MAX_CST_NODES_PER_FILE) cstNodeLimitExceeded = true;
-        if (depth > PYTHON_MAX_CST_DEPTH) cstDepthLimitExceeded = true;
-        if (cstNodeLimitExceeded || cstDepthLimitExceeded) break;
-        if (cursor.firstChild()) {
-          depth++;
-          continue;
-        }
-        while (!cursor.nextSibling()) {
-          if (!cursor.parent()) {
-            finished = true;
-            break;
-          }
-          depth--;
-        }
-      }
-  } catch {
-    syntaxError = true;
-  }
   if (syntaxError || cstNodeLimitExceeded || cstDepthLimitExceeded) balanced = false;
   return {
     path,

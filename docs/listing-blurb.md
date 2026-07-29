@@ -17,14 +17,16 @@ security mistakes before shipping. It combines local scanners with AI-app-specif
 for exposed secrets, unsafe HTML rendering, Supabase auth footguns, prompt-injection sinks,
 server/API data leaks, unsafe request writes, explicit runtime-control misconfiguration,
 dependency risk, and container issues. Bounded first-party packs cover JavaScript/TypeScript,
-Flutter/Dart, Android/iOS configuration, React Native/Expo, and Python AI/API source patterns.
+Flutter/Dart, Android/iOS configuration, React Native/Expo, Python AI/API source patterns,
+one exact AI tool-execution flow each for Go, Java, C#, PHP, Rust, and Ruby, literal Firebase
+public-write configurations, and two GitHub Actions workflow risks.
 Supported runtime controls use three repository-evidence
 states; missing hosted configuration is never guessed. It runs locally, requires no account,
 and exposes an MCP server for agent workflows.
 
 ## Tags
 
-mcp, security, static-analysis, appsec, ai-generated-code, devsecops, opengrep, gitleaks, trivy, local-first, typescript, flutter, dart, python
+mcp, security, static-analysis, appsec, ai-generated-code, devsecops, opengrep, gitleaks, trivy, local-first, typescript, flutter, dart, python, github-actions
 
 ## Links
 

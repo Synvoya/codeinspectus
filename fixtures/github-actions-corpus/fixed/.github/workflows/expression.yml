@@ -1,0 +1,12 @@
+name: Safe issue title
+on:
+  issues:
+    types: [opened]
+jobs:
+  suggest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build suggestion
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: faqtory suggest "$ISSUE_TITLE" > suggest.md

@@ -1,0 +1,5 @@
+{
+  "require": {
+    "openai-php/client": "^0.20"
+  }
+}

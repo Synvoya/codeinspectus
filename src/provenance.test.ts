@@ -18,6 +18,20 @@ import {
   EXPO_CONFIG_PARSER_COMPONENT,
   PYTHON_AI_API_PACK_DISPATCH_COMPONENT,
   PYTHON_LEZER_PARSER_COMPONENT,
+  GO_AI_PACK_DISPATCH_COMPONENT,
+  GO_STRUCTURAL_PARSER_COMPONENT,
+  JAVA_AI_PACK_DISPATCH_COMPONENT,
+  JAVA_STRUCTURAL_PARSER_COMPONENT,
+  CSHARP_AI_PACK_DISPATCH_COMPONENT,
+  CSHARP_STRUCTURAL_PARSER_COMPONENT,
+  PHP_AI_PACK_DISPATCH_COMPONENT,
+  PHP_STRUCTURAL_PARSER_COMPONENT,
+  RUST_AI_PACK_DISPATCH_COMPONENT,
+  RUST_STRUCTURAL_PARSER_COMPONENT,
+  RUBY_AI_PACK_DISPATCH_COMPONENT,
+  RUBY_STRUCTURAL_PARSER_COMPONENT,
+  FIREBASE_PACK_DISPATCH_COMPONENT,
+  FIREBASE_RULES_PARSER_COMPONENT,
   aiFindingComponents,
   aiSignaturesForComponents,
   invocationSignature,
@@ -119,6 +133,10 @@ const PYTHON_AI_API_RULES = [
   { id: "ci-python-untrusted-redirect", component: "ai:python-untrusted-redirect" },
   { id: "ci-python-untrusted-template-source", component: "ai:python-untrusted-template-source" },
   { id: "ci-python-llm-output-dangerous-html", component: "ai:python-llm-output-dangerous-html" },
+  { id: "ci-python-faiss-dangerous-deserialization", component: "ai:python-faiss-dangerous-deserialization" },
+  { id: "ci-python-langchain-web-loader-ssrf", component: "ai:python-langchain-web-loader-ssrf" },
+  { id: "ci-python-prompt-injection-sink", component: "ai:python-prompt-injection" },
+  { id: "ci-python-llm-tool-argument-command-execution", component: "ai:python-unsafe-tool-execution" },
 ] as const;
 
 afterEach(async () => {
@@ -168,6 +186,25 @@ describe("component signatures", () => {
     }
   });
 
+  test("Firebase findings use their pack and bounded Rules parser provenance", () => {
+    const rules = [
+      ["ci-firebase-firestore-public-write", "ai:firebase-firestore-public-write"],
+      ["ci-firebase-storage-public-write", "ai:firebase-storage-public-write"],
+      ["ci-firebase-realtime-database-public-write", "ai:firebase-realtime-database-public-write"],
+    ] as const;
+    for (const [ruleId, component] of rules) {
+      const components = aiFindingComponents(ruleId);
+      expect(components).toEqual([
+        PIPELINE_COMPONENT,
+        FIREBASE_PACK_DISPATCH_COMPONENT,
+        FIREBASE_RULES_PARSER_COMPONENT,
+        component,
+      ]);
+      expect(components).not.toContain(AI_INVOCATION_COMPONENT);
+      expect(Object.keys(aiSignaturesForComponents(components))).toEqual(components);
+    }
+  });
+
   test("Python AI/API findings use their pack and bounded parser provenance", () => {
     for (const rule of PYTHON_AI_API_RULES) {
       const components = aiFindingComponents(rule.id);
@@ -182,14 +219,86 @@ describe("component signatures", () => {
     }
   });
 
-  test("the existing 21 JavaScript mappings remain stable under the intentional pipeline revision", () => {
+  test("Go AI findings use their pack and bounded parser provenance", () => {
+    const components = aiFindingComponents("ci-go-llm-tool-argument-command-execution");
+    expect(components).toEqual([
+      PIPELINE_COMPONENT,
+      GO_AI_PACK_DISPATCH_COMPONENT,
+      GO_STRUCTURAL_PARSER_COMPONENT,
+      "ai:go-unsafe-tool-execution",
+    ]);
+    expect(components).not.toContain(AI_INVOCATION_COMPONENT);
+    expect(Object.keys(aiSignaturesForComponents(components))).toEqual(components);
+  });
+
+  test("Java AI findings use their pack and bounded parser provenance", () => {
+    const components = aiFindingComponents("ci-java-llm-tool-argument-command-execution");
+    expect(components).toEqual([
+      PIPELINE_COMPONENT,
+      JAVA_AI_PACK_DISPATCH_COMPONENT,
+      JAVA_STRUCTURAL_PARSER_COMPONENT,
+      "ai:java-unsafe-tool-execution",
+    ]);
+    expect(components).not.toContain(AI_INVOCATION_COMPONENT);
+    expect(Object.keys(aiSignaturesForComponents(components))).toEqual(components);
+  });
+
+  test("C# AI findings use their pack and bounded parser provenance", () => {
+    const components = aiFindingComponents("ci-csharp-llm-tool-argument-command-execution");
+    expect(components).toEqual([
+      PIPELINE_COMPONENT,
+      CSHARP_AI_PACK_DISPATCH_COMPONENT,
+      CSHARP_STRUCTURAL_PARSER_COMPONENT,
+      "ai:csharp-unsafe-tool-execution",
+    ]);
+    expect(components).not.toContain(AI_INVOCATION_COMPONENT);
+    expect(Object.keys(aiSignaturesForComponents(components))).toEqual(components);
+  });
+
+  test("PHP AI findings use their pack and bounded parser provenance", () => {
+    const components = aiFindingComponents("ci-php-llm-tool-argument-command-execution");
+    expect(components).toEqual([
+      PIPELINE_COMPONENT,
+      PHP_AI_PACK_DISPATCH_COMPONENT,
+      PHP_STRUCTURAL_PARSER_COMPONENT,
+      "ai:php-unsafe-tool-execution",
+    ]);
+    expect(components).not.toContain(AI_INVOCATION_COMPONENT);
+    expect(Object.keys(aiSignaturesForComponents(components))).toEqual(components);
+  });
+
+  test("Rust AI findings use their pack and bounded parser provenance", () => {
+    const components = aiFindingComponents("ci-rust-llm-tool-argument-command-execution");
+    expect(components).toEqual([
+      PIPELINE_COMPONENT,
+      RUST_AI_PACK_DISPATCH_COMPONENT,
+      RUST_STRUCTURAL_PARSER_COMPONENT,
+      "ai:rust-unsafe-tool-execution",
+    ]);
+    expect(components).not.toContain(AI_INVOCATION_COMPONENT);
+    expect(Object.keys(aiSignaturesForComponents(components))).toEqual(components);
+  });
+
+  test("Ruby AI findings use their pack and bounded parser provenance", () => {
+    const components = aiFindingComponents("ci-ruby-llm-tool-argument-command-execution");
+    expect(components).toEqual([
+      PIPELINE_COMPONENT,
+      RUBY_AI_PACK_DISPATCH_COMPONENT,
+      RUBY_STRUCTURAL_PARSER_COMPONENT,
+      "ai:ruby-unsafe-tool-execution",
+    ]);
+    expect(components).not.toContain(AI_INVOCATION_COMPONENT);
+    expect(Object.keys(aiSignaturesForComponents(components))).toEqual(components);
+  });
+
+  test("the 21 JavaScript mappings lock the intentional prompt-injection CWE revision", () => {
     const compatibilityProjection = LEGACY_JS_RULE_IDS.map((ruleId) => {
       const components = aiFindingComponents(ruleId);
       return [ruleId, components, aiSignaturesForComponents(components)];
     });
 
     expect(signature(JSON.stringify(compatibilityProjection))).toBe(
-      "sha256:ffb98a9322a87de3161318dd943ac3e64b883509eb1c43a82928395615dc416f",
+      "sha256:ee70e01bbb7383f553d69344c7cff2b650e7d4c7081834f0db065099a7582480",
     );
     expect(compatibilityProjection.every(([, components]) =>
       (components as string[]).includes(AI_INVOCATION_COMPONENT))).toBe(true);
@@ -243,6 +352,7 @@ describe("component signatures", () => {
       "ai:supabase-rls-policy-state",
       "ai:supabase-edge-auth",
       "ai:prompt-injection",
+      "ai:unsafe-tool-execution",
       "ai:client-metadata-authz",
       "ai:llm-dangerous-html",
       "ai:client-error-leak",
@@ -261,6 +371,14 @@ describe("component signatures", () => {
     expect(aiFindingComponents("ci-ai-sensitive-api-response")).toContain("ai:sensitive-api-response");
     expect(aiFindingComponents("ci-ai-unvalidated-request-write")).toContain("ai:unvalidated-request-write");
     expect(aiFindingComponents("ci-ai-sensitive-log")).toContain("ai:sensitive-log");
+  });
+
+  test("unsafe model-tool execution has a dedicated rescan component", () => {
+    expect(aiFindingComponents("ci-ai-llm-tool-argument-command-execution")).toEqual([
+      PIPELINE_COMPONENT,
+      AI_INVOCATION_COMPONENT,
+      "ai:unsafe-tool-execution",
+    ]);
   });
 
   test("each Enhancement 2 rule has a dedicated rescan component", () => {
@@ -290,9 +408,9 @@ describe("Flutter detection manifest", () => {
     };
     const flutterRules = manifest.custom_rules.filter((rule) => rule.pack_id === "flutter");
 
-    expect(manifest.version).toBe("1.0.0");
-    expect(manifest.date).toBe("2026-07-27");
-    expect(manifest.custom_rules).toHaveLength(70);
+    expect(manifest.version).toBe("1.13.0");
+    expect(manifest.date).toBe("2026-07-28");
+    expect(manifest.custom_rules).toHaveLength(86);
     expect(flutterRules).toHaveLength(6);
     expect(flutterRules.map((rule) => ({
       id: rule.id,

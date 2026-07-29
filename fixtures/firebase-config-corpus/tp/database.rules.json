@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "profiles": {
+      "$uid": {
+        ".read": true,
+        ".write": "true"
+      }
+    }
+  }
+}

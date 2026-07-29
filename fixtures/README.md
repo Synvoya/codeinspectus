@@ -13,7 +13,8 @@ Test corpus of planted vulnerabilities (true positives) plus safe equivalents
 | 2b | Public table created without RLS | same | `ci-ai-rls-missing` | CWE-862 |
 | 3 | SQL injection via string-built query | `src/db.ts` | Opengrep `ci-baseline-sql-injection-string-build` | CWE-89 |
 | 4 | Outdated vulnerable dependency (lodash 4.17.4, minimist 1.2.0) | `package-lock.json` | Trivy (SCA) | CWE-1321/CWE-400 etc. |
-| 5 | Prompt-injection sink + tool access | `src/llm.ts` | `ci-ai-prompt-injection-sink` | CWE-1426 |
+| 5 | Prompt-injection sink + tool access | `src/llm.ts` | `ci-ai-prompt-injection-sink` | CWE-1427 |
+| 6 | Model-produced tool argument reaches Node shell execution | `src/agent.ts` | `ci-ai-llm-tool-argument-command-execution` | CWE-78 / CWE-1426 |
 | + | Secret behind client-exposed env prefix | `src/components/PaymentForm.tsx` | `ci-ai-public-env-secret` | CWE-798 |
 
 ## Safe equivalents — must NOT be flagged (precision)
@@ -23,7 +24,7 @@ Test corpus of planted vulnerabilities (true positives) plus safe equivalents
 - `PaymentForm.tsx` `publishable()` — a publishable (non-secret) key behind a public prefix.
 
 Engines 3 and 4 require the managed binaries + Trivy DB (`codeinspectus repair-engines`).
-Detectors 1, 2, 5, + are pure-TypeScript and run with no external binary.
+Detectors 1, 2, 5, 6, + are pure-TypeScript and run with no external binary.
 
 ## Precision corpora — dual-direction (true positives + false-positive guards)
 
@@ -79,12 +80,83 @@ expectations in the test file are the public spec).
   bounded non-executing parsing, pack coverage, provenance, redaction, and same-path rescan via
   shipped pack tests and MCP evals E30/E31. The private `CONTRACT.md` expectation ledger is excluded
   from the public seed; shipped tests are the public spec.
-- `python-ai-api-corpus/` — three Python projects with exactly one TP for each of the six Python
+- `python-ai-api-corpus/` — three Python projects with exactly one TP for each of the ten Python
   AI/API rules, safe near misses plus excluded test/example/generated source, and path-identical
   remediated files. It locks bounded syntax/project loading, framework applicability, source/sink
-  provenance, pack coverage, redaction, and same-path rescan through shipped tests and MCP evals
+  provenance, exact LangChain FAISS origin/keyword resolution, dangerous-deserialization opt-in,
+  request-controlled LangChain web-loader fetch execution, and role/tool-aware OpenAI/Anthropic
+  prompt-injection boundaries, and model tool arguments reaching proven Python shell execution,
+  pack coverage, redaction, and same-path rescan through shipped tests and MCP evals
   E32/E33. The private `CONTRACT.md` expectation ledger is excluded from the public seed; shipped
   tests are the public spec.
+- `unsafe-tool-execution-corpus/` — JavaScript/TypeScript TP/FP/fixed files for model-produced
+  tool arguments reaching import-proven Node shell execution. It locks direct and one-wrapper
+  flows, promisified aliases, checked approval and allowlist gates, fixed-executable remediation,
+  import/lookalike precision, exact CWE/OWASP metadata, and honest medium confidence. Covered by
+  `src/ai-checks/unsafe-tool-execution.test.ts`; the private `CONTRACT.md` is excluded from the
+  public seed.
+- `go-ai-corpus/` — three Go projects for the exact official OpenAI Go tool-argument-to-shell rule:
+  three TP flows, zero safe near-miss findings, and zero remediated findings. It locks direct flow,
+  JSON unmarshal, one parsing helper, one command wrapper, approval/allowlist and validated-value
+  suppression, import provenance, direct-file parity, bounded loading, exact producer components,
+  and same-path rescan through shipped Go pack tests and MCP evals E37/E38. The private
+  `CONTRACT.md` expectation ledger is excluded from the public seed; shipped tests are the public spec.
+- `java-ai-corpus/` — three Java projects for the exact official OpenAI Java
+  tool-argument-to-shell rule: three TP flows, zero safe near-miss findings, and zero remediated
+  findings. It locks actually-started `ProcessBuilder`/`Runtime` sinks, direct flow, one parsing
+  helper, one command wrapper, approval/allowlist and validated-value suppression, dependency/import
+  provenance, direct-file parity, bounded no-follow loading, exact producer components, and same-path
+  rescan through shipped Java pack tests and MCP evals E39/E40. The private `CONTRACT.md`
+  expectation ledger is excluded from the public seed; shipped tests are the public spec.
+- `csharp-ai-corpus/` — three C# projects for the exact official OpenAI .NET
+  tool-argument-to-shell rule: three TP flows, zero safe near-miss findings, and zero remediated
+  findings. It locks actually-started `System.Diagnostics.Process` shell sinks, direct flow,
+  typed `ChatToolCall` method parameters, `System.Text.Json` extraction, one parsing helper, one
+  command wrapper, approval/allowlist and validated-value suppression, exact NuGet provenance,
+  direct-file parity, bounded no-follow loading, exact producer components, and same-path rescan
+  through shipped C# pack tests and MCP evals E41/E42. The private `CONTRACT.md` expectation ledger
+  is excluded from the public seed; shipped tests are the public spec.
+- `php-ai-corpus/` — three PHP projects for the community-maintained OpenAI PHP ecosystem
+  tool-argument-to-command rule: three TP flows, zero safe near-miss findings, and zero remediated
+  findings. It locks exact `openai-php/client` Composer provenance, direct aliases, associative
+  `json_decode`, one parsing helper, one command wrapper, one exact mapped variadic method dispatch,
+  approval/full-command-allowlist and validated-value suppression, first-token-check handling,
+  direct-file parity, bounded no-follow loading, exact producer components, and same-path rescan
+  through shipped PHP pack tests and MCP evals E43/E44. The PHP client is community maintained,
+  not an official OpenAI SDK. The private `CONTRACT.md` expectation ledger is excluded from the
+  public seed; shipped tests are the public spec.
+- `rust-ai-corpus/` — three Rust projects for the community-maintained `async-openai`
+  tool-argument-to-shell rule: three TP flows, zero safe near-miss findings, and zero remediated
+  findings. It locks exact Cargo dependency provenance, direct aliases, `serde_json` extraction,
+  one recognized `generate_function_call` result, one command wrapper, standard-process and
+  literal Bollard Docker exec shell sinks, approval/allowlist and validated-value suppression,
+  multiline Rust string handling, direct-file parity, bounded no-follow loading, exact producer
+  components, and same-path rescan through shipped Rust pack tests and MCP evals E45/E46.
+  `async-openai` is community maintained, not an official OpenAI SDK. The private `CONTRACT.md`
+  expectation ledger is excluded from the public seed; shipped tests are the public spec.
+- `ruby-ai-corpus/` — three Ruby projects for the exact official production `openai` Gemfile
+  or runtime gemspec
+  tool-argument-to-command rule: three TP flows, zero safe near-miss findings, and zero remediated
+  findings. It locks Chat tool-call arguments, explicitly typed Responses function-tool arguments,
+  `JSON.parse` extraction, one parsing helper, one command wrapper, `system`/Open3 shell shapes,
+  approval/full-command-allowlist and validated-value suppression, string/comment decoys, heredoc
+  fail-closed behavior, direct-file parity, bounded no-follow loading, exact producer components,
+  and same-path rescan through shipped Ruby pack tests and MCP evals E47/E48. The private
+  `CONTRACT.md` expectation ledger is excluded from the public seed; shipped tests are the public spec.
+- `firebase-config-corpus/` — three Firebase projects for literal unconditional public writes:
+  exactly one Firestore, one Cloud Storage, and one Realtime Database TP finding, with zero safe
+  near-miss or remediated findings. It locks public-read silence, exact-`true` semantics,
+  authentication/authorization conditions, comment/string decoys, strict Realtime Database JSON,
+  bounded no-follow loading, exact producer components, and same-path rescan through shipped
+  Firebase pack tests and MCP evals E49/E50. The private `CONTRACT.md` expectation ledger is
+  excluded from the public seed; shipped tests are the public spec.
+- `github-actions-corpus/` — TP/FP/fixed GitHub Actions workflows for two bounded workflow rules:
+  one direct attacker-controlled `github` expression in `run` and one exact
+  `pull_request_target` untrusted-checkout-and-execute chain. It locks safe `env`/`with`
+  indirection, normal `pull_request`, checkout without execution, protected checkout v7,
+  scalar/block scripts, malformed YAML, loader bounds, exact producer components, and same-path
+  rescan through shipped GitHub Actions pack tests and MCP evals E51/E52. The private
+  `CONTRACT.md` expectation ledger is excluded from the public seed; shipped tests are the public spec.
 - `opengrep-shadow-corpus/` — TP/FP/fixed JavaScript/TypeScript projects for exact raw parity between
   the still-active Opengrep weak-hash/cipher rules and the first native SAST candidates. It covers
   named imports, JS/TS/JSX/TSX, multiline and same-line multiplicity, modern/dynamic algorithms,

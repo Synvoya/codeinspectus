@@ -28,6 +28,23 @@ E30/E31 cover the React Native/Expo TP/FP/fixed corpus and bidirectional same-pa
 rescan; both must not skip.
 E32/E33 cover the Python AI/API TP/FP/fixed corpus, exact provenance/coverage/redaction,
 and bidirectional same-path rescan; both must not skip.
+E37/E38 cover the Go AI TP/FP/fixed corpus, exact language-gated pack dispatch,
+provenance, and bidirectional same-path rescan; both must not skip.
+E39/E40 cover the Java AI TP/FP/fixed corpus, exact language-gated pack dispatch,
+provenance, actually-started process semantics, and bidirectional same-path rescan; both must not skip.
+E41/E42 cover the C# AI TP/FP/fixed corpus, exact language-gated pack dispatch,
+provenance, actually-started process semantics, and bidirectional same-path rescan; both must not skip.
+E43/E44 cover the PHP AI TP/FP/fixed corpus, exact language-gated pack dispatch,
+provenance, mapped variadic method dispatch, and bidirectional same-path rescan; both must not skip.
+E45/E46 cover the Rust AI TP/FP/fixed corpus, exact language-gated pack dispatch,
+provenance, process/Bollard shell semantics, and bidirectional same-path rescan; both must not skip.
+E47/E48 cover the Ruby AI TP/FP/fixed corpus, exact official-gem and language-gated pack dispatch,
+provenance, Ruby shell semantics, and bidirectional same-path rescan; both must not skip.
+E49/E50 cover the Firebase TP/FP/fixed corpus, exact technology-gated pack dispatch, provenance,
+literal public-write semantics, and bidirectional same-path rescan; both must not skip.
+E51/E52 cover the GitHub Actions TP/FP/fixed corpus, exact workflow-gated pack dispatch,
+provenance, attacker-controlled expression and pwn-request semantics, and bidirectional same-path
+rescan; both must not skip.
 
 ## MCP transport
 ```bash
@@ -46,7 +63,7 @@ node dist/index.js repair-engines opengrep  # healthy selected engine is an offl
 npx tsx scripts/dev-scan.ts "$(pwd)/fixtures/vulnerable-app"
 ```
 Must detect: client hardcoded secret (CWE-798), USING(true) RLS (CWE-863),
-missing RLS (CWE-862), public-env secret, prompt-injection sink (CWE-1426),
+missing RLS (CWE-862), public-env secret, prompt-injection sink (CWE-1427),
 SQLi via Opengrep (CWE-89), and — with the Trivy DB present — the lodash/minimist
 vulnerable dependency. Safe equivalents (accounts table, parameterized query,
 publishable key) must NOT be flagged.
@@ -72,15 +89,24 @@ npx vitest run \
   src/packs/react-native-expo-corpus.test.ts \
   src/packs/python/*.test.ts \
   src/packs/python-ai-api/*.test.ts \
+  src/packs/go/*.test.ts \
+  src/packs/java/*.test.ts \
+  src/packs/csharp/*.test.ts \
+  src/packs/php/*.test.ts \
+  src/packs/rust/*.test.ts \
+  src/packs/ruby/*.test.ts \
+  src/packs/firebase/*.test.ts \
+  src/packs/github-actions/*.test.ts \
   src/packs/registry.test.ts \
   src/pub/*.test.ts \
   src/technology-detection.test.ts \
   src/provenance.test.ts
 ```
-Expected: all focused tests pass; manifest `1.0.0` owns exactly 49 native rule IDs (21
-JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, 2 Expo, and 6 Python AI/API)
-plus 2 JavaScript baseline SAST IDs across eight packs and 29 analyzers; the aggregate native engine
-is `5.0.0`. A detected Flutter project runs the six Flutter analyzers,
+Expected: all focused tests pass; manifest `1.13.0` owns exactly 65 native rule IDs (22
+JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, 2 Expo, 10 Python AI/API,
+1 Go AI, 1 Java AI, 1 C# AI, 1 PHP AI, 1 Rust AI, 1 Ruby AI, 3 Firebase configuration,
+2 GitHub Actions workflow, and 2 JavaScript baseline SAST) across sixteen packs and 41 analyzers;
+the aggregate native engine is `5.13.0`. A detected Flutter project runs the six Flutter analyzers,
 a plain Dart package reports that pack as `not_applicable`, Android/iOS project evidence activates
 only its matching platform pack, and scanner-filter exclusion reports installed packs as `not_run`
 rather than implying execution. The frozen
@@ -104,12 +130,68 @@ findings (four React Native and two Expo) and zero FP/fixed findings, with both 
 accounted. E30 repeats exact findings, technology evidence, provenance, limitations, and redaction
 through MCP; E31 proves all six findings resolve and can be reintroduced on the same paths without
 `not_rechecked` entries.
-The frozen `fixtures/python-ai-api-corpus/{tp,fp,fixed}` projects must produce exactly six TP
-findings (one per Python AI/API rule) and zero FP/fixed findings while retaining 6/6 analyzer/rule
+The frozen `fixtures/python-ai-api-corpus/{tp,fp,fixed}` projects must produce exactly ten TP
+findings (one per Python AI/API rule) and zero FP/fixed findings while retaining 10/10 analyzer/rule
 execution. Unsupported syntax, source bounds, excluded corpora, dependency metadata, and symlink
 ancestors must fail closed with explicit coverage notes. E32 repeats exact findings, technology
-evidence, provenance, limitations, and redaction through MCP; E33 proves all six findings resolve
+evidence, provenance, limitations, and redaction through MCP; E33 proves all ten findings resolve
 and can be reintroduced on the same paths without `not_rechecked` entries.
+The frozen `fixtures/go-ai-corpus/{tp,fp,fixed}` projects must produce exactly three TP findings
+for the one Go AI rule and zero FP/fixed findings while retaining 1/1 analyzer/rule execution.
+Official OpenAI Go evidence must activate only the Go pack, not the Python pack. E37 repeats exact
+findings, technology evidence, provenance, limitations, and redaction through MCP; E38 proves all
+three findings resolve and can be reintroduced on the same paths without `not_rechecked` entries.
+The frozen `fixtures/java-ai-corpus/{tp,fp,fixed}` projects must produce exactly three TP findings
+for the one Java AI rule and zero FP/fixed findings while retaining 1/1 analyzer/rule execution.
+Exact official OpenAI Java dependency evidence must activate only the Java pack; a `ProcessBuilder`
+constructor without `start()` must stay silent. E39 repeats exact findings, technology evidence,
+provenance, limitations, and redaction through MCP; E40 proves all three findings resolve and can be
+reintroduced on the same paths without `not_rechecked` entries.
+The frozen `fixtures/csharp-ai-corpus/{tp,fp,fixed}` projects must produce exactly three TP findings
+for the one C# AI rule and zero FP/fixed findings while retaining 1/1 analyzer/rule execution.
+Exact official `OpenAI` NuGet dependency evidence must activate only the C# pack; constructing a
+`ProcessStartInfo` without `Process.Start` must stay silent. E41 repeats exact findings, technology
+evidence, provenance, limitations, and redaction through MCP; E42 proves all three findings resolve
+and can be reintroduced on the same paths without `not_rechecked` entries.
+The frozen `fixtures/php-ai-corpus/{tp,fp,fixed}` projects must produce exactly three TP findings
+for the one PHP AI rule and zero FP/fixed findings while retaining 1/1 analyzer/rule execution.
+Exact community-maintained `openai-php/client` or `openai-php/laravel` Composer evidence must
+activate only the PHP pack; checked approval/full-command allowlists and validated replacement
+values must stay silent, while first-token executable checks do not suppress shell-metacharacter
+risk. E43 repeats exact findings, technology evidence, provenance, limitations, and redaction
+through MCP; E44 proves all three findings resolve and can be reintroduced on the same paths without
+`not_rechecked` entries.
+The frozen `fixtures/rust-ai-corpus/{tp,fp,fixed}` projects must produce exactly three TP findings
+for the one Rust AI rule and zero FP/fixed findings while retaining 1/1 analyzer/rule execution.
+Exact community-maintained `async-openai` Cargo evidence must activate only the Rust pack;
+checked approval/allowlists and validated replacement values must stay silent, while recognized
+standard/Tokio process and literal Bollard Docker exec shell vectors remain covered. E45 repeats
+exact findings, technology evidence, provenance, limitations, and redaction through MCP; E46 proves
+all three findings resolve and can be reintroduced on the same paths without `not_rechecked`
+entries. `async-openai` is not represented as an official OpenAI SDK.
+The frozen `fixtures/ruby-ai-corpus/{tp,fp,fixed}` projects must produce exactly three TP findings
+for the one Ruby AI rule and zero FP/fixed findings while retaining 1/1 analyzer/rule execution.
+Exact official `openai` production Gemfile or runtime gemspec evidence must activate only the Ruby
+pack; checked approval/full-command allowlists, validated replacements, generic `.arguments`
+objects, string/comment decoys, lockfile-only evidence, and development-only dependencies must stay
+silent. E47 repeats exact findings, technology
+evidence, provenance, limitations, and redaction through MCP; E48 proves all three findings resolve
+and can be reintroduced on the same paths without `not_rechecked` entries.
+The frozen `fixtures/firebase-config-corpus/{tp,fp,fixed}` projects must produce exactly three TP
+findings (one each for Firestore, Cloud Storage, and Realtime Database public writes) and zero
+FP/fixed findings while retaining 1/1 analyzer and 3/3 rule execution. Public reads, authenticated
+or non-literal conditions, comments/strings, and JSON string-value decoys must stay silent;
+malformed input and loader bounds fail closed with coverage notes. E49 repeats exact findings,
+technology evidence, provenance, limitations, and metadata through MCP; E50 proves all three
+findings resolve and can be reintroduced on the same paths without `not_rechecked` entries.
+The frozen `fixtures/github-actions-corpus/{tp,fp,fixed}` projects must produce exactly two TP
+findings (one direct untrusted-context expression in `run` and one complete
+`pull_request_target` checkout-and-execute chain) and zero FP/fixed findings while retaining 1/1
+analyzer and 2/2 rule execution. Safe `env`/`with` indirection, normal `pull_request`, checkout
+without execution, protected checkout v7, comments, and malformed or bounded-out inputs must stay
+silent or fail closed with coverage notes. E51 repeats exact findings, technology evidence,
+provenance, limitations, and metadata through MCP; E52 proves both findings resolve and can be
+reintroduced on the same paths without `not_rechecked` entries.
 
 Run the fail-closed Opengrep shadow gate separately:
 

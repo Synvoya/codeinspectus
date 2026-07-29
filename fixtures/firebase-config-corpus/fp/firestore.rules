@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // allow write: if true;
+    function explanation() {
+      return "allow create, update: if true;";
+    }
+    match /public/{document} {
+      allow read: if true;
+      allow write: if true && request.auth != null;
+    }
+    match /profiles/{uid} {
+      allow create, update, delete: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

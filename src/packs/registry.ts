@@ -6,6 +6,14 @@ import { reactNativePack } from "./react-native-pack.js";
 import { expoPack } from "./expo-pack.js";
 import { pythonAiApiPack } from "./python-ai-api-pack.js";
 import { javascriptBaselinePack } from "./javascript-baseline-pack.js";
+import { goAiPack } from "./go-ai-pack.js";
+import { javaAiPack } from "./java-ai-pack.js";
+import { csharpAiPack } from "./csharp-ai-pack.js";
+import { phpAiPack } from "./php-ai-pack.js";
+import { rustAiPack } from "./rust-ai-pack.js";
+import { rubyAiPack } from "./ruby-ai-pack.js";
+import { firebasePack } from "./firebase-pack.js";
+import { githubActionsPack } from "./github-actions-pack.js";
 import type { DetectedTechnology, DetectorPackCoverage } from "../types.js";
 import type {
   NativeDetectorPack,
@@ -24,6 +32,14 @@ const NATIVE_PACKS: readonly NativeDetectorPack[] = [
   expoPack,
   pythonAiApiPack,
   javascriptBaselinePack,
+  goAiPack,
+  javaAiPack,
+  csharpAiPack,
+  phpAiPack,
+  rustAiPack,
+  rubyAiPack,
+  firebasePack,
+  githubActionsPack,
 ];
 
 export function listNativePacks(): readonly NativeDetectorPack[] {

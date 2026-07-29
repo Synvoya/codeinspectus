@@ -1,6 +1,6 @@
 {
   "name": "codeinspectus",
-  "version": "1.0.0",
+  "version": "1.5.0",
   "mcpName": "io.github.Synvoya/codeinspectus",
   "description": "CodeInspectus, by Synvoya — a local-first, privacy-preserving security MCP server that scans AI-generated code for real vulnerabilities, maps findings to compliance frameworks, and drives a scan → fix → rescan loop. Zero network egress at scan time.",
   "license": "MIT",
@@ -64,8 +64,9 @@
   ],
   "dependencies": {
     "@lezer/python": "1.1.19",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "smol-toml": "1.7.1",
+    "yaml": "2.9.0",
     "zod": "^3.25.1"
   },
   "devDependencies": {

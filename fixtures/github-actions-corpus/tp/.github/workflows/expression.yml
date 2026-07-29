@@ -1,0 +1,10 @@
+name: Unsafe issue title
+on:
+  issues:
+    types: [opened]
+jobs:
+  suggest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build suggestion
+        run: faqtory suggest "${{ github.event.issue.title }}" > suggest.md

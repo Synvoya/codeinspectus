@@ -56,6 +56,12 @@ type TechnologyId =
   | "sql"
   | "dart"
   | "python"
+  | "go"
+  | "java"
+  | "csharp"
+  | "php"
+  | "rust"
+  | "ruby"
   | "react"
   | "react-native"
   | "expo"
@@ -64,6 +70,8 @@ type TechnologyId =
   | "svelte"
   | "astro"
   | "supabase"
+  | "firebase"
+  | "github-actions"
   | "flutter"
   | "android"
   | "ios"
@@ -73,7 +81,8 @@ type TechnologyId =
   | "django"
   | "jinja2"
   | "openai"
-  | "anthropic";
+  | "anthropic"
+  | "langchain";
 
 interface TechnologyDefinition {
   id: TechnologyId;
@@ -98,6 +107,12 @@ const TECHNOLOGIES: readonly TechnologyDefinition[] = [
   { id: "sql", kind: "language" },
   { id: "dart", kind: "language" },
   { id: "python", kind: "language" },
+  { id: "go", kind: "language" },
+  { id: "java", kind: "language" },
+  { id: "csharp", kind: "language" },
+  { id: "php", kind: "language" },
+  { id: "rust", kind: "language" },
+  { id: "ruby", kind: "language" },
   { id: "react", kind: "framework" },
   { id: "react-native", kind: "framework" },
   { id: "expo", kind: "framework" },
@@ -108,11 +123,14 @@ const TECHNOLOGIES: readonly TechnologyDefinition[] = [
   { id: "jinja2", kind: "framework" },
   { id: "openai", kind: "framework" },
   { id: "anthropic", kind: "framework" },
+  { id: "langchain", kind: "framework" },
   { id: "nextjs", kind: "framework" },
   { id: "vue", kind: "framework" },
   { id: "svelte", kind: "framework" },
   { id: "astro", kind: "framework" },
   { id: "supabase", kind: "framework" },
+  { id: "firebase", kind: "platform" },
+  { id: "github-actions", kind: "platform" },
   { id: "flutter", kind: "framework" },
   { id: "android", kind: "platform" },
   { id: "ios", kind: "platform" },
@@ -315,6 +333,8 @@ const PYTHON_FRAMEWORK_DEPENDENCIES: Readonly<Record<string, TechnologyId>> = {
   jinja2: "jinja2",
   openai: "openai",
   anthropic: "anthropic",
+  langchain: "langchain",
+  "langchain-community": "langchain",
 };
 
 function addPythonDependencyDetections(
@@ -869,6 +889,12 @@ function detectFromPath(relativePath: string, state: DetectionState): void {
   if (extension === ".sql") addDetection(state, "sql", relativePath);
   if (extension === ".dart") addDetection(state, "dart", relativePath);
   if ([".py", ".pyi", ".pyw"].includes(extension)) addDetection(state, "python", relativePath);
+  if (extension === ".go") addDetection(state, "go", relativePath);
+  if (extension === ".java") addDetection(state, "java", relativePath);
+  if (extension === ".cs") addDetection(state, "csharp", relativePath);
+  if (extension === ".php") addDetection(state, "php", relativePath);
+  if (extension === ".rs") addDetection(state, "rust", relativePath);
+  if (extension === ".rb") addDetection(state, "ruby", relativePath);
 
   if (extension === ".vue") addDetection(state, "vue", relativePath);
   if (extension === ".svelte") addDetection(state, "svelte", relativePath);
@@ -877,6 +903,22 @@ function detectFromPath(relativePath: string, state: DetectionState): void {
   if (/^tsconfig(?:\.[^/]+)?\.json$/.test(base)) addDetection(state, "typescript", relativePath);
   if (isPythonDependencyManifest(base) || base === "setup.py") {
     addDetection(state, "python", relativePath);
+  }
+  if (base === "go.mod") addDetection(state, "go", relativePath);
+  if (base === "pom.xml" || base === "build.gradle" || base === "build.gradle.kts") {
+    addDetection(state, "java", relativePath, "medium");
+  }
+  if (extension === ".csproj" || extension === ".sln" || extension === ".slnx") {
+    addDetection(state, "csharp", relativePath, "medium");
+  }
+  if (base === "composer.json" || base === "composer.lock") {
+    addDetection(state, "php", relativePath, "medium");
+  }
+  if (base === "cargo.toml" || base === "cargo.lock") {
+    addDetection(state, "rust", relativePath, "medium");
+  }
+  if (base === "gemfile" || base === "gemfile.lock" || extension === ".gemspec") {
+    addDetection(state, "ruby", relativePath, "medium");
   }
   if (/^next\.config\.(?:js|jsx|mjs|cjs|ts|tsx|mts|cts)$/.test(base)) {
     addDetection(state, "nextjs", relativePath);
@@ -892,6 +934,23 @@ function detectFromPath(relativePath: string, state: DetectionState): void {
   );
   if (/(^|\/)supabase\/(?:config\.toml$|migrations\/|functions\/)/.test(lower)) {
     addDetection(state, "supabase", relativePath);
+  }
+
+  if (
+    !excludedPlatformCorpus &&
+    (base === "firebase.json" || base === ".firebaserc" || base === "firestore.rules" ||
+      base === "storage.rules" || base === "database.rules.json")
+  ) {
+    addDetection(state, "firebase", relativePath);
+  }
+
+  const excludedWorkflowCorpus = excludedPlatformCorpus ||
+    segments.some((segment) => segment === "fixture" || segment === "fixtures" || segment === "spec");
+  if (
+    !excludedWorkflowCorpus &&
+    /^\.github\/workflows\/[^/]+\.ya?ml$/.test(lower)
+  ) {
+    addDetection(state, "github-actions", relativePath);
   }
 
   if (
@@ -937,6 +996,150 @@ async function detectFromManifest(
       return;
     }
     addPythonDependencyDetections(state, parsed.names, relativePath);
+    return;
+  }
+
+  if (base === "go.mod") {
+    const content = await readBoundedManifest(absolutePath, relativePath, state);
+    if (content === undefined) return;
+    const withoutComments = content.replace(/\/\/[^\n\r]*/g, " ");
+    if (/(?:^|\s)github\.com\/openai\/openai-go(?:\/v\d+)?(?:\s|$)/m.test(withoutComments)) {
+      addDetection(state, "openai", relativePath);
+    }
+    return;
+  }
+
+  if (base === "pom.xml") {
+    const content = await readBoundedManifest(absolutePath, relativePath, state);
+    if (content === undefined) return;
+    const withoutComments = content.replace(/<!--[\s\S]*?-->/g, " ");
+    for (const dependency of withoutComments.matchAll(/<dependency\b[^>]*>([\s\S]*?)<\/dependency\s*>/gi)) {
+      const body = dependency[1] ?? "";
+      const group = body.match(/<groupId\s*>\s*([^<\s]+)\s*<\/groupId\s*>/i)?.[1];
+      const artifact = body.match(/<artifactId\s*>\s*([^<\s]+)\s*<\/artifactId\s*>/i)?.[1];
+      if (group === "com.openai" && (artifact === "openai-java" || artifact === "openai-java-core")) {
+        addDetection(state, "openai", relativePath);
+        break;
+      }
+    }
+    return;
+  }
+
+  if (base === "build.gradle" || base === "build.gradle.kts") {
+    const content = await readBoundedManifest(absolutePath, relativePath, state);
+    if (content === undefined) return;
+    const withoutComments = content.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n\r]*/g, " ");
+    if (/['"]com\.openai:openai-java(?:-core)?:[^'"]+['"]/.test(withoutComments)) {
+      addDetection(state, "openai", relativePath);
+    }
+    return;
+  }
+
+  if (extname(base) === ".csproj") {
+    const content = await readBoundedManifest(absolutePath, relativePath, state);
+    if (content === undefined) return;
+    const withoutComments = content.replace(/<!--[\s\S]*?-->/g, " ");
+    if (/<PackageReference\b[^>]*\bInclude\s*=\s*["']OpenAI["'][^>]*\/?\s*>/i.test(withoutComments)) {
+      addDetection(state, "openai", relativePath);
+    }
+    return;
+  }
+
+  if (base === "composer.json") {
+    const content = await readBoundedManifest(absolutePath, relativePath, state);
+    if (content === undefined) return;
+    let manifest: unknown;
+    try {
+      manifest = JSON.parse(content);
+    } catch {
+      addLimitation(state, relativePath, "manifest_invalid");
+      return;
+    }
+    const record = objectRecord(manifest);
+    const dependencies = new Set<string>();
+    for (const field of ["require", "require-dev"]) {
+      const entries = objectRecord(record?.[field]);
+      for (const dependency of Object.keys(entries ?? {})) dependencies.add(dependency.toLowerCase());
+    }
+    if (dependencies.has("openai-php/client") || dependencies.has("openai-php/laravel")) {
+      addDetection(state, "openai", relativePath);
+    }
+    return;
+  }
+
+  if (base === "cargo.toml") {
+    const content = await readBoundedManifest(absolutePath, relativePath, state);
+    if (content === undefined) return;
+    let section = "";
+    for (const rawLine of content.split(/\r?\n/)) {
+      const line = stripYamlComment(rawLine).trim();
+      if (!line) continue;
+      const heading = /^\[([^\]]+)\]$/.exec(line)?.[1]?.toLowerCase();
+      if (heading !== undefined) {
+        section = heading;
+        continue;
+      }
+      const dependencySection = section === "dependencies" ||
+        section === "workspace.dependencies" ||
+        /^target\..+\.dependencies$/.test(section);
+      if (dependencySection && /^(?:"async-openai"|async-openai)\s*=/.test(line)) {
+        addDetection(state, "openai", relativePath);
+        break;
+      }
+    }
+    return;
+  }
+
+  if (base === "gemfile" || base === "gemfile.lock" || extname(base) === ".gemspec") {
+    // Gemfile.lock does not preserve dependency groups. Treat it as Ruby-language evidence only;
+    // activating from a lockfile alone would turn a development-only gem into production evidence.
+    if (base === "gemfile.lock") return;
+    const content = await readBoundedManifest(absolutePath, relativePath, state);
+    if (content === undefined) return;
+    const withoutBlockComments = content.replace(/^=begin\b[\s\S]*?^=end\b[^\n\r]*/gm, " ");
+    const lines = withoutBlockComments.split(/\r?\n/).map((rawLine) => {
+      let singleQuoted = false;
+      let doubleQuoted = false;
+      let escaped = false;
+      for (let index = 0; index < rawLine.length; index++) {
+        const char = rawLine[index];
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (char === "\\" && doubleQuoted) {
+          escaped = true;
+          continue;
+        }
+        if (char === "'" && !doubleQuoted) singleQuoted = !singleQuoted;
+        else if (char === '"' && !singleQuoted) doubleQuoted = !doubleQuoted;
+        else if (char === "#" && !singleQuoted && !doubleQuoted) return rawLine.slice(0, index);
+      }
+      return rawLine;
+    });
+    let excludedGroupDepth = 0;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      if (/^group\b[^\n]*(?::development|:test)[^\n]*\bdo\s*$/.test(trimmed)) {
+        excludedGroupDepth++;
+        continue;
+      }
+      if (excludedGroupDepth > 0) {
+        if (/\bdo\s*$/.test(trimmed) || /^(?:def|class|module|if|unless|case|begin|while|until|for)\b/.test(trimmed)) excludedGroupDepth++;
+        if (/^end\b/.test(trimmed)) excludedGroupDepth--;
+        continue;
+      }
+      const productionDependency = base === "gemfile"
+        ? /^gem\s*(?:\(\s*)?['"]openai['"](?:\s*[,)]|\s*$)/.test(trimmed) &&
+          !/\bgroup\s*:\s*(?::development|:test)|\bgroups\s*:\s*\[[^\]]*(?::development|:test)/.test(trimmed)
+        : /\badd_(?:runtime_)?dependency\s*(?:\(\s*)?['"]openai['"](?:\s*[,)]|\s*$)/.test(trimmed) &&
+          !/\badd_development_dependency\b/.test(trimmed);
+      if (productionDependency) {
+        addDetection(state, "openai", relativePath);
+        break;
+      }
+    }
     return;
   }
 
@@ -995,6 +1198,12 @@ async function detectFromManifest(
     }
     if ([...dependencies].some((name) => name.startsWith("@supabase/"))) {
       addDetection(state, "supabase", relativePath);
+    }
+    if (
+      dependencies.has("firebase") || dependencies.has("firebase-admin") ||
+      [...dependencies].some((name) => name.startsWith("@firebase/"))
+    ) {
+      addDetection(state, "firebase", relativePath);
     }
     return;
   }
@@ -1260,6 +1469,13 @@ export async function detectTechnologies(
     await walkDirectory(target, target, state);
   } else if (targetInfo.isFile()) {
     const targetBase = basename(target).toLowerCase();
+    if (
+      [".yml", ".yaml"].includes(extname(targetBase)) &&
+      basename(dirname(target)).toLowerCase() === "workflows" &&
+      basename(dirname(dirname(target))).toLowerCase() === ".github"
+    ) {
+      addDetection(state, "github-actions", basename(target));
+    }
     if (targetBase === "androidmanifest.xml" || targetBase === "network_security_config.xml") {
       addDetection(state, "android", basename(target));
     }

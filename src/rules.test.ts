@@ -34,8 +34,8 @@ describe("listRules native pack inventory", () => {
     expect(result.native_packs).toEqual([
       expect.objectContaining({
         id: "javascript-typescript",
-        analyzer_count: 7,
-        rule_count: 21,
+        analyzer_count: 8,
+        rule_count: 22,
       }),
       expect.objectContaining({
         id: "flutter",
@@ -69,12 +69,68 @@ describe("listRules native pack inventory", () => {
       expect.objectContaining({
         id: "python-ai-api",
         languages: ["python"],
-        analyzer_count: 6,
-        rule_count: 6,
+        analyzer_count: 10,
+        rule_count: 10,
       }),
       expect.objectContaining({
         id: "javascript-baseline",
         scanner_kind: "sast",
+        analyzer_count: 1,
+        rule_count: 2,
+      }),
+      expect.objectContaining({
+        id: "go-ai",
+        languages: ["go"],
+        frameworks: ["openai"],
+        analyzer_count: 1,
+        rule_count: 1,
+      }),
+      expect.objectContaining({
+        id: "java-ai",
+        languages: ["java"],
+        frameworks: ["openai"],
+        analyzer_count: 1,
+        rule_count: 1,
+      }),
+      expect.objectContaining({
+        id: "csharp-ai",
+        languages: ["csharp"],
+        frameworks: ["openai"],
+        analyzer_count: 1,
+        rule_count: 1,
+      }),
+      expect.objectContaining({
+        id: "php-ai",
+        languages: ["php"],
+        frameworks: ["openai"],
+        analyzer_count: 1,
+        rule_count: 1,
+      }),
+      expect.objectContaining({
+        id: "rust-ai",
+        languages: ["rust"],
+        frameworks: ["openai"],
+        analyzer_count: 1,
+        rule_count: 1,
+      }),
+      expect.objectContaining({
+        id: "ruby-ai",
+        languages: ["ruby"],
+        frameworks: ["openai"],
+        analyzer_count: 1,
+        rule_count: 1,
+      }),
+      expect.objectContaining({
+        id: "firebase",
+        frameworks: [],
+        platforms: ["firebase"],
+        analyzer_count: 1,
+        rule_count: 3,
+      }),
+      expect.objectContaining({
+        id: "github-actions",
+        languages: ["yaml"],
+        platforms: ["github-actions"],
         analyzer_count: 1,
         rule_count: 2,
       }),
@@ -84,7 +140,7 @@ describe("listRules native pack inventory", () => {
     expect(result.native_packs[1]?.languages).toContain("dart");
     expect(result.native_packs[1]?.frameworks).toContain("flutter");
     expect(result.native_packs[1]?.limitations.join(" ")).toMatch(/source-ordered|does not claim complete/i);
-    expect(result.custom_rule_count).toBe(70);
+    expect(result.custom_rule_count).toBe(86);
     expect(result.engines.some((engine) => engine.engine === "codeinspectus-pub" && engine.available)).toBe(true);
     expect(result.advisory_databases).toEqual([
       expect.objectContaining({
@@ -96,15 +152,23 @@ describe("listRules native pack inventory", () => {
         license: "CC-BY-4.0",
       }),
     ]);
-    expect(nativeRules).toHaveLength(49);
-    expect(nativeRules.filter((rule) => rule.pack_id === "javascript-typescript")).toHaveLength(21);
+    expect(nativeRules).toHaveLength(65);
+    expect(nativeRules.filter((rule) => rule.pack_id === "javascript-typescript")).toHaveLength(22);
     expect(nativeRules.filter((rule) => rule.pack_id === "flutter")).toHaveLength(6);
     expect(nativeRules.filter((rule) => rule.pack_id === "android")).toHaveLength(4);
     expect(nativeRules.filter((rule) => rule.pack_id === "ios")).toHaveLength(4);
     expect(nativeRules.filter((rule) => rule.pack_id === "react-native")).toHaveLength(4);
     expect(nativeRules.filter((rule) => rule.pack_id === "expo")).toHaveLength(2);
-    expect(nativeRules.filter((rule) => rule.pack_id === "python-ai-api")).toHaveLength(6);
+    expect(nativeRules.filter((rule) => rule.pack_id === "python-ai-api")).toHaveLength(10);
     expect(nativeRules.filter((rule) => rule.pack_id === "javascript-baseline")).toHaveLength(2);
+    expect(nativeRules.filter((rule) => rule.pack_id === "go-ai")).toHaveLength(1);
+    expect(nativeRules.filter((rule) => rule.pack_id === "java-ai")).toHaveLength(1);
+    expect(nativeRules.filter((rule) => rule.pack_id === "csharp-ai")).toHaveLength(1);
+    expect(nativeRules.filter((rule) => rule.pack_id === "php-ai")).toHaveLength(1);
+    expect(nativeRules.filter((rule) => rule.pack_id === "rust-ai")).toHaveLength(1);
+    expect(nativeRules.filter((rule) => rule.pack_id === "ruby-ai")).toHaveLength(1);
+    expect(nativeRules.filter((rule) => rule.pack_id === "firebase")).toHaveLength(3);
+    expect(nativeRules.filter((rule) => rule.pack_id === "github-actions")).toHaveLength(2);
     expect(externalRules).toHaveLength(21);
     expect(externalRules.every((rule) => !("pack_id" in rule))).toBe(true);
   });
@@ -116,7 +180,7 @@ describe("listRules native pack inventory", () => {
       listRules({ engine: "gitleaks" }),
     ]);
 
-    expect(native.custom_rule_count).toBe(49);
+    expect(native.custom_rule_count).toBe(65);
     expect(opengrep.custom_rule_count).toBe(18);
     expect(gitleaks.custom_rule_count).toBe(3);
     expect(native.native_packs).toEqual(opengrep.native_packs);

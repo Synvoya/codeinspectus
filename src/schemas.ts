@@ -435,6 +435,7 @@ export const ruleInfoSchema = z.object({
   cwe: z.array(z.string()),
   owasp_web: z.array(z.string()).optional(),
   owasp_api: z.array(z.string()).optional(),
+  owasp_llm: z.array(z.string()).optional(),
   source: z.enum(["builtin-engine", "codeinspectus-custom"]),
 });
 

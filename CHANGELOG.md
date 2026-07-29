@@ -4,6 +4,121 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [1.5.0] — 2026-07-29
+
+### Added
+- The Python AI/API pack now detects a proven LangChain `FAISS.load_local(...)` call with literal
+  `allow_dangerous_deserialization=True` as `ci-python-faiss-dangerous-deserialization` (CWE-502).
+  The rule resolves supported current and legacy LangChain imports without executing target code,
+  fails closed on unresolved/dynamic/spread calls, and states that exploitability depends on the
+  loaded artifact's origin and integrity.
+- The Python AI/API pack now detects a complete URL derived from web request input and actually
+  fetched by a proven LangChain `WebBaseLoader`. The rule requires exact current/legacy loader
+  provenance plus a supported load method, and stays silent for fixed destinations, fixed-origin
+  path composition, unused loaders, unresolved helpers, spreads, shadowed classes, and overwritten
+  receivers.
+- The Python AI/API pack now reports `ci-python-prompt-injection-sink` when framework-proven
+  request input reaches OpenAI Responses `instructions` or Anthropic Messages `system`, or when
+  request-controlled model input shares the same proven SDK call with configured tool access.
+  Ordinary user/input content without tools stays silent; findings are explicitly heuristic at
+  medium confidence, with tool-enabled calls raised to high severity.
+- The frozen Python TP/FP/fixed corpus, direct analyzer tests, pack inventory, provenance,
+  redaction, technology applicability, built-MCP eval, and same-path rescan contracts now cover
+  all ten Python AI/API rules.
+- The bounded Python lexer now uses Lezer's exact `FormatString` ranges to retain validated
+  f-strings as opaque dynamic tokens. Calls inside replacement fields remain deliberately
+  uninspected, while unrelated executable code in the same file is no longer discarded.
+- Prompt-injection findings now use `CWE-1427` (improper neutralization of input used for LLM
+  prompting) instead of the output-validation weakness `CWE-1426`, preventing compliance
+  enrichment from incorrectly adding OWASP LLM05 to LLM01 prompt-injection findings.
+- The JavaScript/TypeScript pack now reports `ci-ai-llm-tool-argument-command-execution` when
+  model-produced tool/function arguments reach import-proven Node `child_process.exec` or
+  `execSync` directly or through one local wrapper without a visible checked approval,
+  allowlist, or validated replacement value. The bounded rule maps to CWE-78/CWE-1426 and
+  OWASP LLM05/LLM06, with medium-confidence wording and explicit cross-module/runtime limits.
+- A dedicated TP/FP/fixed corpus, public regression test, vulnerable-app MCP eval, provenance
+  component, manifest ownership, explanation/remediation metadata, and pinned public positive
+  and negative scans lock the unsafe tool-execution contract.
+- The Python AI/API pack now reports `ci-python-llm-tool-argument-command-execution` for proven
+  OpenAI/Anthropic tool arguments reaching `os.system`, other inherent shell APIs, or supported
+  `subprocess` calls with literal `shell=True`, directly or through one named local wrapper.
+  Checked approval/allowlist gates, schema-validated replacement values, `shell=False`, static
+  commands, lookalikes, spreads, generic dispatch, and unsupported deeper/cross-module flows stay silent.
+- A first-party Go AI pack adds `ci-go-llm-tool-argument-command-execution` for exact official
+  OpenAI Go Chat Completions tool arguments reaching import-proven `os/exec` shell interpreters.
+  The medium-confidence rule supports bounded direct aliases, JSON unmarshal, one local parser, and
+  one local command wrapper; checked rejection/approval or allowlist guards and validated replacement
+  values stay silent. TP/FP/fixed fixtures, direct-file parity, bounded loader tests, provenance,
+  technology-gated dispatch, built-MCP E37/E38, and pinned public positive/negative scans lock the contract.
+- A first-party Java AI pack adds `ci-java-llm-tool-argument-command-execution` for exact official
+  OpenAI Java tool-call arguments reaching an actually-started recognized `ProcessBuilder` or
+  `Runtime.getRuntime().exec` shell. The medium-confidence rule supports bounded direct aliases,
+  one local parser, and one local command wrapper; checked rejection/approval or allowlist guards,
+  validated replacements, non-started builders, and fixed executables stay silent. TP/FP/fixed
+  fixtures, direct-file parity, bounded loader tests, provenance, technology-gated dispatch,
+  built-MCP E39/E40, and pinned public positive/negative scans lock the contract.
+- A first-party C# AI pack adds `ci-csharp-llm-tool-argument-command-execution` for exact official
+  OpenAI .NET `ChatToolCall.FunctionArguments` reaching an actually-started recognized
+  `System.Diagnostics.Process` shell. The medium-confidence rule supports bounded direct aliases,
+  `System.Text.Json` dictionary/property extraction, one local parser, and one local command
+  wrapper; checked rejection/approval or allowlist guards, validated replacements, non-started
+  process configuration, and fixed executables stay silent. TP/FP/fixed fixtures, typed method-
+  parameter flow, direct-file parity, bounded loader tests, provenance, language-gated dispatch,
+  built-MCP E41/E42, and pinned public positive/negative scans lock the contract.
+- A first-party PHP AI pack adds `ci-php-llm-tool-argument-command-execution` for exact
+  community-maintained `openai-php/client` or `openai-php/laravel` Composer evidence and tool-call
+  `function->arguments` reaching `exec`, `system`, `shell_exec`, or `passthru`. The
+  medium-confidence rule supports direct aliases, associative `json_decode`, one local parser, one
+  local command wrapper, and one exact mapped variadic method dispatch. Checked approval or
+  full-command allowlists and validated replacements stay silent; first-token executable checks do
+  not suppress shell-metacharacter risk. TP/FP/fixed fixtures, direct-file parity, bounded loader
+  tests, provenance, language-gated dispatch, built-MCP E43/E44, and pinned public positive/negative
+  scans lock the contract. The supported PHP clients are community maintained, not official OpenAI SDKs.
+- A first-party Rust AI pack adds `ci-rust-llm-tool-argument-command-execution` for exact
+  community-maintained `async-openai` Cargo evidence and model tool arguments reaching an
+  import-proven standard/Tokio process shell or literal Bollard Docker exec shell vector. The
+  medium-confidence rule supports direct aliases, `serde_json` extraction, one recognized
+  `generate_function_call` result, and one local command wrapper; checked approval/allowlist
+  rejection and validated replacements stay silent. TP/FP/fixed fixtures, multiline-string
+  regression coverage, direct-file parity, bounded loader tests, provenance, language-gated
+  dispatch, built-MCP E45/E46, and pinned public positive/negative scans lock the contract.
+  `async-openai` is community maintained and is not represented as an official OpenAI SDK.
+- A first-party Ruby AI pack adds `ci-ruby-llm-tool-argument-command-execution` for exact official
+  production `openai` Gemfile or runtime gemspec evidence and Chat tool-call or explicitly typed Responses function-tool arguments
+  reaching `system`, `exec`, `IO.popen`, or import-proven Open3 shell execution. The
+  medium-confidence rule supports direct aliases, `JSON.parse` command extraction, one local
+  parser, and one local command wrapper; checked approval/full-command allowlists and validated
+  replacements stay silent. TP/FP/fixed fixtures, string-decoy and heredoc fail-closed coverage,
+  direct-file parity, bounded loader tests, provenance, language-gated dispatch, built-MCP E47/E48,
+  lockfile-only/development-only exclusions, and a pinned public official-SDK safe-tool scan lock
+  the contract.
+- A first-party Firebase configuration pack adds `ci-firebase-firestore-public-write`,
+  `ci-firebase-storage-public-write`, and `ci-firebase-realtime-database-public-write` for literal
+  unconditional public writes in checked-in Security Rules. Public reads and non-literal
+  conditions stay silent. The bounded no-follow parser masks Rules comments/strings, requires
+  exact Firestore/Storage service declarations, parses Realtime Database rules as strict JSON, and
+  never runs Firebase tooling or target code. TP/FP/fixed fixtures, technology gating, provenance,
+  built-MCP E49/E50, and pinned public positive/precision scans lock the contract.
+- A first-party GitHub Actions workflow pack adds
+  `ci-github-actions-untrusted-expression-command` for direct documented attacker-controlled
+  `github` context interpolation in `run`, and `ci-github-actions-pwn-request` for the exact
+  `pull_request_target` plus untrusted checkout plus checked-out-code execution chain. The bounded
+  no-follow YAML 1.2 parser reads only direct workflow files and never executes target code.
+  Safe `env`/`with` indirection, normal `pull_request`, checkout without execution, and protected
+  checkout v7 stay silent. TP/FP/fixed fixtures, technology gating, provenance, built-MCP E51/E52,
+  and pinned public positive/precision scans lock the contract.
+
+### Changed
+- Detection database `1.13.0` contains **86 curated detections**: 65 first-party native rules,
+  18 Opengrep-owned SAST rules, and 3 custom Gitleaks rules. The JavaScript/TypeScript pack is
+  `1.3.0`, the Python AI/API pack is `1.4.0`, the Go AI pack is
+  `1.0.0`, the Java AI pack is `1.0.0`, the C# AI pack is `1.0.0`, the PHP AI pack is `1.0.0`,
+  the Rust AI pack is `1.0.0`, the Ruby AI pack is `1.0.0`, the Firebase pack is `1.0.0`, the
+  GitHub Actions pack is `1.0.0`, and the aggregate native engine signature is `5.13.0`.
+- Updated `@modelcontextprotocol/sdk` to `1.30.0` and its Hono adapter to `2.0.12`, removing the
+  prior moderate audit findings. One low, development-server-only esbuild advisory remains; the
+  affected development server is not used or shipped by CodeInspectus.
+
 ## [1.0.0] — 2026-07-27
 
 ### Added

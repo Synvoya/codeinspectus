@@ -1,0 +1,8 @@
+[package]
+name = "rust-ai-fixed"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-openai = "0.29"
+serde_json = "1"

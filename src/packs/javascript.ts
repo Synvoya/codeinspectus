@@ -5,6 +5,7 @@ import { runClientMetadataAuthzCheck } from "../ai-checks/metadata-authz.js";
 import { runPromptInjectionCheck } from "../ai-checks/prompt-injection.js";
 import { runSecurityControlChecks } from "../ai-checks/security-controls.js";
 import { runSupabaseRlsCheck } from "../ai-checks/supabase-rls.js";
+import { runUnsafeToolExecutionCheck } from "../ai-checks/unsafe-tool-execution.js";
 import type {
   NativeAnalyzer,
   NativeAnalyzerResult,
@@ -48,6 +49,12 @@ function createJavaScriptAnalyzers(target: string): readonly NativeAnalyzer[] {
       components: ["ai:prompt-injection"],
       ruleIds: ["ci-ai-prompt-injection-sink"],
       run: () => findingsOnly(() => runPromptInjectionCheck(target)),
+    },
+    {
+      id: "unsafe-tool-execution",
+      components: ["ai:unsafe-tool-execution"],
+      ruleIds: ["ci-ai-llm-tool-argument-command-execution"],
+      run: () => findingsOnly(() => runUnsafeToolExecutionCheck(target)),
     },
     {
       id: "client-metadata-authz",
@@ -106,7 +113,7 @@ function createJavaScriptAnalyzers(target: string): readonly NativeAnalyzer[] {
 export const javascriptPack: NativeDetectorPack = {
   id: "javascript-typescript",
   // Pack semantics are unchanged when the aggregate native engine gains other packs.
-  version: "1.2.0",
+  version: "1.3.0",
   scannerKind: "ai",
   languages: ["javascript", "typescript", "sql"],
   frameworks: ["react", "nextjs", "vue", "svelte", "astro", "supabase"],
@@ -114,6 +121,7 @@ export const javascriptPack: NativeDetectorPack = {
   limitations: [
     "Rule-specific static analysis only; listed languages and frameworks are not complete coverage claims.",
     "Client-secret checks also inspect selected HTML and framework component files; runtime-control checks inspect selected repository configuration shapes.",
+    "Model-tool command execution analysis is intrafile, import-proven, and bounded to direct flow or one named local wrapper; cross-module dispatch and runtime sandbox/approval state are not resolved.",
   ],
   createAnalyzers: createJavaScriptAnalyzers,
 };

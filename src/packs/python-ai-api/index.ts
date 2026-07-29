@@ -30,6 +30,22 @@ import {
   PYTHON_LLM_OUTPUT_DANGEROUS_HTML_RULE_ID,
   runPythonLlmOutputDangerousHtml,
 } from "./llm-html.js";
+import {
+  PYTHON_FAISS_DANGEROUS_DESERIALIZATION_RULE_ID,
+  runPythonFaissDangerousDeserialization,
+} from "./faiss-deserialization.js";
+import {
+  PYTHON_LANGCHAIN_WEB_LOADER_SSRF_RULE_ID,
+  runPythonLangChainWebLoaderSsrf,
+} from "./langchain-web-loader-ssrf.js";
+import {
+  PYTHON_PROMPT_INJECTION_SINK_RULE_ID,
+  runPythonPromptInjectionSink,
+} from "./prompt-injection.js";
+import {
+  PYTHON_UNSAFE_TOOL_EXECUTION_RULE_ID,
+  runPythonUnsafeToolExecution,
+} from "./unsafe-tool-execution.js";
 
 const COMMON_COMPONENTS = [
   "pack:python-ai-api:dispatch",
@@ -51,7 +67,7 @@ function analyzerRun(
   };
 }
 
-/** Six independently-failable Python API/AI analyzers sharing one bounded parse. */
+/** Ten independently-failable Python API/AI analyzers sharing one bounded parse. */
 export function createPythonAiApiAnalyzers(target: string): readonly NativeAnalyzer[] {
   const loadProject = createCachedPythonProjectLoader(target);
   return [
@@ -91,6 +107,30 @@ export function createPythonAiApiAnalyzers(target: string): readonly NativeAnaly
       ruleIds: [PYTHON_LLM_OUTPUT_DANGEROUS_HTML_RULE_ID],
       run: analyzerRun(loadProject, runPythonLlmOutputDangerousHtml),
     },
+    {
+      id: "python-faiss-dangerous-deserialization",
+      components: [...COMMON_COMPONENTS, "ai:python-faiss-dangerous-deserialization"],
+      ruleIds: [PYTHON_FAISS_DANGEROUS_DESERIALIZATION_RULE_ID],
+      run: analyzerRun(loadProject, runPythonFaissDangerousDeserialization),
+    },
+    {
+      id: "python-langchain-web-loader-ssrf",
+      components: [...COMMON_COMPONENTS, "ai:python-langchain-web-loader-ssrf"],
+      ruleIds: [PYTHON_LANGCHAIN_WEB_LOADER_SSRF_RULE_ID],
+      run: analyzerRun(loadProject, runPythonLangChainWebLoaderSsrf),
+    },
+    {
+      id: "python-prompt-injection-sink",
+      components: [...COMMON_COMPONENTS, "ai:python-prompt-injection"],
+      ruleIds: [PYTHON_PROMPT_INJECTION_SINK_RULE_ID],
+      run: analyzerRun(loadProject, runPythonPromptInjectionSink),
+    },
+    {
+      id: "python-unsafe-tool-execution",
+      components: [...COMMON_COMPONENTS, "ai:python-unsafe-tool-execution"],
+      ruleIds: [PYTHON_UNSAFE_TOOL_EXECUTION_RULE_ID],
+      run: analyzerRun(loadProject, runPythonUnsafeToolExecution),
+    },
   ];
 }
 
@@ -101,3 +141,7 @@ export * from "./file-response.js";
 export * from "./redirect.js";
 export * from "./template-source.js";
 export * from "./llm-html.js";
+export * from "./faiss-deserialization.js";
+export * from "./langchain-web-loader-ssrf.js";
+export * from "./prompt-injection.js";
+export * from "./unsafe-tool-execution.js";

@@ -12,6 +12,8 @@ import { runPythonUntrustedFileResponse } from "./file-response.js";
 import { runPythonUntrustedRedirect } from "./redirect.js";
 import { runPythonUntrustedTemplateSource } from "./template-source.js";
 import { runPythonLlmOutputDangerousHtml } from "./llm-html.js";
+import { runPythonFaissDangerousDeserialization } from "./faiss-deserialization.js";
+import { runPythonLangChainWebLoaderSsrf } from "./langchain-web-loader-ssrf.js";
 
 function project(source: string, path = "src/app.py"): PythonProject {
   return {
@@ -30,9 +32,9 @@ function findings(
 }
 
 describe("Python AI/API analyzer contract", () => {
-  test("registers six independent analyzers with exact rule components", () => {
+  test("registers ten independent analyzers with exact rule components", () => {
     const analyzers = createPythonAiApiAnalyzers("/virtual/python");
-    expect(analyzers).toHaveLength(6);
+    expect(analyzers).toHaveLength(10);
     expect(analyzers.map((analyzer) => analyzer.components.at(-1))).toEqual([
       "ai:python-hardcoded-signing-secret",
       "ai:python-credentialed-cors",
@@ -40,6 +42,10 @@ describe("Python AI/API analyzer contract", () => {
       "ai:python-untrusted-redirect",
       "ai:python-untrusted-template-source",
       "ai:python-llm-output-dangerous-html",
+      "ai:python-faiss-dangerous-deserialization",
+      "ai:python-langchain-web-loader-ssrf",
+      "ai:python-prompt-injection",
+      "ai:python-unsafe-tool-execution",
     ]);
     expect(analyzers.every((analyzer) =>
       analyzer.components.includes("pack:python-ai-api:dispatch") &&
@@ -59,8 +65,12 @@ describe("Python AI/API analyzer contract", () => {
     const tp = await run("tp");
     expect(tp.map((finding) => finding.rule_id).sort()).toEqual([
       "ci-python-credentialed-cors-all-origins",
+      "ci-python-faiss-dangerous-deserialization",
       "ci-python-hardcoded-signing-secret",
+      "ci-python-langchain-web-loader-ssrf",
       "ci-python-llm-output-dangerous-html",
+      "ci-python-llm-tool-argument-command-execution",
+      "ci-python-prompt-injection-sink",
       "ci-python-untrusted-file-response",
       "ci-python-untrusted-redirect",
       "ci-python-untrusted-template-source",
@@ -355,5 +365,49 @@ def bounded():
 def HTMLResponse(value):
     return value
 `)).resolves.toEqual([]);
+  });
+});
+
+describe("Python LangChain FAISS deserialization rule", () => {
+  test("flags the exact dangerous opt-in while excluding safe and lookalike calls", async () => {
+    const unsafe = await findings(runPythonFaissDangerousDeserialization, `
+from langchain_community.vectorstores import FAISS
+FAISS.load_local("index", embeddings, allow_dangerous_deserialization=True)
+`);
+    const safe = await findings(runPythonFaissDangerousDeserialization, `
+from langchain_community.vectorstores import FAISS
+from project.vectorstores import FAISS as ProjectFaiss
+FAISS.load_local("index", embeddings, allow_dangerous_deserialization=False)
+ProjectFaiss.load_local("index", embeddings, allow_dangerous_deserialization=True)
+`);
+    expect(unsafe).toHaveLength(1);
+    expect(unsafe[0]).toMatchObject({ severity: "high", confidence: "high", cwe: ["CWE-502"] });
+    expect(safe).toEqual([]);
+  });
+});
+
+describe("Python LangChain web-loader SSRF rule", () => {
+  test("requires both request-controlled complete URL input and a proven fetch", async () => {
+    const unsafe = await findings(runPythonLangChainWebLoaderSsrf, `
+from fastapi import FastAPI
+from langchain_community.document_loaders import WebBaseLoader
+app = FastAPI()
+@app.post("/ingest")
+def ingest(request: IngestRequest):
+    loader = WebBaseLoader(request.url)
+    return loader.load()
+`);
+    const safe = await findings(runPythonLangChainWebLoaderSsrf, `
+from fastapi import FastAPI
+from langchain_community.document_loaders import WebBaseLoader
+app = FastAPI()
+@app.post("/ingest")
+def ingest(request: IngestRequest):
+    WebBaseLoader("https://docs.example/security").load()
+    return WebBaseLoader(request.url)
+`);
+    expect(unsafe).toHaveLength(1);
+    expect(unsafe[0]).toMatchObject({ severity: "high", confidence: "high", cwe: ["CWE-918"] });
+    expect(safe).toEqual([]);
   });
 });

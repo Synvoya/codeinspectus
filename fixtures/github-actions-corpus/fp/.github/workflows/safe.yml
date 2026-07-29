@@ -1,0 +1,9 @@
+name: Safe issue workflow
+on: issues
+jobs:
+  issue:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          TITLE: ${{ github.event.issue.title }}
+        run: printf '%s\n' "$TITLE"

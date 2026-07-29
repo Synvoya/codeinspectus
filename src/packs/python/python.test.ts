@@ -32,11 +32,31 @@ actual(value="safe")
     ["PEP 701 same-delimiter string", `from openai import OpenAI\nx = f"{ "OpenAI(http_client=transport)" }"`],
     ["same-delimiter triple string", `from openai import OpenAI\nx = f'''{ '''OpenAI(http_client=transport)''' }'''`],
     ["nested format expression", `from openai import OpenAI\nx = f"{f'{OpenAI(http_client=transport)}'}"`],
-  ])("fails closed for %s", (_label, source) => {
+  ])("keeps %s opaque", (_label, source) => {
     const document = parsePythonSource("app.py", source);
 
+    expect(document.balanced).toBe(true);
+    expect(document.formatStringUnsupported).toBe(false);
+    expect(pythonCalls(document)).toEqual([]);
+  });
+
+  test("continues analyzing executable code after an opaque format string", () => {
+    const document = parsePythonSource("app.py", `
+from openai import OpenAI
+message = f"Request failed for {request_id}"
+client = OpenAI()
+`);
+
+    expect(document.balanced).toBe(true);
+    expect(pythonCalls(document).map((call) => call.reference.join("."))).toEqual(["OpenAI"]);
+    expect(document.tokens.find((token) => token.dynamicString)?.staticString).toBeUndefined();
+  });
+
+  test("fails closed for an unterminated format string", () => {
+    const document = parsePythonSource("app.py", `message = f"Request failed for {request_id}`);
+
     expect(document.balanced).toBe(false);
-    expect(document.formatStringUnsupported).toBe(true);
+    expect(document.syntaxError || document.formatStringUnsupported).toBe(true);
     expect(pythonCalls(document)).toEqual([]);
   });
 

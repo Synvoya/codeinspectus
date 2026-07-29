@@ -1,6 +1,7 @@
 /**
  * §6.3 — Prompt-injection sinks in the user's code (CodeInspectus AI-code check).
- * CWE-1426 (improper handling of GenAI input); OWASP LLM01 (+ LLM06 with tool access).
+ * CWE-1427 (improper neutralization of input used for LLM prompting); OWASP LLM01
+ * (+ LLM06 with tool access).
  *
  * CG-06 rework. The CG-05 version fired whenever untrusted input appeared near an LLM
  * call — INCLUDING the safe pattern (input in a user-role message, no tools), which is
@@ -215,7 +216,7 @@ export async function runPromptInjectionCheck(target: string): Promise<Finding[]
           ruleId: "ci-ai-prompt-injection-sink",
           title: "Potential prompt-injection sink" + titleSuffix,
           severity,
-          cwe: ["CWE-1426"],
+          cwe: ["CWE-1427"],
           owasp_llm: owaspLlm,
           file: f.rel,
           startLine: line,
@@ -232,7 +233,7 @@ export async function runPromptInjectionCheck(target: string): Promise<Finding[]
               "Place untrusted content in its own user-role message and validate it first.",
               "For tool/function-calling, require confirmation before any sensitive action.",
             ],
-            references: ["CWE-1426", "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"],
+            references: ["CWE-1427", "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"],
           },
           confidence: "medium",
         }),
