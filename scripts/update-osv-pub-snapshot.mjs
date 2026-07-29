@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Maintainer-only refresh of the bundled offline OSV Pub advisory snapshot.
  *
