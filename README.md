@@ -19,12 +19,14 @@ egress at scan time**.
 
 ![CodeInspectus demo](assets/codeinspectus-demo.gif)
 
-**Reproduce the proof:** the shipped intentionally vulnerable fixture produces
-**18 normalized findings across all four engines** with v0.3.1 (4 critical, 8 high,
-5 medium, 1 low). Inspect the [fixture](fixtures/vulnerable-app), read the
-[full scanner-derived report](examples/reports/vulnerable-app-v0.3.1.md), or run the
-[45-case eval suite](evals/run-evals.ts). Dependency findings can change as the local
-Trivy database updates; the report records the exact engine and database versions used.
+**Reproduce the V1.5 proof:** the published `codeinspectus@1.5.0` package scans an
+immutable public Rich commit, finds one high-confidence GitHub Actions expression-injection
+pattern, applies GitHub's documented intermediate-`env` remediation in a temporary clone,
+and confirms it as **1 resolved, 0 remaining, 0 introduced, 0 not rechecked**. Run the
+[reproduction script](scripts/reproduce-v1.5-case-study.mjs) or read the
+[scanner-derived case study](examples/reports/rich-github-actions-v1.5.0.md). The case uses
+the `ai` scanner class to isolate stable native behavior; use a normal full scan for broad
+repository coverage.
 
 If CodeInspectus is useful, [star the repository](https://github.com/Synvoya/codeinspectus)
 so other AI-app builders can find it.
@@ -480,6 +482,7 @@ ALL LOCAL. NO NETWORK EGRESS AT SCAN TIME.
 
 ## Example reports
 
+- [V1.5 public-repository scan → fix → rescan case study](examples/reports/rich-github-actions-v1.5.0.md)
 - [Reproducible v0.3.1 scan of the shipped vulnerable fixture](examples/reports/vulnerable-app-v0.3.1.md)
 
 ## Trademark
