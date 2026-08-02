@@ -4,6 +4,13 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [Unreleased]
+
+### Changed
+- Publishing a GitHub Release now triggers signed-tag and full release-gate validation only. npm
+  publication remains a separate authenticated maintainer-terminal step; the GitHub workflow has no
+  npm credentials, environment gate, OIDC publishing permission, or publish command.
+
 ## [2.1.0] — 2026-08-02
 
 ### Added

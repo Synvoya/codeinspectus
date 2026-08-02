@@ -1,25 +1,16 @@
 # Release process
 
-CodeInspectus releases are published from the public GitHub repository by
-`.github/workflows/release.yml`. The workflow fails closed unless the release tag is annotated,
-cryptographically signed, verified by GitHub, and exactly matches the package version and checked-out
-commit. It independently rebuilds and verifies the package before publishing through npm trusted
-publishing with provenance.
+CodeInspectus GitHub releases and npm publications are deliberately separate operations. Publishing a
+GitHub Release triggers `.github/workflows/release.yml`, which validates the signed tag and independently
+rebuilds and tests the exact public commit. The workflow has read-only repository permission and never
+publishes to npm.
 
-## One-time provider configuration
+The public GitHub repository is owned by `Synvoya`; the npm package is maintained by `hibin-m`.
+Publishing to npm is therefore performed from an authenticated maintainer terminal after the GitHub
+release validation succeeds. Do not add an npm token, npm trusted-publisher mapping, GitHub `npm`
+environment, or OIDC publishing permission to the release workflow.
 
-In the npm settings for `codeinspectus`, configure a GitHub Actions trusted publisher with these exact
-values:
-
-- owner: `Synvoya`
-- repository: `codeinspectus`
-- workflow filename: `release.yml`
-- environment: `npm`
-- allowed action: `npm publish`
-
-Create the GitHub `npm` environment and require manual approval. Do not add a long-lived `NPM_TOKEN`;
-the workflow uses GitHub OIDC (`id-token: write`). Protect `v*` tags and the release workflow through
-repository rules.
+Protect `v*` tags and the release workflow through repository rules.
 
 ## Per-release sequence
 
@@ -27,9 +18,15 @@ repository rules.
 2. Set and reconcile the package, lockfile, server, CLI, SDK, changelog, and registry-manifest version.
 3. Create an annotated signed tag: `git tag -s vX.Y.Z -m "vX.Y.Z"`.
 4. Push the commit and signed tag, then confirm normal CI is green for the tagged commit.
-5. Publish a GitHub Release from that exact tag. This triggers the release workflow.
-6. Require the workflow to verify the npm version and SLSA provenance attestation before calling the
-   release complete.
+5. Publish a GitHub Release from that exact tag. This triggers the validation-only release workflow.
+6. Require that workflow to pass before publishing the package.
+7. From a clean checkout of the exact public tagged commit, authenticate with `npm login --auth-type=web`
+   if needed and verify `npm whoami` reports `hibin-m`.
+8. Confirm `codeinspectus@X.Y.Z` does not already exist, then run `npm publish --access public` and
+   complete npm's browser/2FA approval.
+9. Verify the registry reports `X.Y.Z` as both the package version and `latest`, and record the registry
+   integrity and shasum.
 
 Published package versions and public tags are immutable release evidence. Do not rewrite an existing
-tag or imply that an older package gained provenance retroactively.
+tag. Terminal publications do not carry GitHub Actions SLSA provenance, so do not claim that provenance
+for those package versions.
