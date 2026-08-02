@@ -34,6 +34,8 @@ const TP: TpCase[] = [
   { file: "tp/03-arm-b-inline.tsx", model: true },
   { file: "tp/04-arm-b-split.tsx", model: true },
   { file: "tp/05-arm-b-anthropic.tsx", model: true },
+  { file: "tp/06-component-prop-model.tsx", model: true },
+  { file: "tp/07-component-prop-user.tsx", model: false },
 ];
 
 // False positives / true negatives — each MUST stay silent.
@@ -42,6 +44,9 @@ const FP: string[] = [
   "fp/02-constant-trusted.tsx", // string literal + local constant
   "fp/03-plaintext.tsx", // model/untrusted rendered as TEXT (no raw-HTML sink)
   "fp/04-noise.tsx", // untrusted value in non-__html positions
+  "fp/05-component-prop-sanitized.tsx", // model output sanitized before crossing the prop
+  "fp/06-component-prop-near-misses.tsx", // trusted literal raw HTML + tainted ordinary text
+  "fixed/01-component-prop-sanitized.tsx", // fixed request flow sanitizes before the prop
 ];
 
 describe("ci-ai-llm-output-dangerous-html — frozen corpus lock (CG-51)", () => {
@@ -74,12 +79,12 @@ describe("ci-ai-llm-output-dangerous-html — frozen corpus lock (CG-51)", () =>
     expect(atFile(findings, file).filter((f) => f.rule_id === RULE).length).toBe(0);
   });
 
-  test("exactly 5 findings over the corpus — no missed TP, no leaked FP, no dupes", () => {
+  test("exactly 7 findings over the corpus — no missed TP, no leaked FP, no dupes", () => {
     expect(findings.every((f) => f.rule_id === RULE)).toBe(true);
-    expect(findings.length).toBe(TP.length); // 5, one per TP fixture
+    expect(findings.length).toBe(TP.length); // 7, one per TP fixture
     const tpFired = TP.filter((tp) => atFile(findings, tp.file).some((f) => f.rule_id === RULE));
     const fpFired = FP.filter((file) => atFile(findings, file).some((f) => f.rule_id === RULE));
-    expect(tpFired.length).toBe(5);
+    expect(tpFired.length).toBe(7);
     expect(fpFired.length).toBe(0);
   });
 });

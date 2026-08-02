@@ -205,6 +205,8 @@ describe("native detector pack registry", () => {
       "supabase-rls",
       "prompt-injection",
       "unsafe-tool-execution",
+      "llm-dynamic-execution",
+      "nextjs-admin-route",
       "client-metadata-authz",
       "llm-dangerous-html",
       "api-boundary",
@@ -270,11 +272,11 @@ describe("native detector pack registry", () => {
       "python:lezer-structural-parser",
     ]));
     expect(new Set(ruleIds).size).toBe(ruleIds.length);
-    expect(ruleIds).toHaveLength(65);
+    expect(ruleIds).toHaveLength(67);
 
     const javascriptAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "javascript-typescript");
-    expect(javascriptAnalyzers).toHaveLength(8);
-    expect(javascriptAnalyzers.every((analyzer) => analyzer.packVersion === "1.3.0")).toBe(true);
+    expect(javascriptAnalyzers).toHaveLength(10);
+    expect(javascriptAnalyzers.every((analyzer) => analyzer.packVersion === "1.5.0")).toBe(true);
     expect(javascriptAnalyzers.every((analyzer) => analyzer.packLanguages.includes("typescript"))).toBe(true);
     expect(javascriptAnalyzers.every((analyzer) => analyzer.packFrameworks.includes("supabase"))).toBe(true);
 
@@ -387,8 +389,8 @@ describe("native detector pack registry", () => {
     expect(inventory).toEqual([
       expect.objectContaining({
         pack_id: "javascript-typescript",
-        analyzers: { registered: 8 },
-        rules: { registered: 22 },
+        analyzers: { registered: 10 },
+        rules: { registered: 24 },
       }),
       expect.objectContaining({
         pack_id: "flutter",
@@ -494,8 +496,8 @@ describe("native detector pack registry", () => {
       expect.objectContaining({
         pack_id: "javascript-typescript",
         state: "not_run",
-        analyzers: { registered: 8, ran: 0 },
-        rules: { registered: 22, ran: 0 },
+        analyzers: { registered: 10, ran: 0 },
+        rules: { registered: 24, ran: 0 },
       }),
       expect.objectContaining({
         pack_id: "flutter",

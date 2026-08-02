@@ -82,6 +82,8 @@ jobs:
             if (leak.length) { console.error("LEAK — non-runtime paths packed:", leak.join(", ")); process.exit(1); }
             console.log("OK — runtime-only,", files.length, "files");
           '
+      - name: Packed SDK consumer — install tarball and verify CLI, runtime import, and types
+        run: npm run test:sdk-consumer
 
   node22-compatibility:
     name: minimum runtime (Node 22)
@@ -164,6 +166,8 @@ jobs:
             platform: win32-x64
           - os: macos-15-intel
             platform: darwin-x64
+          - os: macos-14
+            platform: darwin-arm64
           - os: ubuntu-24.04-arm
             platform: linux-arm64
     steps:

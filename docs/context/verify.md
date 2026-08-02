@@ -102,11 +102,11 @@ npx vitest run \
   src/technology-detection.test.ts \
   src/provenance.test.ts
 ```
-Expected: all focused tests pass; manifest `1.13.0` owns exactly 65 native rule IDs (22
+Expected: all focused tests pass; manifest `1.15.0` owns exactly 67 native rule IDs (24
 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, 2 Expo, 10 Python AI/API,
 1 Go AI, 1 Java AI, 1 C# AI, 1 PHP AI, 1 Rust AI, 1 Ruby AI, 3 Firebase configuration,
-2 GitHub Actions workflow, and 2 JavaScript baseline SAST) across sixteen packs and 41 analyzers;
-the aggregate native engine is `5.13.0`. A detected Flutter project runs the six Flutter analyzers,
+2 GitHub Actions workflow, and 2 JavaScript baseline SAST) across sixteen packs and 43 analyzers;
+the aggregate native engine is `5.15.0`. A detected Flutter project runs the six Flutter analyzers,
 a plain Dart package reports that pack as `not_applicable`, Android/iOS project evidence activates
 only its matching platform pack, and scanner-filter exclusion reports installed packs as `not_run`
 rather than implying execution. The frozen

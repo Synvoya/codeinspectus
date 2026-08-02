@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { SERVER_VERSION } from "./config.js";
 import { SDK_API_VERSION, SDK_COMPATIBILITY } from "./sdk/index.js";
 
-const RELEASE_VERSION = "2.0.0";
+const RELEASE_VERSION = "2.1.0";
 
 describe("V2 release source synchronization", () => {
   test("package, lockfile, server, CLI, and SDK versions agree", async () => {
@@ -37,9 +37,9 @@ describe("V2 release source synchronization", () => {
       custom_rules: Array<{ engine: string; pack_id?: string }>;
     };
     const native = manifest.custom_rules.filter((rule) => rule.engine === "codeinspectus-ai");
-    expect(manifest.version).toBe("1.13.0");
-    expect(manifest.custom_rules).toHaveLength(86);
-    expect(native).toHaveLength(65);
+    expect(manifest.version).toBe("1.15.0");
+    expect(manifest.custom_rules).toHaveLength(88);
+    expect(native).toHaveLength(67);
     expect(new Set(native.map((rule) => rule.pack_id)).size).toBe(16);
   });
 
@@ -50,7 +50,10 @@ describe("V2 release source synchronization", () => {
     const provenance = await readFile("docs/V2-WORKFLOW-PROVENANCE.md", "utf8");
 
     expect(changelog).toContain("## [2.0.0] — 2026-07-30");
+    expect(changelog).toContain("## [2.1.0] — 2026-08-02");
     expect(readme).toContain("CLI command reference");
+    expect(readme).toContain("reproduce-v2.1-case-study.mjs");
+    expect(changelog).toContain("CODEINSPECTUS_CASE_PACKAGE");
     for (const command of ["scan", "preflight", "export", "scans", "triage", "bundle", "bulk", "history", "issue"]) {
       expect(cliReference).toMatch(new RegExp(`codeinspectus ${command}\\b`));
     }

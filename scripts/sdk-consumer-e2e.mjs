@@ -23,7 +23,7 @@ try {
     const client = new CodeInspectusClient();
     const result = await client.run(["--version"]);
     if (result.exitCode !== 0 || result.stdout.trim() !== ${JSON.stringify(sourceVersion)}) throw new Error("installed CLI invocation failed");
-    if (SDK_API_VERSION !== "2.0.0" || SDK_COMPATIBILITY.export_schema !== "2.0.0") throw new Error("SDK compatibility metadata mismatch");
+    if (SDK_API_VERSION !== "2.1.0" || SDK_COMPATIBILITY.export_schema !== "2.0.0") throw new Error("SDK compatibility metadata mismatch");
     process.stdout.write(JSON.stringify({ sdk: SDK_API_VERSION, cli: result.stdout.trim(), exit: result.exitCode }));
   `);
   const runtime = execFileSync(process.execPath, [join(consumer, "consumer.mjs")], { cwd: consumer, encoding: "utf8" });

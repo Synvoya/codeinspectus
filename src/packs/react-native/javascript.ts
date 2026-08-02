@@ -447,7 +447,7 @@ export function lexJavaScript(
       line = result.line;
       continue;
     }
-    if (char === "/" && next !== "=" && canStartRegex(tokens.at(-1))) {
+    if (char === "/" && canStartRegex(tokens.at(-1))) {
       const result = readRegex(source, cursor, line);
       if (!appendToken(result.token)) break scan;
       if (!result.terminated) issues.push(`Unterminated regular-expression literal at line ${line}.`);

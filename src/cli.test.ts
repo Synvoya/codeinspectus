@@ -34,7 +34,7 @@ afterEach(async () => {
 function readyPreflight(target = "/repo"): PreflightResult {
   return {
     schema_version: "1.0.0",
-    codeinspectus_version: "2.0.0",
+    codeinspectus_version: "2.1.0",
     offline: true,
     writes_repository: false,
     ready: true,

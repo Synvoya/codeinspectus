@@ -37,9 +37,21 @@ expectations in the test file are the public spec).
   `permissions.includes` / `raw_user_meta_data` / privileged-literal) + 5 FP (feature gate, display
   read, benign read, correct `app_metadata`, non-authz). Locked by `src/ai-checks/metadata-authz.test.ts`.
 - `llm-dangerous-html-corpus/` — `ci-ai-llm-output-dangerous-html` (untrusted input OR LLM/model
-  output rendered via `dangerouslySetInnerHTML` without sanitization; CWE-79/116, OWASP LLM05). 5 TP
-  (arm A untrusted inline/split, arm B model output inline/split/other-SDK) + 4 FP (DOMPurify-sanitized,
-  constant/trusted, plain-text render, non-`__html` noise). Locked by `src/ai-checks/llm-dangerous-html.test.ts`.
+  output rendered via `dangerouslySetInnerHTML` without sanitization; CWE-79/116, OWASP LLM05). 7 TP
+  (arm A untrusted inline/split, arm B model output inline/split/other-SDK, and one local destructured
+  component-prop hop for each arm) + 7 safe/fixed cases (DOMPurify-sanitized direct/prop flows,
+  constant/trusted, plain-text render, and non-`__html` noise). Locked by
+  `src/ai-checks/llm-dangerous-html.test.ts`.
+- `llm-dynamic-execution-corpus/` — `ci-ai-llm-output-dynamic-execution` (recognized model SDK
+  output flowing into global `eval`/`Function` or import-proven shell-string APIs; CWE-94/78/1426,
+  OWASP LLM05). 5 TP + 7 safe/fixed cases covering constants, fixed allowlisted dispatch,
+  non-shell argument arrays, non-model input, shadowing, and explicit validation. Locked by
+  `src/ai-checks/llm-dynamic-execution.test.ts`.
+- `nextjs-admin-route-corpus/` — `ci-ai-nextjs-admin-route-no-authz` (conventional Pages/App Router
+  admin handlers missing visible authentication or server-side role/permission authorization;
+  CWE-862/863/306, OWASP A01/API5). 4 TP + 5 safe/fixed cases, including deliberate
+  `user_metadata` near miss and non-admin/public route exclusions. Locked by
+  `src/ai-checks/nextjs-admin-route.test.ts`.
 - `api-boundary-corpus/` — four server/API checks: client-visible internal errors, explicit
   sensitive response fields, unvalidated whole-request database writes, and sensitive logging.
   18 TP + 12 safe near misses covering public-error mapping, Zod/Joi validation, explicit field

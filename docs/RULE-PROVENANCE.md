@@ -10,7 +10,7 @@
 > versions. Where this document and any other doc disagree on a count or a version, the
 > two files above win and this document is the one to correct.
 
-_Last refreshed: GitHub Actions, Firebase, Ruby, Rust, PHP, C#, Java, Go, JavaScript/TypeScript unsafe tool execution, and Python AI/API native packs
+_Last refreshed: JavaScript/TypeScript Next.js admin-route and model-output execution, GitHub Actions, Firebase, Ruby, Rust, PHP, C#, Java, Go, JavaScript/TypeScript unsafe tool execution, and Python AI/API native packs
 (2026-07-28) — recorded the original bounded GitHub Actions workflow rules, Firebase configuration rules, Ruby, Rust, PHP, C#, Java, Go, JavaScript, and Python model-tool-argument-to-shell rules and ten original Python structural rules
 and their first-party pack ownership, including the exact LangChain FAISS dangerous-deserialization
 opt-in, request-controlled WebBaseLoader fetch, and bounded OpenAI/Anthropic prompt-injection sink.
@@ -28,13 +28,13 @@ and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api,go,java,csha
 
 ---
 
-## Reconciled detection count — **86 active CodeInspectus detections**
+## Reconciled detection count — **88 active CodeInspectus detections**
 
-`detection-db/manifest.json` `custom_rules` has **86** entries:
+`detection-db/manifest.json` `custom_rules` has **88** entries:
 
 | Group | Count | Engine | Kind | Where |
 |---|---:|---|---|---|
-| JavaScript/TypeScript native rules | **22** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
+| JavaScript/TypeScript native rules | **24** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
 | Flutter/Dart native rules | **6** | `codeinspectus-ai` | `ai` | `src/packs/flutter/*.ts` |
 | Android configuration native rules | **4** | `codeinspectus-ai` | `ai` | `src/packs/android/*.ts` |
 | iOS configuration native rules | **4** | `codeinspectus-ai` | `ai` | `src/packs/ios/*.ts` |
@@ -52,13 +52,13 @@ and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api,go,java,csha
 | JavaScript baseline native rules | **2** | `codeinspectus-ai` | `sast` | `src/packs/javascript-baseline/*.ts` |
 | Opengrep-owned SAST rules | **18** | `opengrep` | `sast` | `detection-db/opengrep-rules/security-baseline/` |
 | Gitleaks secret rules | **3** | `gitleaks` | `secret` | `detection-db/gitleaks/codeinspectus.toml` |
-| **Total** | **86** | — | — | — |
+| **Total** | **88** | — | — | — |
 
 Verified physical counts: 20 Opengrep YAML rule ids and 3 Gitleaks rule ids are greppable on disk.
-The catalog assigns 65 rule IDs to sixteen native packs and 18 to Opengrep; the two promoted native
+The catalog assigns 67 rule IDs to sixteen native packs and 18 to Opengrep; the two promoted native
 SAST IDs retain physically active Opengrep fallbacks and are not double-counted.
 
-The authoritative current figure is **86**, decomposing as **65 first-party native rules +
+The authoritative current figure is **88**, decomposing as **67 first-party native rules +
 18 Opengrep-owned SAST + 3 Gitleaks** (single source of truth: `detection-db/manifest.json`).
 CG-25b added two original
 CodeInspectus detections: `ci-ai-llm-key-browser-exposed` (B-11; `dangerouslyAllowBrowser: true`) and
@@ -193,7 +193,7 @@ are confirmed exploitable vulnerabilities.
 
 ## Provenance summary (the headline for counsel)
 
-- **All 86 custom detections are CodeInspectus-original work, licensed MIT.** In
+- **All 88 custom detections are CodeInspectus-original work, licensed MIT.** In
   `manifest.json` every `custom_rules` entry carries `"source": "codeinspectus-custom"`,
   and the Opengrep ruleset carries `"source": "codeinspectus-mit"` / `"license": "MIT"`.
 - **No detection copies copyrightable expression from a third-party corpus.** For the Opengrep
@@ -296,13 +296,13 @@ Gitleaks' own MIT default rules run alongside these three.)
 | `codeinspectus-supabase-service-role` | CWE-798 | Supabase service_role JWT (bypasses RLS) |
 | `codeinspectus-anthropic-key` | CWE-798 | Anthropic API key |
 
-## Inventory — first-party native rules (65) — the moat
+## Inventory — first-party native rules (67) — the moat
 
 Paths: `src/ai-checks/*.ts` and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api,go,java,csharp,php,rust,ruby,firebase,github-actions,javascript-baseline}/*.ts`
 (TypeScript implementations).
 **Origin: CodeInspectus-original · License: MIT · Derived-from: none.**
 
-### JavaScript/TypeScript pack (22)
+### JavaScript/TypeScript pack (24)
 
 | Rule id | File | CWE | What it flags |
 |---|---|---|---|
@@ -318,6 +318,8 @@ Paths: `src/ai-checks/*.ts` and `src/packs/{flutter,android,ios,react-native,exp
 | `ci-ai-storage-rls-public` | `supabase-rls.ts` | CWE-863 / 285 | Permissive `USING (true)` policy on `storage.objects` (public bucket files) |
 | `ci-ai-prompt-injection-sink` | `prompt-injection.ts` | CWE-1427 | Potential prompt-injection sink |
 | `ci-ai-llm-tool-argument-command-execution` | `unsafe-tool-execution.ts` | CWE-78 / 1426 | Model-produced tool argument reaches import-proven Node shell execution without a visible checked guard |
+| `ci-ai-llm-output-dynamic-execution` | `llm-dynamic-execution.ts` | CWE-94 / 78 / 1426 | Recognized model output reaches global dynamic-code or import-proven shell-string execution without a validated replacement |
+| `ci-ai-nextjs-admin-route-no-authz` | `nextjs-admin-route.ts` | CWE-862 / 863 / 306 | Conventional Next.js admin API handler lacks visible authentication or server-controlled role/permission authorization |
 | `ci-ai-client-metadata-authz` | `metadata-authz.ts` | CWE-639 / 284 | Authorization decision trusts client-writable Supabase `user_metadata` |
 | `ci-ai-llm-output-dangerous-html` | `llm-dangerous-html.ts` | CWE-79 / 116 | Untrusted or model output rendered into a React raw-HTML `__html` sink |
 | `ci-ai-client-error-leak` | `api-boundary.ts` | CWE-209 | Raw/internal error detail returned to an API client |

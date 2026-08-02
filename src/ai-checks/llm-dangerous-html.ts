@@ -15,15 +15,15 @@
  *            searchParams.get(), location.search/hash, process.argv, a fetched .text()/.json(); OR
  *     ARM B (model output -> LLM05, THE MOAT): an LLM SDK call (openai/anthropic/@google-genai/
  *            Vercel AI SDK) or a model-output accessor (.choices[].message.content, .content[].text).
- *   Inline and split-variable (intrafile taint) both fire.
+ *   Inline, split-variable, and one local destructured component-prop hop all fire.
  *   STAYS SILENT when the value is wrapped by a known sanitizer (DOMPurify.sanitize / sanitize-html /
  *   xss()), is a constant/trusted literal, or is not in __html (a text node / other attribute).
  *   Ambiguity prefers silence.
  *
  * Honest framing: confidence is `medium` (verify the source is actually untrusted/model-derived);
  * severity stays `high` (XSS into the DOM is real client compromise) — the hedge is in the wording.
- * Scope: intrafile only. Cross-file taint, the object-var-then-spread sink shape, and custom
- * sanitizer wrappers are documented false-negatives.
+ * Scope: intrafile only. Cross-file taint, arrow-component props, the object-var-then-spread sink
+ * shape, and custom sanitizer wrappers are documented false-negatives.
  *
  * The untrusted-source and LLM-SDK-call vocabularies below intentionally MIRROR (are duplicated
  * from) the frozen §6.3 prompt-injection analyzer rather than importing its module-local consts —
@@ -35,6 +35,7 @@ import { collectFiles, lineOf, lineText } from "./walk.js";
 import { makeAiFinding } from "./finding.js";
 
 const CODE_EXTS = ["ts", "tsx", "js", "jsx", "mjs", "cjs"];
+const MAX_BALANCED_CHARS = 16_000;
 
 // The React raw-HTML sink: dangerouslySetInnerHTML={{ __html: X }}. X is captured up to the object
 // close. An X that itself contains braces (e.g. an inline object arg) is a documented FN — rare.
@@ -54,8 +55,160 @@ const LLM_CALL_RE =
 
 type Taint = "untrusted" | "model";
 
+interface ComponentPropSink {
+  component: string;
+  prop: string;
+  sinkIndex: number;
+}
+
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function balancedClose(source: string, open: number, left: string, right: string): number | undefined {
+  if (source[open] !== left) return undefined;
+  let depth = 0;
+  let quote: "'" | '"' | "`" | undefined;
+  let escaped = false;
+  const limit = Math.min(source.length, open + MAX_BALANCED_CHARS);
+  for (let i = open; i < limit; i++) {
+    const char = source[i]!;
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = undefined;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === "`") quote = char;
+    else if (char === left) depth++;
+    else if (char === right && --depth === 0) return i;
+  }
+  return undefined;
+}
+
+function splitTopLevel(value: string): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  let round = 0;
+  let square = 0;
+  let curly = 0;
+  let quote: "'" | '"' | "`" | undefined;
+  let escaped = false;
+  for (let i = 0; i < value.length; i++) {
+    const char = value[i]!;
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = undefined;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === "`") quote = char;
+    else if (char === "(") round++;
+    else if (char === ")") round--;
+    else if (char === "[") square++;
+    else if (char === "]") square--;
+    else if (char === "{") curly++;
+    else if (char === "}") curly--;
+    else if (char === "," && round === 0 && square === 0 && curly === 0) {
+      parts.push(value.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(value.slice(start));
+  return parts;
+}
+
+/** Local function components whose destructured prop is passed directly to a raw-HTML sink. */
+function collectComponentPropSinks(content: string): ComponentPropSink[] {
+  const sinks: ComponentPropSink[] = [];
+  for (const fn of content.matchAll(
+    /\b(?:export\s+)?(?:async\s+)?function\s+([A-Z][A-Za-z0-9_$]*)\s*\(/g,
+  )) {
+    const start = fn.index ?? 0;
+    const openParen = start + fn[0].lastIndexOf("(");
+    const closeParen = balancedClose(content, openParen, "(", ")");
+    if (closeParen === undefined) continue;
+    const params = content.slice(openParen + 1, closeParen).trim();
+    if (!params.startsWith("{")) continue;
+    const propsClose = balancedClose(params, 0, "{", "}");
+    if (propsClose === undefined) continue;
+
+    const bindings = new Map<string, string>();
+    for (const part of splitTopLevel(params.slice(1, propsClose))) {
+      const match = /^\s*([A-Za-z_$][\w$]*)\s*(?::\s*([A-Za-z_$][\w$]*))?\s*(?:=.*)?$/.exec(part);
+      if (match) bindings.set(match[2] ?? match[1]!, match[1]!);
+    }
+    if (bindings.size === 0) continue;
+
+    const bodyStartOffset = content.slice(closeParen + 1).search(/\S/);
+    if (bodyStartOffset < 0) continue;
+    const bodyStart = closeParen + 1 + bodyStartOffset;
+    if (content[bodyStart] !== "{") continue;
+    const bodyEnd = balancedClose(content, bodyStart, "{", "}");
+    if (bodyEnd === undefined) continue;
+    const body = content.slice(bodyStart + 1, bodyEnd);
+
+    for (const sink of body.matchAll(SINK_RE)) {
+      const expression = (sink[1] ?? "").trim();
+      for (const [local, prop] of bindings) {
+        if (new RegExp(`^${escapeRe(local)}$`).test(expression)) {
+          sinks.push({ component: fn[1]!, prop, sinkIndex: bodyStart + 1 + (sink.index ?? 0) });
+        }
+      }
+    }
+  }
+  return sinks;
+}
+
+function jsxTagEnd(content: string, start: number): number | undefined {
+  let curly = 0;
+  let quote: "'" | '"' | "`" | undefined;
+  let escaped = false;
+  const limit = Math.min(content.length, start + MAX_BALANCED_CHARS);
+  for (let i = start; i < limit; i++) {
+    const char = content[i]!;
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = undefined;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === "`") quote = char;
+    else if (char === "{") curly++;
+    else if (char === "}") curly--;
+    else if (char === ">" && curly === 0) return i;
+  }
+  return undefined;
+}
+
+function componentPropKinds(
+  content: string,
+  tainted: Map<string, Taint>,
+): Map<number, Taint> {
+  const result = new Map<number, Taint>();
+  for (const sink of collectComponentPropSinks(content)) {
+    const componentRe = new RegExp(`<${escapeRe(sink.component)}\\b`, "g");
+    for (const call of content.matchAll(componentRe)) {
+      const start = call.index ?? 0;
+      const end = jsxTagEnd(content, start + call[0].length);
+      if (end === undefined) continue;
+      const attrs = content.slice(start + call[0].length, end);
+      const attrRe = new RegExp(`\\b${escapeRe(sink.prop)}\\s*=\\s*`, "g");
+      const attr = attrRe.exec(attrs);
+      if (!attr) continue;
+      const valueStart = attr.index + attr[0].length;
+      const first = attrs[valueStart];
+      if (first !== "{") continue; // quoted and boolean props are trusted
+      const valueEnd = balancedClose(attrs, valueStart, "{", "}");
+      if (valueEnd === undefined) continue;
+      const kind = classify(attrs.slice(valueStart + 1, valueEnd).trim(), tainted);
+      if (kind === "model") result.set(sink.sinkIndex, "model");
+      else if (kind === "untrusted" && result.get(sink.sinkIndex) !== "model") {
+        result.set(sink.sinkIndex, "untrusted");
+      }
+    }
+  }
+  return result;
 }
 
 /** Is any tainted var of `kind` referenced (as a word) in `expr`? */
@@ -117,11 +270,13 @@ export async function runLlmDangerousHtmlCheck(target: string): Promise<Finding[
     if (!content.includes("dangerouslySetInnerHTML")) continue; // cheap pre-filter
 
     const tainted = collectTaint(content);
+    const propKinds = componentPropKinds(content, tainted);
     const firedLines = new Set<number>();
 
     for (const m of content.matchAll(SINK_RE)) {
       const x = (m[1] ?? "").trim();
-      const kind = classify(x, tainted);
+      const directKind = classify(x, tainted);
+      const kind = directKind === "trusted" ? propKinds.get(m.index ?? 0) ?? "trusted" : directKind;
       if (kind === "clean" || kind === "trusted") continue; // sanitized / constant -> silent
 
       const line = lineOf(content, m.index ?? 0);

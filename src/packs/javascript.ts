@@ -1,6 +1,8 @@
 import { runApiBoundaryChecks } from "../ai-checks/api-boundary.js";
 import { runClientSecretsCheck } from "../ai-checks/client-secrets.js";
 import { runLlmDangerousHtmlCheck } from "../ai-checks/llm-dangerous-html.js";
+import { runLlmDynamicExecutionCheck } from "../ai-checks/llm-dynamic-execution.js";
+import { runNextjsAdminRouteCheck } from "../ai-checks/nextjs-admin-route.js";
 import { runClientMetadataAuthzCheck } from "../ai-checks/metadata-authz.js";
 import { runPromptInjectionCheck } from "../ai-checks/prompt-injection.js";
 import { runSecurityControlChecks } from "../ai-checks/security-controls.js";
@@ -55,6 +57,18 @@ function createJavaScriptAnalyzers(target: string): readonly NativeAnalyzer[] {
       components: ["ai:unsafe-tool-execution"],
       ruleIds: ["ci-ai-llm-tool-argument-command-execution"],
       run: () => findingsOnly(() => runUnsafeToolExecutionCheck(target)),
+    },
+    {
+      id: "llm-dynamic-execution",
+      components: ["ai:llm-dynamic-execution"],
+      ruleIds: ["ci-ai-llm-output-dynamic-execution"],
+      run: () => findingsOnly(() => runLlmDynamicExecutionCheck(target)),
+    },
+    {
+      id: "nextjs-admin-route",
+      components: ["ai:nextjs-admin-route"],
+      ruleIds: ["ci-ai-nextjs-admin-route-no-authz"],
+      run: () => findingsOnly(() => runNextjsAdminRouteCheck(target)),
     },
     {
       id: "client-metadata-authz",
@@ -113,7 +127,7 @@ function createJavaScriptAnalyzers(target: string): readonly NativeAnalyzer[] {
 export const javascriptPack: NativeDetectorPack = {
   id: "javascript-typescript",
   // Pack semantics are unchanged when the aggregate native engine gains other packs.
-  version: "1.3.0",
+  version: "1.5.0",
   scannerKind: "ai",
   languages: ["javascript", "typescript", "sql"],
   frameworks: ["react", "nextjs", "vue", "svelte", "astro", "supabase"],
@@ -122,6 +136,8 @@ export const javascriptPack: NativeDetectorPack = {
     "Rule-specific static analysis only; listed languages and frameworks are not complete coverage claims.",
     "Client-secret checks also inspect selected HTML and framework component files; runtime-control checks inspect selected repository configuration shapes.",
     "Model-tool command execution analysis is intrafile, import-proven, and bounded to direct flow or one named local wrapper; cross-module dispatch and runtime sandbox/approval state are not resolved.",
+    "General model-output execution analysis is intrafile and bounded to recognized SDK output plus global eval/Function or import-proven shell-string APIs; custom wrappers, streams, indirect aliases, and runtime controls are not resolved.",
+    "Next.js admin-route analysis recognizes conventional Pages/App Router paths and in-file authentication plus server-role/permission guards; cross-file middleware and custom guard semantics are not resolved.",
   ],
   createAnalyzers: createJavaScriptAnalyzers,
 };

@@ -665,12 +665,12 @@ function assertFlutterExecutionEnvelope(
   );
   assert(javascript?.state === "ran", `${label}: JavaScript/TypeScript pack did not report ran`);
   assert(
-    javascript.analyzers.registered === 8 && javascript.analyzers.ran === 8,
-    `${label}: JavaScript/TypeScript analyzer coverage was not 8/8`,
+    javascript.analyzers.registered === 10 && javascript.analyzers.ran === 10,
+    `${label}: JavaScript/TypeScript analyzer coverage was not 10/10`,
   );
   assert(
-    javascript.rules.registered === 22 && javascript.rules.ran === 22,
-    `${label}: JavaScript/TypeScript rule coverage was not 22/22`,
+    javascript.rules.registered === 24 && javascript.rules.ran === 24,
+    `${label}: JavaScript/TypeScript rule coverage was not 24/24`,
   );
 
   if (!expectEngineDetails) return;
@@ -679,8 +679,8 @@ function assertFlutterExecutionEnvelope(
   );
   assert(aiEngines.length === 1, `${label}: expected exactly one AI engine run record`);
   assert(
-    aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
-    `${label}: expected codeinspectus-ai@5.13.0 to run`,
+    aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
+    `${label}: expected codeinspectus-ai@5.15.0 to run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -812,8 +812,8 @@ function assertMobileExecutionEnvelope(
   );
   assert(
     javascript?.state === "ran" &&
-      javascript.analyzers.ran === 8 &&
-      javascript.rules.ran === 22,
+      javascript.analyzers.ran === 10 &&
+      javascript.rules.ran === 24,
     `${label}: unconditional JavaScript/TypeScript pack coverage changed`,
   );
   if (!expectEngineDetails) return;
@@ -821,8 +821,8 @@ function assertMobileExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
-    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
+    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -957,8 +957,8 @@ function assertReactNativeExpoExecutionEnvelope(
   );
   assert(
     javascript?.state === "ran" &&
-      javascript.analyzers.ran === 8 &&
-      javascript.rules.ran === 22,
+      javascript.analyzers.ran === 10 &&
+      javascript.rules.ran === 24,
     `${label}: JavaScript/TypeScript pack coverage changed`,
   );
   for (const packId of ["flutter", "android", "ios"]) {
@@ -971,8 +971,8 @@ function assertReactNativeExpoExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
-    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
+    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1100,8 +1100,8 @@ function assertPythonAiApiExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
-    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
+    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1199,8 +1199,8 @@ function assertGoAiExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
-    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
+    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1301,8 +1301,8 @@ function assertJavaAiExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
-    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
+    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1395,8 +1395,8 @@ function assertCsharpAiExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
-    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
+    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1483,8 +1483,8 @@ function assertPhpAiExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
-    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
+    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1571,8 +1571,8 @@ function assertRustAiExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
-    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
+    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1659,8 +1659,8 @@ function assertRubyAiExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
-    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
+    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1747,8 +1747,8 @@ function assertFirebaseExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
-    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
+    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1830,8 +1830,8 @@ function assertGithubActionsExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.13.0",
-    `${label}: expected exactly one codeinspectus-ai@5.13.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
+    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1979,8 +1979,8 @@ async function main() {
         assert(scan.detected_technologies.some((technology: any) => technology.id === "typescript"), "fixture TypeScript was not detected");
         const nativePack = scan.pack_coverage.find((pack: any) => pack.pack_id === "javascript-typescript");
         assert(nativePack?.state === "ran", `expected JavaScript/TypeScript pack to run, got ${nativePack?.state}`);
-        assert(nativePack.analyzers.registered === 8 && nativePack.analyzers.ran === 8, "native analyzer execution counts are wrong");
-        assert(nativePack.rules.registered === 22 && nativePack.rules.ran === 22, "native rule execution counts are wrong");
+        assert(nativePack.analyzers.registered === 10 && nativePack.analyzers.ran === 10, "native analyzer execution counts are wrong");
+        assert(nativePack.rules.registered === 24 && nativePack.rules.ran === 24, "native rule execution counts are wrong");
         const flutterPack = scan.pack_coverage.find((pack: any) => pack.pack_id === "flutter");
         assert(flutterPack?.state === "not_applicable", `expected Flutter pack to be not_applicable, got ${flutterPack?.state}`);
         assert(flutterPack.analyzers.registered === 6 && flutterPack.analyzers.ran === 0, "non-applicable Flutter analyzer counts are wrong");
@@ -2128,7 +2128,7 @@ async function main() {
         assert(re.summary.remaining > 0, "expected findings to remain");
         assert(re.detected_technologies.some((technology: any) => technology.id === "typescript"), "rescan lost detected technologies");
         const coverage = re.pack_coverage.find((pack: any) => pack.pack_id === "javascript-typescript");
-        assert(coverage?.state === "ran" && coverage.analyzers.ran === 8 && coverage.rules.ran === 22, "rescan lost native-pack execution coverage");
+        assert(coverage?.state === "ran" && coverage.analyzers.ran === 10 && coverage.rules.ran === 24, "rescan lost native-pack execution coverage");
         const flutterCoverage = re.pack_coverage.find((pack: any) => pack.pack_id === "flutter");
         assert(flutterCoverage?.state === "not_applicable" && flutterCoverage.rules.ran === 0, "rescan lost non-applicable Flutter-pack coverage");
         for (const packId of ["react-native", "expo"]) {
@@ -2141,17 +2141,21 @@ async function main() {
       id: "E14 list_rules exposes the AI-code moat rules + DB version",
       fn: async () => {
         const lr = (await client.callTool("codeinspectus_list_rules", {})).structuredContent;
-        assert(lr.custom_rule_count === 86, `expected 86 custom rules, got ${lr.custom_rule_count}`);
-        assert(lr.detection_db_version === "1.13.0", `expected detection DB 1.13.0, got ${lr.detection_db_version}`);
-        assert(lr.detection_db_date === "2026-07-28", `unexpected detection DB date ${lr.detection_db_date}`);
+        assert(lr.custom_rule_count === 88, `expected 88 custom rules, got ${lr.custom_rule_count}`);
+        assert(lr.detection_db_version === "1.15.0", `expected detection DB 1.15.0, got ${lr.detection_db_version}`);
+        assert(lr.detection_db_date === "2026-08-02", `unexpected detection DB date ${lr.detection_db_date}`);
         assert(lr.custom_rules.some((r: any) => r.id === "ci-ai-rls-using-true"), "missing ci-ai-rls-using-true in list_rules");
         const boundary = lr.custom_rules.find((r: any) => r.id === "ci-ai-client-error-leak");
         assert(boundary?.owasp_web?.includes("A05:2021") && boundary?.owasp_api?.includes("API8:2023"), "new rules must expose OWASP Web/API mappings");
         const nativeRules = lr.custom_rules.filter((rule: any) => rule.engine === "codeinspectus-ai");
-        assert(nativeRules.length === 65, `expected 65 native rules, got ${nativeRules.length}`);
-        assert(nativeRules.filter((rule: any) => rule.pack_id === "javascript-typescript").length === 22, "JavaScript/TypeScript native rule ownership is wrong");
+        assert(nativeRules.length === 67, `expected 67 native rules, got ${nativeRules.length}`);
+        assert(nativeRules.filter((rule: any) => rule.pack_id === "javascript-typescript").length === 24, "JavaScript/TypeScript native rule ownership is wrong");
         const unsafeTool = nativeRules.find((rule: any) => rule.id === "ci-ai-llm-tool-argument-command-execution");
         assert(unsafeTool?.owasp_llm?.includes("LLM05:2025") && unsafeTool?.owasp_llm?.includes("LLM06:2025"), "unsafe tool execution rule metadata is missing");
+        const dynamicExecution = nativeRules.find((rule: any) => rule.id === "ci-ai-llm-output-dynamic-execution");
+        assert(dynamicExecution?.owasp_llm?.includes("LLM05:2025") && dynamicExecution?.cwe?.includes("CWE-94") && dynamicExecution?.cwe?.includes("CWE-78"), "dynamic execution rule metadata is missing");
+        const adminRoute = nativeRules.find((rule: any) => rule.id === "ci-ai-nextjs-admin-route-no-authz");
+        assert(adminRoute?.owasp_web?.includes("A01:2021") && adminRoute?.owasp_api?.includes("API5:2023") && adminRoute?.cwe?.includes("CWE-862"), "Next.js admin route rule metadata is missing");
         const flutterRules = nativeRules.filter((rule: any) => rule.pack_id === "flutter");
         assert(flutterRules.length === 6, "Flutter native rule ownership is wrong");
         assertExactJson(
@@ -2166,8 +2170,8 @@ async function main() {
           assertExactJson(rule.cwe, expected.cwe, `${expected.id} catalog CWE mapping changed`);
         }
         const nativePack = lr.native_packs.find((pack: any) => pack.id === "javascript-typescript");
-        assert(nativePack?.version === "1.3.0", "expected JavaScript/TypeScript pack 1.3.0");
-        assert(nativePack?.analyzer_count === 8 && nativePack.rule_count === 22, "list_rules JavaScript/TypeScript pack inventory is wrong");
+        assert(nativePack?.version === "1.5.0", "expected JavaScript/TypeScript pack 1.5.0");
+        assert(nativePack?.analyzer_count === 10 && nativePack.rule_count === 24, "list_rules JavaScript/TypeScript pack inventory is wrong");
         const baselinePack = lr.native_packs.find((pack: any) => pack.id === "javascript-baseline");
         assert(baselinePack?.scanner_kind === "sast" && baselinePack.analyzer_count === 1 && baselinePack.rule_count === 2, "list_rules JavaScript baseline pack inventory is wrong");
         const promotedRules = nativeRules.filter((rule: any) => rule.pack_id === "javascript-baseline");
@@ -2455,7 +2459,7 @@ async function main() {
         assert(boundaryFindings.every((x) => x.producer_components?.some((component: string) => component.startsWith("ai:"))), "API-boundary finding missing detector provenance");
         const serialized = JSON.stringify(boundaryScan);
         assert(!serialized.includes("provider failure") && !serialized.includes("database unavailable"), "API-boundary output leaked planted internal detail");
-        assert(boundaryScan.engine_details.some((x: any) => x.engine === "codeinspectus-ai" && x.version === "5.13.0"), "AI engine version was not bumped for expanded multi-pack coverage");
+        assert(boundaryScan.engine_details.some((x: any) => x.engine === "codeinspectus-ai" && x.version === "5.15.0"), "AI engine version was not bumped for expanded multi-pack coverage");
       },
     },
     {

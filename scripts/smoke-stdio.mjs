@@ -116,8 +116,8 @@ async function waitFor(id, timeoutMs = 8000) {
     throw new Error("scan returned no exact-version native Pub dependency coverage");
   }
   const nativePack = sc.pack_coverage.find((pack) => pack.pack_id === "javascript-typescript");
-  if (!nativePack || nativePack.analyzers?.registered !== 8 || nativePack.rules?.registered !== 22) {
-    throw new Error("scan returned incomplete 8-analyzer/22-rule javascript-typescript pack coverage");
+  if (!nativePack || nativePack.analyzers?.registered !== 10 || nativePack.rules?.registered !== 24) {
+    throw new Error("scan returned incomplete 10-analyzer/24-rule javascript-typescript pack coverage");
   }
   const reactNativePack = sc.pack_coverage.find((pack) => pack.pack_id === "react-native");
   const expoPack = sc.pack_coverage.find((pack) => pack.pack_id === "expo");

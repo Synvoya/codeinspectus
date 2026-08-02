@@ -353,6 +353,8 @@ describe("component signatures", () => {
       "ai:supabase-edge-auth",
       "ai:prompt-injection",
       "ai:unsafe-tool-execution",
+      "ai:llm-dynamic-execution",
+      "ai:nextjs-admin-route",
       "ai:client-metadata-authz",
       "ai:llm-dangerous-html",
       "ai:client-error-leak",
@@ -378,6 +380,22 @@ describe("component signatures", () => {
       PIPELINE_COMPONENT,
       AI_INVOCATION_COMPONENT,
       "ai:unsafe-tool-execution",
+    ]);
+  });
+
+  test("general model-output execution has a dedicated rescan component", () => {
+    expect(aiFindingComponents("ci-ai-llm-output-dynamic-execution")).toEqual([
+      PIPELINE_COMPONENT,
+      AI_INVOCATION_COMPONENT,
+      "ai:llm-dynamic-execution",
+    ]);
+  });
+
+  test("Next.js admin route checks have a dedicated rescan component", () => {
+    expect(aiFindingComponents("ci-ai-nextjs-admin-route-no-authz")).toEqual([
+      PIPELINE_COMPONENT,
+      AI_INVOCATION_COMPONENT,
+      "ai:nextjs-admin-route",
     ]);
   });
 
@@ -408,9 +426,9 @@ describe("Flutter detection manifest", () => {
     };
     const flutterRules = manifest.custom_rules.filter((rule) => rule.pack_id === "flutter");
 
-    expect(manifest.version).toBe("1.13.0");
-    expect(manifest.date).toBe("2026-07-28");
-    expect(manifest.custom_rules).toHaveLength(86);
+    expect(manifest.version).toBe("1.15.0");
+    expect(manifest.date).toBe("2026-08-02");
+    expect(manifest.custom_rules).toHaveLength(88);
     expect(flutterRules).toHaveLength(6);
     expect(flutterRules.map((rule) => ({
       id: rule.id,

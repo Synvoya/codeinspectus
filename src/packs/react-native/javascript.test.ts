@@ -56,6 +56,18 @@ describe("React Native JavaScript structural layer", () => {
     expect(jsxElements(document)).toEqual([]);
   });
 
+  test("distinguishes regex literals beginning with equals from division assignment", () => {
+    const document = parseJavaScriptSource("valid.ts", [
+      'const normalized = parameter.replace(/=.*/s, "").trim();',
+      "let total = 8;",
+      "total /= 2;",
+    ].join("\n"));
+    expect(document.balanced).toBe(true);
+    expect(document.lexicalIssues).toEqual([]);
+    expect(document.tokens.some((token) => token.kind === "regex" && token.value === "/=.*/s")).toBe(true);
+    expect(document.tokens.filter((token) => token.value === "/=")).toHaveLength(1);
+  });
+
   test("marks raw-newline quoted strings malformed and never indexes the remaining text", () => {
     const document = parseJavaScriptSource("broken.tsx", [
       "const text = 'unterminated",

@@ -4,6 +4,41 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [2.1.0] — 2026-08-02
+
+### Added
+- `ci-ai-llm-output-dynamic-execution` follows recognized model output into JavaScript
+  `eval`/`Function`, import-proven Node shell-string APIs, and import-proven Execa command-string
+  APIs. The bounded intrafile rule includes a frozen 5-TP/7-safe corpus and explicit false-negative
+  boundaries.
+- `ci-ai-nextjs-admin-route-no-authz` checks conventional Pages Router and App Router admin API
+  handlers for visible authentication plus a server-controlled role/permission decision. Supabase
+  client-writable `user_metadata` is deliberately rejected as authorization evidence; the frozen
+  corpus covers both router styles and safe/public near misses.
+- The dangerous-HTML rule now follows one local destructured function-component prop hop into
+  `dangerouslySetInnerHTML`, with sanitized/trusted/text-rendering precision cases.
+- A release-on-published-GitHub-release workflow validates a GitHub-verified signed tag, runs the
+  complete release gate, publishes with npm trusted publishing and provenance, and verifies the
+  registry version plus SLSA attestation. Provider-side trusted-publisher/environment setup remains
+  a prerequisite documented in `docs/RELEASE.md`.
+- A V2.1 reproducible public-repository scan/fix/rescan script verifies two sealed evidence bundles.
+  It defaults to `codeinspectus@2.1.0` and accepts an exact local tarball through
+  `CODEINSPECTUS_CASE_PACKAGE` for pre-publication verification.
+
+### Fixed
+- The bounded JavaScript lexer now accepts valid regular-expression literals that begin with `=`,
+  including `/=.*/s`, instead of misclassifying them as division assignment and making the full
+  scan partial.
+- CI now exercises the independent packed TypeScript SDK consumer and the macOS ARM64 platform
+  row in addition to the existing platforms.
+
+### Changed
+- Package, MCP server, CLI, SDK API, MCP Registry manifest, and reference CI install versions are
+  synchronized at `2.1.0`; existing V2 export/storage schema versions remain `2.0.0`.
+- Detection database `1.15.0` contains 88 curated detections: 67 first-party native rules across
+  16 packs, 18 Opengrep-owned SAST rules, and 3 Gitleaks rules. The JavaScript/TypeScript pack is
+  `1.5.0` with 10 analyzers/24 rules; the aggregate native engine is `5.15.0`.
+
 ## [2.0.0] — 2026-07-30
 
 ### Added

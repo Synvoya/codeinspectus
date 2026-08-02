@@ -19,14 +19,15 @@ egress at scan time**.
 
 ![CodeInspectus demo](assets/codeinspectus-demo.gif)
 
-**Reproduce the V1.5 proof:** the published `codeinspectus@1.5.0` package scans an
-immutable public Rich commit, finds one high-confidence GitHub Actions expression-injection
-pattern, applies GitHub's documented intermediate-`env` remediation in a temporary clone,
-and confirms it as **1 resolved, 0 remaining, 0 introduced, 0 not rechecked**. Run the
-[reproduction script](scripts/reproduce-v1.5-case-study.mjs) or read the
-[scanner-derived case study](examples/reports/rich-github-actions-v1.5.0.md). The case uses
-the `ai` scanner class to isolate stable native behavior; use a normal full scan for broad
-repository coverage.
+**Reproduce the V2.1 proof:** the `codeinspectus@2.1.0` package scans an immutable public Rich
+commit, finds one high-confidence GitHub Actions expression-injection pattern, applies GitHub's
+documented intermediate-`env` remediation in a temporary clone, confirms it as **1 resolved,
+0 remaining, 0 introduced, 0 not rechecked**, then creates and verifies sealed evidence for both
+states. Run the [reproduction script](scripts/reproduce-v2.1-case-study.mjs) or read the
+[scanner-derived case study](examples/reports/rich-v2.1.0-sealed-workflow.md). The recorded
+pre-publication run used the exact V2.1 tarball; the script defaults to npm after publication.
+The case uses the `ai` scanner class to isolate stable native behavior; use a normal full scan for
+broad repository coverage.
 
 If CodeInspectus is useful, [star the repository](https://github.com/Synvoya/codeinspectus)
 so other AI-app builders can find it.
@@ -43,6 +44,8 @@ scanners miss:
 - **CodeInspectus native checks** — client-side secret/bundle exposure, Supabase
   RLS / inverted-auth (the CVE-2025-48757 class), prompt-injection sinks,
   model-produced tool arguments reaching Node, Python, or narrowly supported Go, Java, C#, PHP, Rust, and Ruby shell sinks without a visible guard,
+  general model output reaching JavaScript `eval`/`Function` or import-proven shell-string APIs,
+  conventional Next.js admin API handlers missing visible authentication or server-side authorization,
   client-writable `user_metadata` authorization, and unsanitized model/user output
   rendered via `dangerouslySetInnerHTML` (XSS / LLM05), plus explicit API-boundary
   leaks, raw request-to-database writes, sensitive logging, and evidence-gated
@@ -60,8 +63,8 @@ scanners miss:
   Actions pack contributes two workflow rules for direct untrusted-context shell interpolation and
   exact `pull_request_target` checkout-and-execute chains.
 
-The shipped manifest contains **86 curated detections**: **65 first-party native rule
-IDs** (22 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, and
+The shipped manifest contains **88 curated detections**: **67 first-party native rule
+IDs** (24 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, and
 2 Expo, plus 10 Python AI/API, 1 Go AI, 1 Java AI, 1 C# AI, 1 PHP AI, 1 Rust AI, 1 Ruby AI,
 3 Firebase configuration, 2 GitHub Actions workflow, and 2 JavaScript baseline SAST rules), 18 Opengrep-owned
 SAST rules, and 3 custom Gitleaks rules. All 20 Opengrep YAML rules remain physically active:
@@ -482,8 +485,26 @@ eligible packages it analyzed, what it deliberately skipped, and the bundled sna
   CodeInspectus detects untrusted **request input** or **LLM/model output** flowing into
   `dangerouslySetInnerHTML` without sanitization — a direct XSS sink (CWE-79/116; OWASP **LLM05** on
   the model-output path), **high** severity, **medium** confidence; wrapping the value in
-  `DOMPurify.sanitize(...)` silences it. It does **not** yet trace untrusted values arriving via
-  **component props, database rows, or template data** (planned).
+  `DOMPurify.sanitize(...)` silences it. It follows one local function-component hop when a
+  destructured prop is passed directly to `__html`; sanitizing at the JSX call site stays silent.
+  It does **not** trace cross-file or arrow-component props, database rows, template data,
+  object-spread sinks, or custom sanitizer wrappers.
+- **Model output passed to dynamic execution is flagged** (`ci-ai-llm-output-dynamic-execution`).
+  CodeInspectus follows direct and split-variable intrafile flows from recognized OpenAI,
+  Anthropic, Google GenAI, Vercel AI SDK, Cohere, Groq, and Mistral call/output shapes into global
+  `eval`/`Function`, import-proven Node `child_process.exec`/`execSync`, or import-proven Execa
+  command-string APIs. The rule is **high** severity and **medium** confidence (CWE-94/78/1426;
+  OWASP **LLM05**). Constants, fixed allowlisted dispatch, `execFile`/`spawn` argument arrays,
+  shadowed globals, and explicitly validated replacement values stay silent. Cross-file flows,
+  custom model wrappers, stream accumulation, indirect sink aliases, and runtime sandbox or
+  approval state are not resolved.
+- **Conventional Next.js admin API routes need authentication and authorization**
+  (`ci-ai-nextjs-admin-route-no-authz`). Pages Router handlers under `pages/api/admin` and App
+  Router handlers under `app/api/admin/**/route.*` are flagged when either boundary is not visible
+  in the file (**high**, medium confidence; CWE-862/863/306; OWASP A01 and API5). Recognized
+  server-session/token checks plus role/permission decisions stay silent; Supabase client-writable
+  `user_metadata` is deliberately not accepted as authorization. Non-admin/public routes stay
+  silent. Cross-file middleware, custom guard semantics, aliases, and deployed policy are not resolved.
 - **Server/API-boundary checks are narrow and code-visible.** Four JavaScript/TypeScript
   analyzers flag client-visible raw/internal error details (`CWE-209`), explicit credential
   fields in response objects (`CWE-201`), whole request objects passed directly to common
@@ -574,6 +595,7 @@ ALL LOCAL. NO NETWORK EGRESS AT SCAN TIME.
 
 ## Example reports
 
+- [V2.1 public-repository scan → fix → rescan → sealed-evidence case study](examples/reports/rich-v2.1.0-sealed-workflow.md)
 - [V1.5 public-repository scan → fix → rescan case study](examples/reports/rich-github-actions-v1.5.0.md)
 - [Reproducible v0.3.1 scan of the shipped vulnerable fixture](examples/reports/vulnerable-app-v0.3.1.md)
 
@@ -632,9 +654,6 @@ practitioner)*
 
 ## Good first contributions
 
-- [Trace tainted component props into `dangerouslySetInnerHTML`](https://github.com/Synvoya/codeinspectus/issues/1)
-- [Detect model output passed to dynamic execution or shell sinks](https://github.com/Synvoya/codeinspectus/issues/2)
-- [Detect unguarded Next.js admin API routes](https://github.com/Synvoya/codeinspectus/issues/3)
 - [Community-verify one CWE to OWASP Top 10 mapping](https://github.com/Synvoya/codeinspectus/issues/4)
 - [Community-verify one CWE to SOC 2 or ISO 27001](https://github.com/Synvoya/codeinspectus/issues/5)
 
