@@ -29,7 +29,7 @@ describe("release workflow", () => {
   });
 
   test("documents one explicit approval gate and all post-approval release surfaces", async () => {
-    const release = await readFile("docs/RELEASE.md", "utf8");
+    const release = (await readFile("docs/RELEASE.md", "utf8")).replace(/\r\n/g, "\n");
     expect(release).toMatch(/one explicit\s+human approval gate/);
     expect(release).toContain("npm whoami");
     expect(release).toContain("hibin-m");
