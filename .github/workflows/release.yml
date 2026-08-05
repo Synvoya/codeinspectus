@@ -8,13 +8,11 @@ permissions:
   contents: read
 
 jobs:
-  publish-npm:
-    name: verify signed tag and publish npm with provenance
+  verify-release:
+    name: verify signed GitHub release
     runs-on: ubuntu-24.04
-    environment: npm
     permissions:
       contents: read
-      id-token: write
     steps:
       - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
@@ -26,7 +24,6 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
           package-manager-cache: false
 
       - name: Require an annotated, GitHub-verified release tag
@@ -70,47 +67,9 @@ jobs:
           }
           NODE
 
-      - name: Require npm trusted-publishing-compatible runtime
-        run: |
-          node --input-type=module <<'NODE'
-          import { execFileSync } from "node:child_process";
-          const version = execFileSync("npm", ["--version"], { encoding: "utf8" }).trim();
-          const [major, minor] = version.split(".").map(Number);
-          if (major < 11 || (major === 11 && minor < 5)) {
-            throw new Error(`npm ${version} is too old for trusted publishing; require >=11.5.1`);
-          }
-          NODE
-
       - run: npm ci
       - run: npm run build
       - run: npm test
       - run: npm run eval
       - run: node scripts/smoke-stdio.mjs
       - run: npm run test:sdk-consumer
-
-      - name: Refuse an existing npm version
-        run: |
-          version="$(node -p 'require("./package.json").version')"
-          if npm view "codeinspectus@${version}" version >/dev/null 2>&1; then
-            echo "codeinspectus@${version} already exists; refusing to publish."
-            exit 1
-          fi
-
-      - name: Publish through npm trusted publishing with provenance
-        run: npm publish --provenance --access public
-
-      - name: Verify published version and provenance attestation
-        run: |
-          set -euo pipefail
-          version="$(node -p 'require("./package.json").version')"
-          for attempt in $(seq 1 12); do
-            published="$(npm view "codeinspectus@${version}" version 2>/dev/null || true)"
-            attestation="$(curl -fsSL "https://registry.npmjs.org/-/npm/v1/attestations/codeinspectus@${version}" 2>/dev/null || true)"
-            if test "$published" = "$version" && jq -e '.attestations[]? | select(.predicateType == "https://slsa.dev/provenance/v1")' <<<"$attestation" >/dev/null 2>&1; then
-              echo "Verified codeinspectus@${version} with npm provenance."
-              exit 0
-            fi
-            sleep 10
-          done
-          echo "Published version or provenance attestation did not become verifiable."
-          exit 1

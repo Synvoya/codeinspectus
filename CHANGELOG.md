@@ -4,6 +4,16 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [Unreleased]
+
+### Changed
+- The GitHub Release workflow is validation-only and has no npm environment, OIDC permission, token,
+  or publication step. Codex may execute the release after one explicit human approval, but npm is
+  still published from an authenticated maintainer terminal as `hibin-m`.
+- The release checklist now treats GitHub, npm, the official MCP Registry, and Cloudflare Pages as
+  separate publication surfaces, verifies each after mutation, and invalidates approval if the
+  approved version, commit, artifact, website commit, or scope changes.
+
 ## [2.1.0] — 2026-08-02
 
 ### Added
