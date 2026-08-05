@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { SERVER_VERSION } from "./config.js";
 import { SDK_API_VERSION, SDK_COMPATIBILITY } from "./sdk/index.js";
 
-const RELEASE_VERSION = "2.1.0";
+const RELEASE_VERSION = "2.1.1";
 
 describe("V2 release source synchronization", () => {
   test("package, lockfile, server, CLI, and SDK versions agree", async () => {

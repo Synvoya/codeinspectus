@@ -6,6 +6,15 @@ AI-drafted and practitioner-reviewed — see the honesty notes in the [README](R
 
 ## [Unreleased]
 
+## [2.1.1] — 2026-08-05
+
+### Security
+- Refreshed transitive production dependency resolutions within the existing declared ranges:
+  `fast-uri` 3.1.5 fixes host-confusion handling, `ip-address` 10.4.0 fixes special-address
+  classification paths that could bypass SSRF or trust-boundary checks, and `hono` 4.13.0 fixes
+  a CORS middleware regular-expression denial of service. No direct dependency or runtime source
+  API changed.
+
 ### Changed
 - The GitHub Release workflow is validation-only and has no npm environment, OIDC permission, token,
   or publication step. Codex may execute the release after one explicit human approval, but npm is
@@ -13,6 +22,9 @@ AI-drafted and practitioner-reviewed — see the honesty notes in the [README](R
 - The release checklist now treats GitHub, npm, the official MCP Registry, and Cloudflare Pages as
   separate publication surfaces, verifies each after mutation, and invalidates approval if the
   approved version, commit, artifact, website commit, or scope changes.
+- Package, MCP server, CLI, SDK API, MCP Registry manifest, and reference CI install versions are
+  synchronized at `2.1.1`. Existing V2 export/storage schema versions remain `2.0.0` because this
+  patch does not change those contracts.
 
 ## [2.1.0] — 2026-08-02
 
