@@ -43,6 +43,22 @@ describe("V2 release source synchronization", () => {
     expect(new Set(native.map((rule) => rule.pack_id)).size).toBe(16);
   });
 
+  test("Glama ownership metadata identifies the public maintainer", async () => {
+    const glama = JSON.parse(await readFile("glama.json", "utf8")) as {
+      $schema: string;
+      maintainers: string[];
+    };
+
+    expect(glama).toEqual({
+      $schema: "https://glama.ai/mcp/schemas/server.json",
+      maintainers: ["Synvoya"],
+    });
+    if (existsSync("scripts/seed-public.mjs")) {
+      const seed = await readFile("scripts/seed-public.mjs", "utf8");
+      expect(seed).toContain('"glama.json"');
+    }
+  });
+
   test("release documentation and public projection include V2 surfaces", async () => {
     const readme = await readFile("README.md", "utf8");
     const changelog = await readFile("CHANGELOG.md", "utf8");
