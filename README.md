@@ -1,6 +1,6 @@
 # CodeInspectus, by Synvoya
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](package.json)
 [![npm downloads](https://img.shields.io/npm/dm/codeinspectus)](https://www.npmjs.com/package/codeinspectus)
 ![MCP-ready](https://img.shields.io/badge/MCP-ready-blue.svg)
@@ -45,11 +45,14 @@ scanners miss:
   RLS / inverted-auth (the CVE-2025-48757 class), prompt-injection sinks,
   model-produced tool arguments reaching Node, Python, or narrowly supported Go, Java, C#, PHP, Rust, and Ruby shell sinks without a visible guard,
   general model output reaching JavaScript `eval`/`Function` or import-proven shell-string APIs,
-  conventional Next.js admin API handlers missing visible authentication or server-side authorization,
+  conventional Next.js and import-proven Express admin API handlers missing visible authentication
+  or server-side authorization, Supabase Edge Functions with explicit anonymous deployment but no
+  request authentication or privileged-operation authorization,
   client-writable `user_metadata` authorization, and unsanitized model/user output
   rendered via `dangerouslySetInnerHTML` (XSS / LLM05), plus explicit API-boundary
   leaks, raw request-to-database writes, sensitive logging, and evidence-gated
-  security-header/CSP/session-cookie/Supabase-CAPTCHA configuration checks. Separate
+  security-header/CSP/Referrer-Policy/Permissions-Policy/session-cookie/Supabase-CAPTCHA
+  configuration checks. Separate
   first-party packs cover six narrow Flutter/Dart source failure modes and eight bounded
   Android/iOS repository-configuration failures, plus four React Native and two Expo
   framework-specific mobile failures. A bounded Python AI/API pack covers ten narrow
@@ -63,15 +66,16 @@ scanners miss:
   Actions pack contributes two workflow rules for direct untrusted-context shell interpolation and
   exact `pull_request_target` checkout-and-execute chains.
 
-The shipped manifest contains **88 curated detections**: **67 first-party native rule
-IDs** (24 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, and
+The shipped manifest contains **94 curated detections**: **72 first-party native rule
+IDs** (29 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, and
 2 Expo, plus 10 Python AI/API, 1 Go AI, 1 Java AI, 1 C# AI, 1 PHP AI, 1 Rust AI, 1 Ruby AI,
 3 Firebase configuration, 2 GitHub Actions workflow, and 2 JavaScript baseline SAST rules), 18 Opengrep-owned
-SAST rules, and 3 custom Gitleaks rules. All 20 Opengrep YAML rules remain physically active:
+SAST rules, and 4 custom Gitleaks rules. All 20 Opengrep YAML rules remain physically active:
 the two native-owned rules reconcile exact results and fall back to Opengrep on mismatch or
 native unavailability. Opengrep, Gitleaks, and Trivy remain installed and additive.
 
-> CodeInspectus bundles the official, **SHA-pinned** engine binaries and calls
+> CodeInspectus downloads the official, **SHA-pinned** engine binaries only when you run the
+> explicit engine-repair command, stores them outside the npm package, and calls
 > them as local subprocesses. It does **not** fork them.
 
 ## Why CodeInspectus?
@@ -478,9 +482,12 @@ eligible packages it analyzed, what it deliberately skipped, and the bundled sna
   privileged logic on the server-controlled `app_metadata.role` instead.** Detection is intrafile
   (inline + split-variable/destructured); it does **not** yet trace cross-file or whole-object-alias
   flows (planned) — see the [good-first-issue](docs/good-first-issues/user-metadata-authz-rule.md).
-  It also catches the related footgun: a Supabase **`service_role` key value** in client-reachable
-  code (**critical**), and a `service_role` key behind a **client-exposed env prefix** such as
-  `NEXT_PUBLIC_…` (**high**).
+  It also catches the related footgun: a Supabase **`service_role` JWT or modern `sb_secret_`
+  key value** in client-reachable code (**critical**), and a privileged key behind a
+  **client-exposed env prefix** such as `NEXT_PUBLIC_…` (**high**). Exact-format
+  `sb_publishable_` keys remain silent because they are public by design. Each secret class is
+  bounded to 1,024 remediation locations per file; repeated values on one minified line collapse,
+  separate source lines remain visible, and reaching the bound emits an explicit coverage note.
 - **Unsanitized model or user output rendered as raw HTML is flagged** (`ci-ai-llm-output-dangerous-html`).
   CodeInspectus detects untrusted **request input** or **LLM/model output** flowing into
   `dangerouslySetInnerHTML` without sanitization — a direct XSS sink (CWE-79/116; OWASP **LLM05** on
@@ -504,7 +511,14 @@ eligible packages it analyzed, what it deliberately skipped, and the bundled sna
   in the file (**high**, medium confidence; CWE-862/863/306; OWASP A01 and API5). Recognized
   server-session/token checks plus role/permission decisions stay silent; Supabase client-writable
   `user_metadata` is deliberately not accepted as authorization. Non-admin/public routes stay
-  silent. Cross-file middleware, custom guard semantics, aliases, and deployed policy are not resolved.
+  silent. The bounded detector follows exact direct, one-local-helper-hop evidence; unsupported
+  cross-file middleware, custom guard semantics, and dynamic dispatch remain explicit unknowns.
+- **Import-proven Express admin routes and explicitly anonymous Supabase Edge Functions are checked.**
+  Express analysis requires a literal admin route and direct handler evidence, respects supported
+  middleware/mount ordering, and reports unresolved custom middleware as coverage metadata. Edge
+  analysis treats default or explicit `verify_jwt = true` as platform authentication; only explicit
+  anonymous deployment requires visible request authentication, and service-role/admin operations
+  additionally require visible server authorization. Cross-module custom wrappers remain unknown.
 - **Server/API-boundary checks are narrow and code-visible.** Four JavaScript/TypeScript
   analyzers flag client-visible raw/internal error details (`CWE-209`), explicit credential
   fields in response objects (`CWE-201`), whole request objects passed directly to common
@@ -523,12 +537,16 @@ eligible packages it analyzed, what it deliberately skipped, and the bundled sna
   rule’s narrow literal check; it is not runtime or complete policy proof. Current findings
   cover security headers explicitly disabled or
   neutralized, production CSP with bare wildcard or `'unsafe-eval'` script sources,
+  an effective literal `Referrer-Policy: unsafe-url`, unrestricted camera/microphone/geolocation
+  delegation in a literal `Permissions-Policy`,
   auth/session cookies with explicit insecure attributes, and checked-in Supabase CAPTCHA
   enablement paired with a recognized signup, password/OTP/SSO/Web3 signin, or password-reset
   call missing `captchaToken`. The CAPTCHA finding
   describes an integration failure that Supabase should reject—not a bot-protection bypass.
-  CodeInspectus still does not prove deployed headers, gateway rate limits, complete CSP
-  quality, runtime overrides, or behavioral authentication.
+  CodeInspectus still does not prove deployed headers, gateway rate limits, DNS mail posture,
+  complete CSP quality, runtime overrides, or behavioral authentication. SPF/DMARC absence is not
+  emitted as a repository finding because authoritative state is live DNS, and DMARC `p=none` is a
+  valid monitoring mode; verify mail domains explicitly at deployment time.
 
 ## Language support
 
@@ -548,7 +566,7 @@ coverage than the executed pack reports.
 | **Secrets** — Gitleaks + applicable native client-secret checks | hard-coded credentials, leaked keys | **Gitleaks: any language** because its detection is value/pattern-based. Native client-secret analysis remains pack-specific: JavaScript/TypeScript bundle and env exposure, plus Supabase privileged keys passed to Flutter client initialization. |
 | **Dependencies (CVEs/SCA), IaC misconfig, SBOM, license** — Trivy | vulnerable deps, infra misconfig, bill of materials | **Many language & package ecosystems and IaC formats** — see [Trivy's docs](https://trivy.dev). |
 | **Native Pub SCA/SBOM** — CodeInspectus Pub | exact locked-version matches against the bundled advisory snapshot; native Pub inventory and Trivy merge/fallback | **Dart/Flutter `pubspec.lock` only.** Official `pub.dev`/legacy official-host packages are matched by exact enumerated version. Custom registries, Git, path, SDK, malformed, oversized, and unreadable inputs are excluded and reported. No generic SemVer inference, reachability claim, license inference, or complete dependency-graph claim. |
-| **SAST** — Opengrep + CodeInspectus `security-baseline` | injection, XSS, SSRF, weak crypto, insecure deserialization, explicit CORS misconfiguration | **JavaScript, TypeScript, Python.** CodeInspectus ships its own MIT ruleset and runs Opengrep with **no network registry packs**, so SAST coverage is exactly these languages — deliberately narrower than Opengrep's full engine. |
+| **SAST** — Opengrep + CodeInspectus `security-baseline` | injection, XSS, SSRF, weak crypto, insecure deserialization, explicit CORS misconfiguration | **JavaScript, TypeScript, Python.** CodeInspectus ships its own Apache-2.0 ruleset and runs Opengrep with **no network registry packs**, so SAST coverage is exactly these languages — deliberately narrower than Opengrep's full engine. |
 | **Native JavaScript/TypeScript pack** | client-side secret/bundle exposure, Supabase RLS, prompt-injection sinks, model tool arguments reaching Node shell execution, client-writable `user_metadata` authz, unsanitized-output XSS, API response/error leaks, unsafe request writes, sensitive logging, explicit runtime-control misconfiguration | **JavaScript / TypeScript** (incl. `.jsx/.tsx/.mjs/.cjs`; client-secret checks also read `.vue/.svelte/.astro/.html`). Supabase RLS analyzes `.sql` plus `.ts/.js` Edge Functions; runtime-control evidence also reads recognized configuration formats. Model-tool command flow is intrafile and bounded to direct flow or one named wrapper; it does not resolve cross-module dispatch or runtime approval/sandbox state. |
 | **Native Flutter/Dart pack** | disabled TLS verification, sensitive SharedPreferences writes, untrusted JavaScript-enabled WebView navigation, sensitive logs, Supabase privileged client keys, cleartext production endpoints | **Flutter projects only.** Token-aware, source-ordered intrafile Dart analysis; no type resolution, path-sensitive branch merge, complete dataflow, or runtime mobile testing. Pub SCA/SBOM is reported by the separate native Pub engine. File/total bounds and omissions are explicit in pack coverage. |
 | **Native Android configuration pack** | debuggable release manifests, effective cleartext traffic, production user-CA trust, exported AndroidX FileProvider | **Android project evidence only.** Bounded structured XML with supported main-to-release precedence; no Gradle execution, arbitrary flavor/DSL evaluation, full manifest merger, runtime testing, or complete Android review. |
@@ -665,8 +683,10 @@ Per-version release notes live in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Licenses
 
-CodeInspectus: MIT. Bundled engines: Opengrep (LGPL-2.1), Gitleaks (MIT, CLI
-only), Trivy (Apache-2.0) — all permissive for bundling the compiled binaries.
+CodeInspectus is licensed under Apache-2.0. The separately downloaded engines retain their own
+licenses: Opengrep (LGPL-2.1), Gitleaks (MIT), and Trivy (Apache-2.0). Engine binaries are not
+included in the npm package. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for versions,
+copyright notices, upstream source, and license links.
 The transformed Pub advisory snapshot is derived from OSV.dev records sourced from the
 GitHub Advisory Database and remains CC BY 4.0; attribution and transformation details ship
 beside the snapshot in `detection-db/osv-pub/LICENSE-PROVENANCE.md`.

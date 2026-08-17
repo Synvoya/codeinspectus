@@ -64,10 +64,9 @@ expectations in the test file are the public spec).
   evidence-gated Supabase CAPTCHA integration. Includes safe configurations, development/report-only
   near misses, hosted unknowns, nginx/Next.js effective-order cases, and unresolved cross-layer
   conflicts. Locked by `src/ai-checks/security-controls.test.ts` plus evals E20/E21.
-- `supabase-edge-auth-corpus/` — an Edge Function request handler without caller authentication,
-  paired with an authenticated equivalent and non-Edge near miss. It deliberately contains no SQL
-  so the Edge Function detector cannot accidentally depend on the separate RLS project gate. Locked
-  by `src/ai-checks/supabase-rls.test.ts`.
+- `supabase-edge-auth-corpus/` — effective Supabase `verify_jwt` state, supported handler-level
+  user/service/webhook authentication, and privileged RLS-bypassing client authorization cases.
+  Locked by `src/ai-checks/supabase-edge-auth.test.ts` plus eval E22.
 - `flutter-corpus/` — three complete synthetic Flutter projects: six one-to-one true positives,
   safe near misses plus generated/test/example exclusion guards, and matching remediated files for
   rescan proof. Covers all six first-party Flutter/Dart rules, technology applicability, pack

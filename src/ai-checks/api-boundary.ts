@@ -16,6 +16,11 @@ import { makeAiFinding } from "./finding.js";
 import { collectFiles, lineOf } from "./walk.js";
 
 const CODE_EXTS = ["ts", "tsx", "js", "jsx", "mjs", "cjs"];
+const NON_PRODUCTION_DIRS = new Set([
+  "__fixtures__", "__mocks__", "__tests__", "demo", "demos", "example", "examples",
+  "fixture", "fixtures", "integration_test", "integration_tests", "sample", "samples",
+  "test", "tests",
+]);
 
 const RESPONSE_CALL_RE =
   /\b(?:NextResponse|Response)\.json\s*\(|\b[A-Za-z_$][\w$]*(?:\.(?:status|code)\s*\([^)]*\))?\.(?:json|send)\s*\(|\bnew\s+Response\s*\(/g;
@@ -41,6 +46,16 @@ const SENSITIVE_IDENTIFIER_RE =
 interface CallMatch {
   args: string;
   index: number;
+}
+
+/** Project-root scans report deployable API behavior, not deliberately unsafe test/example code. */
+function nonProductionProjectPath(rel: string): boolean {
+  const segments = rel.split("/");
+  if (segments.slice(0, -1).some((segment) => NON_PRODUCTION_DIRS.has(segment.toLowerCase()))) {
+    return true;
+  }
+  const base = segments.at(-1)?.toLowerCase() ?? "";
+  return /(?:^|[._-])(?:test|spec)(?:[._-]|$)/.test(base);
 }
 
 /** Replace comments with spaces while preserving offsets and line numbers. */
@@ -559,6 +574,7 @@ export async function runApiBoundaryChecks(target: string): Promise<Finding[]> {
   const files = await collectFiles(target, { exts: CODE_EXTS, includeBuilt: false });
 
   for (const file of files) {
+    if (nonProductionProjectPath(file.rel)) continue;
     // Minified bundles/vendor artifacts are not auditable source and make regex
     // matches context-free. Build output is already excluded; cover the common
     // vendored `*.min.js` case explicitly as well.

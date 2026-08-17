@@ -73,6 +73,7 @@ const BUILD_KEEP_SECRET_RULES: RegExp[] = [
   /^npm/i, // npm-access-token (npm_...)
   /^private-key$/i, // PEM private-key block
   /^codeinspectus-stripe-live-secret$/i, // sk_/rk_live (precise; default stripe-access-token is NOT kept)
+  /^codeinspectus-supabase-secret-key$/i, // sb_secret_ is elevated; sb_publishable_ never matches
   /^codeinspectus-anthropic-key$/i,
 ];
 

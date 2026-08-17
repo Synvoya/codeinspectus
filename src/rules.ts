@@ -178,6 +178,6 @@ export async function listRules(input: ListRulesInput): Promise<ListRulesResult>
     advisory_databases: [pubDatabase.info],
     custom_rules: custom,
     custom_rule_count: custom.length,
-    note: "Generic SAST remains available through bundled engines. Selected JavaScript rules are first-party native with an explicit Opengrep fallback; other native packs target bounded AI-code and framework-specific issues.",
+    note: "Generic SAST remains available through managed engines. Selected JavaScript rules are first-party native with an explicit Opengrep fallback; other native packs target bounded AI-code and framework-specific issues.",
   };
 }

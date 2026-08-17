@@ -32,6 +32,8 @@ import {
   RUBY_STRUCTURAL_PARSER_COMPONENT,
   FIREBASE_PACK_DISPATCH_COMPONENT,
   FIREBASE_RULES_PARSER_COMPONENT,
+  JAVASCRIPT_AI_PACK_DISPATCH_COMPONENT,
+  JAVASCRIPT_BASELINE_PARSER_COMPONENT,
   aiFindingComponents,
   aiSignaturesForComponents,
   invocationSignature,
@@ -291,17 +293,19 @@ describe("component signatures", () => {
     expect(Object.keys(aiSignaturesForComponents(components))).toEqual(components);
   });
 
-  test("the 21 JavaScript mappings lock the intentional prompt-injection CWE revision", () => {
+  test("the legacy 22 JavaScript mappings lock intentional detector revisions", () => {
     const compatibilityProjection = LEGACY_JS_RULE_IDS.map((ruleId) => {
       const components = aiFindingComponents(ruleId);
       return [ruleId, components, aiSignaturesForComponents(components)];
     });
 
     expect(signature(JSON.stringify(compatibilityProjection))).toBe(
-      "sha256:ee70e01bbb7383f553d69344c7cff2b650e7d4c7081834f0db065099a7582480",
+      "sha256:279b51904bafd9e15650a3500e3bd8bac1024c544ef9cf677a10a13cf048e85c",
     );
-    expect(compatibilityProjection.every(([, components]) =>
-      (components as string[]).includes(AI_INVOCATION_COMPONENT))).toBe(true);
+    expect(compatibilityProjection.every(([ruleId, components]) =>
+      ruleId === "ci-ai-edge-fn-no-auth"
+        ? (components as string[]).includes(JAVASCRIPT_BASELINE_PARSER_COMPONENT)
+        : (components as string[]).includes(AI_INVOCATION_COMPONENT))).toBe(true);
   });
 
   test("four RLS reducer rules share one component while edge auth remains separate", () => {
@@ -316,6 +320,12 @@ describe("component signatures", () => {
     }
     expect(aiFindingComponents("ci-ai-edge-fn-no-auth")).toContain("ai:supabase-edge-auth");
     expect(aiFindingComponents("ci-ai-edge-fn-no-auth")).not.toContain("ai:supabase-rls-policy-state");
+    expect(aiFindingComponents("ci-ai-edge-fn-privileged-no-authz")).toEqual([
+      PIPELINE_COMPONENT,
+      JAVASCRIPT_AI_PACK_DISPATCH_COMPONENT,
+      JAVASCRIPT_BASELINE_PARSER_COMPONENT,
+      "ai:supabase-edge-auth",
+    ]);
   });
 
   test("ruleset signature changes with detector content but ignores non-rule documentation", async () => {
@@ -355,6 +365,9 @@ describe("component signatures", () => {
       "ai:unsafe-tool-execution",
       "ai:llm-dynamic-execution",
       "ai:nextjs-admin-route",
+      "ai:express-admin-route",
+      "pack:javascript-typescript:dispatch",
+      "javascript:bounded-structural-parser",
       "ai:client-metadata-authz",
       "ai:llm-dangerous-html",
       "ai:client-error-leak",
@@ -394,18 +407,38 @@ describe("component signatures", () => {
   test("Next.js admin route checks have a dedicated rescan component", () => {
     expect(aiFindingComponents("ci-ai-nextjs-admin-route-no-authz")).toEqual([
       PIPELINE_COMPONENT,
-      AI_INVOCATION_COMPONENT,
+      JAVASCRIPT_AI_PACK_DISPATCH_COMPONENT,
+      JAVASCRIPT_BASELINE_PARSER_COMPONENT,
       "ai:nextjs-admin-route",
+    ]);
+  });
+
+  test("Express admin route checks use the shared bounded parser and a dedicated detector", () => {
+    expect(aiFindingComponents("ci-ai-express-admin-route-no-authz")).toEqual([
+      PIPELINE_COMPONENT,
+      JAVASCRIPT_AI_PACK_DISPATCH_COMPONENT,
+      JAVASCRIPT_BASELINE_PARSER_COMPONENT,
+      "ai:express-admin-route",
     ]);
   });
 
   test("each Enhancement 2 rule has a dedicated rescan component", () => {
     expect(aiFindingComponents("ci-ai-security-header-disabled")).toContain("ai:security-header-config");
     expect(aiFindingComponents("ci-ai-unsafe-production-csp")).toContain("ai:csp-config");
+    expect(aiFindingComponents("ci-ai-unsafe-referrer-policy")).toContain("ai:referrer-policy-config");
+    expect(aiFindingComponents("ci-ai-overbroad-permissions-policy")).toContain("ai:permissions-policy-config");
     expect(aiFindingComponents("ci-ai-insecure-session-cookie")).toContain("ai:session-cookie-config");
     expect(aiFindingComponents("ci-ai-supabase-captcha-token-missing")).toContain(
       "ai:supabase-captcha-integration",
     );
+  });
+
+  test("modern Supabase client secrets use the client-secret rescan component", () => {
+    expect(aiFindingComponents("ci-ai-supabase-secret-key-client")).toEqual([
+      PIPELINE_COMPONENT,
+      AI_INVOCATION_COMPONENT,
+      "ai:client-secrets",
+    ]);
   });
 });
 
@@ -426,9 +459,9 @@ describe("Flutter detection manifest", () => {
     };
     const flutterRules = manifest.custom_rules.filter((rule) => rule.pack_id === "flutter");
 
-    expect(manifest.version).toBe("1.15.0");
-    expect(manifest.date).toBe("2026-08-02");
-    expect(manifest.custom_rules).toHaveLength(88);
+    expect(manifest.version).toBe("1.19.0");
+    expect(manifest.date).toBe("2026-08-13");
+    expect(manifest.custom_rules).toHaveLength(94);
     expect(flutterRules).toHaveLength(6);
     expect(flutterRules.map((rule) => ({
       id: rule.id,

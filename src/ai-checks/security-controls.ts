@@ -20,19 +20,29 @@ import { collectFiles, lineOf } from "./walk.js";
 
 const CODE_EXTS = ["ts", "tsx", "js", "jsx", "mjs", "cjs"];
 const CONFIG_EXTS = [...CODE_EXTS, "json", "conf", "toml", ""];
+const HEADER_NAME_PATTERN =
+  "Strict-Transport-Security|X-Content-Type-Options|X-Frame-Options|Content-Security-Policy|Referrer-Policy|Permissions-Policy";
 
 const CONTROLS = {
   hsts: "http.header.strict-transport-security",
   contentType: "http.header.x-content-type-options",
   frame: "http.header.x-frame-options",
   csp: "http.header.content-security-policy",
+  referrer: "http.header.referrer-policy",
+  permissions: "http.header.permissions-policy",
   cookie: "http.cookie.session-security",
   captcha: "supabase.auth.captcha-token",
 } as const;
 
 type ControlId = (typeof CONTROLS)[keyof typeof CONTROLS];
 type Verdict = "safe" | "unsafe" | "unknown";
-type IssueKind = "header-disabled" | "unsafe-csp" | "insecure-cookie" | "captcha-missing";
+type IssueKind =
+  | "header-disabled"
+  | "unsafe-csp"
+  | "unsafe-referrer-policy"
+  | "overbroad-permissions-policy"
+  | "insecure-cookie"
+  | "captcha-missing";
 
 interface Observation {
   controlId: ControlId;
@@ -192,6 +202,14 @@ function nearestHeaderScope(content: string, index: number): string | undefined 
   return scopes.at(-1)?.[2];
 }
 
+function isConfiguredHeaderObject(content: string, index: number): boolean {
+  const before = content.slice(Math.max(0, index - 4_000), index);
+  const sourceMatches = [...before.matchAll(/["']?source["']?\s*:\s*(["'])([^"']+)\1/g)];
+  const source = sourceMatches.at(-1);
+  if (!source || source.index === undefined) return false;
+  return /["']?headers["']?\s*:\s*\[/.test(before.slice(source.index));
+}
+
 function isDevelopmentOnly(content: string, index: number): boolean {
   const lineStart = content.lastIndexOf("\n", index) + 1;
   const lineEnd = content.indexOf("\n", index);
@@ -225,7 +243,114 @@ function headerControl(name: string): ControlId | undefined {
   if (normalized === "x-content-type-options") return CONTROLS.contentType;
   if (normalized === "x-frame-options") return CONTROLS.frame;
   if (normalized === "content-security-policy") return CONTROLS.csp;
+  if (normalized === "referrer-policy") return CONTROLS.referrer;
+  if (normalized === "permissions-policy") return CONTROLS.permissions;
   return undefined;
+}
+
+function referrerPolicyVerdict(value: string): Verdict {
+  const recognized = new Set([
+    "no-referrer",
+    "no-referrer-when-downgrade",
+    "same-origin",
+    "origin",
+    "strict-origin",
+    "origin-when-cross-origin",
+    "strict-origin-when-cross-origin",
+    "unsafe-url",
+  ]);
+  const effective = value
+    .split(",")
+    .map((token) => token.trim().toLowerCase())
+    .filter((token) => recognized.has(token))
+    .at(-1);
+  if (effective === "unsafe-url") return "unsafe";
+  if (
+    effective === "no-referrer" || effective === "same-origin" ||
+    effective === "strict-origin" || effective === "strict-origin-when-cross-origin"
+  ) {
+    return "safe";
+  }
+  return "unknown";
+}
+
+function permissionsPolicyVerdict(value: string): Verdict {
+  const target = new Map<string, string>();
+  for (const rawDirective of value.split(",")) {
+    const match = /^\s*([a-z][a-z0-9-]*)\s*=\s*([\s\S]+?)\s*$/i.exec(rawDirective);
+    if (!match) return "unknown";
+    const feature = match[1]!.toLowerCase();
+    if (["camera", "microphone", "geolocation"].includes(feature)) {
+      target.set(feature, match[2]!.trim().toLowerCase());
+    }
+  }
+  if ([...target.values()].some((allowlist) => allowlist === "*" || allowlist === "(*)")) {
+    return "unsafe";
+  }
+  if (!["camera", "microphone", "geolocation"].every((feature) => target.has(feature))) {
+    return "unknown";
+  }
+  return [...target.values()].every(
+    (allowlist) => allowlist === "()" || allowlist === "self" || allowlist === "(self)",
+  )
+    ? "safe"
+    : "unknown";
+}
+
+function literalHeaderVerdict(name: string, value: string): Verdict {
+  const control = headerControl(name);
+  if (control === CONTROLS.csp) return cspScriptVerdict(value);
+  if (control === CONTROLS.referrer) return referrerPolicyVerdict(value);
+  if (control === CONTROLS.permissions) return permissionsPolicyVerdict(value);
+  return headerVerdict(name, value);
+}
+
+function headerIssue(controlId: ControlId): IssueKind {
+  if (controlId === CONTROLS.csp) return "unsafe-csp";
+  if (controlId === CONTROLS.referrer) return "unsafe-referrer-policy";
+  if (controlId === CONTROLS.permissions) return "overbroad-permissions-policy";
+  return "header-disabled";
+}
+
+function hasImportProvenResponseFramework(content: string): boolean {
+  return /\b(?:from\s+|require\s*\(\s*)["'](?:express|fastify|node:https?|https?)["']/i.test(
+    content,
+  );
+}
+
+function responseReceiverIsHandlerParameter(
+  content: string,
+  index: number,
+  receiver: string,
+): boolean {
+  const start = Math.max(0, index - 16_000);
+  const before = content.slice(start, index);
+  const candidates = [
+    ...before.matchAll(/\bfunction(?:\s+[A-Za-z_$][\w$]*)?\s*\(([^()]*)\)\s*(?::[^{}]+)?\s*\{/g),
+    ...before.matchAll(/\(([^()]*)\)\s*(?::[^={}>]+)?=>\s*\{/g),
+  ].sort((left, right) => (right.index ?? 0) - (left.index ?? 0));
+  const parameterName = (raw: string): string | undefined =>
+    /^\s*(?:\.\.\.)?([A-Za-z_$][\w$]*)/.exec(raw)?.[1];
+  for (const candidate of candidates) {
+    const absoluteMatch = start + (candidate.index ?? 0);
+    const openBrace = content.indexOf("{", absoluteMatch + candidate[0].length - 1);
+    if (openBrace < 0 || openBrace >= index) continue;
+    let depth = 0;
+    for (let cursor = openBrace; cursor < index; cursor += 1) {
+      if (content[cursor] === "{") depth += 1;
+      else if (content[cursor] === "}") depth -= 1;
+    }
+    if (depth <= 0) continue;
+    const parameters = candidate[1]!.split(",").map(parameterName);
+    return parameters[1]?.toLowerCase() === receiver;
+  }
+
+  const lineStart = content.lastIndexOf("\n", index) + 1;
+  const linePrefix = content.slice(lineStart, index);
+  const expressionArrow = /\(([^()]*)\)\s*(?::[^={}>]+)?=>[^;]*$/g.exec(linePrefix);
+  if (!expressionArrow) return false;
+  const parameters = expressionArrow[1]!.split(",").map(parameterName);
+  return parameters[1]?.toLowerCase() === receiver;
 }
 
 function headerVerdict(name: string, value: string): Verdict {
@@ -289,26 +414,26 @@ function addLiteralHeaderObservations(
   const content = provider === "cloudflare-pages" ? file.content : maskComments(file.content);
 
   // Next.js/Vercel key-value header objects.
-  const objectHeader =
-    /["']?key["']?\s*:\s*(["'])(Strict-Transport-Security|X-Content-Type-Options|X-Frame-Options|Content-Security-Policy)\1\s*,\s*["']?value["']?\s*:\s*(["'`])([\s\S]*?)\3/g;
-  for (const match of content.matchAll(objectHeader)) {
+  const objectHeader = new RegExp(
+    `["']?key["']?\\s*:\\s*(["'])(${HEADER_NAME_PATTERN})\\1\\s*,\\s*["']?value["']?\\s*:\\s*(["'\\x60])([\\s\\S]*?)\\3`,
+    "g",
+  );
+  for (const match of provider === "nextjs" || provider === "vercel" ? content.matchAll(objectHeader) : []) {
     const name = match[2]!;
     const value = match[4] ?? "";
     const index = match.index ?? 0;
+    if (!isConfiguredHeaderObject(content, index)) continue;
     if (isDevelopmentOnly(content, index)) continue;
     const controlId = headerControl(name)!;
-    const verdict =
-      controlId === CONTROLS.csp ? cspScriptVerdict(value) : headerVerdict(name, value);
+    const verdict = literalHeaderVerdict(name, value);
     observations.push({
       controlId,
       verdict,
       provider,
       file: file.rel,
       line: lineOf(content, index),
-      label: controlId === CONTROLS.csp ? "Content-Security-Policy" : name,
-      ...(verdict === "unsafe"
-        ? { issue: controlId === CONTROLS.csp ? "unsafe-csp" : "header-disabled" }
-        : {}),
+      label: name,
+      ...(verdict === "unsafe" ? { issue: headerIssue(controlId) } : {}),
       ...(verdict === "unknown" ? { ambiguous: true } : {}),
       ...(provider === "nextjs"
         ? { scope: nearestHeaderScope(content, index), order: index }
@@ -317,67 +442,77 @@ function addLiteralHeaderObservations(
   }
 
   // Express/Node literal response headers.
-  const responseHeader =
-    /\.(?:setHeader|header|set)\s*\(\s*(["'])(Strict-Transport-Security|X-Content-Type-Options|X-Frame-Options|Content-Security-Policy)\1\s*,\s*(["'`])([^"'`]+)\3/g;
+  const responseHeader = new RegExp(
+    `\\b([A-Za-z_$][\\w$]*)\\.(?:setHeader|header|set)\\s*\\(\\s*(["'])(${HEADER_NAME_PATTERN})\\2\\s*,\\s*(["'\\x60])([^"'\\x60]+)\\4`,
+    "g",
+  );
   for (const match of content.matchAll(responseHeader)) {
-    const name = match[2]!;
-    const value = match[4] ?? "";
+    if (!hasImportProvenResponseFramework(content)) continue;
+    const receiver = match[1]!.toLowerCase();
+    if (!["res", "response", "reply"].includes(receiver)) continue;
+    if (!responseReceiverIsHandlerParameter(content, match.index ?? 0, receiver)) continue;
+    const name = match[3]!;
+    const value = match[5] ?? "";
     const index = match.index ?? 0;
     if (isDevelopmentOnly(content, index)) continue;
     const controlId = headerControl(name)!;
-    const verdict =
-      controlId === CONTROLS.csp ? cspScriptVerdict(value) : headerVerdict(name, value);
+    const verdict = literalHeaderVerdict(name, value);
     observations.push({
       controlId,
       verdict,
       provider,
       file: file.rel,
       line: lineOf(content, index),
-      label: controlId === CONTROLS.csp ? "Content-Security-Policy" : name,
-      ...(verdict === "unsafe"
-        ? { issue: controlId === CONTROLS.csp ? "unsafe-csp" : "header-disabled" }
-        : {}),
+      label: name,
+      ...(verdict === "unsafe" ? { issue: headerIssue(controlId) } : {}),
       ...(verdict === "unknown" ? { ambiguous: true } : {}),
     });
   }
 
-  const removed =
-    /\.removeHeader\s*\(\s*(["'])(Strict-Transport-Security|X-Content-Type-Options|X-Frame-Options|Content-Security-Policy)\1\s*\)/g;
+  const removed = new RegExp(
+    `\\b([A-Za-z_$][\\w$]*)\\.removeHeader\\s*\\(\\s*(["'])(${HEADER_NAME_PATTERN})\\2\\s*\\)`,
+    "g",
+  );
   for (const match of content.matchAll(removed)) {
-    const name = match[2]!;
+    if (!hasImportProvenResponseFramework(content)) continue;
+    const receiver = match[1]!.toLowerCase();
+    if (!["res", "response", "reply"].includes(receiver)) continue;
+    if (!responseReceiverIsHandlerParameter(content, match.index ?? 0, receiver)) continue;
+    const name = match[3]!;
     const index = match.index ?? 0;
     if (isDevelopmentOnly(content, index)) continue;
+    const controlId = headerControl(name)!;
+    const unknownRemoval = controlId === CONTROLS.referrer || controlId === CONTROLS.permissions;
     observations.push({
-      controlId: headerControl(name)!,
-      verdict: "unsafe",
+      controlId,
+      verdict: unknownRemoval ? "unknown" : "unsafe",
       provider,
       file: file.rel,
       line: lineOf(content, index),
       label: name,
-      issue: "header-disabled",
+      ...(!unknownRemoval ? { issue: "header-disabled" as const } : { ambiguous: true }),
     });
   }
 
   // nginx final response-header configuration.
   if (provider === "nginx") {
-    const nginxHeader =
-      /^\s*add_header\s+(Strict-Transport-Security|X-Content-Type-Options|X-Frame-Options|Content-Security-Policy)\s+(?:"([^"]*)"|'([^']*)'|([^;\s][^;]*?))(?:\s+always)?\s*;/gim;
+    const nginxHeader = new RegExp(
+      `^\\s*add_header\\s+(${HEADER_NAME_PATTERN})\\s+(?:"([^"]*)"|'([^']*)'|([^;\\s][^;]*?))(?:\\s+always)?\\s*;`,
+      "gim",
+    );
     for (const match of content.matchAll(nginxHeader)) {
       const name = match[1]!;
       const value = (match[2] ?? match[3] ?? match[4] ?? "").trim();
       const controlId = headerControl(name)!;
-      const verdict =
-        controlId === CONTROLS.csp ? cspScriptVerdict(value) : headerVerdict(name, value);
+      const verdict = literalHeaderVerdict(name, value);
       observations.push({
         controlId,
         verdict,
         provider,
         file: file.rel,
         line: lineOf(content, match.index ?? 0),
-        label: controlId === CONTROLS.csp ? "Content-Security-Policy" : name,
-        ...(verdict === "unsafe"
-          ? { issue: controlId === CONTROLS.csp ? "unsafe-csp" : "header-disabled" }
-          : {}),
+        label: name,
+        ...(verdict === "unsafe" ? { issue: headerIssue(controlId) } : {}),
         ...(verdict === "unknown" ? { ambiguous: true } : {}),
       });
     }
@@ -385,39 +520,36 @@ function addLiteralHeaderObservations(
 
   // Cloudflare Pages `_headers`: a leading `!` explicitly detaches a header.
   if (provider === "cloudflare-pages") {
-    const detached =
-      /^\s*!\s+(Strict-Transport-Security|X-Content-Type-Options|X-Frame-Options|Content-Security-Policy)\s*$/gim;
+    const detached = new RegExp(`^\\s*!\\s+(${HEADER_NAME_PATTERN})\\s*$`, "gim");
     for (const match of content.matchAll(detached)) {
       const name = match[1]!;
+      const controlId = headerControl(name)!;
+      const unknownRemoval = controlId === CONTROLS.referrer || controlId === CONTROLS.permissions;
       observations.push({
-        controlId: headerControl(name)!,
-        verdict: "unsafe",
+        controlId,
+        verdict: unknownRemoval ? "unknown" : "unsafe",
         provider,
         file: file.rel,
         line: lineOf(content, match.index ?? 0),
         label: name,
-        issue: "header-disabled",
+        ...(!unknownRemoval ? { issue: "header-disabled" as const } : { ambiguous: true }),
       });
     }
 
-    const attached =
-      /^\s*(Strict-Transport-Security|X-Content-Type-Options|X-Frame-Options|Content-Security-Policy):\s*(.+)$/gim;
+    const attached = new RegExp(`^\\s*(${HEADER_NAME_PATTERN}):\\s*(.+)$`, "gim");
     for (const match of content.matchAll(attached)) {
       const name = match[1]!;
       const value = match[2] ?? "";
       const controlId = headerControl(name)!;
-      const verdict =
-        controlId === CONTROLS.csp ? cspScriptVerdict(value) : headerVerdict(name, value);
+      const verdict = literalHeaderVerdict(name, value);
       observations.push({
         controlId,
         verdict,
         provider,
         file: file.rel,
         line: lineOf(content, match.index ?? 0),
-        label: controlId === CONTROLS.csp ? "Content-Security-Policy" : name,
-        ...(verdict === "unsafe"
-          ? { issue: controlId === CONTROLS.csp ? "unsafe-csp" : "header-disabled" }
-          : {}),
+        label: name,
+        ...(verdict === "unsafe" ? { issue: headerIssue(controlId) } : {}),
         ...(verdict === "unknown" ? { ambiguous: true } : {}),
       });
     }
@@ -453,13 +585,33 @@ function resolveKnownOrdering(observations: Observation[]): Observation[] {
   return [...passthrough, ...effective.values()];
 }
 
+function importProvenHelmetBindings(content: string): string[] {
+  const bindings = new Set<string>();
+  for (const match of content.matchAll(
+    /\bimport\s+([A-Za-z_$][\w$]*)\s+from\s+(["'])helmet\2/g,
+  )) {
+    bindings.add(match[1]!);
+  }
+  for (const match of content.matchAll(
+    /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*require\s*\(\s*(["'])helmet\2\s*\)/g,
+  )) {
+    bindings.add(match[1]!);
+  }
+  return [...bindings];
+}
+
 function addHelmetObservations(
   observations: Observation[],
   file: { rel: string; content: string },
 ): void {
   if (!CODE_EXTS.some((ext) => file.rel.toLowerCase().endsWith(`.${ext}`))) return;
   const content = maskComments(file.content);
-  const callStart = /\bhelmet\s*\(/g;
+  const bindings = importProvenHelmetBindings(content);
+  if (!bindings.length) return;
+  const callStart = new RegExp(
+    `\\b(?:${bindings.map((binding) => binding.replace(/[$]/g, "\\$")).join("|")})\\s*\\(`,
+    "g",
+  );
 
   for (const match of content.matchAll(callStart)) {
     const index = match.index ?? 0;
@@ -469,6 +621,41 @@ function addHelmetObservations(
     const line = lineOf(content, index);
     const falseOption = (name: string): boolean =>
       new RegExp(`\\b${name}\\s*:\\s*false\\b`).test(args);
+
+    const referrerDisabled = falseOption("referrerPolicy");
+    const referrerBlock = optionObject(args, "referrerPolicy");
+    const referrerPolicy = referrerBlock
+      ? /\bpolicy\s*:\s*(["'])([^"']+)\1/i.exec(referrerBlock)?.[2]
+      : undefined;
+    const referrerVerdict = referrerDisabled
+      ? "unknown"
+      : referrerPolicy
+        ? referrerPolicyVerdict(referrerPolicy)
+        : referrerBlock
+          ? "unknown"
+          : "safe";
+    observations.push({
+      controlId: CONTROLS.referrer,
+      verdict: referrerVerdict,
+      provider: "helmet",
+      file: file.rel,
+      line,
+      label: "Referrer-Policy",
+      ...(referrerVerdict === "unsafe" ? { issue: "unsafe-referrer-policy" as const } : {}),
+      ...(referrerVerdict === "unknown" ? { ambiguous: true } : {}),
+    });
+
+    if (/\bpermissionsPolicy\s*:/.test(args)) {
+      observations.push({
+        controlId: CONTROLS.permissions,
+        verdict: "unknown",
+        provider: "helmet",
+        file: file.rel,
+        line,
+        label: "Permissions-Policy",
+        ambiguous: true,
+      });
+    }
 
     const cspDisabled = falseOption("contentSecurityPolicy");
     const cspBlock = optionObject(args, "contentSecurityPolicy");
@@ -735,7 +922,7 @@ function resolveEvidence(observations: Observation[]): SecurityControlEvidence[]
 
     let state: SecurityControlEvidence["state"];
     let limitation: string;
-    if (unresolvedCrossLayerConflict || (hasAmbiguous && !hasUnsafe)) {
+    if (unresolvedCrossLayerConflict || hasAmbiguous) {
       state = "not_verifiable_from_repository";
       limitation =
         "Repository evidence is conflicting, scoped, dynamic, disabled, or report-only; the effective deployed control cannot be resolved safely.";
@@ -816,6 +1003,58 @@ function cspFinding(observation: Observation): Finding {
         "CWE-693",
         "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy",
       ],
+    },
+    confidence: "high",
+  });
+}
+
+function referrerPolicyFinding(observation: Observation): Finding {
+  return makeAiFinding({
+    ruleId: "ci-ai-unsafe-referrer-policy",
+    title: "Referrer-Policy explicitly sends full URLs across origins",
+    severity: "medium",
+    cwe: ["CWE-200", "CWE-693"],
+    owasp_web: ["A05:2021"],
+    owasp_api: ["API8:2023"],
+    file: observation.file,
+    startLine: observation.line,
+    snippet: "The effective literal Referrer-Policy value is unsafe-url",
+    message:
+      "The effective recognized Referrer-Policy token is unsafe-url, which sends the full referrer URL on same-origin and cross-origin requests, including HTTPS-to-HTTP navigations. Missing, dynamic, invalid, or merely weaker policies are not reported by this rule.",
+    remediation: {
+      summary: "Replace unsafe-url with a policy that limits cross-origin referrer disclosure.",
+      steps: [
+        "Use strict-origin-when-cross-origin for a balanced default, or no-referrer for maximum privacy.",
+        "Keep fallback tokens ordered from older to newer because the last recognized token is effective.",
+        "Verify the final deployed response header on representative routes.",
+      ],
+      references: ["CWE-200", "https://www.w3.org/TR/referrer-policy/"],
+    },
+    confidence: "high",
+  });
+}
+
+function permissionsPolicyFinding(observation: Observation): Finding {
+  return makeAiFinding({
+    ruleId: "ci-ai-overbroad-permissions-policy",
+    title: "Permissions-Policy delegates a sensitive feature to every origin",
+    severity: "medium",
+    cwe: ["CWE-942", "CWE-693"],
+    owasp_web: ["A05:2021"],
+    owasp_api: ["API8:2023"],
+    file: observation.file,
+    startLine: observation.line,
+    snippet: "Permissions-Policy uses the universal * allowlist for camera, microphone, or geolocation",
+    message:
+      "A literal Permissions-Policy universally delegates camera, microphone, or geolocation. The browser still applies user permission prompts, but any embedded origin can become eligible to request the delegated feature.",
+    remediation: {
+      summary: "Restrict sensitive browser features to no origins or only the application origin.",
+      steps: [
+        "Use camera=(), microphone=(), and geolocation=() when the application does not need them.",
+        "Use (self) only for features required by the top-level application.",
+        "List specific third-party origins only after reviewing why each embedded origin needs access.",
+      ],
+      references: ["CWE-942", "https://www.w3.org/TR/permissions-policy/"],
     },
     confidence: "high",
   });
@@ -917,6 +1156,8 @@ export async function runSecurityControlChecks(
     }
     if (observation.issue === "header-disabled") findings.push(headerFinding(observation));
     else if (observation.issue === "unsafe-csp") findings.push(cspFinding(observation));
+    else if (observation.issue === "unsafe-referrer-policy") findings.push(referrerPolicyFinding(observation));
+    else if (observation.issue === "overbroad-permissions-policy") findings.push(permissionsPolicyFinding(observation));
     else if (observation.issue === "insecure-cookie") findings.push(cookieFinding(observation));
     else findings.push(captchaFinding(observation));
   }

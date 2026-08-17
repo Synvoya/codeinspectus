@@ -1,5 +1,6 @@
 import type { Finding } from "../../types.js";
 import { makeAiFinding } from "../../ai-checks/finding.js";
+import { isSupabaseSecretKey } from "../../redact.js";
 
 import { argumentFor, dartCalls, decodedString, expressionFromTokens } from "./dart.js";
 import {
@@ -31,9 +32,8 @@ function privilegedKeySource(expression: ReturnType<typeof expressionFromTokens>
     value.includes("servicerole") ||
     value.includes("supabasesecret") ||
     value.includes("privilegedkey") ||
-    value.includes("secretkey") ||
-    value.startsWith("sbsecret")
-  ) || strings.some((value) => /^sb_secret_[A-Za-z0-9_-]+$/.test(value) || legacyServiceRoleJwt(value));
+    value.includes("secretkey")
+  ) || strings.some((value) => isSupabaseSecretKey(value) || legacyServiceRoleJwt(value));
   return explicitlyPrivileged;
 }
 

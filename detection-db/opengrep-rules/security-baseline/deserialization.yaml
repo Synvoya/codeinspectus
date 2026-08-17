@@ -1,4 +1,4 @@
-# CodeInspectus original MIT security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
+# CodeInspectus original Apache-2.0 security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
 # Software & data integrity failures / insecure deserialization (OWASP A08).
 rules:
   - id: ci-baseline-insecure-deserialization-node

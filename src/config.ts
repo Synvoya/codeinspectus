@@ -23,7 +23,7 @@ import { dirname } from "node:path";
 export const MCP_SPEC_VERSION = "2025-11-25";
 
 export const SERVER_NAME = "codeinspectus";
-export const SERVER_VERSION = "2.1.1";
+export const SERVER_VERSION = "2.5.0";
 
 // ── Bundled engine versions (SHA-pinned in engines.lock.json) ───────────────
 export const ENGINE_VERSIONS = {
@@ -37,7 +37,7 @@ export type EngineName = "opengrep" | "gitleaks" | "trivy";
 
 // Aggregate CodeInspectus native-analyzer engine version. Individual detector packs
 // retain their own semantic versions so adding a pack does not imply unrelated rule changes.
-export const CODEINSPECTUS_AI_VERSION = "5.15.0";
+export const CODEINSPECTUS_AI_VERSION = "5.19.0";
 export const CODEINSPECTUS_PUB_VERSION = "1.0.0";
 
 // ── Managed directories (per-machine, never per-repo) ───────────────────────

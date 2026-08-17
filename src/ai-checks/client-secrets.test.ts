@@ -27,3 +27,23 @@ describe("B-11 dangerouslyAllowBrowser (ci-ai-llm-key-browser-exposed)", () => {
     expect(fp.length).toBe(0);
   });
 });
+
+describe("modern Supabase opaque-key corpus", () => {
+  test("flags the exact secret fixture and keeps the publishable fixture silent", async () => {
+    const findings = await runClientSecretsCheck(CORPUS);
+    const dedicated = findings.filter(
+      (finding) => finding.rule_id === "ci-ai-supabase-secret-key-client",
+    );
+
+    expect(
+      dedicated.filter((finding) =>
+        finding.location.file.endsWith("tp/client-hardcoded-sb-secret.tsx"),
+      ),
+    ).toHaveLength(1);
+    expect(
+      findings.filter((finding) =>
+        finding.location.file.endsWith("fp/src/supabase-publishable-key.ts"),
+      ),
+    ).toHaveLength(0);
+  });
+});

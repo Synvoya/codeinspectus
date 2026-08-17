@@ -9,8 +9,23 @@
 
 import { sha256Hex } from "./util/hash.js";
 
+/**
+ * Modern Supabase elevated API key: a 22-character URL-safe body followed by an
+ * underscore and an 8-character checksum. Explicit URL-safe boundaries avoid matching
+ * prefixes embedded in a longer token. This exact detector is shared by the native
+ * analyzers and redactor so detector ⊆ redactor.
+ */
+export const SUPABASE_SECRET_KEY_RE =
+  /(?<![A-Za-z0-9_-])sb_secret_[A-Za-z0-9_-]{22}_[A-Za-z0-9_-]{8}(?![A-Za-z0-9_-])/g;
+
+export function isSupabaseSecretKey(value: string): boolean {
+  SUPABASE_SECRET_KEY_RE.lastIndex = 0;
+  return SUPABASE_SECRET_KEY_RE.test(value);
+}
+
 /** Known secret token patterns (provider-recognizable prefixes + shapes). */
 export const SECRET_PATTERNS: Array<{ name: string; re: RegExp; live?: boolean }> = [
+  { name: "Supabase secret API key", re: SUPABASE_SECRET_KEY_RE, live: true },
   { name: "Stripe live secret key", re: /\bsk_live_[A-Za-z0-9]{10,}\b/g, live: true },
   { name: "Stripe restricted live key", re: /\brk_live_[A-Za-z0-9]{10,}\b/g, live: true },
   { name: "Stripe test secret key", re: /\bsk_test_[A-Za-z0-9]{10,}\b/g },

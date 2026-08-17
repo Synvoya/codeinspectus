@@ -43,6 +43,7 @@ describe("CG-31 build_output: keep structured secrets from any engine", () => {
       mk("openai-api-key"),
       mk("private-key", { severity: "critical" }),
       mk("codeinspectus-stripe-live-secret", { severity: "critical" }),
+      mk("codeinspectus-supabase-secret-key", { severity: "critical" }),
       mk("codeinspectus-anthropic-key"),
     ];
     const { findings } = routeFindings(structured, allBuild);
@@ -102,6 +103,17 @@ describe("CG-31 build_output: keep structured secrets from any engine", () => {
     const both = [mk("stripe-access-token"), mk("codeinspectus-stripe-live-secret", { severity: "critical" })];
     const { findings } = routeFindings(both, allBuild);
     expect(keptRules(findings)).toEqual(["codeinspectus-stripe-live-secret"]);
+  });
+
+  test("modern Supabase secret survives build routing while publishable/unknown rules fail closed", () => {
+    const { findings } = routeFindings(
+      [
+        mk("codeinspectus-supabase-secret-key", { severity: "critical" }),
+        mk("supabase-publishable-key"),
+      ],
+      allBuild,
+    );
+    expect(keptRules(findings)).toEqual(["codeinspectus-supabase-secret-key"]);
   });
 
   test("FAIL-CLOSED: public-by-design provider tokens + unknown rules are DROPPED (allow-list, not deny-list)", () => {

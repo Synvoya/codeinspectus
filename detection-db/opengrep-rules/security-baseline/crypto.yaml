@@ -1,4 +1,4 @@
-# CodeInspectus original MIT security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
+# CodeInspectus original Apache-2.0 security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
 # Cryptographic failures (OWASP A02).
 rules:
   - id: ci-baseline-weak-hash

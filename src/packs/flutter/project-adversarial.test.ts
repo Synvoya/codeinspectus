@@ -49,7 +49,7 @@ describe("Flutter project source bounds", () => {
     const coverage = result.packCoverage.find((pack) => pack.pack_id === "flutter");
 
     expect(coverage).toMatchObject({
-      state: "ran",
+      state: "partial",
       analyzers: { registered: 6, ran: 6 },
       rules: { registered: 6, ran: 6 },
     });

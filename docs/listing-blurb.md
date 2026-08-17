@@ -32,4 +32,4 @@ mcp, security, static-analysis, appsec, ai-generated-code, devsecops, opengrep, 
 
 - Repository: https://github.com/Synvoya/codeinspectus
 - Homepage: https://codeinspectus.com
-- License: MIT
+- License: Apache-2.0

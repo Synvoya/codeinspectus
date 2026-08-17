@@ -15,6 +15,13 @@ description = "Public Supabase local-dev demo key (iss: supabase-demo) — not a
 regexTarget = "match"
 regexes = ['''eyJpc3MiOiJzdXBhYmFzZS1kZW1v''']
 
+# Modern publishable keys are explicitly client-safe. Gitleaks' inherited generic-api-key
+# rule can otherwise classify a labelled sb_publishable_ value as a secret.
+[[allowlists]]
+description = "Supabase publishable API key — public by design."
+regexTarget = "match"
+regexes = ['''(?:^|[^A-Za-z0-9_-])sb_publishable_[A-Za-z0-9_-]{22}_[A-Za-z0-9_-]{8}(?:$|[^A-Za-z0-9_-])''']
+
 [[rules]]
 id = "codeinspectus-stripe-live-secret"
 description = "Stripe live-mode secret key (high impact if leaked)"
@@ -26,6 +33,13 @@ id = "codeinspectus-supabase-service-role"
 description = "Supabase service_role JWT (bypasses RLS)"
 regex = '''eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'''
 keywords = ["service_role", "supabase"]
+
+[[rules]]
+id = "codeinspectus-supabase-secret-key"
+description = "Supabase secret API key (elevated access; bypasses RLS)"
+regex = '''(?:^|[^A-Za-z0-9_-])(sb_secret_[A-Za-z0-9_-]{22}_[A-Za-z0-9_-]{8})(?:$|[^A-Za-z0-9_-])'''
+secretGroup = 1
+keywords = ["sb_secret_"]
 
 [[rules]]
 id = "codeinspectus-anthropic-key"

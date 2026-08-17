@@ -207,10 +207,11 @@ describe("Flutter sensitive log rule", () => {
 describe("Flutter Supabase privileged-key rule", () => {
   test("tracks service-role/secret sources into both client initializers", async () => {
     const legacyPayload = Buffer.from(JSON.stringify({ role: "service_role" })).toString("base64url");
+    const opaqueSecret = "sb_secret_A1b2C3d4E5f6G7h8I9j0K1_mN2pQ3rS";
     const result = await findings(runFlutterSupabasePrivilegedKeyClient, `
       final serviceRoleKey = String.fromEnvironment('SUPABASE_SERVICE_ROLE_KEY');
       await Supabase.initialize(url: 'https://project.supabase.co', anonKey: serviceRoleKey);
-      final client = SupabaseClient('https://project.supabase.co', 'sb_secret_testvalue123');
+      final client = SupabaseClient('https://project.supabase.co', '${opaqueSecret}');
       final legacy = SupabaseClient('https://project.supabase.co', 'header.${legacyPayload}.signature');
     `);
     expect(result).toHaveLength(3);
@@ -220,14 +221,15 @@ describe("Flutter Supabase privileged-key rule", () => {
       cwe: ["CWE-798", "CWE-312", "CWE-285"],
     });
     expect(result.every((item) => item.is_secret !== true)).toBe(true);
-    expect(result.every((item) => !(item.location.snippet ?? "").includes("sb_secret_testvalue123"))).toBe(true);
+    expect(result.every((item) => !(item.location.snippet ?? "").includes(opaqueSecret))).toBe(true);
   });
 
-  test("keeps anon/publishable keys and unused privileged sources silent", async () => {
+  test("keeps anon/publishable/invalid opaque keys and unused privileged sources silent", async () => {
     await expect(findings(runFlutterSupabasePrivilegedKeyClient, `
       final anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
       await Supabase.initialize(url: 'https://project.supabase.co', anonKey: anonKey);
-      final client = SupabaseClient('https://project.supabase.co', 'sb_publishable_testvalue');
+      final client = SupabaseClient('https://project.supabase.co', 'sb_publishable_A1b2C3d4E5f6G7h8I9j0K1_mN2pQ3rS');
+      final invalid = SupabaseClient('https://project.supabase.co', 'sb_secret_testvalue123');
       final unusedServiceRoleKey = String.fromEnvironment('SUPABASE_SERVICE_ROLE_KEY');
     `)).resolves.toHaveLength(0);
   });

@@ -13,7 +13,7 @@
 #     engine-dependent and runs in the engine job below.
 #
 #   engine (linux/amd64) — fetches + cosign/checksum-verifies + SHA-pins the three
-#     engine binaries and pulls the Trivy vuln DB, then runs the FULL 53/53 eval suite with
+#     engine binaries and pulls the Trivy vuln DB, then runs the FULL 55/55 eval suite with
 #     engine-backed, native-pack, parity, rescan, provenance, and redaction gates, plus the gitleaks-backed redaction-e2e and a real
 #     fixture scan. Proven feasible in CG-77 recon: every engine has a non-null
 #     linux-x64 pin and a fresh verified install reproduces the committed SHAs.
@@ -49,6 +49,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  dco:
+    name: contributor sign-off (DCO)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Require Signed-off-by on every pull-request commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          missing=0
+          while IFS= read -r commit_sha; do
+            if ! git show -s --format=%B "$commit_sha" | grep -Eiq '^Signed-off-by: .+ <[^>]+>$'; then
+              echo "::error::Commit $commit_sha is missing a valid Signed-off-by line. Use git commit -s."
+              missing=1
+            fi
+          done < <(git rev-list "$BASE_SHA"..HEAD)
+          exit "$missing"
+
   always:
     name: always-run (no engines)
     runs-on: ubuntu-latest

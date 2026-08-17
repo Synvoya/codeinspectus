@@ -1,8 +1,8 @@
 {
   "name": "CodeInspectus Detection Database",
-  "version": "1.15.0",
-  "date": "2026-08-02",
-  "description": "CodeInspectus's curated first-party detections. Native packs cover bounded AI/framework checks plus selected reconciled SAST rules; bundled external engines remain additive fallbacks and broader scanners.",
+  "version": "1.19.0",
+  "date": "2026-08-13",
+  "description": "CodeInspectus's curated first-party detections. Native packs cover bounded AI/framework checks plus selected reconciled SAST rules; separately downloaded external engines remain additive fallbacks and broader scanners.",
   "engine_versions": {
     "opengrep": "1.23.0",
     "gitleaks": "8.30.1",
@@ -12,9 +12,9 @@
   "opengrep_rulesets": [
     {
       "name": "security-baseline",
-      "source": "codeinspectus-mit",
-      "license": "MIT",
-      "note": "CodeInspectus's ORIGINAL MIT-licensed Opengrep security ruleset (see detection-db/opengrep-rules/security-baseline/LICENSE-PROVENANCE.md). Not derived from the Commons-Clause opengrep-rules or the Semgrep-Rules-License semgrep-rules corpora, so it is clean to bundle and sell. Narrower than the full upstream registry; coverage grows via weekly intake. Pre-launch: legal review of rule provenance."
+      "source": "codeinspectus-apache-2.0",
+      "license": "Apache-2.0",
+      "note": "CodeInspectus's original Apache-2.0-licensed Opengrep security ruleset (see detection-db/opengrep-rules/security-baseline/LICENSE-PROVENANCE.md). Not derived from the Commons-Clause opengrep-rules or the Semgrep-Rules-License semgrep-rules corpora. Narrower than the full upstream registry; coverage grows through reviewed intake."
     }
   ],
   "custom_rules": [
@@ -50,6 +50,15 @@
       "engine": "codeinspectus-ai",
       "pack_id": "javascript-typescript",
       "name": "Supabase service_role key in client-reachable code",
+      "kind": "ai",
+      "cwe": ["CWE-798", "CWE-285"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-supabase-secret-key-client",
+      "engine": "codeinspectus-ai",
+      "pack_id": "javascript-typescript",
+      "name": "Supabase secret API key in client-reachable code",
       "kind": "ai",
       "cwe": ["CWE-798", "CWE-285"],
       "source": "codeinspectus-custom"
@@ -94,9 +103,20 @@
       "id": "ci-ai-edge-fn-no-auth",
       "engine": "codeinspectus-ai",
       "pack_id": "javascript-typescript",
-      "name": "Supabase Edge Function with no auth verification",
+      "name": "Supabase Edge Function disables platform JWT verification without enforced replacement authentication",
       "kind": "ai",
-      "cwe": ["CWE-862"],
+      "cwe": ["CWE-862", "CWE-285"],
+      "owasp_web": ["A01:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-edge-fn-privileged-no-authz",
+      "engine": "codeinspectus-ai",
+      "pack_id": "javascript-typescript",
+      "name": "User-authenticated Supabase Edge Function uses an RLS-bypassing client without authorization",
+      "kind": "ai",
+      "cwe": ["CWE-863", "CWE-285"],
+      "owasp_web": ["A01:2021"],
       "source": "codeinspectus-custom"
     },
     {
@@ -144,6 +164,17 @@
       "name": "Next.js admin API route lacks visible authentication or authorization",
       "kind": "ai",
       "cwe": ["CWE-862", "CWE-863", "CWE-306"],
+      "owasp_web": ["A01:2021"],
+      "owasp_api": ["API5:2023"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-express-admin-route-no-authz",
+      "engine": "codeinspectus-ai",
+      "pack_id": "javascript-typescript",
+      "name": "Express admin API route lacks visible server-side authentication or authorization",
+      "kind": "ai",
+      "cwe": ["CWE-862", "CWE-863"],
       "owasp_web": ["A01:2021"],
       "owasp_api": ["API5:2023"],
       "source": "codeinspectus-custom"
@@ -228,6 +259,28 @@
       "name": "Production CSP explicitly allows unsafe script execution",
       "kind": "ai",
       "cwe": ["CWE-693"],
+      "owasp_web": ["A05:2021"],
+      "owasp_api": ["API8:2023"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-unsafe-referrer-policy",
+      "engine": "codeinspectus-ai",
+      "pack_id": "javascript-typescript",
+      "name": "Referrer-Policy explicitly uses unsafe-url",
+      "kind": "ai",
+      "cwe": ["CWE-200", "CWE-693"],
+      "owasp_web": ["A05:2021"],
+      "owasp_api": ["API8:2023"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "ci-ai-overbroad-permissions-policy",
+      "engine": "codeinspectus-ai",
+      "pack_id": "javascript-typescript",
+      "name": "Permissions-Policy universally delegates a sensitive feature",
+      "kind": "ai",
+      "cwe": ["CWE-942", "CWE-693"],
       "owasp_web": ["A05:2021"],
       "owasp_api": ["API8:2023"],
       "source": "codeinspectus-custom"
@@ -856,6 +909,14 @@
       "id": "codeinspectus-supabase-service-role",
       "engine": "gitleaks",
       "name": "Supabase service_role JWT",
+      "kind": "secret",
+      "cwe": ["CWE-798"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "codeinspectus-supabase-secret-key",
+      "engine": "gitleaks",
+      "name": "Supabase secret API key",
       "kind": "secret",
       "cwe": ["CWE-798"],
       "source": "codeinspectus-custom"

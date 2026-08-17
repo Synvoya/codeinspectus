@@ -19,8 +19,13 @@ npm run build        # tsc --noEmit && tsup — zero type errors
 npm run eval         # drives the built server over MCP stdio
 ```
 Expected: all non-skipped evals PASS. Engine-dependent evals (E16 Opengrep SQLi,
-E17 Trivy SCA, E18 Opengrep CORS precision) auto-SKIP when the binary/DB is
-unavailable — that is acceptable, a FAIL is not. E23/E24 are engine-independent MCP stdio checks over the
+E17 Trivy SCA, E18 Opengrep CORS precision, and E34-E36 Opengrep/native parity)
+auto-SKIP when the binary/DB cannot run — that is acceptable, a FAIL is not. The
+suite currently has 55 evals; with Trivy active but Opengrep unavailable the expected
+result is 50 passed, 0 failed, 5 skipped. E17 skips only without the Trivy DB. E22,
+E53, and E54 cover Supabase Edge, Next.js admin, and Express admin auth/authz.
+E20/E21 include the Referrer-Policy and Permissions-Policy checks. E23/E24 are
+engine-independent MCP stdio checks over the
 Flutter TP/FP/fixed corpus, and E25/E26 cover the Android/iOS TP/FP/fixed corpus;
 all four must not skip. E27-E29 cover native Pub SCA, same-path rescan, bundled-database
 provenance, and CycloneDX/SPDX generation; they also must not skip.
@@ -102,11 +107,12 @@ npx vitest run \
   src/technology-detection.test.ts \
   src/provenance.test.ts
 ```
-Expected: all focused tests pass; manifest `1.15.0` owns exactly 67 native rule IDs (24
+Expected: all focused tests pass; manifest `1.19.0` owns exactly 72 native rule IDs (29
 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, 2 Expo, 10 Python AI/API,
 1 Go AI, 1 Java AI, 1 C# AI, 1 PHP AI, 1 Rust AI, 1 Ruby AI, 3 Firebase configuration,
-2 GitHub Actions workflow, and 2 JavaScript baseline SAST) across sixteen packs and 43 analyzers;
-the aggregate native engine is `5.15.0`. A detected Flutter project runs the six Flutter analyzers,
+2 GitHub Actions workflow, and 2 JavaScript baseline SAST) across sixteen packs and 45 analyzers;
+the aggregate native engine is `5.19.0`. The JavaScript/TypeScript pack is `1.9.0`; the Flutter
+pack is `1.1.0`. A detected Flutter project runs the six Flutter analyzers,
 a plain Dart package reports that pack as `not_applicable`, Android/iOS project evidence activates
 only its matching platform pack, and scanner-filter exclusion reports installed packs as `not_run`
 rather than implying execution. The frozen

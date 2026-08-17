@@ -13,7 +13,7 @@ export const PYTHON_AI_API_PACK_LIMITATIONS = [
 /** First-party Python API/AI source-security pack; target code never executes. */
 export const pythonAiApiPack: NativeDetectorPack = {
   id: "python-ai-api",
-  version: "1.4.0",
+  version: "1.5.0",
   scannerKind: "ai",
   languages: ["python"],
   frameworks: ["fastapi", "starlette", "flask", "django", "jinja2", "openai", "anthropic", "langchain"],

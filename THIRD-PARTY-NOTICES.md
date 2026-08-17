@@ -1,82 +1,89 @@
 # Third-party notices
 
-CodeInspectus bundles the following Lezer parser packages into its generated JavaScript:
+This document records third-party software and data used by CodeInspectus 2.5.0. CodeInspectus
+itself is licensed under Apache-2.0; third-party components retain their own licenses.
 
-- `@lezer/python` 1.1.19
-- `@lezer/common` 1.5.2
-- `@lezer/lr` 1.4.10
-- `@lezer/highlight` 1.2.3
+## Separately downloaded security engines
 
-These packages provide syntax parsing only. CodeInspectus owns the detector rules, import/flow
-analysis, findings, rule database, and security decisions built on that syntax tree.
+The following executables are **not included in the CodeInspectus npm package**. The explicit
+`repair-engines` command downloads them from their upstream GitHub release, verifies the pinned
+publisher/checksum evidence and exact binary SHA-256 from `engines.lock.json`, and stores them in a
+per-user managed directory. CodeInspectus is not affiliated with or endorsed by these projects.
 
-CodeInspectus also bundles `smol-toml` 1.7.1 to reject invalid Python dependency manifests before
-CodeInspectus applies its own exact package-name and framework-detection semantics.
+### Opengrep 1.23.0
 
-CodeInspectus also bundles `yaml` 2.9.0 for strict YAML 1.2 parsing of GitHub Actions workflows.
-CodeInspectus owns the workflow rules, structural analysis, findings, and security decisions built
-on the parsed document.
+- Project: <https://github.com/opengrep/opengrep>
+- Exact source: <https://github.com/opengrep/opengrep/tree/v1.23.0>
+- License: GNU Lesser General Public License 2.1
+- License text: <https://github.com/opengrep/opengrep/blob/v1.23.0/LICENSE>
+- Copyright notice: Semgrep, Copyright (C) 2019-2024 Semgrep Inc., as preserved in the
+  upstream `COPYRIGHT` file.
 
-## Lezer MIT license
+CodeInspectus invokes the separate executable through its command-line interface. It does not
+incorporate Opengrep source code and does not download or redistribute the restricted
+`opengrep/opengrep-rules` corpus. The local first-party `security-baseline` rules are independently
+authored and licensed under Apache-2.0.
 
-Copyright (C) 2020 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
-(`@lezer/python`).
+### Gitleaks 8.30.1
 
-Copyright (C) 2018 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
-(`@lezer/common`, `@lezer/lr`, and `@lezer/highlight`).
+- Project: <https://github.com/gitleaks/gitleaks>
+- Exact source: <https://github.com/gitleaks/gitleaks/tree/v8.30.1>
+- License: MIT
+- License text: <https://github.com/gitleaks/gitleaks/blob/v8.30.1/LICENSE>
+- Copyright (c) 2019 Zachary Rice
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
-associated documentation files (the "Software"), to deal in the Software without restriction,
-including without limitation the rights to use, copy, modify, merge, publish, distribute,
-sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+CodeInspectus supplies its own configuration while enabling Gitleaks' upstream MIT-licensed default
+rules. The separately downloaded executable and its upstream rules remain Gitleaks work.
 
-The above copyright notice and this permission notice shall be included in all copies or substantial
-portions of the Software.
+### Trivy 0.71.2
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
-NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
-OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+- Project: <https://github.com/aquasecurity/trivy>
+- Exact source: <https://github.com/aquasecurity/trivy/tree/v0.71.2>
+- License: Apache License 2.0
+- License text: <https://github.com/aquasecurity/trivy/blob/v0.71.2/LICENSE>
+- Upstream notice: Trivy, Copyright 2019-2020 Aqua Security Software Ltd. This product includes
+  software developed by Aqua Security (<https://aquasec.com>).
 
-## smol-toml BSD 3-Clause license
+Trivy's vulnerability database is separately downloaded by Trivy and aggregates advisory data from
+multiple sources with heterogeneous licenses. Neither the executable nor that database is included
+in the CodeInspectus npm package.
 
-Copyright (c) Squirrel Chat et al., All rights reserved.
+## Offline OSV Pub advisory snapshot
 
-Redistribution and use in source and binary forms, with or without modification, are permitted
-provided that the following conditions are met:
+`detection-db/osv-pub/snapshot.json` is a normalized offline snapshot of the OSV.dev Pub ecosystem
+export. The record source is the GitHub Advisory Database and the data is provided under Creative
+Commons Attribution 4.0 International.
 
-1. Redistributions of source code must retain the above copyright notice, this list of conditions
-   and the following disclaimer.
-2. Redistributions in binary form must reproduce the above copyright notice, this list of
-   conditions and the following disclaimer in the documentation and/or other materials provided
-   with the distribution.
-3. Neither the name of the copyright holder nor the names of its contributors may be used to
-   endorse or promote products derived from this software without specific prior written
-   permission.
+- Source: <https://storage.googleapis.com/osv-vulnerabilities/Pub/>
+- Documentation: <https://google.github.io/osv.dev/data/>
+- License: <https://creativecommons.org/licenses/by/4.0/>
+- Attribution: OSV.dev and GitHub Advisory Database contributors
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
-IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
-FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
-CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
-IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
-OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+See `detection-db/osv-pub/LICENSE-PROVENANCE.md` for the captured snapshot provenance.
 
-## yaml ISC license
+## npm runtime dependencies
 
-Copyright Eemeli Aro <eemeli@gmail.com>
+These are installed as separate npm packages alongside CodeInspectus. The CodeInspectus build keeps
+runtime dependencies external rather than copying their source into its generated JavaScript. Each
+package distributed by npm retains its own package metadata and license file.
 
-Permission to use, copy, modify, and/or distribute this software for any purpose
-with or without fee is hereby granted, provided that the above copyright notice
-and this permission notice appear in all copies.
+| Package | Version | License | Copyright / project |
+|---|---:|---|---|
+| `@modelcontextprotocol/sdk` | 1.30.0 | MIT | Copyright (c) 2024 Anthropic, PBC |
+| `@lezer/python` | 1.1.19 | MIT | Copyright (C) 2020 Marijn Haverbeke and others |
+| `@lezer/common` | 1.5.2 | MIT | Copyright (C) 2018 Marijn Haverbeke and others |
+| `@lezer/lr` | 1.4.10 | MIT | Copyright (C) 2018 Marijn Haverbeke and others |
+| `@lezer/highlight` | 1.2.3 | MIT | Copyright (C) 2018 Marijn Haverbeke and others |
+| `smol-toml` | 1.7.1 | BSD-3-Clause | Copyright (c) Squirrel Chat et al. |
+| `yaml` | 2.9.0 | ISC | Copyright Eemeli Aro |
+| `zod` | 3.25.76 | MIT | Copyright (c) 2025 Colin McDonnell |
 
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
-FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
-OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
-TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
-THIS SOFTWARE.
+Transitive npm dependencies remain separately installed packages and retain their own licenses and
+copyright notices. The exact resolved dependency graph is recorded in `package-lock.json`; generated
+CycloneDX SBOM output provides the machine-readable package inventory.
+
+## Trademark statement
+
+Apache, Opengrep, Gitleaks, Trivy, Semgrep, Supabase, and other project or company names are the
+property of their respective owners. Their names are used only to identify interoperability,
+provenance, and license obligations. No endorsement is implied.

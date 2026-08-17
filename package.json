@@ -1,9 +1,9 @@
 {
   "name": "codeinspectus",
-  "version": "2.1.1",
+  "version": "2.5.0",
   "mcpName": "io.github.Synvoya/codeinspectus",
   "description": "CodeInspectus, by Synvoya — a local-first security MCP server and CLI with CI policy, versioned exports, evidence bundles, history, baselines, and approval-gated agent workflows. Zero network egress at scan time.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": "Synvoya",
   "homepage": "https://codeinspectus.com",
   "repository": {
@@ -32,7 +32,9 @@
     "schemas",
     "agent-rules",
     "engines.lock.json",
+    "LICENSE",
     "README.md",
+    "NOTICE",
     "THIRD-PARTY-NOTICES.md"
   ],
   "engines": {
@@ -90,5 +92,9 @@
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.9"
+  },
+  "overrides": {
+    "esbuild": "0.28.1",
+    "nanoid": "3.3.18"
   }
 }

@@ -36,7 +36,7 @@ The RC exports explicit contract names:
 - `RepositoryHistoryManifestV1`
 - `IssuePayloadV1`, `IssueAdapter`, `DestinationVisibility`
 
-`SDK_API_VERSION` is `2.1.1`. `SDK_COMPATIBILITY` records the exact schema versions understood
+`SDK_API_VERSION` is `2.5.0`. `SDK_COMPATIBILITY` records the exact schema versions understood
 by typed helpers. The V2 SDK accepts those schema versions and fails closed on another version;
 additive optional fields within a compatible schema do not break consumers. Removing or changing a
 required field, exit meaning or command semantic requires a new contract version and SDK major.

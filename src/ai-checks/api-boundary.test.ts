@@ -5,13 +5,22 @@
  * realistic validation/projection/redaction near misses must remain silent.
  */
 
-import { beforeAll, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, describe, expect, test } from "vitest";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { Finding } from "../types.js";
 import { runApiBoundaryChecks } from "./api-boundary.js";
 
 const CORPUS = join(process.cwd(), "fixtures", "api-boundary-corpus");
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(temporaryDirectories.splice(0).map((directory) =>
+    rm(directory, { recursive: true, force: true })
+  ));
+});
 
 const RULES = {
   error: "ci-ai-client-error-leak",
@@ -92,5 +101,30 @@ describe("API-boundary analyzers — frozen corpus", () => {
     expect(surfaced).not.toContain("database unavailable");
     expect(surfaced).not.toContain("session.accessToken");
     expect(surfaced).not.toContain("request.headers.get");
+  });
+
+  test("project-root scans exclude deliberate Express test/example error responses", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "codeinspectus-api-boundary-production-"));
+    temporaryDirectories.push(directory);
+    await mkdir(join(directory, "src"));
+    await mkdir(join(directory, "test"));
+    await mkdir(join(directory, "examples"));
+    await writeFile(join(directory, "src", "server.js"), `
+      app.use(function (err, req, res, next) {
+        res.status(500).send({ error: err.message });
+      });
+    `);
+    const deliberateHarness = `
+      app.use(function (err, req, res, next) {
+        res.status(500).send([count, called, err.message].join(" "));
+      });
+    `;
+    await writeFile(join(directory, "test", "res.render.js"), deliberateHarness);
+    await writeFile(join(directory, "examples", "web-service.js"), deliberateHarness);
+
+    const result = await runApiBoundaryChecks(directory);
+
+    expect(result.map((finding) => finding.location.file)).toEqual(["src/server.js"]);
+    expect(result[0]?.rule_id).toBe(RULES.error);
   });
 });

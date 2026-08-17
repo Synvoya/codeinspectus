@@ -28,6 +28,7 @@ const jwt = (payload: Record<string, unknown>) => `${HDR}.${b64u(payload)}.${SIG
 const SERVICE_JWT = jwt({ role: "service_role", iss: "supabase", ref: "abcd" });
 const ROLELESS_JWT = jwt({ sub: "user123", foo: "bar" }); // decodes, no role → fail-open fires
 const SK_LIVE = "sk_live_51Mz9KQb2eRxW7vYpL3nHsD8tA6cF0gJ4uXiZ2oP1rE5wB9mNqK7";
+const SB_SECRET = "sb_secret_A1b2C3d4E5f6G7h8I9j0K1_mN2pQ3rS";
 const OPENAI_KEY = "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCDEF";
 const AWS_KEY = "AKIAIOSFODNN7EXAMPLE"; // canonical AWS example id (AKIA + 16)
 const GH_TOKEN = "ghp_0123456789abcdefghijklmnopqrstuvwxyzAB"; // ghp_ + 38
@@ -42,6 +43,7 @@ const PUBLIC_JWT = jwt({ role: "public" });
 const DEMO_JWT = jwt({ role: "anon", iss: "supabase-demo" }); // published local-dev demo key
 const FIREBASE_APIKEY = "AIzaSyB1234567890abcdefghijklmnopqrstuv"; // AIza in firebase config context below
 const STRIPE_PK = "pk_live_51Mz9KQb2eRxW7vYpL3nHsD8tA6cF0gJ4uXiZ2oP"; // publishable — no §6.1 pattern
+const SB_PUBLISHABLE = "sb_publishable_A1b2C3d4E5f6G7h8I9j0K1_mN2pQ3rS";
 const GENERIC_ENTROPY = "qZ3nT8wL1pK6vR9bY2dM5xH7jW4cF0gA"; // high-entropy, matches no provider pattern
 
 // A minified-bundle-sized pad that pushes a chunk just past the 4MB §6.1 cap. The pad itself
@@ -67,6 +69,7 @@ describe("CG-32 §6.1 bounded scan on OVERSIZED (>4MB) build chunks", () => {
           `var a="${SERVICE_JWT}";`,
           `var b="${ROLELESS_JWT}";`,
           `var c="${SK_LIVE}";`,
+          `var c2="${SB_SECRET}";`,
           `var d="${OPENAI_KEY}";`,
           `var e="${AWS_KEY}";`,
           `var f="${GH_TOKEN}";`,
@@ -88,6 +91,7 @@ describe("CG-32 §6.1 bounded scan on OVERSIZED (>4MB) build chunks", () => {
           `var d="${DEMO_JWT}";`,
           `var cfg={apiKey:"${FIREBASE_APIKEY}",authDomain:"x.firebaseapp.com",projectId:"x",messagingSenderId:"1",appId:"1:2:web:3"};`,
           `var e="${STRIPE_PK}";`,
+          `var e2="${SB_PUBLISHABLE}";`,
           `var f="${GENERIC_ENTROPY}";`,
         ].join("\n"),
       ),
@@ -136,8 +140,8 @@ describe("CG-32 §6.1 bounded scan on OVERSIZED (>4MB) build chunks", () => {
   test("every dangerous set-(a) class in a >4MB chunk → fires as a critical bundle secret", async () => {
     const f = await runClientSecretsCheck(dir);
     const hits = at(f, "dist/dangerous.js");
-    // sk_live / OpenAI / AWS / GitHub / Slack / bare-AIza / PEM / role-less-JWT all surface
-    // via the generic bundle-secret arm; service_role additionally via its dedicated arm.
+    // sk_live / OpenAI / AWS / GitHub / Slack / bare-AIza / PEM / role-less-JWT surface
+    // via the generic bundle-secret arm; both Supabase privileged formats use dedicated arms.
     const bundle = hits.filter((x) => x.rule_id === "ci-ai-secret-in-bundle");
     expect(bundle.length).toBeGreaterThanOrEqual(8);
     expect(bundle.every((x) => x.severity === "critical")).toBe(true);
@@ -147,10 +151,20 @@ describe("CG-32 §6.1 bounded scan on OVERSIZED (>4MB) build chunks", () => {
   test("set-(a) hits are REDACTED — no raw token in any surfaced field", async () => {
     const f = await runClientSecretsCheck(dir);
     const blob = JSON.stringify(at(f, "dist/dangerous.js"));
-    for (const raw of [SERVICE_JWT, SK_LIVE, OPENAI_KEY, AWS_KEY, GH_TOKEN, SLACK_TOKEN, BARE_AIZA]) {
+    for (const raw of [SERVICE_JWT, SB_SECRET, SK_LIVE, OPENAI_KEY, AWS_KEY, GH_TOKEN, SLACK_TOKEN, BARE_AIZA]) {
       expect(blob).not.toContain(raw);
     }
     expect(blob).not.toContain("BEGIN PRIVATE KEY-----\nMII"); // PEM body never echoed
+  }, 60000);
+
+  test("modern Supabase sb_secret_ in a >4MB chunk gets its dedicated critical finding", async () => {
+    const findings = await runClientSecretsCheck(dir);
+    const dedicated = at(findings, "dist/dangerous.js").filter(
+      (finding) => finding.rule_id === "ci-ai-supabase-secret-key-client",
+    );
+    expect(dedicated).toHaveLength(1);
+    expect(dedicated[0]?.severity).toBe("critical");
+    expect(JSON.stringify(dedicated)).not.toContain(SB_SECRET);
   }, 60000);
 
   test("a kept oversized-build finding survives CG-31 build_output routing (codeinspectus-ai)", async () => {

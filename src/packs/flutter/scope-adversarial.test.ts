@@ -158,7 +158,9 @@ describe("scope-aware Supabase privileged-key flow", () => {
       final selected = usePublic ? anonKey : serviceRoleKey;
       await Supabase.initialize(
         url: projectUrl,
-        anonKey: useOther ? 'sb_publishable_publicvalue' : 'sb_secret_privatevalue',
+        anonKey: useOther
+          ? 'sb_publishable_A1b2C3d4E5f6G7h8I9j0K1_mN2pQ3rS'
+          : 'sb_secret_A1b2C3d4E5f6G7h8I9j0K1_mN2pQ3rS',
       );
       final client = SupabaseClient(projectUrl, selected);
     `));

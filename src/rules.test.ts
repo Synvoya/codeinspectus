@@ -34,8 +34,8 @@ describe("listRules native pack inventory", () => {
     expect(result.native_packs).toEqual([
       expect.objectContaining({
         id: "javascript-typescript",
-        analyzer_count: 10,
-        rule_count: 24,
+        analyzer_count: 12,
+        rule_count: 29,
       }),
       expect.objectContaining({
         id: "flutter",
@@ -140,7 +140,7 @@ describe("listRules native pack inventory", () => {
     expect(result.native_packs[1]?.languages).toContain("dart");
     expect(result.native_packs[1]?.frameworks).toContain("flutter");
     expect(result.native_packs[1]?.limitations.join(" ")).toMatch(/source-ordered|does not claim complete/i);
-    expect(result.custom_rule_count).toBe(88);
+    expect(result.custom_rule_count).toBe(94);
     expect(result.engines.some((engine) => engine.engine === "codeinspectus-pub" && engine.available)).toBe(true);
     expect(result.advisory_databases).toEqual([
       expect.objectContaining({
@@ -152,8 +152,8 @@ describe("listRules native pack inventory", () => {
         license: "CC-BY-4.0",
       }),
     ]);
-    expect(nativeRules).toHaveLength(67);
-    expect(nativeRules.filter((rule) => rule.pack_id === "javascript-typescript")).toHaveLength(24);
+    expect(nativeRules).toHaveLength(72);
+    expect(nativeRules.filter((rule) => rule.pack_id === "javascript-typescript")).toHaveLength(29);
     expect(nativeRules.filter((rule) => rule.pack_id === "flutter")).toHaveLength(6);
     expect(nativeRules.filter((rule) => rule.pack_id === "android")).toHaveLength(4);
     expect(nativeRules.filter((rule) => rule.pack_id === "ios")).toHaveLength(4);
@@ -169,7 +169,7 @@ describe("listRules native pack inventory", () => {
     expect(nativeRules.filter((rule) => rule.pack_id === "ruby-ai")).toHaveLength(1);
     expect(nativeRules.filter((rule) => rule.pack_id === "firebase")).toHaveLength(3);
     expect(nativeRules.filter((rule) => rule.pack_id === "github-actions")).toHaveLength(2);
-    expect(externalRules).toHaveLength(21);
+    expect(externalRules).toHaveLength(22);
     expect(externalRules.every((rule) => !("pack_id" in rule))).toBe(true);
   });
 
@@ -180,9 +180,9 @@ describe("listRules native pack inventory", () => {
       listRules({ engine: "gitleaks" }),
     ]);
 
-    expect(native.custom_rule_count).toBe(67);
+    expect(native.custom_rule_count).toBe(72);
     expect(opengrep.custom_rule_count).toBe(18);
-    expect(gitleaks.custom_rule_count).toBe(3);
+    expect(gitleaks.custom_rule_count).toBe(4);
     expect(native.native_packs).toEqual(opengrep.native_packs);
     expect(opengrep.native_packs).toEqual(gitleaks.native_packs);
   });

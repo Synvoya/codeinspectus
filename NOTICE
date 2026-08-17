@@ -1,0 +1,9 @@
+CodeInspectus
+Copyright 2026 Synvoya
+
+This product includes software developed by Synvoya.
+
+CodeInspectus interoperates with separately licensed third-party security
+engines. Those engines are downloaded from their upstream release sources and
+are not included in the CodeInspectus npm package. See THIRD-PARTY-NOTICES.md
+for engine and runtime-dependency attribution.

@@ -18,7 +18,7 @@ artifacts were changed by this audit._
 ## What the claim is, and what "derived" means
 
 - **The claim under test:** all 19 `detection-db/opengrep-rules/security-baseline/*` rules are
-  CodeInspectus-original, MIT, and **not copied or derived from** `opengrep/opengrep-rules`
+  CodeInspectus-original, Apache-2.0 from CodeInspectus 2.5.0, and **not copied or derived from** `opengrep/opengrep-rules`
   (LGPL-2.1 + Commons Clause) or `semgrep/semgrep-rules` (Semgrep Rules License v1.0).
 - **Why it matters:** bundling either restricted corpus's *expression* would block a
   paid/hosted tier. The legally-load-bearing question is **copyright** (did CI copy
@@ -128,8 +128,8 @@ All on `semgrep/semgrep-rules@develop` (paths identical on `opengrep/opengrep-ru
 **The copyright-relevant claim holds: I found NO evidence of copied protectable expression
 from `semgrep/semgrep-rules` or `opengrep/opengrep-rules`.** Every resemblance is explained by
 canonical-idiom convergence, and CI's syntactic style is materially different from the
-registry's taint-mode rules. On the evidence, the 19 rules are clean to bundle and sell under
-MIT.
+registry's taint-mode rules. On the evidence, the rules are clean to distribute under the
+project's Apache-2.0 license from CodeInspectus 2.5.0.
 
 **Two caveats, stated honestly:**
 1. **Two rules (`dom-xss-innerhtml`, `jwt-alg-none`) have high enough structural overlap** with

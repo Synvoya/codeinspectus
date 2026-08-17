@@ -83,6 +83,67 @@ interface StringOpening {
   openingLength: number;
 }
 
+interface PythonSyntaxErrorRange {
+  from: number;
+  to: number;
+}
+
+function syntaxErrors(source: string): PythonSyntaxErrorRange[] {
+  const errors: PythonSyntaxErrorRange[] = [];
+  const cursor = pythonSyntaxParser.parse(source).cursor();
+  let finished = false;
+  while (!finished) {
+    if (cursor.type.isError) errors.push({ from: cursor.from, to: cursor.to });
+    if (cursor.firstChild()) continue;
+    while (!cursor.nextSibling()) {
+      if (!cursor.parent()) {
+        finished = true;
+        break;
+      }
+    }
+  }
+  return errors;
+}
+
+/**
+ * @lezer/python 1.1.19 rejects two valid forms used by current real projects: a
+ * bare `yield` and a starred tuple target in a `for` clause or comprehension. Retry the syntax gate
+ * only when every error is exactly one of those shapes. Replacements preserve byte
+ * offsets so format-string CST ranges still align to the original source.
+ */
+function compatibleSyntaxGateSource(
+  source: string,
+  errors: readonly PythonSyntaxErrorRange[],
+): string | undefined {
+  if (!errors.length) return source;
+  const chars = source.split("");
+  let changed = false;
+  for (const error of errors) {
+    const lineStart = source.lastIndexOf("\n", Math.max(0, error.from - 1)) + 1;
+    const nextNewline = source.indexOf("\n", error.from);
+    const lineEnd = nextNewline < 0 ? source.length : nextNewline;
+    const line = source.slice(lineStart, lineEnd);
+    const bareYield = line.match(/^(\s*)yield\s*(?:#.*)?$/);
+    if (error.from === lineEnd && error.to === lineEnd && bareYield) {
+      const keyword = lineStart + bareYield[1]!.length;
+      chars.splice(keyword, 5, ..."pass ");
+      changed = true;
+      continue;
+    }
+    if (error.to === error.from + 1 && source[error.from] === "*") {
+      const before = source.slice(lineStart, error.from);
+      const after = source.slice(error.from + 1, lineEnd);
+      if (/\bfor\s+[A-Za-z_]\w*\s*,\s*$/.test(before) && /^\s*[A-Za-z_]\w*\s+in\b/.test(after)) {
+        chars[error.from] = " ";
+        changed = true;
+        continue;
+      }
+    }
+    return undefined;
+  }
+  return changed ? chars.join("") : undefined;
+}
+
 function stringOpening(source: string, index: number): StringOpening | undefined {
   const direct = source[index];
   if (direct === "'" || direct === '"') {
@@ -169,7 +230,9 @@ export function parsePythonSource(path: string, source: string): PythonDocument 
   // PEP 701 nested same-delimiter strings. The bounded lexer keeps each validated
   // range opaque, so replacement-field text can never become executable tokens.
   try {
-    const cursor = pythonSyntaxParser.parse(source).cursor();
+    const initialErrors = syntaxErrors(source);
+    const compatibleSource = compatibleSyntaxGateSource(source, initialErrors);
+    const cursor = pythonSyntaxParser.parse(compatibleSource ?? source).cursor();
     let nodes = 0;
     let depth = 0;
     let finished = false;
@@ -193,6 +256,7 @@ export function parsePythonSource(path: string, source: string): PythonDocument 
         depth--;
       }
     }
+    if (initialErrors.length && compatibleSource === undefined) syntaxError = true;
   } catch {
     syntaxError = true;
   }

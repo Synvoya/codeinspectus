@@ -4,7 +4,7 @@ import type { NativeDetectorPack } from "./types.js";
 /** First-party Flutter/Dart source-security pack; no target code or external scanner executes. */
 export const flutterPack: NativeDetectorPack = {
   id: "flutter",
-  version: "1.0.0",
+  version: "1.1.0",
   scannerKind: "ai",
   languages: ["dart"],
   frameworks: ["flutter"],

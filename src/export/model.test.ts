@@ -57,6 +57,22 @@ describe("V2 aggregate coverage", () => {
     expect(result.evidence).toContainEqual(expect.objectContaining({ category: "bounded_input", state: "partial" }));
   });
 
+  test("a native pack with skipped-input notes forces aggregate partial", () => {
+    const packs = scan().pack_coverage;
+    const result = assessAggregateCoverage(scan({
+      pack_coverage: packs.map((pack, index) => index === 0
+        ? { ...pack, state: "partial", note: "Skipped parser-invalid source src/app.py." }
+        : pack),
+    }));
+
+    expect(result.aggregate).toBe("partial");
+    expect(result.evidence).toContainEqual(expect.objectContaining({
+      component: expect.stringMatching(/^pack:/),
+      state: "partial",
+      detail: "Skipped parser-invalid source src/app.py.",
+    }));
+  });
+
   test("a legacy stored scan without the canonical marker is unknown", () => {
     const legacy = scan();
     delete legacy.canonical_findings;

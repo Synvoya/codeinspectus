@@ -37,6 +37,22 @@ describe("bounded Python project loader", () => {
     expect(loaded.files.map((file) => file.path)).toEqual(["src/app.py"]);
   });
 
+  test("loads valid bare-yield and starred-target source without a parser limitation", async () => {
+    const directory = await project();
+    await writeFile(join(directory, "timer.py"), `
+def timer():
+    yield
+
+for code, *parameters in control_codes:
+    consume(code, parameters)
+`, "utf8");
+
+    const loaded = await loadPythonProject(directory);
+
+    expect(loaded.files.map((file) => file.path)).toEqual(["timer.py"]);
+    expect(loaded.limitations ?? []).toEqual([]);
+  });
+
   test("skips unsupported and invalid source encodings", async () => {
     const directory = await project();
     await writeFile(

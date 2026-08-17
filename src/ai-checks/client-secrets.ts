@@ -14,13 +14,24 @@ import type { Finding, Severity } from "../types.js";
 import { readFile } from "node:fs/promises";
 import { BUILD_DIRS } from "../config.js";
 import { collectFiles, collectOversizedBuildFiles, lineOf, lineText } from "./walk.js";
-import { findSecret, hashSecret, SECRET_PATTERNS } from "../redact.js";
+import {
+  hashSecret,
+  SECRET_PATTERNS,
+  SUPABASE_SECRET_KEY_RE,
+} from "../redact.js";
 import { makeAiFinding } from "./finding.js";
 import { remediationForCwe } from "../remediation.js";
 
 // CG-23 B-1: §6.1's main value-decode pass caps file size for perf (skips files larger than this).
 // CG-32: a separate BOUNDED scan re-covers build chunks ABOVE this cap (the cap is NOT lifted).
 const CLIENT_SECRET_CAP_BYTES = 4 * 1024 * 1024;
+const MAX_SECRET_LOCATIONS_PER_FILE = 1024;
+const MAX_SECRET_NOTES = 24;
+
+export interface ClientSecretsAnalysis {
+  findings: Finding[];
+  notes: string[];
+}
 
 const FRONTEND_EXTS = ["tsx", "jsx", "vue", "svelte", "astro", "html"];
 const CODE_EXTS = ["ts", "tsx", "js", "jsx", "mjs", "cjs", "vue", "svelte", "astro", "html"];
@@ -76,8 +87,9 @@ function isServerContext(rel: string, content: string): boolean {
   return false;
 }
 
-export async function runClientSecretsCheck(target: string): Promise<Finding[]> {
+export async function runClientSecretsAnalysis(target: string): Promise<ClientSecretsAnalysis> {
   const findings: Finding[] = [];
+  const notes: string[] = [];
   const files = await collectFiles(target, { exts: CODE_EXTS, includeBuilt: true, maxBytes: CLIENT_SECRET_CAP_BYTES });
 
   for (const f of files) {
@@ -88,11 +100,9 @@ export async function runClientSecretsCheck(target: string): Promise<Finding[]> 
 
     // 1. Hard-coded secret values in client-reachable source / built bundles.
     if (client) {
-      const seen = new Set<string>();
-      for (const pat of SECRET_SCAN(f.content)) {
-        const key = `${pat.line}:${pat.value}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
+      const scanned = SECRET_SCAN(f.content);
+      if (scanned.truncated) notes.push(secretCandidateLimitNote(f.rel, "provider-secret"));
+      for (const pat of scanned.hits) {
         if (isSupabaseDemoJwt(pat.value)) continue; // public Supabase local-dev demo key (CG-18)
         // CG-31 (2A): a JWT whose TOP-LEVEL role is anon/authenticated/public is a Supabase
         // public key, shipped to the browser by design — suppress it here. A service_role key,
@@ -100,6 +110,11 @@ export async function runClientSecretsCheck(target: string): Promise<Finding[]> 
         // never suppress a possible real secret on ambiguity). The dedicated service_role arm
         // below still flags real service_role keys.
         if (pat.typeName === "JSON Web Token" && isPublicRoleJwt(pat.value)) continue;
+        // Dedicated findings own privileged Supabase formats. Emitting a generic finding
+        // at the same location lets the final secret deduplicator hide the more actionable
+        // rule/message/remediation.
+        if (pat.typeName === "Supabase secret API key") continue;
+        if (pat.typeName === "JSON Web Token" && isServiceRoleJwt(pat.value)) continue;
         // CG-31 (2B): a Google apiKey (AIza) inside a Firebase web-config context is public.
         if (pat.typeName === "Google API key" && isFirebaseConfigContext(f.content, pat.value)) continue;
         findings.push(
@@ -107,7 +122,7 @@ export async function runClientSecretsCheck(target: string): Promise<Finding[]> 
             file: f.rel,
             typeName: pat.typeName,
             line: pat.line,
-            snippet: lineText(f.content, pat.line),
+            snippet: boundedSnippet(f.content, pat.index, pat.value.length),
             value: pat.value,
             built,
             live: pat.live,
@@ -189,18 +204,46 @@ export async function runClientSecretsCheck(target: string): Promise<Finding[]> 
 
     // 3. Supabase service_role key VALUE present in client-reachable code (bypasses RLS).
     if (client) {
-      for (const hit of findServiceRoleJwts(f.content)) {
+      const serviceRole = findServiceRoleJwts(f.content);
+      if (serviceRole.truncated) notes.push(secretCandidateLimitNote(f.rel, "service-role JWT"));
+      for (const hit of serviceRole.hits) {
         findings.push(
-          makeServiceRoleFinding({ file: f.rel, line: hit.line, snippet: lineText(f.content, hit.line), value: hit.value }),
+          makeServiceRoleFinding({
+            file: f.rel,
+            line: hit.line,
+            snippet: boundedSnippet(f.content, hit.index, hit.value.length),
+            value: hit.value,
+          }),
+        );
+      }
+
+      // 4. Modern Supabase sb_secret_ key present in client-reachable code. These opaque
+      // keys replace legacy service_role JWTs and carry the same elevated/BYPASSRLS access.
+      const opaque = findSupabaseSecretKeys(f.content);
+      if (opaque.truncated) notes.push(secretCandidateLimitNote(f.rel, "Supabase secret key"));
+      for (const hit of opaque.hits) {
+        findings.push(
+          makeSupabaseSecretKeyFinding({
+            file: f.rel,
+            line: hit.line,
+            snippet: boundedSnippet(f.content, hit.index, hit.value.length),
+            value: hit.value,
+          }),
         );
       }
     }
   }
 
   // CG-32: bounded, cap-INDEPENDENT scan of build chunks ABOVE the §6.1 size cap (the cap stays).
-  findings.push(...(await scanOversizedBuildChunks(target)));
+  const oversized = await scanOversizedBuildChunks(target);
+  findings.push(...oversized.findings);
+  notes.push(...oversized.notes);
 
-  return findings;
+  return { findings, notes: boundedSecretNotes(notes) };
+}
+
+export async function runClientSecretsCheck(target: string): Promise<Finding[]> {
+  return (await runClientSecretsAnalysis(target)).findings;
 }
 
 // ── §6.1 finding builders (one source of truth for the main pass + the CG-32 oversized scan) ──
@@ -269,6 +312,46 @@ function makeServiceRoleFinding(args: { file: string; line: number; snippet: str
   });
 }
 
+/** A modern Supabase sb_secret_ key present in client-reachable code (bypasses RLS). */
+function makeSupabaseSecretKeyFinding(args: {
+  file: string;
+  line: number;
+  snippet: string;
+  value: string;
+}): Finding {
+  const { file, line, snippet, value } = args;
+  return makeAiFinding({
+    ruleId: "ci-ai-supabase-secret-key-client",
+    title: "Supabase secret API key referenced in client-reachable code",
+    severity: "critical",
+    cwe: ["CWE-798", "CWE-285"],
+    owasp_web: ["A01:2021", "A07:2021"],
+    owasp_llm: ["LLM02:2025"],
+    file,
+    startLine: line,
+    snippet,
+    message:
+      "A modern Supabase sb_secret_ API key appears in client-reachable code. Secret keys use the service_role database role, bypass Row Level Security, and provide full data access. Browser-side rejection is not protection because an attacker can reuse the extracted key outside a browser.",
+    remediation: {
+      summary:
+        "Never expose a Supabase secret key to a client. Use an anon or sb_publishable_ key on clients and keep sb_secret_ keys only in trusted backends.",
+      steps: [
+        "Replace the client-side key with the project's anon or sb_publishable_ key.",
+        "Move privileged operations behind a server endpoint or Edge Function that authenticates and authorizes every request.",
+        "Delete or rotate the exposed sb_secret_ key immediately, then verify no source, bundle, history, or log still contains it.",
+      ],
+      references: [
+        "CWE-285",
+        "CWE-798",
+        "https://supabase.com/docs/guides/getting-started/api-keys",
+      ],
+    },
+    confidence: "high",
+    isSecret: true,
+    secretValueHash: hashSecret(value),
+  });
+}
+
 // ── CG-32: bounded cap-independent build-chunk scan ───────────────────────────────────────────
 // §6.1's main pass caps file size (CLIENT_SECRET_CAP_BYTES) for perf, so a structured secret inside
 // a >4MB minified BUILD chunk was invisible: the main pass skips it (cap) and CG-31 routing drops
@@ -294,54 +377,65 @@ function boundedSnippet(content: string, index: number, length: number): string 
 
 /** Findings for ONE oversized build chunk: arm 1 (every recognizable secret value, with §6.1's
  * public-key suppression) + arm 3 (service_role). Build output ⇒ critical, shipped-to-browser. */
-function boundedBundleSecretFindings(rel: string, content: string): Finding[] {
+function boundedBundleSecretFindings(rel: string, content: string): ClientSecretsAnalysis {
   const findings: Finding[] = [];
-  const seen = new Set<string>();
-  for (const p of SECRET_PATTERNS) {
-    p.re.lastIndex = 0;
-    for (const m of content.matchAll(p.re)) {
-      const value = m[0];
-      const idx = m.index ?? 0;
-      const key = `${idx}:${value}`;
-      if (seen.has(key)) continue; // a value matched by two patterns (e.g. sk-ant) counts once
-      seen.add(key);
-      if (isSupabaseDemoJwt(value)) continue; // published local-dev demo key
-      if (p.name === "JSON Web Token" && isPublicRoleJwt(value)) continue; // anon/authenticated/public
-      if (p.name === "Google API key" && isFirebaseConfigContext(content, value)) continue; // Firebase web key
-      findings.push(
-        makeSecretValueFinding({
-          file: rel,
-          typeName: p.name,
-          line: lineOf(content, idx),
-          snippet: boundedSnippet(content, idx, value.length),
-          value,
-          built: true,
-          live: Boolean(p.live),
-        }),
-      );
-    }
+  const notes: string[] = [];
+  const generic = SECRET_SCAN(content);
+  if (generic.truncated) notes.push(secretCandidateLimitNote(rel, "provider-secret"));
+  for (const hit of generic.hits) {
+    if (isSupabaseDemoJwt(hit.value)) continue; // published local-dev demo key
+    if (hit.typeName === "JSON Web Token" && isPublicRoleJwt(hit.value)) continue; // anon/authenticated/public
+    if (hit.typeName === "Supabase secret API key") continue; // dedicated arm below
+    if (hit.typeName === "JSON Web Token" && isServiceRoleJwt(hit.value)) continue; // dedicated arm below
+    if (hit.typeName === "Google API key" && isFirebaseConfigContext(content, hit.value)) continue; // Firebase web key
+    findings.push(
+      makeSecretValueFinding({
+        file: rel,
+        typeName: hit.typeName,
+        line: hit.line,
+        snippet: boundedSnippet(content, hit.index, hit.value.length),
+        value: hit.value,
+        built: true,
+        live: hit.live,
+      }),
+    );
   }
-  for (const hit of findServiceRoleJwts(content)) {
+  const serviceRole = findServiceRoleJwts(content);
+  if (serviceRole.truncated) notes.push(secretCandidateLimitNote(rel, "service-role JWT"));
+  for (const hit of serviceRole.hits) {
     findings.push(
       makeServiceRoleFinding({
         file: rel,
         line: hit.line,
-        snippet: boundedSnippet(content, content.indexOf(hit.value), hit.value.length),
+        snippet: boundedSnippet(content, hit.index, hit.value.length),
         value: hit.value,
       }),
     );
   }
-  return findings;
+  const opaque = findSupabaseSecretKeys(content);
+  if (opaque.truncated) notes.push(secretCandidateLimitNote(rel, "Supabase secret key"));
+  for (const hit of opaque.hits) {
+    findings.push(
+      makeSupabaseSecretKeyFinding({
+        file: rel,
+        line: hit.line,
+        snippet: boundedSnippet(content, hit.index, hit.value.length),
+        value: hit.value,
+      }),
+    );
+  }
+  return { findings, notes };
 }
 
 /** Run the bounded scan over every build chunk above the §6.1 cap (read one at a time). */
-async function scanOversizedBuildChunks(target: string): Promise<Finding[]> {
+async function scanOversizedBuildChunks(target: string): Promise<ClientSecretsAnalysis> {
   const oversized = await collectOversizedBuildFiles(target, {
     exts: CODE_EXTS,
     minBytes: CLIENT_SECRET_CAP_BYTES,
     maxBytes: BOUNDED_SCAN_CEILING_BYTES,
   });
   const findings: Finding[] = [];
+  const notes: string[] = [];
   for (const file of oversized) {
     let content: string;
     try {
@@ -349,9 +443,11 @@ async function scanOversizedBuildChunks(target: string): Promise<Finding[]> {
     } catch {
       continue; // unreadable/binary — skip
     }
-    findings.push(...boundedBundleSecretFindings(file.rel, content));
+    const scanned = boundedBundleSecretFindings(file.rel, content);
+    findings.push(...scanned.findings);
+    notes.push(...scanned.notes);
   }
-  return findings;
+  return { findings, notes };
 }
 
 interface SecretHit {
@@ -359,17 +455,75 @@ interface SecretHit {
   typeName: string;
   live: boolean;
   line: number;
+  index: number;
 }
 
-/** All recognizable secret occurrences across the content (per line). */
-function SECRET_SCAN(content: string): SecretHit[] {
+interface BoundedSecretHits {
+  hits: Array<{ value: string; line: number; index: number }>;
+  truncated: boolean;
+}
+
+function lineLookup(content: string): (index: number) => number {
+  let line = 1;
+  let newline = content.indexOf("\n");
+  return (index: number) => {
+    while (newline >= 0 && newline < index) {
+      line++;
+      newline = content.indexOf("\n", newline + 1);
+    }
+    return line;
+  };
+}
+
+function secretCandidateLimitNote(file: string, kind: string): string {
+  return `${file}: ${kind} analysis reached the ${MAX_SECRET_LOCATIONS_PER_FILE}-location per-file limit; additional locations were not evaluated.`;
+}
+
+function boundedSecretNotes(input: readonly string[]): string[] {
+  const unique = [...new Set(input)].sort();
+  if (unique.length <= MAX_SECRET_NOTES) return unique;
+  return [
+    ...unique.slice(0, MAX_SECRET_NOTES - 1),
+    `${unique.length - MAX_SECRET_NOTES + 1} additional client-secret limitations omitted.`,
+  ];
+}
+
+/** All recognizable secret occurrences across the content, including multiple providers
+ * on one minified/source line. Identical same-line values collapse, while the same value
+ * on different lines retains every remediation location up to an explicit bounded limit. */
+function SECRET_SCAN(content: string): { hits: SecretHit[]; truncated: boolean } {
   const hits: SecretHit[] = [];
-  const lines = content.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const s = findSecret(lines[i] ?? "");
-    if (s) hits.push({ value: s.value, typeName: s.typeName, live: s.live, line: i + 1 });
+  const seen = new Set<string>();
+  let truncated = false;
+  for (const pattern of SECRET_PATTERNS) {
+    if (pattern.name === "Supabase secret API key") continue; // owned by the dedicated arm
+    pattern.re.lastIndex = 0;
+    const lineAt = lineLookup(content);
+    for (const match of content.matchAll(pattern.re)) {
+      const index = match.index ?? 0;
+      const value = match[0];
+      const line = lineAt(index);
+      if (isSupabaseDemoJwt(value)) continue;
+      if (pattern.name === "JSON Web Token" && isPublicRoleJwt(value)) continue;
+      if (pattern.name === "JSON Web Token" && isServiceRoleJwt(value)) continue;
+      const key = `${line}:${value}`;
+      if (seen.has(key)) continue;
+      if (hits.length >= MAX_SECRET_LOCATIONS_PER_FILE) {
+        truncated = true;
+        break;
+      }
+      seen.add(key);
+      hits.push({
+        value,
+        typeName: pattern.name,
+        live: Boolean(pattern.live),
+        line,
+        index,
+      });
+    }
+    if (truncated) break;
   }
-  return hits;
+  return { hits, truncated };
 }
 
 /** The public Supabase local-dev demo key (payload iss: supabase-demo) is published and
@@ -453,12 +607,49 @@ function isFirebaseConfigContext(content: string, value: string): boolean {
  * dogfood FP where "service_role" appears in library source / comments / strings (CG-18); keying
  * on the top-level role avoids the nested-app_metadata FP (CG-31).
  */
-function findServiceRoleJwts(content: string): { value: string; line: number }[] {
-  const hits: { value: string; line: number }[] = [];
+function findServiceRoleJwts(content: string): BoundedSecretHits {
+  const hits: Array<{ value: string; line: number; index: number }> = [];
+  const seen = new Set<string>();
+  let truncated = false;
+  const lineAt = lineLookup(content);
   for (const m of content.matchAll(JWT_RE)) {
     if (!isServiceRoleJwt(m[0])) continue;
     if (isSupabaseDemoJwt(m[0])) continue; // public local-dev demo key
-    hits.push({ value: m[0], line: lineOf(content, m.index ?? 0) });
+    const index = m.index ?? 0;
+    const line = lineAt(index);
+    const key = `${line}:${m[0]}`;
+    if (seen.has(key)) continue;
+    if (hits.length >= MAX_SECRET_LOCATIONS_PER_FILE) {
+      truncated = true;
+      break;
+    }
+    seen.add(key);
+    hits.push({ value: m[0], line, index });
   }
-  return hits;
+  return { hits, truncated };
+}
+
+/**
+ * Modern opaque Supabase secret keys. Reuses the redactor's exact expression so a newly
+ * detected value can never be surfaced raw in a finding snippet.
+ */
+function findSupabaseSecretKeys(content: string): BoundedSecretHits {
+  const hits: Array<{ value: string; line: number; index: number }> = [];
+  const seen = new Set<string>();
+  let truncated = false;
+  const lineAt = lineLookup(content);
+  SUPABASE_SECRET_KEY_RE.lastIndex = 0;
+  for (const match of content.matchAll(SUPABASE_SECRET_KEY_RE)) {
+    const index = match.index ?? 0;
+    const line = lineAt(index);
+    const key = `${line}:${match[0]}`;
+    if (seen.has(key)) continue;
+    if (hits.length >= MAX_SECRET_LOCATIONS_PER_FILE) {
+      truncated = true;
+      break;
+    }
+    seen.add(key);
+    hits.push({ value: match[0], line, index });
+  }
+  return { hits, truncated };
 }

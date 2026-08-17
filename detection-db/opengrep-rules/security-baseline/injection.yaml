@@ -1,4 +1,4 @@
-# CodeInspectus original MIT security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
+# CodeInspectus original Apache-2.0 security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
 # Injection classes (OWASP A03): SQLi, command injection, code eval, NoSQL, path traversal.
 rules:
   - id: ci-baseline-sql-injection-string-build

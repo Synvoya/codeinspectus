@@ -1,4 +1,4 @@
-# CodeInspectus original MIT security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
+# CodeInspectus original Apache-2.0 security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
 # Security misconfiguration (A05) + identification/auth failures (A07).
 rules:
   - id: ci-baseline-cors-wildcard-credentials

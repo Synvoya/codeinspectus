@@ -1,0 +1,2 @@
+[functions.dynamic]
+verify_jwt = "${VERIFY_JWT}"

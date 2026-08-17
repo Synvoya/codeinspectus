@@ -51,8 +51,8 @@ describe("sealed scan bundles", () => {
     const verified = await verifySealedBundle(directory);
     expect(verified.manifest).toMatchObject({
       schema_version: "1.0.0", scan_id: scan().scan_id,
-      detection_database: { version: "1.15.0", date: "2026-08-02" },
-      native_engine: { name: "codeinspectus-ai", version: "5.15.0" },
+      detection_database: { version: "1.19.0", date: "2026-08-13" },
+      native_engine: { name: "codeinspectus-ai", version: "5.19.0" },
       artifacts: expect.arrayContaining([expect.objectContaining({ path: "artifacts/scan-record.json", sha256: expect.stringMatching(/^[0-9a-f]{64}$/) })]),
     });
     expect(verified.manifest.commodity_engines.every((engine) => engine.integrity_state === "verified" && /^[0-9a-f]{64}$/.test(engine.verified_sha256!))).toBe(true);

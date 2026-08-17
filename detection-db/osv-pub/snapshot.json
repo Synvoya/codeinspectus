@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "snapshot": {
     "ecosystem": "Pub",
-    "snapshot_version": "2026-07-26.28cf740b203f",
-    "checked_at": "2026-07-26T14:38:20.409Z",
+    "snapshot_version": "2026-08-13.28cf740b203f",
+    "checked_at": "2026-08-13T03:28:38.176Z",
     "latest_record_modified": "2026-07-08T06:53:12.190101301Z",
     "source_index_url": "https://storage.googleapis.com/osv-vulnerabilities/Pub/modified_id.csv",
     "source_index_sha256": "sha256:28cf740b203f097a1707dbe015e73ba76e78653c02d2b5d89af98992a3bd061a",

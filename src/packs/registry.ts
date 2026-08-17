@@ -139,7 +139,7 @@ function coverageForExecution(
     ))].sort();
     const state: DetectorPackCoverage["state"] =
       analyzersRan === analyzersRegistered && analyzersRegistered > 0
-        ? "ran"
+        ? executionNotes.length ? "partial" : "ran"
         : analyzersRan > 0
           ? "partial"
           : "unavailable";

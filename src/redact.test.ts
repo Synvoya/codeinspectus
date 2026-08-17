@@ -13,7 +13,11 @@
 
 import { describe, test, expect } from "vitest";
 import { JWT_RE } from "./ai-checks/client-secrets.js";
-import { redactSnippet, redactSecretText } from "./redact.js";
+import {
+  redactSnippet,
+  redactSecretText,
+  SUPABASE_SECRET_KEY_RE,
+} from "./redact.js";
 
 /** True if the JWT detector matches the token (reset /g lastIndex first). */
 function detects(token: string): boolean {
@@ -55,6 +59,36 @@ describe("JWT detector ⊆ redactor (G7 redaction invariant)", () => {
   });
 });
 
+describe("modern Supabase secret-key detector ⊆ redactor", () => {
+  const secret = "sb_secret_A1b2C3d4E5f6G7h8I9j0K1_mN2pQ3rS";
+
+  test("the shared detector recognizes and redacts a complete secret key", () => {
+    SUPABASE_SECRET_KEY_RE.lastIndex = 0;
+    expect(SUPABASE_SECRET_KEY_RE.test(secret)).toBe(true);
+    expect(redactSnippet(`const key = "${secret}";`)).not.toContain(secret);
+  });
+
+  test("publishable keys, docs placeholders, and short examples remain untouched", () => {
+    for (const value of [
+      "sb_publishable_A1b2C3d4E5f6G7h8I9j0K1_mN2pQ3rS",
+      "sb_secret_...",
+      "sb_secret_testvalue123",
+      "sb_secret_A1b2C3d4E5f6G7h8I9j0K1_mN2pQ3rS4",
+    ]) {
+      SUPABASE_SECRET_KEY_RE.lastIndex = 0;
+      expect(SUPABASE_SECRET_KEY_RE.test(value)).toBe(false);
+      expect(redactSnippet(value)).toBe(value);
+    }
+  });
+
+  test("does not match the key as a prefix embedded in a longer URL-safe token", () => {
+    for (const value of [`x${secret}`, `${secret}x`]) {
+      SUPABASE_SECRET_KEY_RE.lastIndex = 0;
+      expect(SUPABASE_SECRET_KEY_RE.test(value)).toBe(false);
+    }
+  });
+});
+
 // CG-24 A3-2: a private-key block must be redacted through END, not just the header.
 describe("PEM private-key block redaction (CG-24 A3-2)", () => {
   const PEM_BODY = "MIIEowIBAAKCAQEA1Sf4kQv8ttJqExampleBodyLine0123456789abcdefXYZ==";
@@ -72,7 +106,7 @@ describe("PEM private-key block redaction (CG-24 A3-2)", () => {
   });
 });
 
-// CG-24 A3-1: value-agnostic scrub — a secret whose shape is NOT in the 11 known
+// CG-24 A3-1: value-agnostic scrub — a secret whose shape is NOT in the known
 // patterns must still be removed (the field is dropped rather than echoed raw).
 describe("redactSecretText: value-agnostic scrub (CG-24 A3-1)", () => {
   const NON_ALLOWLISTED = [

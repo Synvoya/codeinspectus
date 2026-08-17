@@ -1,4 +1,4 @@
-# CodeInspectus original MIT security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
+# CodeInspectus original Apache-2.0 security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
 # Server-side request forgery (OWASP A10).
 rules:
   - id: ci-baseline-ssrf-request-from-input

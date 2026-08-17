@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "deploy-edge": "supabase functions deploy deploy-override --no-verify-jwt"
+  }
+}

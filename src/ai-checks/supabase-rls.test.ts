@@ -7,48 +7,41 @@
  * skipped). Dual-direction lock against the committed corpus.
  */
 
-import { describe, test, expect } from "vitest";
+import { afterEach, describe, test, expect } from "vitest";
 import { join } from "node:path";
-import { runSupabaseRlsCheck } from "./supabase-rls.js";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { runSupabaseRlsAnalysis, runSupabaseRlsCheck } from "./supabase-rls.js";
 import { runAiChecks } from "./index.js";
 import type { Finding } from "../types.js";
 import type { SourceFile } from "./walk.js";
 import { buildRlsAnalysisUnits } from "./supabase-migration-state.js";
 
 const CORPUS = join(process.cwd(), "fixtures", "secret-rls-corpus");
-const EDGE_CORPUS = join(process.cwd(), "fixtures", "supabase-edge-auth-corpus");
 const STORAGE = "ci-ai-storage-rls-public";
 const USING_TRUE = "ci-ai-rls-using-true";
 const INVERTED_AUTH = "ci-ai-rls-inverted-auth";
 const MISSING = "ci-ai-rls-missing";
-const EDGE_NO_AUTH = "ci-ai-edge-fn-no-auth";
 
 const atFile = (findings: Finding[], suffix: string) =>
   findings.filter((f) => f.location.file.endsWith(suffix));
 const sourceFile = (rel: string): SourceFile => ({ abs: `/${rel}`, rel, content: "", ext: "sql" });
+const temporaryRoots: string[] = [];
 
-describe("Supabase Edge Function authentication", () => {
-  test("runs independently of SQL/RLS signals and keeps authenticated/non-edge files silent", async () => {
-    const findings = await runSupabaseRlsCheck(EDGE_CORPUS);
-    const edgeFindings = findings.filter((finding) => finding.rule_id === EDGE_NO_AUTH);
-
-    expect(edgeFindings).toHaveLength(1);
-    expect(edgeFindings[0]).toMatchObject({
-      severity: "high",
-      confidence: "medium",
-      location: { file: "tp/supabase/functions/public-handler/index.ts" },
-    });
-    expect(edgeFindings.every((finding) => !finding.location.file.startsWith("fp/"))).toBe(true);
-  });
-
-  test("is wired through the native runner with edge-auth provenance", async () => {
-    const result = await runAiChecks(EDGE_CORPUS);
-    const finding = result.findings.find((candidate) => candidate.rule_id === EDGE_NO_AUTH);
-
-    expect(finding?.producer_components).toContain("ai:supabase-edge-auth");
-    expect(result.componentSignatures["ai:supabase-edge-auth"]).toMatch(/^sha256:[a-f0-9]{64}$/);
-  });
+afterEach(async () => {
+  await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
+
+async function temporarySupabaseProject(files: Record<string, string>): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "codeinspectus-rls-"));
+  temporaryRoots.push(root);
+  for (const [relativePath, content] of Object.entries(files)) {
+    const path = join(root, relativePath);
+    await mkdir(path.slice(0, path.lastIndexOf("/")), { recursive: true });
+    await writeFile(path, content, "utf8");
+  }
+  return root;
+}
 
 describe("B-12 storage.objects RLS (ci-ai-storage-rls-public)", () => {
   test("public storage.objects policies fire; owner-scoped + system-table policies do not", async () => {
@@ -113,13 +106,10 @@ describe("ordered Supabase migration state", () => {
       rule_id: MISSING,
       severity: "high",
       fingerprint: "sha256:ad7815dc2fa42551509600e36db7b3f8c716a8b54efe6c335115520593690429",
-      title: "Table 'audit_entries' has Row Level Security disabled in final migration state",
+      title: "Repository migration explicitly disables Row Level Security on public table 'audit_entries'",
     });
     expect(disabledFinding?.message).toContain("ALTER TABLE ... DISABLE ROW LEVEL SECURITY");
-    expect(disabledFinding?.message).toContain(
-      "state/disable-later/supabase/migrations/0002_disable_rls.sql:1",
-    );
-    expect(disabledFinding?.message).toContain("explicitly disables RLS");
+    expect(disabledFinding?.message).toContain("does not prove deployed API reachability");
   });
 
   test("RLS-off severity stays coherent across disabled, catalog-like, and never-enabled paths", async () => {
@@ -177,6 +167,15 @@ describe("ordered Supabase migration state", () => {
     expect(active.filter((f) => f.rule_id === INVERTED_AUTH)).toHaveLength(1);
   });
 
+  test("an authenticated-role OR branch does not hide behind an ownership branch", async () => {
+    const analysis = await runSupabaseRlsAnalysis(CORPUS);
+    const active = atFile(
+      analysis.findings,
+      "state/inverted-or/supabase/migrations/0001_policy.sql",
+    );
+    expect(active.filter((finding) => finding.rule_id === INVERTED_AUTH)).toHaveLength(1);
+  });
+
   test("ALTER POLICY updates effective predicate state", async () => {
     const findings = await runSupabaseRlsCheck(CORPUS);
     const altered = findings.filter((f) =>
@@ -186,14 +185,14 @@ describe("ordered Supabase migration state", () => {
     expect(altered.filter((f) => f.rule_id === USING_TRUE)).toHaveLength(0);
   });
 
-  test("partial ALTER POLICY retains an unchanged permissive WITH CHECK clause", async () => {
+  test("an open WITH CHECK does not make UPDATE open when USING remains ownership-scoped", async () => {
     const findings = await runSupabaseRlsCheck(CORPUS);
     const partial = atFile(
       findings,
       "state/alter-policy-partial/supabase/migrations/0001_create.sql",
     );
 
-    expect(partial.filter((f) => f.rule_id === USING_TRUE)).toHaveLength(1);
+    expect(partial.filter((f) => f.rule_id === USING_TRUE)).toHaveLength(0);
   });
 
   test("DROP POLICY CASCADE removes the active policy", async () => {
@@ -253,7 +252,8 @@ describe("ordered Supabase migration state", () => {
     );
 
     expect(roles).toHaveLength(1);
-    expect(roles[0]?.location.start_line).toBe(5);
+    expect(roles[0]?.location.start_line).toBe(10);
+    expect(roles[0]?.message).toContain("anonymous and authenticated clients");
   });
 
   test("migration files use numeric-prefix order rather than lexical order", async () => {
@@ -299,8 +299,8 @@ describe("ordered Supabase migration state", () => {
     );
 
     expect(snapshot).toMatchObject({ severity: "critical", confidence: "medium" });
-    expect(snapshot?.message).toContain("If this file represents deployed state");
-    expect(snapshot?.message).toContain("effective deployment state could not be verified");
+    expect(snapshot?.message).toContain("If this file represents applied state");
+    expect(snapshot?.message).toContain("Deployed database state remains unverified");
   });
 
   test("sort ties, ambiguous names, and nested sequence boundaries are deterministic", () => {
@@ -323,10 +323,153 @@ describe("ordered Supabase migration state", () => {
       "app/migrations/z_last.sql",
     ]);
     expect(main?.ambiguouslyOrderedFiles).toEqual([
+      "app/migrations/0001_a.sql",
+      "app/migrations/0001_b.sql",
       "app/migrations/a_first.sql",
       "app/migrations/z_last.sql",
     ]);
     expect(units.map((unit) => unit.key)).toContain("sequence:app/migrations/archive");
     expect(units.map((unit) => unit.key)).toContain("snapshot:schema.sql");
+  });
+
+  test("evaluates permissive OR, restrictive AND, command phases, roles, and masked constants", async () => {
+    const analysis = await runSupabaseRlsAnalysis(CORPUS);
+    const fileFindings = atFile(
+      analysis.findings,
+      "state/effective-composition/supabase/migrations/0001_policies.sql",
+    ).filter((finding) => finding.rule_id === USING_TRUE);
+
+    const anonOnly = fileFindings.find((finding) => finding.title.includes("anon_only_open"));
+    expect(anonOnly?.message).toContain("anonymous clients");
+    expect(anonOnly?.message).not.toContain("anonymous and authenticated clients");
+    expect(fileFindings.some((finding) => finding.title.includes("restrictive_blocks"))).toBe(false);
+    expect(fileFindings.some((finding) => finding.title.includes("or_composition"))).toBe(true);
+    expect(fileFindings.some((finding) => finding.title.includes("no_permissive"))).toBe(false);
+    expect(fileFindings.some((finding) => finding.title.includes("literal_decoys"))).toBe(false);
+    expect(fileFindings.some((finding) => finding.title.includes("invalid_clause_shapes"))).toBe(false);
+    expect(fileFindings.some((finding) => finding.title.includes("default_open"))).toBe(true);
+    expect(fileFindings.some((finding) => finding.title.includes("partial_update"))).toBe(false);
+    expect(fileFindings.some((finding) => finding.title.includes("numeric_true"))).toBe(true);
+    const openUpdate = fileFindings.find((finding) => finding.title.includes("open_update"));
+    expect(openUpdate?.title).toContain("UPDATE");
+    expect(openUpdate?.message).toContain("authenticated clients");
+    expect(analysis.notes).toEqual(expect.arrayContaining([
+      expect.stringMatching(/USING is not valid for a FOR INSERT/i),
+      expect.stringMatching(/WITH CHECK is not valid for a FOR SELECT/i),
+    ]));
+  });
+
+  test("explicit DISABLE on a pre-existing public table is reported and suppresses policy findings", async () => {
+    const analysis = await runSupabaseRlsAnalysis(CORPUS);
+    const disabled = atFile(
+      analysis.findings,
+      "state/disable-preexisting/supabase/migrations/0001_disable.sql",
+    );
+
+    expect(disabled.filter((finding) => finding.rule_id === MISSING)).toHaveLength(1);
+    expect(disabled.filter((finding) => finding.rule_id === USING_TRUE)).toHaveLength(0);
+    expect(disabled[0]?.title).toContain("external_audit");
+    expect(disabled[0]?.message).toContain("hosted configuration");
+  });
+
+  test("table and policy identities transfer across RENAME and SET SCHEMA", async () => {
+    const analysis = await runSupabaseRlsAnalysis(CORPUS);
+    const moved = analysis.findings.filter((finding) =>
+      finding.location.file.includes("state/rename-and-schema/supabase/migrations/"),
+    );
+
+    expect(moved.some((finding) => finding.title.includes("renamed_private_notes"))).toBe(true);
+    expect(moved.some((finding) => finding.title.includes("internal_events"))).toBe(true);
+    expect(moved.some((finding) => finding.title.includes("moved_out"))).toBe(false);
+    expect(moved.some((finding) =>
+      finding.rule_id === MISSING && finding.title.includes("renamed_unprotected")
+    )).toBe(true);
+  });
+
+  test("CREATE TABLE IF NOT EXISTS remains unknown unless an earlier DROP proves absence", async () => {
+    const analysis = await runSupabaseRlsAnalysis(CORPUS);
+    const unknown = analysis.findings.filter((finding) =>
+      finding.location.file.includes("state/if-not-exists-unknown/"),
+    );
+    const proven = analysis.findings.filter((finding) =>
+      finding.location.file.includes("state/if-not-exists-proven/"),
+    );
+
+    expect(unknown.filter((finding) => finding.rule_id === MISSING)).toHaveLength(0);
+    expect(proven.filter((finding) => finding.rule_id === MISSING)).toHaveLength(1);
+    expect(analysis.notes).toEqual(expect.arrayContaining([
+      expect.stringMatching(/CREATE TABLE IF NOT EXISTS may refer to a pre-existing table/i),
+    ]));
+  });
+
+  test("ALTER TABLE IF EXISTS and command-invalid ALTER POLICY remain unknown", async () => {
+    const analysis = await runSupabaseRlsAnalysis(CORPUS);
+
+    expect(analysis.findings.some((finding) => finding.location.file.includes("state/if-exists-unknown/"))).toBe(false);
+    expect(analysis.findings.some((finding) => finding.location.file.includes("state/alter-policy-invalid/"))).toBe(false);
+    expect(analysis.notes).toEqual(expect.arrayContaining([
+      expect.stringMatching(/ALTER TABLE IF EXISTS does not prove the table exists/i),
+      expect.stringMatching(/ALTER POLICY uses a predicate clause that is invalid for FOR SELECT/i),
+    ]));
+  });
+
+  test("ambiguous ordering, custom schemas, and test/example SQL produce no exposure finding", async () => {
+    const analysis = await runSupabaseRlsAnalysis(CORPUS);
+
+    expect(analysis.findings.some((finding) => finding.location.file.includes("state/ambiguous-order/"))).toBe(false);
+    expect(analysis.findings.some((finding) => finding.location.file.includes("state/custom-schema/"))).toBe(false);
+    expect(analysis.findings.some((finding) => finding.location.file.includes("fp/test/"))).toBe(false);
+    expect(analysis.notes).toEqual(expect.arrayContaining([
+      expect.stringMatching(/migration order is ambiguous/i),
+      expect.stringMatching(/schema 'api_private' API exposure is not proven/i),
+    ]));
+  });
+
+  test("an omitted oversized migration suppresses conclusions for its sequence", async () => {
+    const root = await temporarySupabaseProject({
+      "supabase/migrations/0001_open.sql": [
+        "create table public.omitted_later (id uuid primary key);",
+        "alter table public.omitted_later enable row level security;",
+        "create policy open_policy on public.omitted_later for select to anon using (true);",
+      ].join("\n"),
+      "supabase/migrations/0002_oversized.sql": `-- ${"x".repeat(2 * 1024 * 1024)}\n`,
+    });
+
+    const analysis = await runSupabaseRlsAnalysis(root);
+    expect(analysis.findings).toHaveLength(0);
+    expect(analysis.notes).toEqual(expect.arrayContaining([
+      expect.stringMatching(/exceeds the .*byte bound/i),
+      expect.stringMatching(/omitted SQL could change final RLS state/i),
+    ]));
+    const integrated = await runAiChecks(root);
+    const coverage = integrated.packCoverage.find((pack) => pack.pack_id === "javascript-typescript");
+    expect(coverage?.note).toMatch(/omitted SQL could change final RLS state/i);
+  });
+
+  test("caps findings and notes with exact omission summaries", async () => {
+    const findingsSql = Array.from({ length: 513 }, (_, index) => [
+      `create table public.cap_${index} (id uuid primary key);`,
+      `alter table public.cap_${index} enable row level security;`,
+      `create policy cap_policy_${index} on public.cap_${index} for insert to anon with check (true);`,
+    ].join("\n")).join("\n");
+    const findingRoot = await temporarySupabaseProject({
+      "supabase/migrations/0001_caps.sql": findingsSql,
+    });
+    const findingAnalysis = await runSupabaseRlsAnalysis(findingRoot);
+    expect(findingAnalysis.findings).toHaveLength(512);
+    expect(findingAnalysis.notes.at(-1)).toMatch(/1 additional Supabase RLS finding.*512-finding bound/i);
+
+    const notesSql = Array.from({ length: 30 }, (_, index) => [
+      `create table private_${index}.records (id uuid primary key);`,
+      `alter table private_${index}.records enable row level security;`,
+      `create policy open_${index} on private_${index}.records for select to anon using (true);`,
+    ].join("\n")).join("\n");
+    const noteRoot = await temporarySupabaseProject({
+      "supabase/migrations/0001_notes.sql": notesSql,
+    });
+    const noteAnalysis = await runSupabaseRlsAnalysis(noteRoot);
+    expect(noteAnalysis.findings).toHaveLength(0);
+    expect(noteAnalysis.notes).toHaveLength(24);
+    expect(noteAnalysis.notes.at(-1)).toMatch(/additional Supabase RLS coverage note.*omitted/i);
   });
 });

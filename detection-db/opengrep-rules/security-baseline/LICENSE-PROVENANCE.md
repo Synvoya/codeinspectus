@@ -1,6 +1,6 @@
 # CodeInspectus security ruleset — license & provenance
 
-**License:** MIT (same as CodeInspectus). © Synvoya.
+**License:** Apache-2.0 (same as CodeInspectus from version 2.5.0). © Synvoya.
 
 These Opengrep/Semgrep-syntax rules are **convergent functional idioms** (merger /
 scenes a faire). The public Semgrep/Opengrep registry **was referenced during
@@ -32,7 +32,7 @@ completeness fix. See `docs/legal/RULE-DERIVATION-REVIEWS.md`. The human
 legal-provenance gate (lawyer sign-off) is **de-risked, not yet closed**.
 
 Bundling either of those upstream corpora would conflict with offering CodeInspectus
-as a paid/hosted product. This MIT set is deliberately **simpler than the registry
+as a paid/hosted product. This Apache-2.0 set is deliberately **simpler than the registry
 equivalents -- plain syntactic patterns, not the registry's taint-mode (source -> sink
 -> sanitizer) machinery** -- itself affirmative evidence against copying (a copier would
 inherit that machinery, not strip it). It is also narrower in coverage; coverage grows

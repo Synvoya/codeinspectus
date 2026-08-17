@@ -37,7 +37,7 @@ jobs:
 
       # Network-permitted preparation. Install the exact released scanner outside the target.
       # --ignore-scripts prevents npm lifecycle execution; no target package/build code runs.
-      - name: Install CodeInspectus 2.1.1 outside the repository
+      - name: Install CodeInspectus 2.5.0 outside the repository
         shell: bash
         run: |
           npm install \
@@ -45,7 +45,7 @@ jobs:
             --no-save \
             --no-package-lock \
             --prefix "$RUNNER_TEMP/codeinspectus-cli" \
-            codeinspectus@2.1.1
+            codeinspectus@2.5.0
 
       - name: Explicitly repair verified engines and the offline vulnerability database
         run: node "$RUNNER_TEMP/codeinspectus-cli/node_modules/codeinspectus/dist/index.js" repair-engines --refresh-db

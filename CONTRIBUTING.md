@@ -179,8 +179,8 @@ will not be merged, however useful it otherwise is:
 
 ### Detection rules (`detection-db/**`, `src/ai-checks/**`, `src/packs/**`)
 
-CodeInspectus ships **86 curated detections** today (see `detection-db/manifest.json`): the
-first-party native checks (`ci-ai-*` plus framework/platform pack namespaces), the MIT
+CodeInspectus ships **94 curated detections** today (see `detection-db/manifest.json`): the
+first-party native checks (`ci-ai-*` plus framework/platform pack namespaces), the Apache-2.0
 `security-baseline` SAST rules (`ci-baseline-*`), and a few
 custom secret rules (`codeinspectus-*`). The set grows through a **human-reviewed weekly
 intake** — the maintainer triages proposals in batches. There is **no autonomous rule
@@ -224,4 +224,20 @@ One fix per commit, conventional commit messages, and `npm run build && npm run 
 pass (eval stays green). Don't touch files in the CLAUDE.md "Requires approval" / "Never
 touch" lists without saying so.
 
-By contributing you agree your contribution is licensed under the project's MIT license.
+## Contribution license and sign-off
+
+Unless you explicitly state otherwise, a contribution intentionally submitted for inclusion is
+licensed under the project's Apache License 2.0, consistent with Section 5 of that license.
+
+Every commit must include a Developer Certificate of Origin sign-off:
+
+```text
+Signed-off-by: Your Name <your-email@example.com>
+```
+
+Use `git commit -s` to add it. The sign-off certifies that you created the contribution or have the
+right to submit it under the project's license. Do not submit code, rule expressions, fixtures,
+documentation, or generated output copied from a source whose license is incompatible or unknown.
+If AI tooling materially assisted a contribution, disclose the tool in the pull request and confirm
+that you reviewed the output and its provenance; the human contributor remains responsible for the
+submission. See the [Developer Certificate of Origin 1.1](https://developercertificate.org/).

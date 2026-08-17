@@ -1,0 +1,181 @@
+[functions.explicit-platform]
+verify_jwt = true
+
+[functions.public-handler]
+verify_jwt = false
+
+[functions.header-only]
+verify_jwt = false
+
+[functions.unchecked-get-user]
+verify_jwt = false
+
+[functions.dead-helper]
+verify_jwt = false
+
+[functions.with-none]
+verify_jwt = false
+
+[functions.with-publishable]
+verify_jwt = false
+
+[functions.with-user]
+verify_jwt = false
+
+[functions.with-secret-admin]
+verify_jwt = false
+
+[functions.with-user-admin]
+verify_jwt = false
+
+[functions.with-user-admin-authorized]
+verify_jwt = false
+
+[functions.context-user]
+verify_jwt = false
+
+[functions.context-unchecked]
+verify_jwt = false
+
+[functions.manual-get-user]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.github-webhook]
+verify_jwt = false
+
+[functions.local-lookalike]
+verify_jwt = false
+
+[functions.comment-decoys]
+verify_jwt = false
+
+[functions.mixed-anonymous]
+verify_jwt = false
+
+[functions.user-metadata-admin]
+verify_jwt = false
+
+[functions.user-admin-owned]
+verify_jwt = false
+
+[functions.context-secret-admin]
+verify_jwt = false
+
+[functions.jose-jwt]
+verify_jwt = false
+
+[functions.jose-unchecked]
+verify_jwt = false
+
+[functions.public-admin]
+verify_jwt = false
+
+[functions.ignored-wrapper-admin]
+verify_jwt = false
+
+[functions.nested-wrapper-admin]
+verify_jwt = false
+
+[functions.fixed-get-user-admin]
+verify_jwt = false
+
+[functions.fake-context-admin]
+verify_jwt = false
+
+[functions.jose-public-key-admin]
+verify_jwt = false
+
+[functions.stripe-constant-admin]
+verify_jwt = false
+
+[functions.github-constant-admin]
+verify_jwt = false
+
+[functions.conditional-guard-admin]
+verify_jwt = false
+
+[functions.reverse-user-guard-admin]
+verify_jwt = false
+
+[functions.auth-after-admin]
+verify_jwt = false
+
+[functions.mixed-user-secret-admin]
+verify_jwt = false
+
+[functions.mixed-user-secret-mode-guard]
+verify_jwt = false
+
+[functions.with-none-stripe-official]
+verify_jwt = false
+
+[functions.request-controlled-role-admin]
+verify_jwt = false
+
+[functions.conjunction-role-admin]
+verify_jwt = false
+
+[functions.unrelated-metadata-admin]
+verify_jwt = false
+
+[functions.body-owner-admin]
+verify_jwt = false
+
+[functions.named-handler]
+verify_jwt = false
+
+[functions.named-wrapper]
+verify_jwt = false
+
+[functions.default-dead-source]
+verify_jwt = false
+
+[functions.custom-entrypoint]
+verify_jwt = false
+entrypoint = "./functions/custom-entrypoint/secure.ts"
+
+[functions.external-entrypoint]
+verify_jwt = false
+entrypoint = "./external-entrypoint.ts"
+
+[functions.context-user-admin]
+verify_jwt = false
+
+[functions.manual-user-admin]
+verify_jwt = false
+
+[functions.unrelated-auth-guard-admin]
+verify_jwt = false
+
+[functions.ctx-destructure-admin]
+verify_jwt = false
+
+[functions.ctx-destructure-authorized]
+verify_jwt = false
+
+[functions.query-builder-admin]
+verify_jwt = false
+
+[functions.dynamic-role-admin]
+verify_jwt = false
+
+[functions.dynamic-authmode-admin]
+verify_jwt = false
+
+[functions.mixed-request-token-admin]
+verify_jwt = false
+
+[functions.mixed-webhook-token-admin]
+verify_jwt = false
+
+[functions.conditional-stripe-catch]
+verify_jwt = false
+
+[functions.imported-handler]
+verify_jwt = false
+
+[functions.imported-client]
+verify_jwt = false

@@ -10,7 +10,8 @@
 > versions. Where this document and any other doc disagree on a count or a version, the
 > two files above win and this document is the one to correct.
 
-_Last refreshed: JavaScript/TypeScript Next.js admin-route and model-output execution, GitHub Actions, Firebase, Ruby, Rust, PHP, C#, Java, Go, JavaScript/TypeScript unsafe tool execution, and Python AI/API native packs
+_Last refreshed: robust Supabase RLS/Edge authentication, Next.js/Express admin authorization,
+Referrer-Policy/Permissions-Policy, and modern Supabase opaque-key coverage (2026-08-12), plus JavaScript/TypeScript model-output execution, GitHub Actions, Firebase, Ruby, Rust, PHP, C#, Java, Go, JavaScript/TypeScript unsafe tool execution, and Python AI/API native packs
 (2026-07-28) — recorded the original bounded GitHub Actions workflow rules, Firebase configuration rules, Ruby, Rust, PHP, C#, Java, Go, JavaScript, and Python model-tool-argument-to-shell rules and ten original Python structural rules
 and their first-party pack ownership, including the exact LangChain FAISS dangerous-deserialization
 opt-in, request-controlled WebBaseLoader fetch, and bounded OpenAI/Anthropic prompt-injection sink.
@@ -28,13 +29,13 @@ and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api,go,java,csha
 
 ---
 
-## Reconciled detection count — **88 active CodeInspectus detections**
+## Reconciled detection count — **94 active CodeInspectus detections**
 
-`detection-db/manifest.json` `custom_rules` has **88** entries:
+`detection-db/manifest.json` `custom_rules` has **94** entries:
 
 | Group | Count | Engine | Kind | Where |
 |---|---:|---|---|---|
-| JavaScript/TypeScript native rules | **24** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
+| JavaScript/TypeScript native rules | **29** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
 | Flutter/Dart native rules | **6** | `codeinspectus-ai` | `ai` | `src/packs/flutter/*.ts` |
 | Android configuration native rules | **4** | `codeinspectus-ai` | `ai` | `src/packs/android/*.ts` |
 | iOS configuration native rules | **4** | `codeinspectus-ai` | `ai` | `src/packs/ios/*.ts` |
@@ -51,15 +52,21 @@ and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api,go,java,csha
 | GitHub Actions workflow native rules | **2** | `codeinspectus-ai` | `ai` | `src/packs/github-actions/*.ts` |
 | JavaScript baseline native rules | **2** | `codeinspectus-ai` | `sast` | `src/packs/javascript-baseline/*.ts` |
 | Opengrep-owned SAST rules | **18** | `opengrep` | `sast` | `detection-db/opengrep-rules/security-baseline/` |
-| Gitleaks secret rules | **3** | `gitleaks` | `secret` | `detection-db/gitleaks/codeinspectus.toml` |
-| **Total** | **88** | — | — | — |
+| Gitleaks secret rules | **4** | `gitleaks` | `secret` | `detection-db/gitleaks/codeinspectus.toml` |
+| **Total** | **94** | — | — | — |
 
-Verified physical counts: 20 Opengrep YAML rule ids and 3 Gitleaks rule ids are greppable on disk.
-The catalog assigns 67 rule IDs to sixteen native packs and 18 to Opengrep; the two promoted native
+Verified physical counts: 20 Opengrep YAML rule ids and 4 Gitleaks rule ids are greppable on disk.
+The catalog assigns 72 rule IDs to sixteen native packs and 18 to Opengrep; the two promoted native
 SAST IDs retain physically active Opengrep fallbacks and are not double-counted.
 
-The authoritative current figure is **88**, decomposing as **67 first-party native rules +
-18 Opengrep-owned SAST + 3 Gitleaks** (single source of truth: `detection-db/manifest.json`).
+The authoritative current figure is **94**, decomposing as **72 first-party native rules +
+18 Opengrep-owned SAST + 4 Gitleaks** (single source of truth: `detection-db/manifest.json`).
+The modern Supabase addition consists of the independently authored native
+`ci-ai-supabase-secret-key-client` rule plus the exact
+`codeinspectus-supabase-secret-key` Gitleaks extension. Both implement Supabase's documented
+opaque key shape and were authored from primary Supabase documentation; no third-party detector
+expression was copied. The global `sb_publishable_` allowlist records the provider's public-key
+contract and prevents the inherited generic rule from fabricating a secret finding.
 CG-25b added two original
 CodeInspectus detections: `ci-ai-llm-key-browser-exposed` (B-11; `dangerouslyAllowBrowser: true`) and
 `ci-ai-storage-rls-public` (B-12; permissive `USING (true)` on `storage.objects`). CG-50/51 then added
@@ -193,9 +200,11 @@ are confirmed exploitable vulnerabilities.
 
 ## Provenance summary (the headline for counsel)
 
-- **All 88 custom detections are CodeInspectus-original work, licensed MIT.** In
+- **All 94 custom detections are CodeInspectus-original work, licensed Apache-2.0 from
+  CodeInspectus 2.5.0.** In
   `manifest.json` every `custom_rules` entry carries `"source": "codeinspectus-custom"`,
-  and the Opengrep ruleset carries `"source": "codeinspectus-mit"` / `"license": "MIT"`.
+  and the Opengrep ruleset carries `"source": "codeinspectus-apache-2.0"` /
+  `"license": "Apache-2.0"`.
 - **No detection copies copyrightable expression from a third-party corpus.** For the Opengrep
   SAST rules the public Semgrep/Opengrep registry **was referenced during authoring** (the rules
   were brainstormed by the maintainer with an AI assistant, registry open as a reference) -- but
@@ -226,13 +235,14 @@ bundle them.
 
 ---
 
-## Bundled engines + the engine-authored rulesets in use
+## Managed engines + the engine-authored rulesets in use
 
 The three scan engines are **external SHA-pinned binaries**, **not** npm dependencies. They
 are downloaded and verified by `codeinspectus repair-engines` into a per-machine managed
 dir (`~/.codeinspectus/`); they are **not** redistributed inside the npm tarball. `npm pack`
 ships runtime assets only (`dist/`, `data/`, `detection-db/`, `engines.lock.json`,
-`README.md`). So CodeInspectus distributes **pins + download/verify code**, not the engine
+`README.md`, `LICENSE`, `NOTICE`, and `THIRD-PARTY-NOTICES.md`). So CodeInspectus distributes
+**pins + download/verify code**, not the engine
 binaries or their data.
 
 Versions are cited from **`engines.lock.json` (ground truth)** — *not* the PRD, whose
@@ -244,20 +254,20 @@ Versions are cited from **`engines.lock.json` (ground truth)** — *not* the PRD
 | Gitleaks | **8.30.1** | MIT (CLI; PRD §4.2) | Gitleaks' **built-in default** secret rules (`[extend] useDefault = true` in `codeinspectus.toml`) | MIT (gitleaks-authored) | Binary: **No**. CI `.toml`: yes |
 | Trivy | **0.71.2** | Apache-2.0 (PRD §4.3) | Trivy built-in **vuln / misconfig / secret / license** scanners + the Trivy **vuln DB** | Apache-2.0 (engine); **DB = aggregated third-party advisory data, heterogeneous licenses** | Binary + DB: **No** (downloaded) |
 
-Engine-license confirmation: PRD §11 line 400 — *"Gitleaks MIT, Trivy Apache-2.0, Opengrep
-LGPL-2.1 — all permissive for bundling."* The human reviewer should re-confirm each
-against the `LICENSE` file of the exact pinned release.
+The engine licenses were reconciled against the exact pinned releases for 2.5.0. Opengrep's
+LGPL-2.1 obligations must not be described as permissive; the executable stays separate and is
+downloaded from upstream rather than redistributed in the npm package.
 
 **What this means at scan time:** findings can carry engine-authored rule ids that are *not*
 `codeinspectus-*` (e.g. Gitleaks default ids like `generic-api-key`, Trivy CVE ids). Those
-come from the MIT/Apache-2.0 engines, not from CodeInspectus's corpus, and are clean to use.
+come from the separately licensed engines, not from CodeInspectus's corpus.
 
 ---
 
 ## Inventory — Opengrep SAST rules (20)
 
 Path: `detection-db/opengrep-rules/security-baseline/`. **Origin: independently authored,
-MIT.** Convergent functional idioms; the public registry was referenced during authoring,
+Apache-2.0.** Convergent functional idioms; the public registry was referenced during authoring,
 **no expression copied** (merger / scenes a faire). See LICENSE-PROVENANCE.md +
 `docs/legal/RULE-DERIVATION-REVIEWS.md`.
 
@@ -284,25 +294,26 @@ MIT.** Convergent functional idioms; the public registry was referenced during a
 | `ci-baseline-jwt-alg-none` | `web-misconfig.yaml` | js,ts | CWE-347 | JWT verification accepts alg `none` |
 | `ci-baseline-dom-xss-innerhtml` | `xss.yaml` | js,ts | CWE-79 | DOM XSS via innerHTML/outerHTML sink |
 
-## Inventory — Gitleaks custom secret rules (3)
+## Inventory — Gitleaks custom secret rules (4)
 
 Path: `detection-db/gitleaks/codeinspectus.toml`. **Origin: CodeInspectus-original ·
-License: MIT · Derived-from: none.** (The file also sets `[extend] useDefault = true`, so
-Gitleaks' own MIT default rules run alongside these three.)
+License: Apache-2.0 · Derived-from: none.** (The file also sets `[extend] useDefault = true`, so
+Gitleaks' own MIT default rules run alongside these four.)
 
 | Rule id | CWE | What it flags |
 |---|---|---|
 | `codeinspectus-stripe-live-secret` | CWE-798 | Stripe live-mode secret key |
 | `codeinspectus-supabase-service-role` | CWE-798 | Supabase service_role JWT (bypasses RLS) |
+| `codeinspectus-supabase-secret-key` | CWE-798 | Exact modern Supabase secret API key (bypasses RLS) |
 | `codeinspectus-anthropic-key` | CWE-798 | Anthropic API key |
 
-## Inventory — first-party native rules (67) — the moat
+## Inventory — first-party native rules (72) — the moat
 
 Paths: `src/ai-checks/*.ts` and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api,go,java,csharp,php,rust,ruby,firebase,github-actions,javascript-baseline}/*.ts`
 (TypeScript implementations).
-**Origin: CodeInspectus-original · License: MIT · Derived-from: none.**
+**Origin: CodeInspectus-original · License: Apache-2.0 · Derived-from: none.**
 
-### JavaScript/TypeScript pack (24)
+### JavaScript/TypeScript pack (29)
 
 | Rule id | File | CWE | What it flags |
 |---|---|---|---|
@@ -310,16 +321,19 @@ Paths: `src/ai-checks/*.ts` and `src/packs/{flutter,android,ios,react-native,exp
 | `ci-ai-secret-in-bundle` | `client-secrets.ts` | CWE-798 / 312 | Secret compiled into shipped bundle |
 | `ci-ai-public-env-secret` | `client-secrets.ts` | CWE-798 / 312 | Secret exposed via client-visible env prefix |
 | `ci-ai-supabase-service-role-client` | `client-secrets.ts` | CWE-798 / 285 | Supabase service_role key in client-reachable code |
+| `ci-ai-supabase-secret-key-client` | `client-secrets.ts` | CWE-798 / 285 | Exact modern Supabase secret API key in client-reachable code or a shipped bundle |
 | `ci-ai-llm-key-browser-exposed` | `client-secrets.ts` | CWE-798 / 312 | LLM SDK client allows browser use (`dangerouslyAllowBrowser: true`) |
 | `ci-ai-rls-using-true` | `supabase-rls.ts` | CWE-863 / 285 | Final effective RLS policy state is fully open with `USING (true)` — predicate matches every row |
 | `ci-ai-rls-missing` | `supabase-rls.ts` | CWE-862 / 285 | Public table created without Row Level Security |
 | `ci-ai-rls-inverted-auth` | `supabase-rls.ts` | CWE-863 | RLS policy tests aud/role instead of user identity |
-| `ci-ai-edge-fn-no-auth` | `supabase-rls.ts` | CWE-862 | Supabase Edge Function with no auth verification |
+| `ci-ai-edge-fn-no-auth` | `supabase-edge-auth.ts` | CWE-862 | Explicitly anonymous Supabase Edge Function lacks visible request authentication |
+| `ci-ai-edge-fn-privileged-no-authz` | `supabase-edge-auth.ts` | CWE-863 | Authenticated Edge Function uses a privileged Supabase client without visible authorization |
 | `ci-ai-storage-rls-public` | `supabase-rls.ts` | CWE-863 / 285 | Permissive `USING (true)` policy on `storage.objects` (public bucket files) |
 | `ci-ai-prompt-injection-sink` | `prompt-injection.ts` | CWE-1427 | Potential prompt-injection sink |
 | `ci-ai-llm-tool-argument-command-execution` | `unsafe-tool-execution.ts` | CWE-78 / 1426 | Model-produced tool argument reaches import-proven Node shell execution without a visible checked guard |
 | `ci-ai-llm-output-dynamic-execution` | `llm-dynamic-execution.ts` | CWE-94 / 78 / 1426 | Recognized model output reaches global dynamic-code or import-proven shell-string execution without a validated replacement |
 | `ci-ai-nextjs-admin-route-no-authz` | `nextjs-admin-route.ts` | CWE-862 / 863 / 306 | Conventional Next.js admin API handler lacks visible authentication or server-controlled role/permission authorization |
+| `ci-ai-express-admin-route-no-authz` | `express-admin-route.ts` | CWE-862 / 863 / 306 | Import-proven Express admin route lacks visible request authentication or server authorization |
 | `ci-ai-client-metadata-authz` | `metadata-authz.ts` | CWE-639 / 284 | Authorization decision trusts client-writable Supabase `user_metadata` |
 | `ci-ai-llm-output-dangerous-html` | `llm-dangerous-html.ts` | CWE-79 / 116 | Untrusted or model output rendered into a React raw-HTML `__html` sink |
 | `ci-ai-client-error-leak` | `api-boundary.ts` | CWE-209 | Raw/internal error detail returned to an API client |
@@ -330,6 +344,8 @@ Paths: `src/ai-checks/*.ts` and `src/packs/{flutter,android,ios,react-native,exp
 | `ci-ai-unsafe-production-csp` | `security-controls.ts` | CWE-693 | Enforced production script policy includes bare wildcard or `'unsafe-eval'` |
 | `ci-ai-insecure-session-cookie` | `security-controls.ts` | CWE-1004 / 614 | Auth/session cookie explicitly uses insecure attributes |
 | `ci-ai-supabase-captcha-token-missing` | `security-controls.ts` | CWE-693 | Checked-in CAPTCHA enablement paired with a recognized Supabase auth call missing `captchaToken` |
+| `ci-ai-unsafe-referrer-policy` | `security-controls.ts` | CWE-200 / 693 | Effective literal Referrer-Policy is `unsafe-url` |
+| `ci-ai-overbroad-permissions-policy` | `security-controls.ts` | CWE-693 | Literal Permissions-Policy delegates camera, microphone, or geolocation to every origin |
 
 ### Flutter/Dart pack (6)
 
@@ -621,8 +637,8 @@ items for the reviewer, ranked by where attention is best spent:
 3. **Gitleaks default ruleset (low risk).** `useDefault = true` means Gitleaks' own MIT
    rules run. MIT is permissive; no action beyond noting the dependency.
 4. **Engine-license re-confirmation (mechanical).** Re-confirm Opengrep LGPL-2.1 / Gitleaks
-   MIT / Trivy Apache-2.0 against each pinned release's `LICENSE`; watch for any AGPL
-   transitive pull-in if a hosted version is built (PRD §11).
+   MIT / Trivy Apache-2.0 against each pinned release's `LICENSE` whenever a pin changes;
+   watch for any AGPL transitive pull-in if a hosted version is built (PRD §11).
 5. **No rule is currently flagged as unclear or risky on provenance** beyond item 1's
    standing originality review. If any single rule's originality is ever in doubt, **remove
    it pending review** rather than ship it (the engine still runs; coverage just narrows).

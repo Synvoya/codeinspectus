@@ -1,4 +1,4 @@
-# CodeInspectus original MIT security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
+# CodeInspectus original Apache-2.0 security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
 # Cross-site scripting (OWASP A03).
 # NOTE: a React raw-HTML-sink rule is deferred -- the JSX attribute pattern is not
 # reliably expressible as a standalone Opengrep pattern; revisit at weekly intake.

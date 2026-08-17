@@ -105,6 +105,20 @@ class Service(Base):
     expect(pythonCalls(document).map((call) => call.reference.join("."))).toEqual(["service.run"]);
   });
 
+  test("accepts valid bare yield and starred for-target forms rejected by Lezer 1.1", () => {
+    const document = parsePythonSource("real.py", `
+def timer():
+    yield
+
+for code, *parameters in control_codes:
+    consume(code, parameters)
+`);
+
+    expect(document.syntaxError).toBe(false);
+    expect(document.balanced).toBe(true);
+    expect(pythonCalls(document).map((call) => call.reference.join("."))).toContain("consume");
+  });
+
   test("splits logical statements and top-level comma expressions", () => {
     const document = parsePythonSource("app.py", `
 first = call(

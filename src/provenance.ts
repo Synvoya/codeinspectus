@@ -43,6 +43,7 @@ export const GITHUB_ACTIONS_PACK_DISPATCH_COMPONENT = "pack:github-actions:dispa
 export const GITHUB_ACTIONS_YAML_PARSER_COMPONENT = "github-actions:yaml-workflow-parser";
 export const JAVASCRIPT_BASELINE_PACK_DISPATCH_COMPONENT = "pack:javascript-baseline:dispatch";
 export const JAVASCRIPT_BASELINE_PARSER_COMPONENT = "javascript:bounded-structural-parser";
+export const JAVASCRIPT_AI_PACK_DISPATCH_COMPONENT = "pack:javascript-typescript:dispatch";
 export const NATIVE_SAST_RECONCILIATION_COMPONENT = "native-sast:opengrep-reconciliation";
 export const PUB_LOCKFILE_PARSER_COMPONENT = "codeinspectus-pub:lockfile-parser";
 export const PUB_SNAPSHOT_COMPONENT = "codeinspectus-pub:osv-snapshot";
@@ -51,21 +52,24 @@ export const PUB_MATCHER_COMPONENT = "codeinspectus-pub:exact-version-matcher";
 const COMPONENT_REVISIONS: Record<string, string> = {
   [PIPELINE_COMPONENT]: "3:normalize-alias-dedup-direct-target-routing-envelope",
   [AI_INVOCATION_COMPONENT]: "1:all-analyzers-no-target-flags",
-  "ai:client-secrets": "3:source-built-and-oversized-bundle-secret-state",
-  "ai:supabase-rls-policy-state": "2:effective-migration-state",
-  "ai:supabase-edge-auth": "2:edge-scan-independent-of-sql-project-gate",
+  "ai:client-secrets": "4:exact-supabase-secret-and-all-occurrence-bundle-state",
+  "ai:supabase-rls-policy-state": "3:bounded-role-command-policy-composition-state",
+  "ai:supabase-edge-auth": "3:effective-config-and-handler-scoped-authn-authz",
   "ai:prompt-injection": "2:prompt-sink-analysis-cwe-1427",
   "ai:unsafe-tool-execution": "1:proven-model-tool-arguments-to-node-shell",
   "ai:llm-dynamic-execution": "1:model-output-to-code-or-import-proven-shell",
-  "ai:nextjs-admin-route": "1:path-bound-admin-handler-authn-authz",
+  "ai:nextjs-admin-route": "2:per-exported-handler-authn-authz-control-flow",
+  "ai:express-admin-route": "2:import-proven-production-source-admin-route-boundary",
   "ai:client-metadata-authz": "1:client-metadata-authz",
   "ai:llm-dangerous-html": "1:dangerous-html-flow",
-  "ai:client-error-leak": "1:client-response-error-detail",
-  "ai:sensitive-api-response": "1:explicit-sensitive-response-fields",
-  "ai:unvalidated-request-write": "1:request-object-write-flow",
-  "ai:sensitive-log": "1:sensitive-log-flow",
-  "ai:security-header-config": "1:explicit-effective-header-disablement",
+  "ai:client-error-leak": "2:production-path-client-response-error-detail",
+  "ai:sensitive-api-response": "2:production-path-explicit-sensitive-response-fields",
+  "ai:unvalidated-request-write": "2:production-path-request-object-write-flow",
+  "ai:sensitive-log": "2:production-path-sensitive-log-flow",
+  "ai:security-header-config": "2:import-and-provider-proven-effective-header-state",
   "ai:csp-config": "1:production-script-source-policy",
+  "ai:referrer-policy-config": "1:effective-literal-referrer-policy",
+  "ai:permissions-policy-config": "1:sensitive-feature-universal-delegation",
   "ai:session-cookie-config": "1:explicit-auth-cookie-attributes",
   "ai:supabase-captcha-integration": "1:enabled-config-auth-call-token",
   [FLUTTER_PACK_DISPATCH_COMPONENT]: "1:flutter-pack-dispatch",
@@ -74,7 +78,7 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   "ai:flutter-sensitive-preferences": "1:sensitive-value-shared-preferences-write",
   "ai:flutter-webview-untrusted-content": "1:untrusted-content-webview-flow",
   "ai:flutter-sensitive-log": "1:sensitive-data-log-sink",
-  "ai:flutter-supabase-privileged-key": "1:privileged-supabase-key-client-exposure",
+  "ai:flutter-supabase-privileged-key": "2:exact-opaque-and-legacy-privileged-key-client-exposure",
   "ai:flutter-cleartext-network": "1:production-cleartext-network-use",
   [ANDROID_PACK_DISPATCH_COMPONENT]: "1:android-pack-dispatch",
   [ANDROID_XML_PARSER_COMPONENT]: "1:bounded-android-xml-config-parser",
@@ -99,8 +103,9 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   "ai:expo-secret-in-public-config": "1:sensitive-server-env-in-public-expo-config",
   "ai:expo-unsigned-cleartext-updates": "1:unsigned-cleartext-production-expo-updates",
   [PYTHON_AI_API_PACK_DISPATCH_COMPONENT]: "1:python-ai-api-pack-dispatch",
-  [PYTHON_LEZER_PARSER_COMPONENT]: "2:bounded-lezer-gated-python-structural-parser-opaque-format-strings",
+  [PYTHON_LEZER_PARSER_COMPONENT]: "3:bounded-lezer-gated-python-parser-valid-yield-star-targets",
   [JAVASCRIPT_BASELINE_PACK_DISPATCH_COMPONENT]: "1:javascript-baseline-pack-dispatch",
+  [JAVASCRIPT_AI_PACK_DISPATCH_COMPONENT]: "1:javascript-typescript-pack-dispatch",
   [JAVASCRIPT_BASELINE_PARSER_COMPONENT]: "1:bounded-javascript-typescript-structural-parser",
   [NATIVE_SAST_RECONCILIATION_COMPONENT]: "1:exact-opengrep-pre-dedup-reconciliation",
   "sast:javascript-weak-hash": "1:weak-hash-md5-sha1",
@@ -152,15 +157,18 @@ const AI_RULE_COMPONENT: Record<string, string> = {
   "ci-ai-public-env-secret": "ai:client-secrets",
   "ci-ai-llm-key-browser-exposed": "ai:client-secrets",
   "ci-ai-supabase-service-role-client": "ai:client-secrets",
+  "ci-ai-supabase-secret-key-client": "ai:client-secrets",
   "ci-ai-rls-missing": "ai:supabase-rls-policy-state",
   "ci-ai-rls-using-true": "ai:supabase-rls-policy-state",
   "ci-ai-storage-rls-public": "ai:supabase-rls-policy-state",
   "ci-ai-rls-inverted-auth": "ai:supabase-rls-policy-state",
   "ci-ai-edge-fn-no-auth": "ai:supabase-edge-auth",
+  "ci-ai-edge-fn-privileged-no-authz": "ai:supabase-edge-auth",
   "ci-ai-prompt-injection-sink": "ai:prompt-injection",
   "ci-ai-llm-tool-argument-command-execution": "ai:unsafe-tool-execution",
   "ci-ai-llm-output-dynamic-execution": "ai:llm-dynamic-execution",
   "ci-ai-nextjs-admin-route-no-authz": "ai:nextjs-admin-route",
+  "ci-ai-express-admin-route-no-authz": "ai:express-admin-route",
   "ci-ai-client-metadata-authz": "ai:client-metadata-authz",
   "ci-ai-llm-output-dangerous-html": "ai:llm-dangerous-html",
   "ci-ai-client-error-leak": "ai:client-error-leak",
@@ -169,6 +177,8 @@ const AI_RULE_COMPONENT: Record<string, string> = {
   "ci-ai-sensitive-log": "ai:sensitive-log",
   "ci-ai-security-header-disabled": "ai:security-header-config",
   "ci-ai-unsafe-production-csp": "ai:csp-config",
+  "ci-ai-unsafe-referrer-policy": "ai:referrer-policy-config",
+  "ci-ai-overbroad-permissions-policy": "ai:permissions-policy-config",
   "ci-ai-insecure-session-cookie": "ai:session-cookie-config",
   "ci-ai-supabase-captcha-token-missing": "ai:supabase-captcha-integration",
 };
@@ -256,6 +266,13 @@ const GITHUB_ACTIONS_RULE_COMPONENT: Record<string, string> = {
   "ci-github-actions-pwn-request": "ai:github-actions-pwn-request",
 };
 
+const JAVASCRIPT_STRUCTURAL_AI_RULES = new Set([
+  "ci-ai-edge-fn-no-auth",
+  "ci-ai-edge-fn-privileged-no-authz",
+  "ci-ai-nextjs-admin-route-no-authz",
+  "ci-ai-express-admin-route-no-authz",
+]);
+
 export function signature(value: string | Buffer): string {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
@@ -318,6 +335,14 @@ export function aiFindingComponents(ruleId: string, scannerKind: "ai" | "sast" =
       JAVASCRIPT_BASELINE_PARSER_COMPONENT,
       NATIVE_SAST_RECONCILIATION_COMPONENT,
       detector,
+    ];
+  }
+  if (JAVASCRIPT_STRUCTURAL_AI_RULES.has(ruleId)) {
+    return [
+      PIPELINE_COMPONENT,
+      JAVASCRIPT_AI_PACK_DISPATCH_COMPONENT,
+      JAVASCRIPT_BASELINE_PARSER_COMPONENT,
+      aiComponentForRule(ruleId),
     ];
   }
   const flutterComponent = FLUTTER_RULE_COMPONENT[ruleId];

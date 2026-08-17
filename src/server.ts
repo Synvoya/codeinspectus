@@ -89,7 +89,7 @@ export function createServer(): McpServer {
     {
       title: "Scan code for security issues",
       description:
-        "Run a full local security scan of a path: bundled engines (Opengrep SAST, " +
+        "Run a full local security scan of a path: managed engines (Opengrep SAST, " +
         "Gitleaks secrets, Trivy SCA/IaC/license), CodeInspectus's offline native Pub SCA, " +
         "plus AI-code-specific " +
         "checks (client-side secret exposure, Supabase RLS/inverted-auth, prompt-injection " +

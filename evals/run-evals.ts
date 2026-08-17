@@ -11,7 +11,7 @@
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { cp, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { cp, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runOpengrepShadowParity } from "../src/shadow/opengrep-parity.js";
@@ -21,6 +21,7 @@ const CORS_FIXTURE = resolve(process.cwd(), "fixtures/cors-corpus");
 const API_BOUNDARY_FIXTURE = resolve(process.cwd(), "fixtures/api-boundary-corpus");
 const SECURITY_CONTROLS_FIXTURE = resolve(process.cwd(), "fixtures/security-controls-corpus");
 const SUPABASE_EDGE_AUTH_FIXTURE = resolve(process.cwd(), "fixtures/supabase-edge-auth-corpus");
+const NEXTJS_ADMIN_ROUTE_FIXTURE = resolve(process.cwd(), "fixtures/nextjs-admin-route-corpus");
 const FLUTTER_FIXTURE = resolve(process.cwd(), "fixtures/flutter-corpus");
 const FLUTTER_TP_FIXTURE = resolve(FLUTTER_FIXTURE, "tp");
 const FLUTTER_FP_FIXTURE = resolve(FLUTTER_FIXTURE, "fp");
@@ -223,7 +224,7 @@ const FLUTTER_COMPONENT_SIGNATURES: Readonly<Record<string, string>> = {
   "ai:flutter-sensitive-preferences": "sha256:9050cea99534ada1789015c48c7e9dffcdcb7ed3e942694e488eaa2c7f0f166a",
   "ai:flutter-webview-untrusted-content": "sha256:60c6f2c59bf27a7481fc37992530776c3e27f7f985f9e6b46398cff5e68de8ac",
   "ai:flutter-sensitive-log": "sha256:d29aa52f8d9be52e5c5c23d01450c880d64fb131cb670552ce8f6417a1145b3a",
-  "ai:flutter-supabase-privileged-key": "sha256:e6322d94cff6291ff61707b3c0753b39d9c6b125403543271ec557bdd76be002",
+  "ai:flutter-supabase-privileged-key": "sha256:a6e842c74dd651af3cc82d5a81a493eecd0fc250bfc70250dcd3500c571de586",
   "ai:flutter-cleartext-network": "sha256:84d344056e50ef21f7cd0f16d183d31dcf1af9927c4376afa62ac3f0c476cbc2",
 };
 
@@ -307,7 +308,7 @@ const PYTHON_AI_API_PACK_LIMITATIONS = [
 const PYTHON_AI_API_COMPONENT_SIGNATURES: Readonly<Record<string, string>> = {
   "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
   "pack:python-ai-api:dispatch": "sha256:25fc9425b3ffcf2bc1f15178e39000687fb2e261d1cb938f0a77a59828a1b9dd",
-  "python:lezer-structural-parser": "sha256:b0900353bfd17c0b4d4e57fa26c24d2028496a491dd879c5e401d5f69adeecf8",
+  "python:lezer-structural-parser": "sha256:9de9056123c716b9615c231183379140d60e3805f6d6be6709159eeb0839dea5",
   "ai:python-hardcoded-signing-secret": "sha256:9381fb56d3598c1f478fba84a9b0db960f879d0b6aa8bda021a57c016d601c3a",
   "ai:python-credentialed-cors": "sha256:46477b8b3f9abff6ce4e771aaf3830721e26c31481ccce82751278930b584adf",
   "ai:python-untrusted-file-response": "sha256:f77122fe93de07f380fca77b64f72cd7860c61c5a5255e48e928cb269e186d54",
@@ -665,12 +666,12 @@ function assertFlutterExecutionEnvelope(
   );
   assert(javascript?.state === "ran", `${label}: JavaScript/TypeScript pack did not report ran`);
   assert(
-    javascript.analyzers.registered === 10 && javascript.analyzers.ran === 10,
-    `${label}: JavaScript/TypeScript analyzer coverage was not 10/10`,
+    javascript.analyzers.registered === 12 && javascript.analyzers.ran === 12,
+    `${label}: JavaScript/TypeScript analyzer coverage was not 12/12`,
   );
   assert(
-    javascript.rules.registered === 24 && javascript.rules.ran === 24,
-    `${label}: JavaScript/TypeScript rule coverage was not 24/24`,
+    javascript.rules.registered === 29 && javascript.rules.ran === 29,
+    `${label}: JavaScript/TypeScript rule coverage was not 29/29`,
   );
 
   if (!expectEngineDetails) return;
@@ -679,8 +680,8 @@ function assertFlutterExecutionEnvelope(
   );
   assert(aiEngines.length === 1, `${label}: expected exactly one AI engine run record`);
   assert(
-    aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
-    `${label}: expected codeinspectus-ai@5.15.0 to run`,
+    aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
+    `${label}: expected codeinspectus-ai@5.19.0 to run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -812,8 +813,8 @@ function assertMobileExecutionEnvelope(
   );
   assert(
     javascript?.state === "ran" &&
-      javascript.analyzers.ran === 10 &&
-      javascript.rules.ran === 24,
+      javascript.analyzers.ran === 12 &&
+      javascript.rules.ran === 29,
     `${label}: unconditional JavaScript/TypeScript pack coverage changed`,
   );
   if (!expectEngineDetails) return;
@@ -821,8 +822,8 @@ function assertMobileExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
-    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
+    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -957,8 +958,8 @@ function assertReactNativeExpoExecutionEnvelope(
   );
   assert(
     javascript?.state === "ran" &&
-      javascript.analyzers.ran === 10 &&
-      javascript.rules.ran === 24,
+      javascript.analyzers.ran === 12 &&
+      javascript.rules.ran === 29,
     `${label}: JavaScript/TypeScript pack coverage changed`,
   );
   for (const packId of ["flutter", "android", "ios"]) {
@@ -971,8 +972,8 @@ function assertReactNativeExpoExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
-    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
+    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1100,8 +1101,8 @@ function assertPythonAiApiExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
-    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
+    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1199,8 +1200,8 @@ function assertGoAiExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
-    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
+    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1301,8 +1302,8 @@ function assertJavaAiExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
-    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
+    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1395,8 +1396,8 @@ function assertCsharpAiExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
-    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
+    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1483,8 +1484,8 @@ function assertPhpAiExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
-    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
+    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1571,8 +1572,8 @@ function assertRustAiExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
-    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
+    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1659,8 +1660,8 @@ function assertRubyAiExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
-    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
+    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1747,8 +1748,8 @@ function assertFirebaseExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
-    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
+    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1830,8 +1831,8 @@ function assertGithubActionsExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.15.0",
-    `${label}: expected exactly one codeinspectus-ai@5.15.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
+    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1979,8 +1980,8 @@ async function main() {
         assert(scan.detected_technologies.some((technology: any) => technology.id === "typescript"), "fixture TypeScript was not detected");
         const nativePack = scan.pack_coverage.find((pack: any) => pack.pack_id === "javascript-typescript");
         assert(nativePack?.state === "ran", `expected JavaScript/TypeScript pack to run, got ${nativePack?.state}`);
-        assert(nativePack.analyzers.registered === 10 && nativePack.analyzers.ran === 10, "native analyzer execution counts are wrong");
-        assert(nativePack.rules.registered === 24 && nativePack.rules.ran === 24, "native rule execution counts are wrong");
+        assert(nativePack.analyzers.registered === 12 && nativePack.analyzers.ran === 12, "native analyzer execution counts are wrong");
+        assert(nativePack.rules.registered === 29 && nativePack.rules.ran === 29, "native rule execution counts are wrong");
         const flutterPack = scan.pack_coverage.find((pack: any) => pack.pack_id === "flutter");
         assert(flutterPack?.state === "not_applicable", `expected Flutter pack to be not_applicable, got ${flutterPack?.state}`);
         assert(flutterPack.analyzers.registered === 6 && flutterPack.analyzers.ran === 0, "non-applicable Flutter analyzer counts are wrong");
@@ -2128,7 +2129,7 @@ async function main() {
         assert(re.summary.remaining > 0, "expected findings to remain");
         assert(re.detected_technologies.some((technology: any) => technology.id === "typescript"), "rescan lost detected technologies");
         const coverage = re.pack_coverage.find((pack: any) => pack.pack_id === "javascript-typescript");
-        assert(coverage?.state === "ran" && coverage.analyzers.ran === 10 && coverage.rules.ran === 24, "rescan lost native-pack execution coverage");
+        assert(coverage?.state === "ran" && coverage.analyzers.ran === 12 && coverage.rules.ran === 29, "rescan lost native-pack execution coverage");
         const flutterCoverage = re.pack_coverage.find((pack: any) => pack.pack_id === "flutter");
         assert(flutterCoverage?.state === "not_applicable" && flutterCoverage.rules.ran === 0, "rescan lost non-applicable Flutter-pack coverage");
         for (const packId of ["react-native", "expo"]) {
@@ -2141,21 +2142,25 @@ async function main() {
       id: "E14 list_rules exposes the AI-code moat rules + DB version",
       fn: async () => {
         const lr = (await client.callTool("codeinspectus_list_rules", {})).structuredContent;
-        assert(lr.custom_rule_count === 88, `expected 88 custom rules, got ${lr.custom_rule_count}`);
-        assert(lr.detection_db_version === "1.15.0", `expected detection DB 1.15.0, got ${lr.detection_db_version}`);
-        assert(lr.detection_db_date === "2026-08-02", `unexpected detection DB date ${lr.detection_db_date}`);
+        assert(lr.custom_rule_count === 94, `expected 94 custom rules, got ${lr.custom_rule_count}`);
+        assert(lr.detection_db_version === "1.19.0", `expected detection DB 1.19.0, got ${lr.detection_db_version}`);
+        assert(lr.detection_db_date === "2026-08-13", `unexpected detection DB date ${lr.detection_db_date}`);
         assert(lr.custom_rules.some((r: any) => r.id === "ci-ai-rls-using-true"), "missing ci-ai-rls-using-true in list_rules");
         const boundary = lr.custom_rules.find((r: any) => r.id === "ci-ai-client-error-leak");
         assert(boundary?.owasp_web?.includes("A05:2021") && boundary?.owasp_api?.includes("API8:2023"), "new rules must expose OWASP Web/API mappings");
         const nativeRules = lr.custom_rules.filter((rule: any) => rule.engine === "codeinspectus-ai");
-        assert(nativeRules.length === 67, `expected 67 native rules, got ${nativeRules.length}`);
-        assert(nativeRules.filter((rule: any) => rule.pack_id === "javascript-typescript").length === 24, "JavaScript/TypeScript native rule ownership is wrong");
+        assert(nativeRules.length === 72, `expected 72 native rules, got ${nativeRules.length}`);
+        assert(nativeRules.filter((rule: any) => rule.pack_id === "javascript-typescript").length === 29, "JavaScript/TypeScript native rule ownership is wrong");
         const unsafeTool = nativeRules.find((rule: any) => rule.id === "ci-ai-llm-tool-argument-command-execution");
         assert(unsafeTool?.owasp_llm?.includes("LLM05:2025") && unsafeTool?.owasp_llm?.includes("LLM06:2025"), "unsafe tool execution rule metadata is missing");
         const dynamicExecution = nativeRules.find((rule: any) => rule.id === "ci-ai-llm-output-dynamic-execution");
         assert(dynamicExecution?.owasp_llm?.includes("LLM05:2025") && dynamicExecution?.cwe?.includes("CWE-94") && dynamicExecution?.cwe?.includes("CWE-78"), "dynamic execution rule metadata is missing");
         const adminRoute = nativeRules.find((rule: any) => rule.id === "ci-ai-nextjs-admin-route-no-authz");
         assert(adminRoute?.owasp_web?.includes("A01:2021") && adminRoute?.owasp_api?.includes("API5:2023") && adminRoute?.cwe?.includes("CWE-862"), "Next.js admin route rule metadata is missing");
+        const expressRoute = nativeRules.find((rule: any) => rule.id === "ci-ai-express-admin-route-no-authz");
+        assert(expressRoute?.owasp_web?.includes("A01:2021") && expressRoute?.owasp_api?.includes("API5:2023") && expressRoute?.cwe?.includes("CWE-863"), "Express admin route rule metadata is missing");
+        const privilegedEdge = nativeRules.find((rule: any) => rule.id === "ci-ai-edge-fn-privileged-no-authz");
+        assert(privilegedEdge?.owasp_web?.includes("A01:2021") && privilegedEdge?.cwe?.includes("CWE-863"), "Supabase privileged Edge authz rule metadata is missing");
         const flutterRules = nativeRules.filter((rule: any) => rule.pack_id === "flutter");
         assert(flutterRules.length === 6, "Flutter native rule ownership is wrong");
         assertExactJson(
@@ -2170,15 +2175,15 @@ async function main() {
           assertExactJson(rule.cwe, expected.cwe, `${expected.id} catalog CWE mapping changed`);
         }
         const nativePack = lr.native_packs.find((pack: any) => pack.id === "javascript-typescript");
-        assert(nativePack?.version === "1.5.0", "expected JavaScript/TypeScript pack 1.5.0");
-        assert(nativePack?.analyzer_count === 10 && nativePack.rule_count === 24, "list_rules JavaScript/TypeScript pack inventory is wrong");
+        assert(nativePack?.version === "1.9.0", "expected JavaScript/TypeScript pack 1.9.0");
+        assert(nativePack?.analyzer_count === 12 && nativePack.rule_count === 29, "list_rules JavaScript/TypeScript pack inventory is wrong");
         const baselinePack = lr.native_packs.find((pack: any) => pack.id === "javascript-baseline");
         assert(baselinePack?.scanner_kind === "sast" && baselinePack.analyzer_count === 1 && baselinePack.rule_count === 2, "list_rules JavaScript baseline pack inventory is wrong");
         const promotedRules = nativeRules.filter((rule: any) => rule.pack_id === "javascript-baseline");
         assert(promotedRules.length === 2 && promotedRules.every((rule: any) => rule.kind === "sast" && rule.fallback_engine === "opengrep"), "promoted rule ownership/fallback is wrong");
         const flutterPack = lr.native_packs.find((pack: any) => pack.id === "flutter");
         assert(flutterPack?.analyzer_count === 6 && flutterPack.rule_count === 6, "list_rules Flutter pack inventory is wrong");
-        assert(flutterPack.version === "1.0.0", `expected Flutter pack 1.0.0, got ${flutterPack.version}`);
+        assert(flutterPack.version === "1.1.0", `expected Flutter pack 1.1.0, got ${flutterPack.version}`);
         assertExactJson(flutterPack.languages, ["dart"], "list_rules Flutter languages changed");
         assertExactJson(flutterPack.frameworks, ["flutter"], "list_rules Flutter frameworks changed");
         assertExactJson(flutterPack.limitations, FLUTTER_PACK_LIMITATIONS, "list_rules Flutter limitations changed");
@@ -2233,7 +2238,7 @@ async function main() {
           }
         }
         const pythonPack = lr.native_packs.find((pack: any) => pack.id === "python-ai-api");
-        assert(pythonPack?.version === "1.4.0", "expected Python AI/API pack 1.4.0");
+        assert(pythonPack?.version === "1.5.0", "expected Python AI/API pack 1.5.0");
         assert(
           pythonPack.analyzer_count === 10 && pythonPack.rule_count === 10,
           "list_rules Python AI/API pack inventory is wrong",
@@ -2459,7 +2464,7 @@ async function main() {
         assert(boundaryFindings.every((x) => x.producer_components?.some((component: string) => component.startsWith("ai:"))), "API-boundary finding missing detector provenance");
         const serialized = JSON.stringify(boundaryScan);
         assert(!serialized.includes("provider failure") && !serialized.includes("database unavailable"), "API-boundary output leaked planted internal detail");
-        assert(boundaryScan.engine_details.some((x: any) => x.engine === "codeinspectus-ai" && x.version === "5.15.0"), "AI engine version was not bumped for expanded multi-pack coverage");
+        assert(boundaryScan.engine_details.some((x: any) => x.engine === "codeinspectus-ai" && x.version === "5.19.0"), "AI engine version was not bumped for expanded multi-pack coverage");
       },
     },
     {
@@ -2469,6 +2474,8 @@ async function main() {
           ["tp/headers-next", "ci-ai-security-header-disabled", 1, "http.header.strict-transport-security"],
           ["tp/headers-route-mixed", "ci-ai-security-header-disabled", 1, "http.header.strict-transport-security"],
           ["tp/csp-vercel", "ci-ai-unsafe-production-csp", 1, "http.header.content-security-policy"],
+          ["tp/referrer-next", "ci-ai-unsafe-referrer-policy", 1, "http.header.referrer-policy"],
+          ["tp/permissions-nginx", "ci-ai-overbroad-permissions-policy", 1, "http.header.permissions-policy"],
           ["tp/cookies", "ci-ai-insecure-session-cookie", 3, "http.cookie.session-security"],
           ["tp/cookies-mixed", "ci-ai-insecure-session-cookie", 1, "http.cookie.session-security"],
           ["tp/captcha", "ci-ai-supabase-captcha-token-missing", 3, "supabase.auth.captcha-token"],
@@ -2496,6 +2503,18 @@ async function main() {
         assert(safe.findings.length === 0, "safe Next.js headers produced a finding");
         assert(safe.security_control_evidence.filter((x: any) => x.control_id.startsWith("http.header.")).every((x: any) => x.state === "verified_in_repository"), "safe Next.js header evidence was not verified");
 
+        const headerUnknown = (await client.callTool("codeinspectus_scan", {
+          path: resolve(SECURITY_CONTROLS_FIXTURE, "near-miss/header-policy-lookalikes"),
+          scanners: ["ai"],
+        })).structuredContent;
+        assert(headerUnknown.findings.length === 0, "lookalike or removed policy configuration produced a finding");
+        for (const controlId of ["http.header.referrer-policy", "http.header.permissions-policy"]) {
+          assert(
+            headerUnknown.security_control_evidence.find((x: any) => x.control_id === controlId)?.state === "not_verifiable_from_repository",
+            `${controlId}: removal/lookalike evidence must remain unknown`,
+          );
+        }
+
         const hostedUnknown = (await client.callTool("codeinspectus_scan", {
           path: resolve(SECURITY_CONTROLS_FIXTURE, "near-miss/captcha-hosted-unknown"),
           scanners: ["ai"],
@@ -2519,17 +2538,28 @@ async function main() {
       },
     },
     {
-      id: "E22 Supabase Edge Function auth runs without SQL project signals",
+      id: "E22 Supabase Edge deployment auth/authz uses effective config and handler proof",
       fn: async () => {
         const result = (await client.callTool("codeinspectus_scan", {
           path: SUPABASE_EDGE_AUTH_FIXTURE,
           scanners: ["ai"],
         })).structuredContent;
-        const findings = result.findings.filter((x: any) => x.rule_id === "ci-ai-edge-fn-no-auth");
-        assert(findings.length === 1, `expected one unauthenticated Edge Function finding, got ${findings.length}`);
-        assert(findings[0].location.file === "tp/supabase/functions/public-handler/index.ts", "Edge auth finding came from the wrong fixture");
-        assert(findings[0].producer_components?.includes("ai:supabase-edge-auth"), "Edge auth provenance component missing");
-        assert(!result.findings.some((x: any) => x.location.file.startsWith("fp/")), "authenticated/non-edge fixture produced a finding");
+        const unauthenticated = result.findings.filter((x: any) => x.rule_id === "ci-ai-edge-fn-no-auth");
+        const unauthorizedAdmin = result.findings.filter((x: any) => x.rule_id === "ci-ai-edge-fn-privileged-no-authz");
+        assert(unauthenticated.length === 18, `expected 18 unauthenticated privileged Edge findings, got ${unauthenticated.length}`);
+        assert(unauthorizedAdmin.length === 13, `expected 13 privileged Edge authz findings, got ${unauthorizedAdmin.length}`);
+        assert(unauthenticated.some((x: any) => x.location.file.endsWith("public-admin/index.ts")), "Edge no-auth rule missed a public privileged sink");
+        assert(unauthorizedAdmin.some((x: any) => x.location.file.endsWith("mixed-user-secret-admin/index.ts")), "Edge authz rule missed the user-reachable mixed-mode sink");
+        assert(
+          [...unauthenticated, ...unauthorizedAdmin].every(
+            (finding: any) =>
+              finding.producer_components?.includes("ai:supabase-edge-auth") &&
+              finding.producer_components?.includes("javascript:bounded-structural-parser"),
+          ),
+          "Edge auth finding lost detector or parser provenance",
+        );
+        assert(!result.findings.some((x: any) => x.location.file.endsWith("stripe-webhook/index.ts") || x.location.file.endsWith("with-none-stripe-official/index.ts")), "verified signed webhook produced a finding");
+        assert(result.pack_coverage.find((pack: any) => pack.pack_id === "javascript-typescript")?.note?.includes("intent is not statically verifiable"), "public Edge uncertainty was not surfaced in pack coverage");
       },
     },
     {
@@ -3615,6 +3645,122 @@ async function main() {
             `GitHub Actions reintroduced rescan diff was wrong: ${JSON.stringify(introduced.summary)}`,
           );
           assertGithubActionsFindings(introduced.introduced, "GitHub Actions reintroduced rescan introduced bucket");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E53 Next.js admin authorization corpus is exact through the built MCP server",
+      fn: async () => {
+        const result = (await client.callTool("codeinspectus_scan", {
+          path: NEXTJS_ADMIN_ROUTE_FIXTURE,
+          scanners: ["ai"],
+        })).structuredContent;
+        const findings = result.findings.filter(
+          (finding: any) => finding.rule_id === "ci-ai-nextjs-admin-route-no-authz",
+        );
+        assert(findings.length === 81, `expected 81 Next.js admin-route findings, got ${findings.length}`);
+        assert(
+          findings.every(
+            (finding: any) =>
+              finding.location.file.startsWith("tp/") &&
+              finding.producer_components?.includes("ai:nextjs-admin-route") &&
+              finding.producer_components?.includes("javascript:bounded-structural-parser"),
+          ),
+          "Next.js admin-route precision or provenance changed",
+        );
+        assert(
+          !result.findings.some(
+            (finding: any) =>
+              finding.rule_id === "ci-ai-nextjs-admin-route-no-authz" &&
+              /^(?:fp|fixed)\//.test(finding.location.file),
+          ),
+          "Next.js FP/fixed corpus produced an admin-route finding",
+        );
+        const pack = result.pack_coverage.find(
+          (candidate: any) => candidate.pack_id === "javascript-typescript",
+        );
+        assert(
+          pack?.state === "partial" && pack.analyzers.ran === 12 && pack.rules.ran === 29 &&
+            pack.note?.includes("custom guard semantics were not verified") &&
+            pack.note?.includes("structural nesting bound exceeded"),
+          "Next.js adversarial corpus did not expose its deliberate JavaScript/TypeScript coverage limits",
+        );
+      },
+    },
+    {
+      id: "E54 Express admin authorization survives built-MCP dedup and same-path rescans",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-express-auth-rescan-"));
+        const target = join(temporaryRoot, "admin.ts");
+        const vulnerable = [
+          'import express from "express";',
+          "const app = express();",
+          "app.delete('/api/admin/users', async (_req, res) => {",
+          "  await db.users.deleteMany();",
+          "  return res.sendStatus(204);",
+          "});",
+        ].join("\n");
+        const fixed = [
+          'import express from "express";',
+          "const app = express();",
+          "app.delete('/api/admin/users', async (req, res) => {",
+          "  if (!req.user) return res.sendStatus(401);",
+          "  if (req.user.role !== 'admin') return res.sendStatus(403);",
+          "  await db.users.deleteMany();",
+          "  return res.sendStatus(204);",
+          "});",
+        ].join("\n");
+        try {
+          await writeFile(target, vulnerable);
+          const baseline = (await client.callTool("codeinspectus_scan", {
+            path: target,
+            scanners: ["ai"],
+          })).structuredContent;
+          const baselineFindings = baseline.findings.filter(
+            (finding: any) => finding.rule_id === "ci-ai-express-admin-route-no-authz",
+          );
+          assert(baselineFindings.length === 1, `expected one Express baseline finding, got ${baselineFindings.length}`);
+          assert(
+            baselineFindings[0].producer_components?.includes("ai:express-admin-route") &&
+              baselineFindings[0].producer_components?.includes("javascript:bounded-structural-parser"),
+            "Express finding lost detector or parser provenance",
+          );
+
+          await writeFile(target, fixed);
+          const resolved = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: baseline.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assert(
+            resolved.summary.resolved === 1 && resolved.summary.remaining === 0 &&
+              resolved.summary.introduced === 0 && resolved.summary.not_rechecked === 0 &&
+              resolved.partial === false,
+            `Express fixed rescan diff was wrong: ${JSON.stringify(resolved.summary)}`,
+          );
+          assert(
+            resolved.resolved[0]?.rule_id === "ci-ai-express-admin-route-no-authz",
+            "Express fixed rescan resolved the wrong finding",
+          );
+
+          await writeFile(target, vulnerable);
+          const introduced = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: resolved.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assert(
+            introduced.summary.resolved === 0 && introduced.summary.remaining === 0 &&
+              introduced.summary.introduced === 1 && introduced.summary.not_rechecked === 0 &&
+              introduced.partial === false,
+            `Express reintroduced rescan diff was wrong: ${JSON.stringify(introduced.summary)}`,
+          );
+          assert(
+            introduced.introduced[0]?.rule_id === "ci-ai-express-admin-route-no-authz",
+            "Express reintroduced rescan surfaced the wrong finding",
+          );
         } finally {
           await rm(temporaryRoot, { recursive: true, force: true });
         }

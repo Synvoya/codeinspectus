@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -35,7 +35,7 @@ afterEach(async () => {
 });
 
 async function temporaryProject(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "codeinspectus-pack-"));
+  const directory = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-pack-"));
   temporaryDirectories.push(directory);
   return directory;
 }
@@ -203,10 +203,12 @@ describe("native detector pack registry", () => {
     expect(registeredNativeAnalyzers("/tmp/codeinspectus-pack-registry").map((analyzer) => analyzer.id)).toEqual([
       "client-secrets",
       "supabase-rls",
+      "supabase-edge-auth",
       "prompt-injection",
       "unsafe-tool-execution",
       "llm-dynamic-execution",
       "nextjs-admin-route",
+      "express-admin-route",
       "client-metadata-authz",
       "llm-dangerous-html",
       "api-boundary",
@@ -270,19 +272,21 @@ describe("native detector pack registry", () => {
       "expo:static-config-parser",
       "pack:python-ai-api:dispatch",
       "python:lezer-structural-parser",
+      "pack:javascript-typescript:dispatch",
+      "javascript:bounded-structural-parser",
     ]));
     expect(new Set(ruleIds).size).toBe(ruleIds.length);
-    expect(ruleIds).toHaveLength(67);
+    expect(ruleIds).toHaveLength(72);
 
     const javascriptAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "javascript-typescript");
-    expect(javascriptAnalyzers).toHaveLength(10);
-    expect(javascriptAnalyzers.every((analyzer) => analyzer.packVersion === "1.5.0")).toBe(true);
+    expect(javascriptAnalyzers).toHaveLength(12);
+    expect(javascriptAnalyzers.every((analyzer) => analyzer.packVersion === "1.9.0")).toBe(true);
     expect(javascriptAnalyzers.every((analyzer) => analyzer.packLanguages.includes("typescript"))).toBe(true);
     expect(javascriptAnalyzers.every((analyzer) => analyzer.packFrameworks.includes("supabase"))).toBe(true);
 
     const flutterAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "flutter");
     expect(flutterAnalyzers).toHaveLength(6);
-    expect(flutterAnalyzers.every((analyzer) => analyzer.packVersion === "1.0.0")).toBe(true);
+    expect(flutterAnalyzers.every((analyzer) => analyzer.packVersion === "1.1.0")).toBe(true);
     expect(flutterAnalyzers.every((analyzer) => analyzer.packLanguages.includes("dart"))).toBe(true);
     expect(flutterAnalyzers.every((analyzer) => analyzer.packFrameworks.includes("flutter"))).toBe(true);
 
@@ -308,7 +312,7 @@ describe("native detector pack registry", () => {
 
     const pythonAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "python-ai-api");
     expect(pythonAnalyzers).toHaveLength(10);
-    expect(pythonAnalyzers.every((analyzer) => analyzer.packVersion === "1.4.0")).toBe(true);
+    expect(pythonAnalyzers.every((analyzer) => analyzer.packVersion === "1.5.0")).toBe(true);
     expect(pythonAnalyzers.every((analyzer) => analyzer.packLanguages.includes("python"))).toBe(true);
     expect(pythonAnalyzers.every((analyzer) => analyzer.packFrameworks.includes("fastapi"))).toBe(true);
     expect(pythonAnalyzers.every((analyzer) => analyzer.packFrameworks.includes("openai"))).toBe(true);
@@ -389,8 +393,8 @@ describe("native detector pack registry", () => {
     expect(inventory).toEqual([
       expect.objectContaining({
         pack_id: "javascript-typescript",
-        analyzers: { registered: 10 },
-        rules: { registered: 24 },
+        analyzers: { registered: 12 },
+        rules: { registered: 29 },
       }),
       expect.objectContaining({
         pack_id: "flutter",
@@ -496,8 +500,8 @@ describe("native detector pack registry", () => {
       expect.objectContaining({
         pack_id: "javascript-typescript",
         state: "not_run",
-        analyzers: { registered: 10, ran: 0 },
-        rules: { registered: 24, ran: 0 },
+        analyzers: { registered: 12, ran: 0 },
+        rules: { registered: 29, ran: 0 },
       }),
       expect.objectContaining({
         pack_id: "flutter",
@@ -844,6 +848,21 @@ describe("native detector pack execution accounting", () => {
       state: "ran",
       analyzers: { registered: 2, ran: 2 },
       rules: { registered: 5, ran: 5 },
+    });
+  });
+
+  test("successful analyzers with concrete skipped-input notes report partial coverage", async () => {
+    const pack = testPack(
+      async () => ({ findings: [], notes: ["Skipped parser-invalid source src/app.py."] }),
+      async () => ({ findings: [] }),
+    );
+    const result = await runAiChecks("/not-read", { packs: [pack] });
+
+    expect(result.packCoverage[0]).toMatchObject({
+      state: "partial",
+      analyzers: { registered: 2, ran: 2 },
+      rules: { registered: 5, ran: 5 },
+      note: "Skipped parser-invalid source src/app.py.",
     });
   });
 

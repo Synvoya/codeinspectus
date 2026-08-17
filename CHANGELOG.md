@@ -4,7 +4,55 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
-## [Unreleased]
+## [2.5.0] — 2026-08-13
+
+### Licensing
+- Relicensed CodeInspectus from MIT to Apache License 2.0 with a root `NOTICE`, explicit
+  contribution terms, DCO sign-off policy, and corrected third-party attribution.
+- Clarified that Opengrep, Gitleaks, and Trivy are separately licensed tools downloaded from
+  their upstream releases by an explicit repair command; their binaries are not included in the
+  CodeInspectus npm package.
+
+### Security
+- Patched development-tooling transitive dependencies to `nanoid` 3.3.18 and `esbuild` 0.28.1,
+  closing the current high-severity infinite-loop advisory and low-severity Windows development-
+  server path-traversal advisory. The published runtime dependency graph was not affected.
+- Added exact modern Supabase `sb_secret_<22>_<8>` coverage to client source, ordinary and
+  oversized browser bundles, Flutter client initialization, redaction, and the pinned Gitleaks
+  ruleset. Exact `sb_publishable_` keys are globally suppressed from inherited Gitleaks rules.
+- Client-secret scanning now detects multiple providers on one source line, collapses repeated
+  same-line values without hiding separate remediation lines, bounds candidate locations per file
+  with an explicit coverage note, and keeps dedicated Supabase findings through final deduplication.
+- Supabase RLS analysis now evaluates effective permissive/restrictive policy composition, roles,
+  command phases, renames/schema moves, explicit disables, conditional DDL, ambiguous migration
+  ordering, exposed schemas, and bounded loader omissions before emitting repository-state findings.
+- Supabase Edge Functions now honor the platform's default `verify_jwt = true` authentication,
+  structurally check explicit anonymous handlers, and separately flag privileged service-role/admin
+  operations without visible server authorization. Next.js and import-proven Express admin handlers
+  now receive bounded handler-scoped authentication and authorization analysis.
+- Added narrow literal checks for an effective `Referrer-Policy: unsafe-url` and unrestricted
+  camera, microphone, or geolocation delegation in `Permissions-Policy`. Missing, dynamic,
+  conflicting, hosted, or weaker-but-valid policies remain unverified rather than findings.
+- Missing SPF/DMARC and DMARC `p=none` are deliberately not static findings: they require live DNS
+  state, and `p=none` is a valid monitoring policy. Email-domain posture remains an explicit external
+  deployment check outside the zero-egress repository scanner.
+
+### Changed
+- Detection database `1.19.0` contains 94 curated detections: 72 first-party native rules,
+  18 Opengrep-owned SAST rules, and 4 Gitleaks rules. The JavaScript/TypeScript pack is `1.9.0`
+  with 12 analyzers/29 rules, the Python AI/API pack is `1.5.0`, the Flutter pack is `1.1.0`,
+  and the aggregate native engine is `5.19.0`.
+- API-boundary checks exclude test, fixture, sample, demo, and example paths from project-root
+  scans. The Python syntax gate accepts valid bare
+  `yield` and starred comprehension/loop targets that the pinned structural parser rejects.
+- Native analyzer skip and uncertainty notes now make the owning pack and aggregate scan coverage
+  partial instead of incorrectly claiming complete execution.
+- Express admin-route analysis excludes minified, generated, build-output, and vendored assets so
+  third-party bundles cannot consume the application-route call budget.
+- Package, MCP server, CLI, SDK API, MCP Registry manifest, and reference CI install versions are
+  synchronized at `2.5.0`. The 2.5 milestone marks the Apache-2.0 transition and expanded security
+  coverage. Existing V2 export/storage schema versions remain `2.0.0` because this feature release
+  does not break those contracts.
 
 ## [2.1.1] — 2026-08-05
 

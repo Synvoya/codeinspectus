@@ -18,6 +18,8 @@ const at = (rel: string) => join(CORPUS, rel);
 const RULES = {
   header: "ci-ai-security-header-disabled",
   csp: "ci-ai-unsafe-production-csp",
+  referrer: "ci-ai-unsafe-referrer-policy",
+  permissions: "ci-ai-overbroad-permissions-policy",
   cookie: "ci-ai-insecure-session-cookie",
   captcha: "ci-ai-supabase-captcha-token-missing",
 } as const;
@@ -27,6 +29,8 @@ const CONTROL = {
   contentType: "http.header.x-content-type-options",
   frame: "http.header.x-frame-options",
   csp: "http.header.content-security-policy",
+  referrer: "http.header.referrer-policy",
+  permissions: "http.header.permissions-policy",
   cookie: "http.cookie.session-security",
   captcha: "supabase.auth.captcha-token",
 } as const;
@@ -48,6 +52,9 @@ describe("security-control analyzer — frozen evidence corpus", () => {
       "tp/headers-nginx",
       "tp/csp-vercel",
       "tp/csp-helmet",
+      "tp/referrer-next",
+      "tp/referrer-express",
+      "tp/permissions-nginx",
       "tp/cookies",
       "tp/cookies-mixed",
       "tp/captcha",
@@ -63,6 +70,11 @@ describe("security-control analyzer — frozen evidence corpus", () => {
       "near-miss/captcha-disabled",
       "near-miss/captcha-hosted-unknown",
       "near-miss/non-production-paths",
+      "near-miss/header-policy-weaker",
+      "near-miss/header-policy-lookalikes",
+      "near-miss/helmet-policy-disabled",
+      "near-miss/header-policy-response-lookalike",
+      "near-miss/header-policy-next-decoy",
       "conflict/headers",
     ];
     await Promise.all(
@@ -81,6 +93,9 @@ describe("security-control analyzer — frozen evidence corpus", () => {
     ["tp/headers-nginx", RULES.header, 1, CONTROL.hsts],
     ["tp/csp-vercel", RULES.csp, 1, CONTROL.csp],
     ["tp/csp-helmet", RULES.csp, 1, CONTROL.csp],
+    ["tp/referrer-next", RULES.referrer, 1, CONTROL.referrer],
+    ["tp/referrer-express", RULES.referrer, 1, CONTROL.referrer],
+    ["tp/permissions-nginx", RULES.permissions, 1, CONTROL.permissions],
     ["tp/cookies", RULES.cookie, 3, CONTROL.cookie],
     ["tp/cookies-mixed", RULES.cookie, 1, CONTROL.cookie],
     ["tp/captcha", RULES.captcha, 3, CONTROL.captcha],
@@ -95,7 +110,7 @@ describe("security-control analyzer — frozen evidence corpus", () => {
   test("all new findings carry canonical CWE/OWASP context and no source values", () => {
     const findings = [...results.values()].flatMap((result) => result.findings);
     for (const finding of findings) {
-      expect(finding.cwe[0]).toMatch(/^CWE-(?:693|1004)$/);
+      expect(finding.cwe[0]).toMatch(/^CWE-(?:200|693|942|1004)$/);
       expect(finding.owasp_web).toContain("A05:2021");
       expect(finding.owasp_api).toContain("API8:2023");
       expect(finding.confidence).toBe("high");
@@ -106,8 +121,8 @@ describe("security-control analyzer — frozen evidence corpus", () => {
   });
 
   test.each([
-    ["safe/next", [CONTROL.hsts, CONTROL.contentType, CONTROL.frame, CONTROL.csp]],
-    ["safe/helmet", [CONTROL.hsts, CONTROL.contentType, CONTROL.frame, CONTROL.csp]],
+    ["safe/next", [CONTROL.hsts, CONTROL.contentType, CONTROL.frame, CONTROL.csp, CONTROL.referrer, CONTROL.permissions]],
+    ["safe/helmet", [CONTROL.hsts, CONTROL.contentType, CONTROL.frame, CONTROL.csp, CONTROL.referrer]],
     ["safe/nginx", [CONTROL.hsts, CONTROL.contentType, CONTROL.frame, CONTROL.csp]],
     ["safe/cookies", [CONTROL.cookie]],
     ["safe/captcha", [CONTROL.captcha]],
@@ -124,6 +139,11 @@ describe("security-control analyzer — frozen evidence corpus", () => {
     "near-miss/captcha-disabled",
     "near-miss/captcha-hosted-unknown",
     "near-miss/non-production-paths",
+    "near-miss/header-policy-weaker",
+    "near-miss/header-policy-lookalikes",
+    "near-miss/helmet-policy-disabled",
+    "near-miss/header-policy-response-lookalike",
+    "near-miss/header-policy-next-decoy",
   ])("%s remains silent", (repo) => {
     expect(results.get(repo)!.findings).toHaveLength(0);
   });
@@ -135,6 +155,19 @@ describe("security-control analyzer — frozen evidence corpus", () => {
     expect(state(results.get("near-miss/captcha-hosted-unknown")!, CONTROL.captcha)).toBe(
       "not_verifiable_from_repository",
     );
+  });
+
+  test("weaker, removed, lookalike, and Helmet-disabled policy evidence remains unknown", () => {
+    for (const repo of [
+      "near-miss/header-policy-weaker",
+      "near-miss/header-policy-lookalikes",
+      "near-miss/helmet-policy-disabled",
+    ]) {
+      const result = results.get(repo)!;
+      expect(result.findings).toHaveLength(0);
+      expect(state(result, CONTROL.referrer)).toBe("not_verifiable_from_repository");
+      expect(state(result, CONTROL.permissions)).toBe("not_verifiable_from_repository");
+    }
   });
 
   test("test, example, and explicit development config paths do not claim runtime state", () => {
@@ -173,7 +206,7 @@ describe("security-control analyzer — frozen evidence corpus", () => {
 
   test("every evidence record satisfies the public schema", () => {
     for (const result of results.values()) {
-      expect(result.evidence).toHaveLength(6);
+      expect(result.evidence).toHaveLength(8);
       for (const record of result.evidence) {
         expect(securityControlEvidenceSchema.safeParse(record).success).toBe(true);
       }
@@ -188,6 +221,6 @@ describe("security-control analyzer — frozen evidence corpus", () => {
       expect(finding.producer_components).toContain("ai:supabase-captcha-integration");
     }
     expect(result.componentSignatures["ai:supabase-captcha-integration"]).toMatch(/^sha256:/);
-    expect(result.securityControlEvidence).toHaveLength(6);
+    expect(result.securityControlEvidence).toHaveLength(8);
   });
 });
