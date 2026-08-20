@@ -29,6 +29,14 @@ async function tempProject(): Promise<string> {
 }
 
 describe("Supabase Edge deployment and handler-root authentication", () => {
+  test("treats a direct file target as outside project-level Edge deployment analysis", async () => {
+    const root = await tempProject();
+    const file = join(root, "route.ts");
+    await writeFile(file, "export const value = 1;\n");
+
+    await expect(runSupabaseEdgeAuthAnalysis(file)).resolves.toEqual({ findings: [], notes: [] });
+  });
+
   test("reports only request-reachable privileged sinks without authentication", async () => {
     const findings = await runSupabaseEdgeAuthCheck(CORPUS);
 

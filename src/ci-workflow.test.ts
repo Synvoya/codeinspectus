@@ -19,14 +19,14 @@ describe("shipped GitHub Actions policy workflow", () => {
     expect(executable).not.toMatch(/pull_request_target|secrets\.|github\.token|GITHUB_TOKEN/);
     expect(executable).not.toMatch(/npm ci|npm run|npx /);
     expect(executable).toMatch(/--ignore-scripts/);
-    expect(executable).toMatch(/codeinspectus@2\.5\.0/);
+    expect(executable).toMatch(/codeinspectus@2\.6\.0/);
     expect(executable).toMatch(/\$RUNNER_TEMP\/codeinspectus-cli/);
     expect(source).toMatch(/persist-credentials:\s*false/);
   });
 
   test("repairs before the offline scan, uploads evidence, then restores policy status", async () => {
     const source = await readFile(path, "utf8");
-    const repair = source.indexOf("repair-engines --refresh-db");
+    const repair = source.indexOf("setup --all");
     const scan = source.indexOf("--fail-on-severity high");
     const summary = source.indexOf("Add bounded policy summary");
     const sarif = source.indexOf("github/codeql-action/upload-sarif@");

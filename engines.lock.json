@@ -1,12 +1,29 @@
 {
   "_comment": "SHA256 pins for engine binaries. MANDATORY (PRD §0.2): every binary's SHA256 is verified before execution. Trivy was supply-chain-compromised twice in early 2026 — never trust a mutable tag. Maintainers populate sha256 via `codeinspectus pin-engines` (`--all-platforms`, `--platform <key>`, or `--pin-only`) and commit the reviewed lockfile. User-facing `repair-engines` verifies downloads against these immutable shipped pins and never rewrites this file. The flow downloads from the verified release URL, checks the publisher signature (cosign for opengrep, checksums for gitleaks, checksums+sigstore for trivy), then verifies the EXTRACTED binary's SHA256. A null sha256 means the binary is NOT pinned and CodeInspectus will REFUSE to execute it on that platform.",
   "schema_version": 1,
-  "generated_at": "2026-06-20T23:32:58.571Z",
+  "generated_at": "2026-08-20T02:54:34.000Z",
   "sigstore_identities": {
     "_comment": "Cosign keyless signer identities, resolved from the actual release certificates 2026-06-21 and confirmed with `cosign verify-blob` (Verified OK). Signature verification is MANDATORY and fail-closed for opengrep + trivy.",
     "issuer": "https://token.actions.githubusercontent.com",
     "trivy": "https://github.com/aquasecurity/trivy/.github/workflows/reusable-release.yaml@refs/tags/v0.71.2",
     "opengrep": "https://github.com/opengrep/opengrep/.github/workflows/rolling-release.yml@refs/heads/main"
+  },
+  "verifiers": {
+    "cosign": {
+      "version": "3.1.2",
+      "repo": "sigstore/cosign",
+      "release_base": "https://github.com/sigstore/cosign/releases/download/v3.1.2",
+      "signature": "checksums+sigstore",
+      "checksums_asset": "cosign_checksums.txt",
+      "_security_note": "Bootstrap SHA pins were taken from cosign_checksums.txt after its Sigstore bundle verified OK for keyless@projectsigstore.iam.gserviceaccount.com on 2026-08-20.",
+      "platforms": {
+        "darwin-arm64": { "asset": "cosign-darwin-arm64", "archive": "raw", "binary": "cosign", "sha256": "dec1c3f802320b19c2fbcf2dc7bcfb3f258e1c181a046c23a1a074bdf932f10a", "download_size_bytes": 139584002, "provenance": { "method": "cosign", "verified": true, "at": "2026-08-20T02:54:34.000Z", "identity": "keyless@projectsigstore.iam.gserviceaccount.com", "issuer": "https://accounts.google.com" } },
+        "darwin-x64": { "asset": "cosign-darwin-amd64", "archive": "raw", "binary": "cosign", "sha256": "acd180f8b015be25240ca33abee8a1e564eb65cdf1a3cee4725456d2dceb7da6", "download_size_bytes": 148576536, "provenance": { "method": "cosign", "verified": true, "at": "2026-08-20T02:54:34.000Z", "identity": "keyless@projectsigstore.iam.gserviceaccount.com", "issuer": "https://accounts.google.com" } },
+        "linux-x64": { "asset": "cosign-linux-amd64", "archive": "raw", "binary": "cosign", "sha256": "f7622ed3cf22e55e1ae6377c080979ff77a22da9981c11df222a2e444991e7cf", "download_size_bytes": 141150460, "provenance": { "method": "cosign", "verified": true, "at": "2026-08-20T02:54:34.000Z", "identity": "keyless@projectsigstore.iam.gserviceaccount.com", "issuer": "https://accounts.google.com" } },
+        "linux-arm64": { "asset": "cosign-linux-arm64", "archive": "raw", "binary": "cosign", "sha256": "90e7ae0b5dfd60f20816b52c012addf7fc055ebcc7bea4ce81c428ca8518c302", "download_size_bytes": 132737437, "provenance": { "method": "cosign", "verified": true, "at": "2026-08-20T02:54:34.000Z", "identity": "keyless@projectsigstore.iam.gserviceaccount.com", "issuer": "https://accounts.google.com" } },
+        "win32-x64": { "asset": "cosign-windows-amd64.exe", "archive": "raw", "binary": "cosign", "sha256": "fe4d621d7ae5e900ee62089837c00f996ae9acb82027d573d1d157b6ee875cb2", "download_size_bytes": 198762712, "provenance": { "method": "cosign", "verified": true, "at": "2026-08-20T02:54:34.000Z", "identity": "keyless@projectsigstore.iam.gserviceaccount.com", "issuer": "https://accounts.google.com" } }
+      }
+    }
   },
   "engines": {
     "opengrep": {
@@ -21,6 +38,7 @@
           "archive": "raw",
           "binary": "opengrep",
           "sha256": "945739e56fec4aab28da296811f3473a0ff733af3dc2371d150b071430265c5f",
+          "download_size_bytes": 43236128,
           "provenance": {
             "method": "cosign",
             "verified": true,
@@ -34,6 +52,7 @@
           "archive": "raw",
           "binary": "opengrep",
           "sha256": "2fa99169e34e9f233fd7412d5cdc167114ba752a2510da3ce322b272c15ab755",
+          "download_size_bytes": 43843472,
           "provenance": {
             "method": "cosign",
             "verified": true,
@@ -47,6 +66,8 @@
           "archive": "raw",
           "binary": "opengrep",
           "sha256": "1f06548af379ab6080698a609612890ffad2d92dc2172f1e97d38d48096d5ef8",
+          "runtime": { "libc": "glibc" },
+          "download_size_bytes": 41612596,
           "provenance": {
             "method": "cosign",
             "verified": true,
@@ -60,6 +81,8 @@
           "archive": "raw",
           "binary": "opengrep",
           "sha256": "ddf4935b138a2e825e6860529df1fb031524f7a2da8933ab7b2a16e5939c5178",
+          "runtime": { "libc": "glibc" },
+          "download_size_bytes": 43242485,
           "provenance": {
             "method": "cosign",
             "verified": true,
@@ -73,6 +96,7 @@
           "archive": "raw",
           "binary": "opengrep",
           "sha256": "7cbe02d9cc3fb812adce8720fc46515bb6a954a4ceeb3856d3a099d783749aae",
+          "download_size_bytes": 48520704,
           "provenance": {
             "method": "cosign",
             "verified": true,
@@ -95,6 +119,7 @@
           "archive": "tar.gz",
           "binary": "gitleaks",
           "sha256": "ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f",
+          "download_size_bytes": 7897593,
           "provenance": {
             "method": "checksums",
             "verified": true,
@@ -106,6 +131,7 @@
           "archive": "tar.gz",
           "binary": "gitleaks",
           "sha256": "cee01fea7173f1b779dff188e1c26ecbcb4027d394acc573b23aaf0be260e291",
+          "download_size_bytes": 8359235,
           "provenance": {
             "method": "checksums",
             "verified": true,
@@ -117,6 +143,7 @@
           "archive": "tar.gz",
           "binary": "gitleaks",
           "sha256": "88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509",
+          "download_size_bytes": 8230402,
           "provenance": {
             "method": "checksums",
             "verified": true,
@@ -128,6 +155,7 @@
           "archive": "tar.gz",
           "binary": "gitleaks",
           "sha256": "00e91bbe655bd7c47753e8cfe61cb76ea1a5d7e7702fe161ee40102b46b3823b",
+          "download_size_bytes": 7601421,
           "provenance": {
             "method": "checksums",
             "verified": true,
@@ -139,6 +167,7 @@
           "archive": "zip",
           "binary": "gitleaks",
           "sha256": "17157e2ee8b76fc8b1d8bee607a250e34b8a8023c8bc81822d4b5ee4d78fcb7c",
+          "download_size_bytes": 8438883,
           "provenance": {
             "method": "checksums",
             "verified": true,
@@ -160,6 +189,7 @@
           "archive": "tar.gz",
           "binary": "trivy",
           "sha256": "7d8bf18455702bdacb585e4041591c7019c39cc5fe14beacd1485e89d619127d",
+          "download_size_bytes": 47498236,
           "provenance": {
             "method": "cosign",
             "verified": true,
@@ -173,6 +203,7 @@
           "archive": "tar.gz",
           "binary": "trivy",
           "sha256": "f83c71055d30baa3bf0c74a5659a8d38d5ac0781c9a65a6841c5696f8b66dfd6",
+          "download_size_bytes": 51331511,
           "provenance": {
             "method": "cosign",
             "verified": true,
@@ -186,6 +217,7 @@
           "archive": "tar.gz",
           "binary": "trivy",
           "sha256": "46d2e9f20fc45d131d2c590497d3b598afe6be67a58ce105113e43f1328779bf",
+          "download_size_bytes": 50304278,
           "provenance": {
             "method": "cosign",
             "verified": true,
@@ -199,6 +231,7 @@
           "archive": "tar.gz",
           "binary": "trivy",
           "sha256": "5dcf6209995ed375f39fe38bed250ac292fe111077d39f864ff270788846c88b",
+          "download_size_bytes": 45242800,
           "provenance": {
             "method": "cosign",
             "verified": true,
@@ -212,6 +245,7 @@
           "archive": "zip",
           "binary": "trivy",
           "sha256": "b4e76b9c0bc74bd70f2f1269e86c055f9f57a4f25307bbe0847ec43332ad2ef6",
+          "download_size_bytes": 51536693,
           "provenance": {
             "method": "cosign",
             "verified": true,

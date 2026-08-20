@@ -38,7 +38,7 @@ written before the policy exit is returned, including exits 1 and 2, so CI can r
 
 The shipped [copyable workflow](examples/codeinspectus-security.yml) separates the explicit,
 network-permitted install/engine-repair steps from the offline scan step. Every third-party action is
-pinned to a full commit SHA. It installs the exact `codeinspectus@2.5.0` release under
+pinned to a full commit SHA. It installs the exact `codeinspectus@2.6.0` release under
 `$RUNNER_TEMP` with npm lifecycle scripts disabled; it does not run the target repository's package
 install, lifecycle scripts, build, tests, or other code. The job uses least privilege (`contents: read`,
 `security-events: write`), checks out with `persist-credentials: false`, does not reference repository

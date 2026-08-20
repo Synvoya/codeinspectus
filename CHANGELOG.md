@@ -4,6 +4,31 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [2.6.0] — 2026-08-20
+
+### Added
+- Added consent-driven first-use setup for nontechnical users. Interactive `npx codeinspectus`
+  and `codeinspectus setup` explain each external engine's coverage, license, current state, and
+  platform-specific download size before offering install-all or component selection.
+- Added `codeinspectus_setup` for MCP clients. Planning is offline; installation requires an
+  explicit `confirm_downloads=true`, writes only beneath `~/.codeinspectus`, and never changes the
+  scanned repository. Declined choices persist locally and can be cleared with `setup --reset`.
+- Added automatic, approval-gated Cosign 3.1.2 bootstrapping for Opengrep/Trivy verification.
+  Platform binaries are immutable-SHA pinned from a Sigstore-verified upstream checksum manifest,
+  removing the separate Cosign prerequisite while preserving fail-closed publisher verification.
+
+### Changed
+- Added exact release-asset byte sizes for every supported Opengrep, Gitleaks, Trivy, and Cosign
+  platform. Trivy database storage is deliberately labelled as an estimate because upstream DB
+  transfer and extracted size change independently of CodeInspectus releases.
+- Direct file scans no longer mark the project-level Supabase Edge analyzer as an unreadable
+  directory. The aggregate native engine is `5.20.0`; the 94-rule catalog is unchanged.
+- Existing healthy binaries and databases remain no-download no-ops. Scans remain offline, npm
+  installation has no executable-downloading lifecycle script, and manual `repair-engines` remains
+  available as an advanced compatibility path.
+- Package, MCP server, CLI, SDK API, MCP Registry manifest, and reference CI install versions are
+  synchronized at `2.6.0`. Export/storage schema versions remain `2.0.0`.
+
 ## [2.5.0] — 2026-08-13
 
 ### Licensing

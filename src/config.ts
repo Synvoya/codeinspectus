@@ -23,7 +23,7 @@ import { dirname } from "node:path";
 export const MCP_SPEC_VERSION = "2025-11-25";
 
 export const SERVER_NAME = "codeinspectus";
-export const SERVER_VERSION = "2.5.0";
+export const SERVER_VERSION = "2.6.0";
 
 // ── Bundled engine versions (SHA-pinned in engines.lock.json) ───────────────
 export const ENGINE_VERSIONS = {
@@ -37,13 +37,14 @@ export type EngineName = "opengrep" | "gitleaks" | "trivy";
 
 // Aggregate CodeInspectus native-analyzer engine version. Individual detector packs
 // retain their own semantic versions so adding a pack does not imply unrelated rule changes.
-export const CODEINSPECTUS_AI_VERSION = "5.19.0";
+export const CODEINSPECTUS_AI_VERSION = "5.20.0";
 export const CODEINSPECTUS_PUB_VERSION = "1.0.0";
 
 // ── Managed directories (per-machine, never per-repo) ───────────────────────
 // PRD §12: an MCP server is installed once per machine, not per repo.
 export const MANAGED_ROOT = join(homedir(), ".codeinspectus");
 export const MANAGED_BIN = join(MANAGED_ROOT, "bin");
+export const MANAGED_OPENGREP_CACHE = join(MANAGED_ROOT, "opengrep-cache");
 export const MANAGED_TRIVY_CACHE = join(MANAGED_ROOT, "trivy-cache");
 export const MANAGED_SCANS = join(MANAGED_ROOT, "scans");
 export const MANAGED_TRIAGE = join(MANAGED_ROOT, "triage");
@@ -53,6 +54,7 @@ export const MANAGED_PROVENANCE = join(MANAGED_ROOT, "provenance");
 export const MANAGED_TRIVY_DB_META = join(MANAGED_TRIVY_CACHE, "db", "metadata.json");
 export const MANAGED_TRIVY_DB = join(MANAGED_TRIVY_CACHE, "db", "trivy.db");
 export const MANAGED_TRIVY_DB_PROVENANCE = join(MANAGED_PROVENANCE, "trivy", "vulnerability-db.json");
+export const MANAGED_SETUP_PREFERENCES = join(MANAGED_ROOT, "setup-preferences.json");
 
 // ── Package-root-relative asset resolution ──────────────────────────────────
 // At runtime the bundle lives at <pkg>/dist/index.js; data/ and detection-db/

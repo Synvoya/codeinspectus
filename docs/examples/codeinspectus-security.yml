@@ -32,12 +32,9 @@ jobs:
         with:
           node-version: 24
 
-      - name: Install cosign for fail-closed engine verification
-        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
-
       # Network-permitted preparation. Install the exact released scanner outside the target.
       # --ignore-scripts prevents npm lifecycle execution; no target package/build code runs.
-      - name: Install CodeInspectus 2.5.0 outside the repository
+      - name: Install CodeInspectus 2.6.0 outside the repository
         shell: bash
         run: |
           npm install \
@@ -45,10 +42,10 @@ jobs:
             --no-save \
             --no-package-lock \
             --prefix "$RUNNER_TEMP/codeinspectus-cli" \
-            codeinspectus@2.5.0
+            codeinspectus@2.6.0
 
-      - name: Explicitly repair verified engines and the offline vulnerability database
-        run: node "$RUNNER_TEMP/codeinspectus-cli/node_modules/codeinspectus/dist/index.js" repair-engines --refresh-db
+      - name: Explicitly approve and install verified engines and the offline vulnerability database
+        run: node "$RUNNER_TEMP/codeinspectus-cli/node_modules/codeinspectus/dist/index.js" setup --all
 
       - name: Verify installed engine hashes before scanning
         run: node "$RUNNER_TEMP/codeinspectus-cli/node_modules/codeinspectus/dist/index.js" verify-engines

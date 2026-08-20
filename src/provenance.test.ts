@@ -300,7 +300,7 @@ describe("component signatures", () => {
     });
 
     expect(signature(JSON.stringify(compatibilityProjection))).toBe(
-      "sha256:279b51904bafd9e15650a3500e3bd8bac1024c544ef9cf677a10a13cf048e85c",
+      "sha256:ffdee4da7384ca0f18627b6cf579d77046fddf187bc345835b13c6917363a0da",
     );
     expect(compatibilityProjection.every(([ruleId, components]) =>
       ruleId === "ci-ai-edge-fn-no-auth"

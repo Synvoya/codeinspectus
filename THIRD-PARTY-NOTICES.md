@@ -1,6 +1,6 @@
 # Third-party notices
 
-This document records third-party software and data used by CodeInspectus 2.5.0. CodeInspectus
+This document records third-party software and data used by CodeInspectus 2.6.0. CodeInspectus
 itself is licensed under Apache-2.0; third-party components retain their own licenses.
 
 ## Separately downloaded security engines
@@ -9,6 +9,19 @@ The following executables are **not included in the CodeInspectus npm package**.
 `repair-engines` command downloads them from their upstream GitHub release, verifies the pinned
 publisher/checksum evidence and exact binary SHA-256 from `engines.lock.json`, and stores them in a
 per-user managed directory. CodeInspectus is not affiliated with or endorsed by these projects.
+
+### Cosign 3.1.2 (verification helper)
+
+- Project: <https://github.com/sigstore/cosign>
+- Exact source: <https://github.com/sigstore/cosign/tree/v3.1.2>
+- License: Apache License 2.0
+- License text: <https://github.com/sigstore/cosign/blob/v3.1.2/LICENSE>
+- Copyright: The Sigstore Authors
+
+Guided setup downloads Cosign only when Opengrep or Trivy needs publisher-signature verification
+and no usable system copy exists. Its platform binary SHA-256 is pinned from the upstream checksum
+manifest after that manifest's Sigstore bundle verified successfully. Cosign is stored separately
+under `~/.codeinspectus/bin`; it is not included in the npm package.
 
 ### Opengrep 1.23.0
 

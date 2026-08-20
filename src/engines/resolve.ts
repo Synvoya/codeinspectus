@@ -16,7 +16,7 @@ import { constants as FS } from "node:fs";
 import { join } from "node:path";
 import { MANAGED_BIN, PKG_ROOT, type EngineName } from "../config.js";
 import { sha256Hex } from "../util/hash.js";
-import { loadLockfile, getPlatformEntry, platformKey, type Lockfile } from "./lockfile.js";
+import { loadLockfile, getPlatformEntry, platformKey, platformRuntimeIssue, type Lockfile } from "./lockfile.js";
 import { log } from "../logger.js";
 
 export class EngineUnavailableError extends Error {
@@ -122,6 +122,16 @@ export async function resolveEngine(
       engine,
       "unsupported_platform",
       `No lockfile entry for ${engine} on platform '${platformKey()}'. This platform may be unsupported; see README.`,
+    );
+  }
+
+  const runtimeIssue = platformRuntimeIssue(entry);
+  if (runtimeIssue) {
+    throw new EngineUnavailableError(
+      engine,
+      "unsupported_platform",
+      `${engine} ${engineMeta.version} is unsupported on this runtime. ${runtimeIssue} ` +
+        "Use a glibc-based Linux distribution/container for this engine; other CodeInspectus engines and native rules remain available.",
     );
   }
 
