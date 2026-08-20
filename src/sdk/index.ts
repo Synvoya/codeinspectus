@@ -10,7 +10,7 @@ import type { HistoryComparisonResult, HistoryListEntry, HistoryListResult, Hist
 import type { TriageAnnotation, TriageEvent, TriageState } from "../triage.js";
 import type { Finding, ScannerKind, Severity } from "../types.js";
 
-export const SDK_API_VERSION = "2.5.0" as const;
+export const SDK_API_VERSION = "2.6.0" as const;
 export const SDK_COMPATIBILITY = Object.freeze({
   cli_major: 2,
   export_schema: "2.0.0",

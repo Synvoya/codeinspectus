@@ -13,31 +13,58 @@
  */
 
 import { spawn } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { MANAGED_BIN } from "../config.js";
+import { loadLockfile, platformKey } from "./lockfile.js";
+import { sha256Hex } from "../util/hash.js";
 
 export interface SigResult {
   ok: boolean;
   detail: string;
 }
 
-export async function hasCosign(): Promise<boolean> {
+async function systemCosign(): Promise<string | undefined> {
   return await new Promise((resolve) => {
     const c = spawn(process.platform === "win32" ? "where" : "which", ["cosign"], {
-      stdio: "ignore",
+      stdio: ["ignore", "pipe", "ignore"],
     });
-    c.on("error", () => resolve(false));
-    c.on("close", (code) => resolve(code === 0));
+    let stdout = "";
+    c.stdout.on("data", (data) => (stdout += data.toString()));
+    c.on("error", () => resolve(undefined));
+    c.on("close", (code) => resolve(code === 0 ? stdout.split(/\r?\n/).find(Boolean) : undefined));
   });
 }
 
-function runCosign(args: string[]): Promise<{ code: number | null; out: string }> {
-  return new Promise((resolve) => {
-    const c = spawn("cosign", args, { stdio: ["ignore", "pipe", "pipe"] });
+export async function resolveCosign(): Promise<string | undefined> {
+  const managed = join(MANAGED_BIN, process.platform === "win32" ? "cosign.exe" : "cosign");
+  if (await hasManagedCosign()) return managed;
+  return await systemCosign();
+}
+
+export async function hasManagedCosign(): Promise<boolean> {
+  const managed = join(MANAGED_BIN, process.platform === "win32" ? "cosign.exe" : "cosign");
+  if (!await access(managed).then(() => true).catch(() => false)) return false;
+  const expected = (await loadLockfile().catch(() => undefined))?.verifiers?.cosign.platforms[platformKey()]?.sha256;
+  if (!expected) return false;
+  const actual = sha256Hex(await readFile(managed).catch(() => Buffer.alloc(0)));
+  return actual.toLowerCase() === expected.toLowerCase();
+}
+
+export async function hasCosign(): Promise<boolean> {
+  return Boolean(await resolveCosign());
+}
+
+async function runCosign(args: string[]): Promise<{ code: number | null; out: string }> {
+  const executable = await resolveCosign();
+  if (!executable) return { code: null, out: "cosign is not installed" };
+  return await new Promise((resolve) => {
+    const captured = spawn(executable, args, { stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
-    c.stdout.on("data", (d) => (out += d.toString()));
-    c.stderr.on("data", (d) => (out += d.toString()));
-    c.on("error", (e) => resolve({ code: null, out: e.message }));
-    c.on("close", (code) => resolve({ code, out }));
+    captured.stdout.on("data", (d) => (out += d.toString()));
+    captured.stderr.on("data", (d) => (out += d.toString()));
+    captured.on("error", (e) => resolve({ code: null, out: e.message }));
+    captured.on("close", (code) => resolve({ code, out }));
   });
 }
 

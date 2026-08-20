@@ -1,7 +1,7 @@
 /**
  * CodeInspectus entry point.
  *
- * Default (no args): start the MCP server over stdio.
+ * Default (no args): guided setup on an interactive terminal; MCP over piped stdio.
  * `repair-engines`: explicitly fetch + verify only unhealthy engine/DB state.
  * `install-engines`: backward-compatible setup alias (explicit network step).
  * `pin-engines`: maintainer-only shipped lockfile generation.
@@ -21,6 +21,11 @@ async function main(): Promise<void> {
   const cmd = argv[0];
 
   if (!cmd) {
+    if (process.stdin.isTTY && process.stdout.isTTY) {
+      const { runSetupCli } = await import("./setup.js");
+      process.exitCode = await runSetupCli([], { automatic: true });
+      return;
+    }
     const { startServer } = await import("./server.js");
     await startServer();
     return;
@@ -38,6 +43,11 @@ async function main(): Promise<void> {
     case "issue": {
       const { runCli } = await import("./cli.js");
       process.exitCode = await runCli(argv);
+      return;
+    }
+    case "setup": {
+      const { runSetupCli } = await import("./setup.js");
+      process.exitCode = await runSetupCli(argv.slice(1));
       return;
     }
     case "install-engines": {

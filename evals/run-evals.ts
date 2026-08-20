@@ -680,8 +680,8 @@ function assertFlutterExecutionEnvelope(
   );
   assert(aiEngines.length === 1, `${label}: expected exactly one AI engine run record`);
   assert(
-    aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
-    `${label}: expected codeinspectus-ai@5.19.0 to run`,
+    aiEngines[0].ran === true && aiEngines[0].version === "5.20.0",
+    `${label}: expected codeinspectus-ai@5.20.0 to run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -822,8 +822,8 @@ function assertMobileExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
-    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.20.0",
+    `${label}: expected exactly one codeinspectus-ai@5.20.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -972,8 +972,8 @@ function assertReactNativeExpoExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
-    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.20.0",
+    `${label}: expected exactly one codeinspectus-ai@5.20.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1101,8 +1101,8 @@ function assertPythonAiApiExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
-    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.20.0",
+    `${label}: expected exactly one codeinspectus-ai@5.20.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1200,8 +1200,8 @@ function assertGoAiExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
-    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.20.0",
+    `${label}: expected exactly one codeinspectus-ai@5.20.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1302,8 +1302,8 @@ function assertJavaAiExecutionEnvelope(
     (engine: any) => engine.engine === "codeinspectus-ai",
   );
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
-    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.20.0",
+    `${label}: expected exactly one codeinspectus-ai@5.20.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1396,8 +1396,8 @@ function assertCsharpAiExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
-    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.20.0",
+    `${label}: expected exactly one codeinspectus-ai@5.20.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1484,8 +1484,8 @@ function assertPhpAiExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
-    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.20.0",
+    `${label}: expected exactly one codeinspectus-ai@5.20.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1572,8 +1572,8 @@ function assertRustAiExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
-    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.20.0",
+    `${label}: expected exactly one codeinspectus-ai@5.20.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1660,8 +1660,8 @@ function assertRubyAiExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
-    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.20.0",
+    `${label}: expected exactly one codeinspectus-ai@5.20.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1748,8 +1748,8 @@ function assertFirebaseExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
-    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.20.0",
+    `${label}: expected exactly one codeinspectus-ai@5.20.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -1831,8 +1831,8 @@ function assertGithubActionsExecutionEnvelope(
   if (!expectEngineDetails) return;
   const aiEngines = (result.engine_details ?? []).filter((engine: any) => engine.engine === "codeinspectus-ai");
   assert(
-    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.19.0",
-    `${label}: expected exactly one codeinspectus-ai@5.19.0 run`,
+    aiEngines.length === 1 && aiEngines[0].ran === true && aiEngines[0].version === "5.20.0",
+    `${label}: expected exactly one codeinspectus-ai@5.20.0 run`,
   );
   assert(
     (result.engine_details ?? []).every((engine: any) => engine.engine === "codeinspectus-ai"),
@@ -2464,7 +2464,7 @@ async function main() {
         assert(boundaryFindings.every((x) => x.producer_components?.some((component: string) => component.startsWith("ai:"))), "API-boundary finding missing detector provenance");
         const serialized = JSON.stringify(boundaryScan);
         assert(!serialized.includes("provider failure") && !serialized.includes("database unavailable"), "API-boundary output leaked planted internal detail");
-        assert(boundaryScan.engine_details.some((x: any) => x.engine === "codeinspectus-ai" && x.version === "5.19.0"), "AI engine version was not bumped for expanded multi-pack coverage");
+        assert(boundaryScan.engine_details.some((x: any) => x.engine === "codeinspectus-ai" && x.version === "5.20.0"), "AI engine version was not bumped for expanded multi-pack coverage");
       },
     },
     {

@@ -7,9 +7,9 @@
  * or registry packs, which would require network and break zero-egress.
  */
 
-import { readFile, access } from "node:fs/promises";
+import { readFile, access, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { OPENGREP_RULES_DIR } from "../config.js";
+import { MANAGED_OPENGREP_CACHE, OPENGREP_RULES_DIR } from "../config.js";
 import { resolveEngine, EngineUnavailableError } from "./resolve.js";
 import { execBinary } from "./exec.js";
 import { log } from "../logger.js";
@@ -38,9 +38,11 @@ export async function runOpengrep(target: string, tmpDir: string): Promise<Engin
 
     // VERIFY: confirm flag spelling against opengrep v1.23.0 (`--sarif-output=`
     // per PRD §4.1; some builds use `--sarif --output`). Isolated here for easy fix.
+    await mkdir(MANAGED_OPENGREP_CACHE, { recursive: true });
     const res = await execBinary(bin.path, args, {
       cwd: await engineWorkingDirectory(target),
       offline: true,
+      env: opengrepExecEnvironment(tmpDir),
     });
     // Opengrep exit code is non-zero when findings exist; we read the SARIF
     // regardless and interpret results, not the exit code.
@@ -90,9 +92,20 @@ export function buildOpengrepArgs(target: string, sarifPath: string): string[] {
     "-f",
     OPENGREP_RULES_DIR,
     "--quiet",
+    "--disable-version-check",
     "--taint-intrafile", // intrafile cross-function taint (PRD §1.4 in-scope)
     target,
   ];
+}
+
+/** Keep Opengrep's self-extraction cache under CodeInspectus and transient logs out of the user home. */
+export function opengrepExecEnvironment(tmpDir: string): Record<string, string> {
+  return {
+    XDG_CACHE_HOME: MANAGED_OPENGREP_CACHE,
+    SEMGREP_LOG_FILE: join(tmpDir, "opengrep.log"),
+    SEMGREP_VERSION_CACHE_PATH: join(tmpDir, "opengrep-version-cache"),
+    OPENGREP_ENABLE_VERSION_CHECK: "0",
+  };
 }
 
 function engineNote(

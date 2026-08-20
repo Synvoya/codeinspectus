@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { SERVER_VERSION } from "./config.js";
 import { SDK_API_VERSION, SDK_COMPATIBILITY } from "./sdk/index.js";
 
-const RELEASE_VERSION = "2.5.0";
+const RELEASE_VERSION = "2.6.0";
 
 describe("V2 release source synchronization", () => {
   test("package, lockfile, server, CLI, and SDK versions agree", async () => {
@@ -80,10 +80,11 @@ describe("V2 release source synchronization", () => {
     expect(changelog).toContain("## [2.0.0] — 2026-07-30");
     expect(changelog).toContain("## [2.1.0] — 2026-08-02");
     expect(changelog).toContain("## [2.5.0] — 2026-08-13");
+    expect(changelog).toContain("## [2.6.0] — 2026-08-20");
     expect(readme).toContain("CLI command reference");
     expect(readme).toContain("reproduce-v2.1-case-study.mjs");
     expect(changelog).toContain("CODEINSPECTUS_CASE_PACKAGE");
-    for (const command of ["scan", "preflight", "export", "scans", "triage", "bundle", "bulk", "history", "issue"]) {
+    for (const command of ["setup", "scan", "preflight", "export", "scans", "triage", "bundle", "bulk", "history", "issue"]) {
       expect(cliReference).toMatch(new RegExp(`codeinspectus ${command}\\b`));
     }
     expect(provenance).toContain("No Codex Security source code or documentation text was copied");

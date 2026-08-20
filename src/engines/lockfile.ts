@@ -20,6 +20,10 @@ export interface PlatformEntry {
   archive: "raw" | "tar.gz" | "zip";
   binary: string;
   sha256: string | null;
+  /** Runtime ABI required by this upstream asset, when narrower than the OS key. */
+  runtime?: { libc: "glibc" };
+  /** Exact upstream release-asset bytes, recorded during release pinning. */
+  download_size_bytes?: number;
   provenance?: Provenance;
   _verify?: string;
 }
@@ -39,6 +43,8 @@ export interface Lockfile {
   generated_at: string | null;
   sigstore_identities?: Record<string, string>;
   engines: Record<EngineName, EngineLockEntry>;
+  /** Bootstrap tools are not scanners, but use the same immutable release-pin shape. */
+  verifiers?: { cosign: EngineLockEntry };
 }
 
 /** Node platform/arch → lockfile platform key. */
@@ -46,6 +52,30 @@ export function platformKey(): string {
   const platform = process.platform; // 'darwin' | 'linux' | 'win32'
   const arch = process.arch; // 'arm64' | 'x64'
   return `${platform}-${arch}`;
+}
+
+export type LinuxLibc = "glibc" | "non-glibc" | "unknown";
+
+/** Detect the ABI of the running Node process without executing external tools. */
+export function linuxLibc(): LinuxLibc {
+  if (process.platform !== "linux") return "unknown";
+  try {
+    const report = process.report?.getReport() as { header?: { glibcVersionRuntime?: string } } | undefined;
+    return report?.header?.glibcVersionRuntime ? "glibc" : "non-glibc";
+  } catch {
+    return "unknown";
+  }
+}
+
+export function platformRuntimeIssue(
+  entry: PlatformEntry,
+  platform = process.platform,
+  libc = linuxLibc(),
+): string | undefined {
+  if (platform !== "linux" || entry.runtime?.libc !== "glibc" || libc === "glibc") return undefined;
+  return libc === "non-glibc"
+    ? "The pinned upstream binary requires glibc, but this Linux runtime is non-glibc (for example Alpine/musl)."
+    : "The pinned upstream binary requires glibc, but this Linux runtime ABI could not be verified.";
 }
 
 export async function loadLockfile(): Promise<Lockfile> {

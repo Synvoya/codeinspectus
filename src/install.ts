@@ -49,11 +49,21 @@ import type { EngineSetupStatus } from "./types.js";
 
 const ENGINE_ORDER: EngineName[] = ["opengrep", "gitleaks", "trivy"];
 
+export interface InstallIo {
+  stdout(text: string): void;
+  stderr(text: string): void;
+}
+
+const DEFAULT_INSTALL_IO: InstallIo = {
+  stdout: (text) => process.stdout.write(text + "\n"),
+  stderr: (text) => process.stderr.write(text + "\n"),
+};
+
 function out(s: string): void {
-  process.stdout.write(s + "\n");
+  DEFAULT_INSTALL_IO.stdout(s);
 }
 function err(s: string): void {
-  process.stderr.write(s + "\n");
+  DEFAULT_INSTALL_IO.stderr(s);
 }
 
 async function run(cmd: string, args: string[], cwd?: string): Promise<{ code: number | null; stderr: string }> {
@@ -131,6 +141,7 @@ async function getVerifiedChecksums(
   cosignBin: boolean,
   staging: string,
   cache: Map<EngineName, Map<string, string>>,
+  io: InstallIo,
 ): Promise<Map<string, string>> {
   const cached = cache.get(engine);
   if (cached) return cached;
@@ -149,10 +160,10 @@ async function getVerifiedChecksums(
     await download(`${meta.release_base}/${meta.checksums_asset}.sigstore.json`, bundlePath);
     const r = await verifyBundle({ blob: checksumsPath, bundlePath, identity, issuer });
     if (!r.ok) throw new Error(`${engine}: sigstore verification of checksums FAILED — ${r.detail} (fail-closed).`);
-    out(`  ✓ ${engine}: cosign sigstore bundle verified over ${meta.checksums_asset} (identity: ${identity}).`);
+    io.stdout(`  ✓ ${engine}: cosign sigstore bundle verified over ${meta.checksums_asset} (identity: ${identity}).`);
     await cacheArtifacts(engine, [checksumsPath, bundlePath]);
   } else {
-    out(`  i ${engine}: checksums fetched (gitleaks publishes no cosign signature; checksum-only).`);
+    io.stdout(`  i ${engine}: checksums fetched (gitleaks publishes no cosign signature; checksum-only).`);
     await cacheArtifacts(engine, [checksumsPath]);
   }
   const parsed = parseChecksums(await readFile(checksumsPath, "utf8"));
@@ -215,6 +226,7 @@ async function pinEnginePlatform(
   checksumsCache: Map<EngineName, Map<string, string>>,
   install: boolean,
   updateLockfile: boolean,
+  io: InstallIo,
 ): Promise<PinResult> {
   const meta = lock.engines[engine];
   const entry = meta?.platforms[plat];
@@ -223,7 +235,7 @@ async function pinEnginePlatform(
   const platDir = join(staging, `${engine}-${plat}`);
   await mkdir(platDir, { recursive: true });
   const url = `${meta.release_base}/${entry.asset}`;
-  out(`• ${engine} v${meta.version} [${plat}] — ${entry.asset}`);
+  io.stdout(`• ${engine} v${meta.version} [${plat}] — ${entry.asset}`);
   const archivePath = join(platDir, entry.asset);
   await download(url, archivePath);
 
@@ -242,19 +254,19 @@ async function pinEnginePlatform(
     await download(`${url}.cert`, certPath);
     const r = await verifyCertSig({ blob: archivePath, certPath, sigPath, identity, issuer });
     if (!r.ok) throw new Error(`${engine} [${plat}]: signature verification FAILED — ${r.detail} (fail-closed; not pinned).`);
-    out(`  ✓ cosign signature verified.`);
+    io.stdout(`  ✓ cosign signature verified.`);
     if (install) await cacheArtifacts(engine, [sigPath, certPath]);
     provenance = { method: "cosign", verified: true, at, identity, issuer };
   } else {
     // gitleaks (checksums) / trivy (checksums+sigstore): verify checksum match.
-    const checksums = await getVerifiedChecksums(engine, meta, identities, cosignBin, staging, checksumsCache);
+    const checksums = await getVerifiedChecksums(engine, meta, identities, cosignBin, staging, checksumsCache, io);
     const expected = checksums.get(entry.asset);
     if (!expected) throw new Error(`${engine} [${plat}]: '${entry.asset}' not in checksums; cannot verify (fail-closed).`);
     const actualArchive = sha256Hex(await readFile(archivePath));
     if (actualArchive.toLowerCase() !== expected) {
       throw new Error(`${engine} [${plat}]: archive checksum MISMATCH (expected ${expected}, got ${actualArchive}). Fail-closed.`);
     }
-    out(`  ✓ archive checksum matches ${meta.signature === "checksums+sigstore" ? "signed " : ""}checksums.`);
+    io.stdout(`  ✓ archive checksum matches ${meta.signature === "checksums+sigstore" ? "signed " : ""}checksums.`);
     provenance =
       meta.signature === "checksums+sigstore"
         ? { method: "cosign", verified: true, at, identity: identities[engine], issuer: identities.issuer }
@@ -284,9 +296,9 @@ async function pinEnginePlatform(
     const dest = join(MANAGED_BIN, runName);
     await atomicInstallBinary(memberPath, dest);
     installed = true;
-    out(`  ✓ installed ${dest}`);
+    io.stdout(`  ✓ installed ${dest}`);
   }
-  out(
+  io.stdout(
     updateLockfile
       ? `  ✓ pinned sha256 ${sha}${install ? "" : "  (cross-platform pin; not installed/run on this machine)"}`
       : `  ✓ matched immutable shipped sha256 ${sha}`,
@@ -295,6 +307,7 @@ async function pinEnginePlatform(
   // Only the maintainer pinning command may mutate the packaged lockfile.
   if (updateLockfile) {
     entry.sha256 = sha;
+    entry.download_size_bytes = (await stat(archivePath)).size;
     entry.provenance = provenance;
     delete entry._verify;
   }
@@ -338,11 +351,11 @@ async function replaceDirectory(staged: string, dest: string): Promise<void> {
   }
 }
 
-async function populateTrivyDb(): Promise<string | undefined> {
+async function populateTrivyDb(io: InstallIo): Promise<string | undefined> {
   const trivyBin = join(MANAGED_BIN, process.platform === "win32" ? "trivy.exe" : "trivy");
   const stagingCache = join(MANAGED_ROOT, `.trivy-cache-repair-${process.pid}-${Date.now()}`);
   const stagingDbDir = join(stagingCache, "db");
-  out("• Trivy vuln DB — downloading offline snapshot (install-time only)…");
+  io.stdout("• Trivy vuln DB — downloading offline snapshot (install-time only)…");
   try {
     await mkdir(stagingCache, { recursive: true });
     const r = await run(trivyBin, ["fs", "--download-db-only", "--cache-dir", stagingCache]);
@@ -361,8 +374,8 @@ async function populateTrivyDb(): Promise<string | undefined> {
     await rm(MANAGED_TRIVY_DB_PROVENANCE, { force: true });
     await replaceDirectory(stagingDbDir, join(MANAGED_TRIVY_CACHE, "db"));
     await writeTrivyDbContentDigest(dbDigest);
-    out(`  ✓ Trivy vulnerability DB content signature recorded (${dbDigest.slice(0, 23)}…).`);
-    out(`  ✓ Trivy DB ready (downloaded ${meta.DownloadedAt ?? "?"}).`);
+    io.stdout(`  ✓ Trivy vulnerability DB content signature recorded (${dbDigest.slice(0, 23)}…).`);
+    io.stdout(`  ✓ Trivy DB ready (downloaded ${meta.DownloadedAt ?? "?"}).`);
     return meta.DownloadedAt;
   } finally {
     await rm(stagingCache, { recursive: true, force: true }).catch(() => {});
@@ -476,14 +489,14 @@ async function acquireRepairLock(): Promise<() => Promise<void>> {
 }
 
 /** User-facing, incremental repair. Never mutates the packaged engines.lock.json. */
-export async function repairEngines(args: string[]): Promise<void> {
+export async function repairEngines(args: string[], io: InstallIo = DEFAULT_INSTALL_IO): Promise<void> {
   const { selected, refreshDb } = parseRepairArgs(args);
   const fullScope = selected.length === ENGINE_ORDER.length;
   const firstStatus = await inspectEngineSetup();
   let plan = planEngineRepair(firstStatus, selected, refreshDb);
   if (plan.blockers.length) throw new Error(plan.blockers.join("; "));
   if (!plan.engines.length && !plan.refresh_trivy_db) {
-    out(
+    io.stdout(
       fullScope
         ? "✓ Engine setup ready. Shipped pins, managed binaries, and Trivy DB state need no repair."
         : "✓ Selected repair scope is healthy; no download needed. Unselected engine/DB state was not changed.",
@@ -498,7 +511,7 @@ export async function repairEngines(args: string[]): Promise<void> {
     plan = planEngineRepair(await inspectEngineSetup(), selected, refreshDb);
     if (plan.blockers.length) throw new Error(plan.blockers.join("; "));
     if (!plan.engines.length && !plan.refresh_trivy_db) {
-      out(
+      io.stdout(
         fullScope
           ? "✓ Engine setup was repaired by another process; nothing to do."
           : "✓ Selected repair scope was repaired by another process; unselected state was not changed.",
@@ -508,9 +521,9 @@ export async function repairEngines(args: string[]): Promise<void> {
 
     const lock = await loadLockfile();
     const current = platformKey();
-    out("CodeInspectus repair-engines — explicit install-time network step.");
-    out(`Host platform: ${current}  Managed dir: ${MANAGED_ROOT}`);
-    out(`Repair plan: engines ${plan.engines.join(", ") || "(none)"}; Trivy DB ${plan.refresh_trivy_db ? "refresh" : "unchanged"}.\n`);
+    io.stdout("CodeInspectus repair-engines — explicit install-time network step.");
+    io.stdout(`Host platform: ${current}  Managed dir: ${MANAGED_ROOT}`);
+    io.stdout(`Repair plan: engines ${plan.engines.join(", ") || "(none)"}; Trivy DB ${plan.refresh_trivy_db ? "refresh" : "unchanged"}.\n`);
 
     await mkdir(MANAGED_BIN, { recursive: true });
     await mkdir(MANAGED_TRIVY_CACHE, { recursive: true });
@@ -541,9 +554,10 @@ export async function repairEngines(args: string[]): Promise<void> {
           checksumsCache,
           true,
           false,
+          io,
         );
       }
-      if (plan.refresh_trivy_db) await populateTrivyDb();
+      if (plan.refresh_trivy_db) await populateTrivyDb(io);
     } finally {
       await rm(staging, { recursive: true, force: true }).catch(() => {});
     }
@@ -556,7 +570,7 @@ export async function repairEngines(args: string[]): Promise<void> {
         "Inspect `codeinspectus_list_rules` engine_setup details and retry.",
       );
     }
-    out("\n✓ Engine repair complete. Packaged pins were not modified; scans remain offline.");
+    io.stdout("\n✓ Engine repair complete. Packaged pins were not modified; scans remain offline.");
   } finally {
     await releaseLock();
   }
@@ -637,6 +651,7 @@ export async function pinEngines(args: string[]): Promise<void> {
           checksumsCache,
           install,
           true,
+          DEFAULT_INSTALL_IO,
         );
         pinned.push(r);
         if (r.installed && engine === "trivy") currentInstalledTrivy = true;
@@ -652,7 +667,7 @@ export async function pinEngines(args: string[]): Promise<void> {
   await saveLockfile(lock);
   out("\n✓ engines.lock.json updated with verified SHA256 pins + provenance.");
 
-  if (currentInstalledTrivy) await populateTrivyDb();
+  if (currentInstalledTrivy) await populateTrivyDb(DEFAULT_INSTALL_IO);
 
   await rm(staging, { recursive: true, force: true }).catch(() => {});
 

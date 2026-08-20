@@ -111,7 +111,7 @@ Expected: all focused tests pass; manifest `1.19.0` owns exactly 72 native rule 
 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, 2 Expo, 10 Python AI/API,
 1 Go AI, 1 Java AI, 1 C# AI, 1 PHP AI, 1 Rust AI, 1 Ruby AI, 3 Firebase configuration,
 2 GitHub Actions workflow, and 2 JavaScript baseline SAST) across sixteen packs and 45 analyzers;
-the aggregate native engine is `5.19.0`. The JavaScript/TypeScript pack is `1.9.0`; the Flutter
+the aggregate native engine is `5.20.0`. The JavaScript/TypeScript pack is `1.9.0`; the Flutter
 pack is `1.1.0`. A detected Flutter project runs the six Flutter analyzers,
 a plain Dart package reports that pack as `not_applicable`, Android/iOS project evidence activates
 only its matching platform pack, and scanner-filter exclusion reports installed packs as `not_run`

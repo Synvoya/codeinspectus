@@ -84,6 +84,7 @@ async function waitFor(id, timeoutMs = 8000) {
   console.error("✓ tools/list:", tools.join(", "));
   const expected = [
     "codeinspectus_scan",
+    "codeinspectus_setup",
     "codeinspectus_rescan",
     "codeinspectus_compliance_report",
     "codeinspectus_explain_finding",
@@ -98,13 +99,29 @@ async function waitFor(id, timeoutMs = 8000) {
     jsonrpc: "2.0",
     id: 3,
     method: "tools/call",
+    params: { name: "codeinspectus_setup", arguments: { action: "plan", components: ["gitleaks"] } },
+  });
+  const setup = await waitFor(3);
+  const setupPlan = setup.result?.structuredContent;
+  if (setupPlan?.outcome !== "planned" || setupPlan?.plan?.schema_version !== "1.0.0") {
+    throw new Error("setup plan returned no validated structuredContent");
+  }
+  if (setupPlan.plan.components.filter((item) => item.selected).map((item) => item.id).join(",") !== "gitleaks") {
+    throw new Error("setup plan did not preserve the requested component selection");
+  }
+  console.error("✓ codeinspectus_setup: offline component plan returned");
+
+  send({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "tools/call",
     params: { name: "codeinspectus_scan", arguments: { path: process.cwd() } },
   });
   // A full-project scan invokes all managed engines and can legitimately take
   // longer than the lightweight initialize/tools-list requests, especially on
   // cold CI runners. Keep the short default for protocol calls, but give the
   // scanner a bounded, engine-appropriate window.
-  const scan = await waitFor(3, 30_000);
+  const scan = await waitFor(4, 30_000);
   const sc = scan.result?.structuredContent;
   if (!sc || typeof sc.scan_id !== "string") throw new Error("scan returned no structuredContent");
   if (!Array.isArray(sc.detected_technologies)) throw new Error("scan returned no detected_technologies array");

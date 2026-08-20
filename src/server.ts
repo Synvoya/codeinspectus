@@ -1,5 +1,5 @@
 /**
- * CodeInspectus MCP server — registers the six tools (PRD §11) over stdio.
+ * CodeInspectus MCP server — registers local security/reporting tools over stdio.
  *
  * All tools are read-only with respect to the user's files. Each returns both a
  * human-readable text block and validated structuredContent. Errors are returned
@@ -20,18 +20,21 @@ import {
   explainFindingInput,
   generateSbomInput,
   listRulesInput,
+  setupInput,
   scanResultSchema,
   rescanResultSchema,
   complianceReportOutput,
   explainFindingOutput,
   sbomOutput,
   listRulesOutput,
+  setupOutput,
   type ScanInput,
   type RescanInput,
   type ComplianceReportInput,
   type ExplainFindingInput,
   type GenerateSbomInput,
   type ListRulesInput,
+  type SetupInput,
 } from "./schemas.js";
 
 import { runScan } from "./scan.js";
@@ -41,6 +44,7 @@ import { explainFinding } from "./explain.js";
 import { generateSbom } from "./sbom.js";
 import { listRules } from "./rules.js";
 import { summarizeScan, summarizeRescan } from "./summarize.js";
+import { buildSetupPlan, declineSetupComponents, formatSetupPlan, installSetupComponents, SETUP_COMPONENTS } from "./setup.js";
 
 const READ_ONLY = {
   readOnlyHint: true,
@@ -60,6 +64,13 @@ const MANAGED_WRITE = {
   openWorldHint: false,
 } as const;
 
+const NETWORKED_MANAGED_WRITE = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: true,
+} as const;
+
 const SERVER_INSTRUCTIONS =
   "CodeInspectus reports; it never edits source. When asked to review security—or after making " +
   "security-relevant code changes—call codeinspectus_scan with an absolute path. Present findings " +
@@ -70,8 +81,10 @@ const SERVER_INSTRUCTIONS =
   "a ran pack means its listed rules executed, not complete security coverage for that language. " +
   "Inspect engine_setup in scan/list-rules output. For repair_required, explain that engine coverage may be partial; " +
   "for db_refresh_recommended, explain the DB freshness/rescan-continuity limitation without calling current findings incomplete. " +
-  "Ask for approval, then run `npx codeinspectus repair-engines` in the user's terminal; never download " +
-  "engines silently or during a scan. " +
+  "When engine readiness is not yet known, call codeinspectus_setup with action=plan before the first scan. " +
+  "Explain each affected component, coverage, license and size, " +
+  "then ask for approval. Only after approval call action=install with confirm_downloads=true. Never download " +
+  "engines silently or during a scan. A terminal is not required for MCP setup. " +
   "For exposed secrets, advise rotation at the provider and keep values redacted. Treat " +
   "codeinspectus_compliance_report as code-level control coverage only, never certification or a " +
   "percent-compliant claim. codeinspectus_generate_sbom writes an artifact; the other tools do not " +
@@ -109,6 +122,37 @@ export function createServer(): McpServer {
       } catch (err) {
         log.error("scan failed", err);
         return fail(describeError("codeinspectus_scan failed", err));
+      }
+    },
+  );
+
+  // ── codeinspectus_setup ────────────────────────────────────────────────────
+  server.registerTool(
+    "codeinspectus_setup",
+    {
+      title: "Plan or install external security engines",
+      description:
+        "Inspect external-engine health and exact platform download sizes, save declined choices, or install selected " +
+        "Opengrep/Gitleaks/Trivy components after explicit confirmation. Plan is offline. Install writes only to " +
+        "~/.codeinspectus, verifies immutable pins/publisher provenance, and never modifies the target repository.",
+      inputSchema: setupInput.shape,
+      outputSchema: setupOutput.shape,
+      annotations: { title: "CodeInspectus Setup", ...NETWORKED_MANAGED_WRITE },
+    },
+    async (args: SetupInput): Promise<ToolResult> => {
+      try {
+        const selection = args.components?.length ? args.components : [...SETUP_COMPONENTS];
+        const result = args.action === "install"
+          ? await installSetupComponents(selection, args.confirm_downloads === true, {
+              io: { stdout: (text) => log.info(text), stderr: (text) => log.warn(text) },
+            })
+          : args.action === "decline"
+            ? await declineSetupComponents(selection)
+            : { outcome: "planned" as const, message: "Review the plan and ask for approval before installing.", plan: await buildSetupPlan({ selection }) };
+        return ok(`${result.message}\n\n${formatSetupPlan(result.plan)}`, result as unknown as Record<string, unknown>);
+      } catch (err) {
+        log.error("setup failed", err);
+        return fail(describeError("codeinspectus_setup failed", err));
       }
     },
   );

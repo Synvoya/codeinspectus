@@ -269,7 +269,8 @@ export function cliHelp(command?: "scan" | "preflight" | "export"): string {
     "CodeInspectus, by Synvoya — local-first security MCP server and CLI.",
     "",
     "Usage:",
-    "  codeinspectus                              Start the MCP server over stdio (default).",
+    "  codeinspectus                              Guided setup in a terminal; MCP server over piped stdio.",
+    "  codeinspectus setup [options]              Review and approve external engine downloads.",
     "  codeinspectus scan <target> [options]      Scan a local file or directory.",
     "  codeinspectus preflight <target> [options] Inspect readiness without scanning or writing.",
     "  codeinspectus export <scan-id> --format <json|sarif|csv> [options] Export a stored canonical scan.",
@@ -289,6 +290,7 @@ export function cliHelp(command?: "scan" | "preflight" | "export"): string {
     ...common,
     "",
     "Scans are offline. Preflight never downloads, repairs, authenticates, scans, or writes.",
+    "Setup options: --status, --all, --select opengrep,gitleaks,trivy, --reset.",
     "No account. No telemetry.",
     "",
   ].join("\n");

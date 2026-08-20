@@ -186,6 +186,13 @@ async function loadProject(target: string, notes: BoundedNotes): Promise<LoadRes
   let candidates = 0;
   let totalBytes = 0;
 
+  // Edge deployment/authentication is a project-level contract spanning
+  // supabase/config.toml, entrypoints, shared imports, and deploy commands. A
+  // direct file scan has no project boundary to inspect and is not an unreadable
+  // directory failure; other file-local analyzers still run normally.
+  const targetInfo = await lstat(root).catch(() => undefined);
+  if (targetInfo?.isFile()) return { root, files, skipped, incomplete };
+
   const walk = async (directory: string): Promise<void> => {
     if (++directories > MAX_DIRECTORIES) {
       incomplete = true;

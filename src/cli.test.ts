@@ -177,8 +177,9 @@ describe("CLI parser", () => {
     expect(() => parseCliCommand(argv as string[])).toThrow(expected as RegExp);
   });
 
-  test("help documents MCP default and the first-class commands", () => {
-    expect(cliHelp()).toMatch(/Start the MCP server over stdio/);
+  test("help documents interactive setup, piped MCP, and the first-class commands", () => {
+    expect(cliHelp()).toMatch(/Guided setup in a terminal; MCP server over piped stdio/);
+    expect(cliHelp()).toMatch(/codeinspectus setup \[options\]/);
     expect(cliHelp()).toMatch(/codeinspectus scan <target>/);
     expect(cliHelp()).toMatch(/codeinspectus scans <list\|show\|rerun\|compare>/);
     expect(cliHelp()).toMatch(/codeinspectus bundle <create\|verify\|export\|compare>/);

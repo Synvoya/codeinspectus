@@ -54,7 +54,7 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   [AI_INVOCATION_COMPONENT]: "1:all-analyzers-no-target-flags",
   "ai:client-secrets": "4:exact-supabase-secret-and-all-occurrence-bundle-state",
   "ai:supabase-rls-policy-state": "3:bounded-role-command-policy-composition-state",
-  "ai:supabase-edge-auth": "3:effective-config-and-handler-scoped-authn-authz",
+  "ai:supabase-edge-auth": "4:file-target-is-not-project-discovery-failure",
   "ai:prompt-injection": "2:prompt-sink-analysis-cwe-1427",
   "ai:unsafe-tool-execution": "1:proven-model-tool-arguments-to-node-shell",
   "ai:llm-dynamic-execution": "1:model-output-to-code-or-import-proven-shell",

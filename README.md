@@ -72,10 +72,11 @@ IDs** (29 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Nativ
 3 Firebase configuration, 2 GitHub Actions workflow, and 2 JavaScript baseline SAST rules), 18 Opengrep-owned
 SAST rules, and 4 custom Gitleaks rules. All 20 Opengrep YAML rules remain physically active:
 the two native-owned rules reconcile exact results and fall back to Opengrep on mismatch or
-native unavailability. Opengrep, Gitleaks, and Trivy remain installed and additive.
+native unavailability. Opengrep, Gitleaks, and Trivy are optional, managed, additive engines.
 
-> CodeInspectus downloads the official, **SHA-pinned** engine binaries only when you run the
-> explicit engine-repair command, stores them outside the npm package, and calls
+> CodeInspectus explains each engine's coverage, license, platform-specific size, and required
+> action before asking permission. After approval it downloads the official, **SHA-pinned**
+> engine binaries, stores them outside the npm package, and calls
 > them as local subprocesses. It does **not** fork them.
 
 ## Why CodeInspectus?
@@ -90,19 +91,29 @@ before shipping.
 
 ## Install
 
-**Prerequisites:** **Node.js ≥22**. Node 24 LTS is recommended. Also install
-[**cosign**](https://github.com/sigstore/cosign)
-on your `PATH` when Opengrep or Trivy binaries need installation. Signature verification is
-**fail-closed**: those binaries are never installed without publisher verification. **Gitleaks**
-verifies by checksum and needs no cosign; a DB-only Trivy refresh reuses the already SHA-verified
-local Trivy binary.
+**Prerequisite:** **Node.js ≥22**. Node 24 LTS is recommended. No separate engine or Cosign
+installation is required. CodeInspectus can bootstrap a SHA-pinned Cosign verifier inside
+`~/.codeinspectus/` after approval; signature verification remains **fail-closed**.
+On Linux, the current upstream Opengrep assets require glibc. Alpine/musl remains supported for
+native CodeInspectus rules, Gitleaks, and Trivy, but setup marks Opengrep unavailable before any
+download and reports aggregate scan coverage as partial when it is selected.
 
 ```bash
-# Register once per machine with your agent (see "Client registration"), then:
-npx codeinspectus repair-engines
+# Interactive: inspect coverage, licenses, and sizes; then approve all or choose components.
+npx codeinspectus setup
+
+# Automation after an operator has reviewed the plan:
+npx codeinspectus setup --status
+npx codeinspectus setup --all
+npx codeinspectus setup --select opengrep,gitleaks
 ```
 
-`repair-engines` first checks local state without network access. It downloads only missing,
+On a terminal, a first bare `npx codeinspectus` run opens this guided setup. MCP clients continue
+to start over piped stdio and expose `codeinspectus_setup`: agents must request a plan, show it,
+ask permission, then call install with `confirm_downloads=true`. Declined choices are saved so
+users are not repeatedly prompted; `setup --reset` clears them.
+
+Setup first checks local state without network access. It downloads only missing,
 mismatched, or newly pinned binaries, verifies them against the immutable lockfile shipped in the
 npm package, and atomically installs them under `~/.codeinspectus/`. It refreshes the offline
 Trivy vulnerability DB only when it is missing, lacks rescan provenance, or is more than seven
@@ -111,9 +122,9 @@ perform zero network I/O.**
 
 Every scan and `codeinspectus_list_rules` response includes structured `engine_setup` state:
 `ready`, `repair_required`, `db_refresh_recommended`, or `unsupported_platform`. MCP agents are
-instructed to explain non-ready state and obtain approval before running the repair command—there
-is no silent npm `postinstall` download. The older `install-engines` command remains supported as
-a compatibility alias and explicitly refreshes the Trivy DB.
+instructed to explain non-ready state and obtain approval through `codeinspectus_setup`. There is
+no silent npm `postinstall` download. `repair-engines` remains available for advanced/manual use;
+the older `install-engines` command remains a compatibility alias.
 
 If a Trivy DB was installed before 0.3.2, scan output tells your agent that CVE rescan
 tracking is not yet enabled. The agent should run `npx codeinspectus repair-engines`
@@ -281,6 +292,7 @@ useful when you want the same policy persisted explicitly in a repository.
 | Tool | Purpose |
 |------|---------|
 | `codeinspectus_scan` | Full local scan of a path (engines + AI checks). Returns CWE-keyed findings, detected technologies, exact native-pack and Pub dependency coverage, remediations, framework tags, and three-state repository evidence for supported runtime controls. |
+| `codeinspectus_setup` | Offline setup plan, saved decline choices, or approval-gated verified downloads to `~/.codeinspectus`; never writes to the target repository. |
 | `codeinspectus_rescan` | Re-scan after fixes; diffs vs a prior scan → resolved / remaining / introduced, with fresh technology and pack coverage. |
 | `codeinspectus_compliance_report` | Per-framework **code-level control coverage** (not certification). |
 | `codeinspectus_explain_finding` | Deep explanation + full remediation for one finding. |

@@ -92,6 +92,11 @@ destination lookup, issue submission, or network request. `issue submit` is inte
 ## Engine lifecycle and metadata
 
 ```bash
+codeinspectus setup
+codeinspectus setup --status
+codeinspectus setup --all
+codeinspectus setup --select opengrep,gitleaks,trivy
+codeinspectus setup --reset
 codeinspectus repair-engines [ENGINE]
 codeinspectus install-engines [ENGINE]
 codeinspectus verify-engines
@@ -100,8 +105,16 @@ codeinspectus --version
 codeinspectus --help
 ```
 
+Bare `codeinspectus` starts guided setup only when stdin and stdout are interactive terminals;
+piped stdio still starts the MCP server. `setup` shows exact pinned binary asset sizes and a clearly
+labelled Trivy database disk estimate before approval. `--all` and `--select` are explicit
+noninteractive approvals. Saved choices prevent repeat prompting; `--reset` removes them.
+
 `install-engines` remains a compatibility alias. `pin-engines` is maintainer-only. Normal scans
-never repair or download engines implicitly.
+never repair or download engines implicitly. No npm lifecycle script downloads executables.
+The pinned Linux Opengrep release assets require glibc. On Alpine/musl, setup blocks Opengrep
+before download while leaving native rules, Gitleaks, and Trivy available; scans report the missing
+Opengrep surface as partial coverage.
 
 ## Exit status
 

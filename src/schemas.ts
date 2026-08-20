@@ -380,6 +380,16 @@ export const listRulesInput = z.object({
   engine: engineEnum.optional().describe("Filter to one engine's rules/detectors."),
 });
 
+export const setupComponentEnum = z.enum(["opengrep", "gitleaks", "trivy"]);
+export const setupInput = z.object({
+  action: z.enum(["plan", "install", "decline"]).default("plan")
+    .describe("Plan is offline/read-only. Install downloads only after confirm_downloads=true. Decline saves the choice."),
+  components: z.array(setupComponentEnum).optional()
+    .describe("Components to install or decline. Default: all three external engines."),
+  confirm_downloads: z.boolean().optional()
+    .describe("Must be true for an install that needs network downloads."),
+});
+
 // ── Tool OUTPUT schemas ─────────────────────────────────────────────────────
 export const rescanResultSchema = z.object({
   scan_id: z.string(),
@@ -521,6 +531,43 @@ export const listRulesOutput = z.object({
   note: z.string(),
 });
 
+export const setupComponentPlanSchema = z.object({
+  id: setupComponentEnum,
+  name: z.string(),
+  version: z.string(),
+  state: z.string(),
+  action: z.enum(["none", "download", "redownload", "refresh_database", "blocked"]),
+  selected: z.boolean(),
+  download_size_bytes: z.number().int().nonnegative().optional(),
+  estimated_database_disk_bytes: z.number().int().nonnegative().optional(),
+  coverage: z.array(z.string()),
+  license: z.string(),
+  note: z.string().optional(),
+});
+
+export const setupPlanSchema = z.object({
+  schema_version: z.literal("1.0.0"),
+  platform: z.string(),
+  native: z.object({ rule_count: z.number().int().nonnegative(), download_required: z.literal(false), coverage: z.string() }),
+  components: z.array(setupComponentPlanSchema),
+  verifier: z.object({
+    name: z.literal("Cosign"), version: z.string(), required: z.boolean(), available: z.boolean(),
+    download_size_bytes: z.number().int().nonnegative().optional(), license: z.literal("Apache-2.0"), purpose: z.string(),
+  }),
+  preference_state: z.enum(["unconfigured", "configured", "invalid"]),
+  network_required: z.boolean(),
+  confirmation_required: z.boolean(),
+  exact_download_bytes: z.number().int().nonnegative(),
+  estimated_database_disk_bytes: z.number().int().nonnegative(),
+  warnings: z.array(z.string()),
+});
+
+export const setupOutput = z.object({
+  outcome: z.enum(["planned", "installed", "declined"]),
+  message: z.string(),
+  plan: setupPlanSchema,
+});
+
 // Inferred TS types for convenience.
 export type ScanInput = z.infer<typeof scanInput>;
 export type RescanInput = z.infer<typeof rescanInput>;
@@ -528,3 +575,4 @@ export type ComplianceReportInput = z.infer<typeof complianceReportInput>;
 export type ExplainFindingInput = z.infer<typeof explainFindingInput>;
 export type GenerateSbomInput = z.infer<typeof generateSbomInput>;
 export type ListRulesInput = z.infer<typeof listRulesInput>;
+export type SetupInput = z.infer<typeof setupInput>;
