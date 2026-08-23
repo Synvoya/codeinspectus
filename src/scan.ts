@@ -27,6 +27,8 @@ import type {
   SeveritySummary,
   SecretSuppressionMetadata,
 } from "./types.js";
+import { createUnavailableRepositoryTrust } from "./repository-trust/schemas.js";
+import { scanSourceIntegrity } from "./repository-trust/source-integrity.js";
 import type { ScanInput } from "./schemas.js";
 import { log } from "./logger.js";
 import { saveScan } from "./store.js";
@@ -140,6 +142,10 @@ export async function executeScan(
   // engines. Never mutates git or the repo — only reads (rev-parse / status --porcelain).
   const gitSafetyProbe = detectGitSafety(target);
   const technologyProbe = detectTechnologies(target);
+  const repositoryTrustProbe = scanSourceIntegrity(target).catch((error: unknown) => {
+    warnings.push(`Source-integrity detector unavailable: ${error instanceof Error ? error.message : "unknown detector failure"}`);
+    return createUnavailableRepositoryTrust();
+  });
   const tmpDir = await mkdtemp(join(tmpdir(), "ci-scan-"));
 
   try {
@@ -176,11 +182,12 @@ export async function executeScan(
     // chance to report that omission as partial rather than the envelope saying not_applicable.
     const pubTask = runVuln ? runPubScan(target) : undefined;
 
-    const [engineOutputs, nativeResult, technologyDetection, pubResult] = await Promise.all([
+    const [engineOutputs, nativeResult, technologyDetection, pubResult, repositoryTrust] = await Promise.all([
       Promise.all(tasks),
       nativeTask ?? Promise.resolve(undefined),
       technologyProbe,
       pubTask ?? Promise.resolve(undefined),
+      repositoryTrustProbe,
     ]);
 
     if (technologyDetection.limitations.length) {
@@ -362,6 +369,7 @@ export async function executeScan(
       offline: true,
       detected_technologies: technologyDetection.detected_technologies,
       pack_coverage: packCoverage,
+      repository_trust: repositoryTrust,
       dependency_coverage: dependencyCoverage,
       ...(trivyDbDate ? { trivy_db_date: trivyDbDate } : {}),
       summary,

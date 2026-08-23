@@ -6,6 +6,7 @@
 import type { ScanResult, RescanResult, Finding, DependencyCoverage } from "./types.js";
 import { TRIVY_DB_PROVENANCE_MESSAGE } from "./trivy-db-provenance.js";
 import { engineSetupMessage } from "./engine-health.js";
+import type { RepositoryArtifact, RepositoryTrustDocument } from "./repository-trust/schemas.js";
 
 function technologyAndPackSummary(
   technologies: ScanResult["detected_technologies"],
@@ -54,6 +55,35 @@ function topLines(findings: Finding[], n: number): string {
         `  • [${f.severity}]${f.scope_role ? ` [${f.scope_role === "primary" ? "changed" : "supporting context"}]` : ""} ${f.title} — ${f.location.file}:${f.location.start_line} (${f.cwe.join(", ")}, ${f.engine})`,
     )
     .join("\n");
+}
+
+function artifactAttribute(artifact: RepositoryArtifact, name: string): string | undefined {
+  const value = artifact.evidence.attributes.find((attribute) => attribute.name === name)?.value;
+  return typeof value === "string" || typeof value === "number" ? String(value) : undefined;
+}
+
+function repositoryArtifactLines(artifacts: RepositoryArtifact[], n: number): string {
+  return artifacts.slice(0, n).map((artifact) => {
+    const line = artifact.location.start_line ?? "metadata";
+    const column = artifact.location.start_column ? `:${artifact.location.start_column}` : "";
+    const codePoints = artifactAttribute(artifact, "code_points") ?? artifact.marker_class;
+    const action = artifactAttribute(artifact, "proposed_action");
+    return `  • [${artifact.state}] ${artifact.marker_class} ${codePoints} — ${artifact.location.file}:${line}${column}` +
+      (artifact.remediation.eligible ? " — approval required before cleanup" : " — evidence only") +
+      (action ? `\n    ${action}` : "");
+  }).join("\n");
+}
+
+function repositoryTrustSummary(document: RepositoryTrustDocument): string {
+  const source = document.coverage.capabilities.find((capability) => capability.capability === "source_integrity");
+  const counts = document.summary;
+  return (
+    `\n\nRepository trust: ${document.coverage.state} (${counts.total} artifact(s), schema ${document.schema_version})` +
+    (source ? `\n  Source integrity: ${source.state} via ${source.validators.join(", ") || "no validator"}` : "") +
+    `\n  States: ${counts.verified} verified, ${counts.probable} probable, ${counts.informational} informational, ${counts.not_verifiable} not verifiable` +
+    (document.artifacts.length ? `\n  Source-integrity artifacts:\n${repositoryArtifactLines(document.artifacts, 10)}` : "") +
+    (document.coverage.limitations.length ? `\n  Limits: ${document.coverage.limitations.join(" ")}` : "")
+  );
 }
 
 export function summarizeScan(r: ScanResult): string {
@@ -117,6 +147,7 @@ export function summarizeScan(r: ScanResult): string {
     : "";
 
   const nativeCoverage = technologyAndPackSummary(r.detected_technologies, r.pack_coverage);
+  const repositoryTrust = repositoryTrustSummary(r.repository_trust);
   const dependencyCoverage = dependencyCoverageSummary(r.dependency_coverage);
   const gitScope = r.git_scope
     ? `\n\nGit scope: ${r.git_scope.mode} | base=${r.git_scope.base.commit}` +
@@ -124,7 +155,7 @@ export function summarizeScan(r: ScanResult): string {
       ` | ${r.git_scope.entries.length} change record(s) | ${r.git_scope.primary_finding_count} changed-path finding(s) | ${r.git_scope.supporting_context_finding_count} supporting-context finding(s) | ${r.git_scope.completeness}`
     : "";
 
-  return `${head}${gitScope}${nativeCoverage}${dependencyCoverage}${body}${trunc}${controlEvidence}${dbProvenance}${engineSetup}${beforeFix}${eng}${warn}\n\n${r.disclaimer}`;
+  return `${head}${gitScope}${nativeCoverage}${repositoryTrust}${dependencyCoverage}${body}${trunc}${controlEvidence}${dbProvenance}${engineSetup}${beforeFix}${eng}${warn}\n\n${r.disclaimer}`;
 }
 
 export function summarizeRescan(r: RescanResult): string {
@@ -141,6 +172,17 @@ export function summarizeRescan(r: RescanResult): string {
     `Resolved: ${r.summary.resolved} | Remaining: ${r.summary.remaining} | ` +
     `Newly introduced: ${r.summary.introduced} | Not re-checked: ${r.summary.not_rechecked}` +
     technologyAndPackSummary(r.detected_technologies, r.pack_coverage) +
+    repositoryTrustSummary(r.repository_trust) +
+    `\n  Changes: ${r.repository_trust_changes.summary.resolved} resolved, ` +
+    `${r.repository_trust_changes.summary.remaining} remaining, ` +
+    `${r.repository_trust_changes.summary.introduced} introduced, ` +
+    `${r.repository_trust_changes.summary.not_rechecked} not re-checked` +
+    (r.repository_trust_changes.introduced.length
+      ? `\n  Introduced trust artifacts:\n${repositoryArtifactLines(r.repository_trust_changes.introduced, 10)}`
+      : "") +
+    (r.repository_trust_changes.resolved.length
+      ? `\n  Resolved trust artifacts:\n${repositoryArtifactLines(r.repository_trust_changes.resolved, 10)}`
+      : "") +
     dependencyCoverageSummary(r.dependency_coverage) +
     (r.introduced.length ? `\n\nNewly introduced:\n${topLines(r.introduced, 10)}` : "") +
     (r.remaining.length ? `\n\nStill present:\n${topLines(r.remaining, 10)}` : "") +

@@ -308,6 +308,30 @@ Each scan also reports a read-only **git-safety** state: if there's no git repo 
 uncommitted changes, it recommends creating a checkpoint before fixes — your agent
 runs git only with your approval; the tool never does.
 
+### Source Integrity — V3.1
+
+V3.1 activates the first capability in the stable, non-CWE `repository_trust` contract across scan,
+rescan, CLI JSON, MCP structured output, SARIF metadata, and the TypeScript SDK. It deterministically
+inspects supported repository text for bidirectional overrides/unbalanced controls, zero-width or
+default-ignorable token characters, concealed Unicode tag sequences, encoded variation-selector
+runs, and a bounded set of mixed-script identifier confusables.
+
+Every artifact reports escaped code points, Unicode names, exact file/line/code-point column,
+UTF-8 byte offset, context classification, validator identity, confidence, limitations and an
+approval-required proposed action. Very long tag/variation runs retain the exact span and sequence
+length while capping rendered evidence to 64 code points; dense candidates and identifiers are
+bounded before output materialization and incomplete work is reported as partial. Initial BOMs,
+legitimate RTL text, emoji variation/ZWJ/tag
+sequences, international-language joiners and ambiguous confusables are suppressed or kept
+non-destructive. Scans never edit files; cleanup requires explicit approval for the named file and
+marker, a reversible edit by the user's coding agent, tests, and a rescan.
+
+This is **source-integrity protection, not AI-authorship detection**. Explicit AI attribution,
+C2PA, statistical watermark verification and media watermark removal remain unavailable.
+CodeInspectus does not claim that hidden Unicode is a Claude watermark or evidence of AI generation.
+
+See the [V3 migration guide](docs/V3-REPOSITORY-TRUST-MIGRATION.md) for schema and SDK changes.
+
 `detected_technologies` explains the bounded repository signals CodeInspectus saw.
 `pack_coverage` separately reports how many registered native analyzers and rules actually ran.
 A pack state of `ran` means those listed rules executed; it is not a claim of complete security

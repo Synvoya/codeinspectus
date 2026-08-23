@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { findingSchema, gitScanScopeSchema, repositoryHistoryRevisionSchema, scanIdSchema, scannerEnum, severityEnum, summarySchema } from "../schemas.js";
+import { repositoryTrustDocumentSchema } from "../repository-trust/schemas.js";
 
-export const EXPORT_SCHEMA_VERSION = "2.0.0" as const;
-export const EXPORT_SCHEMA_URI = "https://codeinspectus.com/schemas/v2.0.0/export.schema.json" as const;
+export const EXPORT_SCHEMA_VERSION = "3.0.0" as const;
+export const EXPORT_SCHEMA_URI = "https://codeinspectus.com/schemas/v3.0.0/export.schema.json" as const;
 export const SARIF_SCHEMA_URI = "https://json.schemastore.org/sarif-2.1.0.json" as const;
 
 export const aggregateCoverageSchema = z.enum(["complete", "partial", "unknown"]);
@@ -86,6 +87,7 @@ export const jsonExportSchema = z.object({
     history_revision: repositoryHistoryRevisionSchema.optional(),
   }),
   coverage: aggregateCoverageEnvelopeSchema,
+  repository_trust: repositoryTrustDocumentSchema,
   baseline: z.object({
     schema_version: z.literal("1.0.0"), baseline_scan_id: scanIdSchema, scan_id: scanIdSchema, target: z.string(), repository: z.string(),
     summary: z.object({ New: z.number().int(), Existing: z.number().int(), "Not rechecked / unknown": z.number().int() }),

@@ -7,7 +7,7 @@
  */
 import { spawn } from "node:child_process";
 
-const child = spawn("node", ["dist/index.js"], {
+const child = spawn(process.execPath, ["dist/index.js"], {
   stdio: ["pipe", "pipe", "pipe"],
   env: { ...process.env, CODEINSPECTUS_INTERNAL_DISABLE_SCAN_PERSISTENCE: "1", CODEINSPECTUS_INTERNAL_DISABLE_TRIAGE_PERSISTENCE: "1" },
 });
@@ -128,6 +128,32 @@ async function waitFor(id, timeoutMs = 8000) {
   if (!Array.isArray(sc.pack_coverage)) throw new Error("scan returned no pack_coverage array");
   if (sc.pack_coverage.length !== 16) throw new Error(`scan returned ${sc.pack_coverage.length} native packs, expected 16`);
   if (!Array.isArray(sc.dependency_coverage)) throw new Error("scan returned no dependency_coverage array");
+  const repositoryTrust = sc.repository_trust;
+  const sourceIntegrity = repositoryTrust?.coverage?.capabilities?.find(
+    (capability) => capability.capability === "source_integrity",
+  );
+  const unavailableCapabilities = repositoryTrust?.coverage?.capabilities?.filter(
+    (capability) => capability.capability !== "source_integrity" && capability.state === "unavailable",
+  );
+  if (
+    repositoryTrust?.schema_version !== "1.0.0" ||
+    repositoryTrust?.coverage?.state !== "partial" ||
+    !Array.isArray(repositoryTrust?.coverage?.capabilities) ||
+    repositoryTrust.coverage.capabilities.length !== 4 ||
+    !sourceIntegrity ||
+    !["ran", "partial"].includes(sourceIntegrity.state) ||
+    !sourceIntegrity.validators?.includes("codeinspectus-source-integrity@1.0.0") ||
+    unavailableCapabilities?.length !== 3 ||
+    typeof repositoryTrust?.summary?.total !== "number" ||
+    !Array.isArray(repositoryTrust?.artifacts) ||
+    repositoryTrust.artifacts.length !== repositoryTrust.summary.total ||
+    repositoryTrust.artifacts.some((artifact) => artifact.kind !== "source_integrity")
+  ) {
+    throw new Error("scan returned an invalid V3 repository_trust capability envelope");
+  }
+  if (!repositoryTrust.coverage.limitations.some((limitation) => limitation.includes("Other repository-trust capabilities remain unavailable"))) {
+    throw new Error("repository_trust did not preserve the unavailable provenance-capability boundary");
+  }
   const pubCoverage = sc.dependency_coverage.find((coverage) => coverage.engine === "codeinspectus-pub");
   if (!pubCoverage || pubCoverage.matching !== "exact-enumerated-versions") {
     throw new Error("scan returned no exact-version native Pub dependency coverage");
@@ -182,6 +208,7 @@ async function waitFor(id, timeoutMs = 8000) {
     throw new Error("scan returned incomplete JavaScript baseline SAST pack inventory");
   }
   console.error("✓ codeinspectus_scan structuredContent.scan_id:", sc.scan_id);
+  console.error("✓ repository_trust: V3.1 source integrity ran; three provenance capabilities remain unavailable");
 
   console.error("\nALL STDIO SMOKE CHECKS PASSED. stdout was pure JSON-RPC.");
   child.kill();

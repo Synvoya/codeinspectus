@@ -9,7 +9,7 @@
     "schema_version": { "const": "1.0.0" },
     "bundle_id": { "type": "string", "pattern": "^bundle-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
     "created_by": { "type": "object", "required": ["name", "version"], "properties": { "name": { "const": "codeinspectus" }, "version": { "type": "string" } }, "additionalProperties": false },
-    "schemas": { "type": "object", "required": ["bundle", "export", "sarif", "stored_scan"], "properties": { "bundle": { "const": "1.0.0" }, "export": { "const": "2.0.0" }, "sarif": { "const": "2.1.0" }, "stored_scan": { "const": "2.0.0" } }, "additionalProperties": false },
+    "schemas": { "type": "object", "required": ["bundle", "export", "sarif", "stored_scan"], "properties": { "bundle": { "const": "1.0.0" }, "export": { "enum": ["2.0.0", "3.0.0"] }, "sarif": { "const": "2.1.0" }, "stored_scan": { "const": "2.0.0" } }, "additionalProperties": false },
     "detection_database": { "type": "object", "required": ["version", "date"], "properties": { "version": { "type": "string" }, "date": { "type": "string" } }, "additionalProperties": false },
     "native_engine": { "type": "object", "required": ["name", "version"], "properties": { "name": { "const": "codeinspectus-ai" }, "version": { "type": "string" } }, "additionalProperties": false },
     "engine_platform": { "type": "string" },

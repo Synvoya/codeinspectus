@@ -1,6 +1,7 @@
 import { SERVER_VERSION } from "../config.js";
 import { redactSecretText, redactSnippet } from "../redact.js";
 import type { StoredScanResult } from "../store.js";
+import { createUnavailableRepositoryTrust } from "../repository-trust/schemas.js";
 import type { Finding, ScannerKind } from "../types.js";
 import type { Severity } from "../types.js";
 import type { BaselineComparison } from "../baseline.js";
@@ -292,6 +293,7 @@ export function createJsonExport(scan: StoredScanResult, options: {
       ...(scan.history_revision ? { history_revision: scan.history_revision } : {}),
     },
     coverage,
+    repository_trust: scan.repository_trust ?? createUnavailableRepositoryTrust(),
     ...(options.baseline ? { baseline: {
       ...options.baseline,
       items: options.baseline.items.map((item) => ({ state: item.state, finding_id: item.finding.id, fingerprint: item.finding.fingerprint, evidence: item.evidence })),

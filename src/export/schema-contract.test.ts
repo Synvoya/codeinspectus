@@ -20,14 +20,24 @@ const scan: StoredScanResult = {
   secret_coverage: "verified", storage_schema_version: "2.0.0", canonical_findings: true,
 };
 
-describe("packaged V2 schemas", () => {
+async function compilePackagedSchema(path: string) {
+  const [schema, repositoryTrust] = await Promise.all([
+    readFile(path, "utf8").then((value) => JSON.parse(value) as object),
+    readFile("schemas/codeinspectus-repository-trust-1.0.0.schema.json", "utf8").then(
+      (value) => JSON.parse(value) as object,
+    ),
+  ]);
+  const ajv = new Ajv({ strict: false, validateSchema: false });
+  ajv.addSchema(repositoryTrust);
+  return ajv.compile(schema);
+}
+
+describe("packaged V3 schemas", () => {
   test.each([
-    ["schemas/codeinspectus-export-2.0.0.schema.json", () => createJsonExport(scan)],
-    ["schemas/codeinspectus-sarif-2.0.0.schema.json", () => createSarifExport(createJsonExport(scan))],
+    ["schemas/codeinspectus-export-3.0.0.schema.json", () => createJsonExport(scan)],
+    ["schemas/codeinspectus-sarif-3.0.0.schema.json", () => createSarifExport(createJsonExport(scan))],
   ] as const)("validates a runtime document against %s", async (path, document) => {
-    const schema = JSON.parse(await readFile(path, "utf8")) as object;
-    const ajv = new Ajv({ strict: false, validateSchema: false });
-    const validate = ajv.compile(schema);
+    const validate = await compilePackagedSchema(path);
     expect(validate(document()), JSON.stringify(validate.errors)).toBe(true);
   });
 
@@ -37,13 +47,16 @@ describe("packaged V2 schemas", () => {
       base: { requested: "HEAD", commit: "a".repeat(40) },
       entries: [{ status: "modified", path: "src/app.ts", binary: false, generated: false, submodule: false, inspected: true }],
       primary_paths: ["src/app.ts"], primary_finding_count: 1, supporting_context_finding_count: 0, supporting_context_scanned: true, completeness: "complete", limitations: [],
+    }, history_revision: {
+      schema_version: "1.0.0", repository: "/repo", commit: "b".repeat(40),
+      committer_at: "2026-07-29T00:00:00.000Z", temporal_scope: "historical",
+      snapshot_completeness: "complete", limitations: [],
     }, findings: [{ ...scan.findings[0]!, scope_role: "primary" }] };
     for (const [path, document] of [
-      ["schemas/codeinspectus-export-2.0.0.schema.json", createJsonExport(scoped)],
-      ["schemas/codeinspectus-sarif-2.0.0.schema.json", createSarifExport(createJsonExport(scoped))],
+      ["schemas/codeinspectus-export-3.0.0.schema.json", createJsonExport(scoped)],
+      ["schemas/codeinspectus-sarif-3.0.0.schema.json", createSarifExport(createJsonExport(scoped))],
     ] as const) {
-      const schema = JSON.parse(await readFile(path, "utf8")) as object;
-      const validate = new Ajv({ strict: false, validateSchema: false }).compile(schema);
+      const validate = await compilePackagedSchema(path);
       expect(validate(document), JSON.stringify(validate.errors)).toBe(true);
       const invalid = structuredClone(document) as Record<string, any>;
       if ("scan" in invalid) invalid.scan.git_scope.base.commit = "HEAD";
@@ -72,14 +85,16 @@ describe("packaged V2 schemas", () => {
   });
 
   test("JSON schema rejects missing required fields and invalid coverage enum", async () => {
-    const schema = JSON.parse(await readFile("schemas/codeinspectus-export-2.0.0.schema.json", "utf8")) as object;
-    const validate = new Ajv({ strict: false, validateSchema: false }).compile(schema);
+    const validate = await compilePackagedSchema("schemas/codeinspectus-export-3.0.0.schema.json");
     const missing = JSON.parse(JSON.stringify(createJsonExport(scan)));
     delete missing.findings[0].producer_components;
     expect(validate(missing)).toBe(false);
     const invalid = JSON.parse(JSON.stringify(createJsonExport(scan)));
     invalid.coverage.aggregate = "mostly";
     expect(validate(invalid)).toBe(false);
+    const missingRepositoryTrust = JSON.parse(JSON.stringify(createJsonExport(scan)));
+    delete missingRepositoryTrust.repository_trust;
+    expect(validate(missingRepositoryTrust)).toBe(false);
     const contradictory = JSON.parse(JSON.stringify(createJsonExport(scan)));
     contradictory.scan.configuration.fail_on_severity = "high";
     expect(validate(contradictory)).toBe(false);
@@ -98,8 +113,7 @@ describe("packaged V2 schemas", () => {
   });
 
   test("SARIF schema rejects missing fingerprint, remediation, and coverage", async () => {
-    const schema = JSON.parse(await readFile("schemas/codeinspectus-sarif-2.0.0.schema.json", "utf8")) as object;
-    const validate = new Ajv({ strict: false, validateSchema: false }).compile(schema);
+    const validate = await compilePackagedSchema("schemas/codeinspectus-sarif-3.0.0.schema.json");
     const source = createSarifExport(createJsonExport(scan));
     for (const mutate of [
       (value: ReturnType<typeof createSarifExport>) => { delete (value.runs[0]!.results[0] as Partial<typeof value.runs[0]["results"][number]>).fingerprints; },

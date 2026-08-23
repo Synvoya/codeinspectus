@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { CODEINSPECTUS_AI_VERSION, DETECTION_DB_DIR, SERVER_VERSION, type EngineName } from "../config.js";
 import { createJsonExport, redactFindingForOutput } from "../export/model.js";
 import { createSarifExport } from "../export/sarif.js";
-import { jsonExportSchema, sarifExportSchema } from "../export/schemas.js";
+import { EXPORT_SCHEMA_VERSION, aggregateCoverageEnvelopeSchema, jsonExportSchema, sarifExportSchema } from "../export/schemas.js";
+import { createUnavailableRepositoryTrust } from "../repository-trust/schemas.js";
 import { getPlatformEntry, loadLockfile, platformKey } from "../engines/lockfile.js";
 import { inspectOutputDirectory, pathIsWithin } from "../path-safety.js";
 import { redactSnippet } from "../redact.js";
@@ -41,6 +44,68 @@ const MEDIA_TYPES: Record<(typeof EXPECTED_ARTIFACTS)[number], string> = {
   "artifacts/scan-record.json": "application/vnd.codeinspectus.scan+json",
   "artifacts/export.json": "application/vnd.codeinspectus.export+json",
 };
+
+const legacyJsonExportV2Schema = z.object({
+  $schema: z.literal("https://codeinspectus.com/schemas/v2.0.0/export.schema.json"),
+  schema_version: z.literal("2.0.0"),
+  generated_by: z.object({ name: z.literal("codeinspectus"), version: z.string() }),
+  scan: z.object({ id: z.string() }).passthrough(),
+  coverage: aggregateCoverageEnvelopeSchema,
+  findings: z.array(z.unknown()),
+}).passthrough();
+
+const legacySarifV2Schema = z.object({
+  version: z.literal("2.1.0"),
+  runs: z.array(z.object({
+    results: z.array(z.unknown()),
+    properties: z.object({
+      codeinspectus_schema_version: z.literal("2.0.0"),
+      scan_id: z.string(),
+    }).passthrough(),
+  }).passthrough()).length(1),
+}).passthrough();
+
+export function validateLegacyV2BundlePayloads(input: {
+  rawExport: unknown;
+  rawSarif: unknown;
+  scanId: string;
+  findings: unknown[];
+  coverage: unknown;
+}): void {
+  const legacyExport = legacyJsonExportV2Schema.parse(input.rawExport);
+  const legacySarif = legacySarifV2Schema.parse(input.rawSarif);
+  if (
+    legacyExport.scan.id !== input.scanId ||
+    legacySarif.runs[0]!.properties.scan_id !== input.scanId
+  ) {
+    throw new Error("Bundle artifacts do not share the manifest scan identity.");
+  }
+  if (
+    !isDeepStrictEqual(legacyExport.findings, input.findings) ||
+    !isDeepStrictEqual(legacyExport.coverage, input.coverage)
+  ) {
+    throw new Error("Legacy bundle findings, coverage, or SARIF do not match the sealed V2 export.");
+  }
+
+  const canonicalV3Export = jsonExportSchema.parse({
+    ...(input.rawExport as Record<string, unknown>),
+    $schema: "https://codeinspectus.com/schemas/v3.0.0/export.schema.json",
+    schema_version: "3.0.0",
+    repository_trust: createUnavailableRepositoryTrust(),
+  });
+  const canonicalLegacySarif = createSarifExport(canonicalV3Export);
+  const run = canonicalLegacySarif.runs[0]!;
+  run.tool.driver.version = legacyExport.generated_by.version;
+  delete run.invocations[0]?.properties.repository_trust;
+  delete run.properties.repository_trust;
+  run.properties.codeinspectus_schema_version = "2.0.0";
+  for (const result of run.results) {
+    result.fingerprints = { "codeinspectus/v2": result.fingerprints["codeinspectus/v3"]! };
+  }
+  if (!isDeepStrictEqual(canonicalLegacySarif, legacySarif)) {
+    throw new Error("Legacy bundle findings, coverage, or SARIF do not match the sealed V2 export.");
+  }
+}
 
 export interface VerifiedBundle {
   directory: string;
@@ -129,7 +194,7 @@ async function buildBundle(scanInput: StoredScanResult, sealedAt = new Date().to
     schema_version: BUNDLE_SCHEMA_VERSION,
     bundle_id: `bundle-${randomUUID()}`,
     created_by: { name: "codeinspectus", version: SERVER_VERSION },
-    schemas: { bundle: BUNDLE_SCHEMA_VERSION, export: "2.0.0", sarif: "2.1.0", stored_scan: "2.0.0" },
+    schemas: { bundle: BUNDLE_SCHEMA_VERSION, export: EXPORT_SCHEMA_VERSION, sarif: "2.1.0", stored_scan: "2.0.0" },
     detection_database: await detectionDatabase(),
     native_engine: { name: "codeinspectus-ai", version: CODEINSPECTUS_AI_VERSION },
     engine_platform: scan.engine_setup?.platform ?? "not-recorded",
@@ -246,12 +311,27 @@ export async function verifySealedBundle(inputDirectory: string): Promise<Verifi
 
   const findings = bundleFindingsSchema.parse(JSON.parse(contents["findings.json"].toString("utf8")));
   const coverage = bundleCoverageSchema.parse(JSON.parse(contents["coverage.json"].toString("utf8")));
-  const sarif = sarifExportSchema.parse(JSON.parse(contents["results.sarif"].toString("utf8")));
-  const sealedExport = jsonExportSchema.parse(JSON.parse(contents["artifacts/export.json"].toString("utf8")));
+  const rawSarif = JSON.parse(contents["results.sarif"].toString("utf8")) as unknown;
+  const rawExport = JSON.parse(contents["artifacts/export.json"].toString("utf8")) as unknown;
   const scan = storedScanResultSchema.parse(JSON.parse(contents["artifacts/scan-record.json"].toString("utf8"))) as unknown as StoredScanResult;
-  if (findings.scan_id !== manifest.scan_id || coverage.scan_id !== manifest.scan_id || sealedExport.scan.id !== manifest.scan_id || scan.scan_id !== manifest.scan_id) throw new Error("Bundle artifacts do not share the manifest scan identity.");
-  if (JSON.stringify(sealedExport.findings) !== JSON.stringify(findings.findings) || JSON.stringify(sealedExport.coverage) !== JSON.stringify(coverage.coverage) || JSON.stringify(createSarifExport(sealedExport)) !== JSON.stringify(sarif)) {
-    throw new Error("Bundle findings, coverage, or SARIF do not match the sealed canonical export.");
+  if (manifest.schemas.export === "3.0.0") {
+    const sarif = sarifExportSchema.parse(rawSarif);
+    const sealedExport = jsonExportSchema.parse(rawExport);
+    if (findings.scan_id !== manifest.scan_id || coverage.scan_id !== manifest.scan_id || sealedExport.scan.id !== manifest.scan_id || scan.scan_id !== manifest.scan_id) throw new Error("Bundle artifacts do not share the manifest scan identity.");
+    if (JSON.stringify(sealedExport.findings) !== JSON.stringify(findings.findings) || JSON.stringify(sealedExport.coverage) !== JSON.stringify(coverage.coverage) || JSON.stringify(createSarifExport(sealedExport)) !== JSON.stringify(sarif)) {
+      throw new Error("Bundle findings, coverage, or SARIF do not match the sealed canonical export.");
+    }
+  } else {
+    if (findings.scan_id !== manifest.scan_id || coverage.scan_id !== manifest.scan_id || scan.scan_id !== manifest.scan_id) {
+      throw new Error("Bundle artifacts do not share the manifest scan identity.");
+    }
+    validateLegacyV2BundlePayloads({
+      rawExport,
+      rawSarif,
+      scanId: manifest.scan_id,
+      findings: findings.findings,
+      coverage: coverage.coverage,
+    });
   }
   return { directory, manifest, scan, contents };
 }

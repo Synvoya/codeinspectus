@@ -25,7 +25,7 @@ describe("public SDK process wrapper", () => {
   test("passes arguments without a shell and returns valid partial-policy JSON at exit 2", async () => {
     const script = await fakeCli(`
       const args = process.argv.slice(2);
-      process.stdout.write(JSON.stringify({ schema_version: "2.0.0", scan: { target: args[1] }, coverage: { aggregate: "partial" }, findings: [] }));
+      process.stdout.write(JSON.stringify({ schema_version: "3.0.0", scan: { target: args[1] }, coverage: { aggregate: "partial" }, repository_trust: { schema_version: "1.0.0" }, findings: [] }));
       process.stderr.write("partial coverage\\n");
       process.exitCode = 2;
     `);
@@ -33,7 +33,7 @@ describe("public SDK process wrapper", () => {
     const client = new CodeInspectusClient({ command: process.execPath, commandArgs: [script] });
     const result = await client.scan(target, { scanners: ["ai"], includeCompliance: false });
     expect(result.exitCode).toBe(2);
-    expect(result.data).toMatchObject({ schema_version: "2.0.0", scan: { target }, coverage: { aggregate: "partial" } });
+    expect(result.data).toMatchObject({ schema_version: "3.0.0", scan: { target }, coverage: { aggregate: "partial" }, repository_trust: { schema_version: "1.0.0" } });
     expect(result.args).toEqual(["scan", target, "--format", "json", "--scanner", "ai", "--no-compliance"]);
     await expect(access("/tmp/sdk-shell-injection-must-not-exist")).rejects.toThrow();
   });
@@ -87,6 +87,6 @@ describe("public SDK process wrapper", () => {
     const client = new CodeInspectusClient();
     await expect(client.run(["--version"], { signal: controller.signal })).rejects.toBeInstanceOf(CodeInspectusSdkError);
     await expect(client.run(["--version"], { signal: controller.signal })).rejects.toMatchObject({ code: "ABORTED" });
-    expect(SDK_COMPATIBILITY).toMatchObject({ export_schema: "2.0.0", bundle_schema: "1.0.0", repository_history_schema: "1.0.0", issue_payload_schema: "1.0.0", cli_major: 2 });
+    expect(SDK_COMPATIBILITY).toMatchObject({ export_schema: "3.0.0", repository_trust_schema: "1.0.0", bundle_schema: "1.0.0", repository_history_schema: "1.0.0", issue_payload_schema: "1.0.0", cli_major: 3 });
   });
 });

@@ -9,11 +9,20 @@ import type { AggregateCoverage, CoverageEvidence, JsonExport, SarifExport } fro
 import type { HistoryComparisonResult, HistoryListEntry, HistoryListResult, HistoryScanStatus } from "../scan-history.js";
 import type { TriageAnnotation, TriageEvent, TriageState } from "../triage.js";
 import type { Finding, ScannerKind, Severity } from "../types.js";
+import type {
+  RepositoryArtifact,
+  RepositoryArtifactConfidence,
+  RepositoryArtifactState,
+  RepositoryTrustCapability,
+  RepositoryTrustChanges,
+  RepositoryTrustDocument,
+} from "../repository-trust/schemas.js";
 
-export const SDK_API_VERSION = "2.6.0" as const;
+export const SDK_API_VERSION = "3.1.0" as const;
 export const SDK_COMPATIBILITY = Object.freeze({
-  cli_major: 2,
-  export_schema: "2.0.0",
+  cli_major: 3,
+  export_schema: "3.0.0",
+  repository_trust_schema: "1.0.0",
   history_schema: "1.0.0",
   baseline_schema: "1.0.0",
   triage_schema: "1.0.0",
@@ -24,12 +33,28 @@ export const SDK_COMPATIBILITY = Object.freeze({
   csv_schema: "1.0.0",
 });
 
-export type FindingV2 = JsonExport["findings"][number];
-export type CoverageV2 = JsonExport["coverage"];
+export type FindingV3 = JsonExport["findings"][number];
+export type CoverageV3 = JsonExport["coverage"];
 export type AggregateCoverageV2 = AggregateCoverage;
 export type CoverageEvidenceV2 = CoverageEvidence;
-export type JsonExportV2 = JsonExport;
-export type SarifExportV2 = SarifExport;
+export type JsonExportV3 = JsonExport;
+export type SarifExportV3 = SarifExport;
+/** @deprecated Use FindingV3. Retained as a source-compatibility alias for SDK migrations. */
+export type FindingV2 = FindingV3;
+/** @deprecated Use CoverageV3. Retained as a source-compatibility alias for SDK migrations. */
+export type CoverageV2 = CoverageV3;
+/** @deprecated V3 commands return schema 3.0.0. Use JsonExportV3. */
+export type JsonExportV2 = JsonExportV3;
+/** @deprecated V3 commands return the V3 SARIF profile. Use SarifExportV3. */
+export type SarifExportV2 = SarifExportV3;
+export type RepositoryTrustDocumentV1 = RepositoryTrustDocument;
+export type RepositoryArtifactV1 = RepositoryArtifact;
+export type RepositoryTrustChangesV1 = RepositoryTrustChanges;
+export type {
+  RepositoryArtifactConfidence,
+  RepositoryArtifactState,
+  RepositoryTrustCapability,
+};
 export type HistoryListEntryV1 = HistoryListEntry;
 export type HistoryListResultV1 = HistoryListResult;
 export type HistoryComparisonV1 = Omit<HistoryComparisonResult, "items"> & {
@@ -251,7 +276,7 @@ export class CodeInspectusClient {
     });
   }
 
-  async scan(target: string, options: ScanOptions = {}): Promise<CodeInspectusJsonCommandResult<JsonExportV2>> {
+  async scan(target: string, options: ScanOptions = {}): Promise<CodeInspectusJsonCommandResult<JsonExportV3>> {
     const args = ["scan", target, "--format", "json"];
     if (options.scanners?.length) args.push("--scanner", options.scanners.join(","));
     appendOption(args, "--severity", options.severityThreshold);
@@ -262,11 +287,11 @@ export class CodeInspectusClient {
     if (options.gitScope?.mode === "commit_diff") args.push("--diff", options.gitScope.base, "--head", options.gitScope.head);
     else if (options.gitScope?.mode === "working_tree") args.push("--working-tree", "--base", options.gitScope.base);
     if (options.includeCompliance === false) args.push("--no-compliance");
-    return parseJsonResult<JsonExportV2>(await this.run(args, options), SDK_COMPATIBILITY.export_schema);
+    return parseJsonResult<JsonExportV3>(await this.run(args, options), SDK_COMPATIBILITY.export_schema);
   }
 
-  async exportScan(scanId: string, options: CommandRunOptions = {}): Promise<CodeInspectusJsonCommandResult<JsonExportV2>> {
-    return parseJsonResult<JsonExportV2>(await this.run(["export", scanId, "--format", "json"], options), SDK_COMPATIBILITY.export_schema);
+  async exportScan(scanId: string, options: CommandRunOptions = {}): Promise<CodeInspectusJsonCommandResult<JsonExportV3>> {
+    return parseJsonResult<JsonExportV3>(await this.run(["export", scanId, "--format", "json"], options), SDK_COMPATIBILITY.export_schema);
   }
 
   async listHistory(options: HistoryListOptions = {}): Promise<CodeInspectusJsonCommandResult<HistoryListResultV1>> {

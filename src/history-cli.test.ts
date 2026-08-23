@@ -163,7 +163,7 @@ describe("history CLI output", () => {
     expect(await runHistoryCli(["show", record.scan_id, "--format", "json"], result.io, dependencies([record]))).toBe(0);
     const output = result.stdout.join("");
     expect(output).not.toContain(token);
-    expect(JSON.parse(output)).toMatchObject({ schema_version: "2.0.0", scan: { id: record.scan_id } });
+    expect(JSON.parse(output)).toMatchObject({ schema_version: "3.0.0", scan: { id: record.scan_id } });
   });
 
   test("show text redacts secret-shaped fields from a schema-valid stored record", async () => {
@@ -196,7 +196,7 @@ describe("history CLI output", () => {
     expect(await runHistoryCli(["rerun", old.scan_id, "--format", "json"], result.io, deps)).toBe(0);
     expect(JSON.parse(result.stdout.join(""))).toMatchObject({
       rerun_of: old.scan_id,
-      scan: { schema_version: "2.0.0", scan: { id: fresh.scan_id } },
+      scan: { schema_version: "3.0.0", scan: { id: fresh.scan_id } },
       comparison: { old_scan_id: old.scan_id, new_scan_id: fresh.scan_id, partial: false },
     });
     expect(deps.rerun).toHaveBeenCalledWith(old);

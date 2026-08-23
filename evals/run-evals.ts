@@ -3766,6 +3766,125 @@ async function main() {
         }
       },
     },
+    {
+      id: "E55 source-integrity markers are exact, bounded, and vendor-neutral through built MCP",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-source-integrity-"));
+        const target = join(temporaryRoot, "integrity.ts");
+        const source = [
+          `const admin\u200BRole = "owner";`,
+          `const allowed = true; // \u202E } hidden branch`,
+          `const heart = "❤️";`,
+          `// \u2067مرحبا بالعالم\u2069`,
+        ].join("\n");
+        try {
+          await writeFile(target, source, "utf8");
+          const response = await client.callTool("codeinspectus_scan", {
+            path: target,
+            scanners: ["ai"],
+          });
+          const result = response.structuredContent;
+          const trust = result.repository_trust;
+          const sourceCoverage = trust.coverage.capabilities.find(
+            (capability: any) => capability.capability === "source_integrity",
+          );
+          assert(
+            sourceCoverage?.state === "ran" &&
+              sourceCoverage.validators?.includes("codeinspectus-source-integrity@1.0.0"),
+            `source-integrity coverage was not complete: ${JSON.stringify(sourceCoverage)}`,
+          );
+          assert(trust.coverage.state === "partial", "unimplemented provenance capabilities were not fail-closed");
+          assert(trust.artifacts.length === 2, `expected two source-integrity artifacts, got ${trust.artifacts.length}`);
+          const markerClasses = trust.artifacts.map((artifact: any) => artifact.marker_class).sort();
+          assert(
+            JSON.stringify(markerClasses) === JSON.stringify(["unicode_bidi_override", "unicode_zero_width_token"]),
+            `unexpected marker classes: ${JSON.stringify(markerClasses)}`,
+          );
+          assert(
+            trust.artifacts.every(
+              (artifact: any) =>
+                artifact.kind === "source_integrity" && artifact.state === "verified" &&
+                artifact.location.file === "integrity.ts" && artifact.location.start_line > 0 &&
+                artifact.location.start_column > 0 && artifact.remediation.requires_approval === true &&
+                artifact.remediation.reversible === true,
+            ),
+            "source-integrity artifacts lost exact location or approval-gated remediation metadata",
+          );
+          assert(
+            trust.artifacts.every((artifact: any) =>
+              artifact.evidence.attributes.some((attribute: any) => attribute.name === "escaped_sequence") &&
+              artifact.evidence.attributes.some((attribute: any) => attribute.name === "utf8_byte_offset") &&
+              artifact.evidence.attributes.some((attribute: any) => attribute.name === "proposed_action")
+            ),
+            "source-integrity artifacts lost independently inspectable evidence",
+          );
+          assert(
+            !/claude|anthropic|vendor.watermark|ai.generated/i.test(JSON.stringify(trust)),
+            "source-integrity evidence was mislabeled as vendor or AI attribution",
+          );
+          const humanText = response.content.map((item: any) => item.text ?? "").join("\n");
+          assert(/U\+200B/.test(humanText), "human output omitted the escaped code point");
+          assert(!humanText.includes("\u200B"), "human output emitted the raw invisible marker");
+          assert(/approval required before cleanup/i.test(humanText), "human output omitted the approval gate");
+          assert((await readFile(target, "utf8")) === source, "the read-only scan mutated its target");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E56 source-integrity same-path rescan proves resolution and reintroduction",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-source-rescan-"));
+        const target = join(temporaryRoot, "integrity.ts");
+        const marked = `const admin\u200BRole = "owner";\n`;
+        const fixed = `const adminRole = "owner";\n`;
+        try {
+          await writeFile(target, marked, "utf8");
+          const baseline = (await client.callTool("codeinspectus_scan", {
+            path: target,
+            scanners: ["ai"],
+          })).structuredContent;
+          assert(baseline.repository_trust.artifacts.length === 1, "source-integrity baseline was not exact");
+
+          await writeFile(target, fixed, "utf8");
+          const resolved = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: baseline.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assert(
+            resolved.repository_trust_changes.summary.resolved === 1 &&
+              resolved.repository_trust_changes.summary.remaining === 0 &&
+              resolved.repository_trust_changes.summary.introduced === 0 &&
+              resolved.repository_trust_changes.summary.not_rechecked === 0 &&
+              resolved.repository_trust_changes.partial === false,
+            `source-integrity fixed rescan diff was wrong: ${JSON.stringify(resolved.repository_trust_changes)}`,
+          );
+
+          await writeFile(target, marked, "utf8");
+          const introduced = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: resolved.scan_id,
+            scanners: ["ai"],
+          })).structuredContent;
+          assert(
+            introduced.repository_trust_changes.summary.resolved === 0 &&
+              introduced.repository_trust_changes.summary.remaining === 0 &&
+              introduced.repository_trust_changes.summary.introduced === 1 &&
+              introduced.repository_trust_changes.summary.not_rechecked === 0 &&
+              introduced.repository_trust_changes.partial === false,
+            `source-integrity reintroduction diff was wrong: ${JSON.stringify(introduced.repository_trust_changes)}`,
+          );
+          assert(
+            introduced.repository_trust_changes.introduced[0]?.marker_class === "unicode_zero_width_token",
+            "source-integrity reintroduction surfaced the wrong artifact",
+          );
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
   ];
 
   for (const c of checks) {

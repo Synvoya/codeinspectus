@@ -15,6 +15,7 @@ import {
 } from "./cli.js";
 import type { PreflightResult } from "./preflight.js";
 import type { ScanResult } from "./types.js";
+import { createUnavailableRepositoryTrust } from "./repository-trust/schemas.js";
 import type { StoredScanResult } from "./store.js";
 import { listNativePacks } from "./packs/registry.js";
 import type { TriageSnapshot } from "./triage.js";
@@ -66,6 +67,7 @@ function emptyScan(target = "/repo"): ScanResult {
     offline: true,
     detected_technologies: [],
     pack_coverage: [],
+    repository_trust: createUnavailableRepositoryTrust(),
     summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 },
     findings: [],
     truncated: false,
@@ -241,7 +243,7 @@ describe("CLI stdout/stderr and execution", () => {
     expect(code).toBe(2);
     expect(capture.stderr.join(" ")).toMatch(/coverage is partial/i);
     expect(JSON.parse(capture.stdout.join(""))).toMatchObject({
-      schema_version: "2.0.0",
+      schema_version: "3.0.0",
       scan: { id: expect.stringMatching(/^scan-/), canonical_findings: true },
       coverage: { aggregate: expect.any(String) },
     });
@@ -371,7 +373,17 @@ describe("CLI stdout/stderr and execution", () => {
       const deps = dependencies({ loadScan: vi.fn(async () => storedScan()) });
       expect(await runCli(["export", id, "--format", format], capture.io, deps)).toBe(0);
       if (format === "csv") expect(capture.stdout.join("")).toMatch(/^"record_type","csv_schema_version"/);
-      else expect(JSON.parse(capture.stdout.join(""))).toMatchObject(format === "json" ? { schema_version: "2.0.0" } : { version: "2.1.0" });
+      else expect(JSON.parse(capture.stdout.join(""))).toMatchObject(format === "json"
+        ? {
+            schema_version: "3.0.0",
+            repository_trust: {
+              schema_version: "1.0.0",
+              coverage: { state: "unavailable" },
+              summary: { total: 0 },
+              artifacts: [],
+            },
+          }
+        : { version: "2.1.0" });
     }
   });
 });

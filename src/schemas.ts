@@ -8,6 +8,7 @@
  */
 
 import { z } from "zod";
+import { repositoryTrustChangesSchema, repositoryTrustDocumentSchema } from "./repository-trust/schemas.js";
 
 // ── Enumerations ────────────────────────────────────────────────────────────
 export const severityEnum = z.enum(["critical", "high", "medium", "low", "info"]);
@@ -265,6 +266,7 @@ export const scanResultSchema = z.object({
   offline: z.boolean(),
   detected_technologies: z.array(detectedTechnologySchema),
   pack_coverage: z.array(detectorPackCoverageSchema),
+  repository_trust: repositoryTrustDocumentSchema,
   dependency_coverage: z.array(dependencyCoverageSchema).optional(),
   trivy_db_date: z.string().optional(),
   summary: summarySchema,
@@ -316,6 +318,7 @@ export const storedScanResultSchema = scanResultSchema.extend({
       .extend({ platforms: z.array(z.string()).optional() })
       .transform((coverage) => ({ ...coverage, platforms: coverage.platforms ?? [] })),
   ).optional(),
+  repository_trust: repositoryTrustDocumentSchema.optional(),
 });
 
 // ── Tool INPUT schemas ──────────────────────────────────────────────────────
@@ -397,6 +400,8 @@ export const rescanResultSchema = z.object({
   target: z.string(),
   detected_technologies: z.array(detectedTechnologySchema),
   pack_coverage: z.array(detectorPackCoverageSchema),
+  repository_trust: repositoryTrustDocumentSchema,
+  repository_trust_changes: repositoryTrustChangesSchema,
   dependency_coverage: z.array(dependencyCoverageSchema).optional(),
   resolved: z.array(findingSchema),
   remaining: z.array(findingSchema),

@@ -4,9 +4,9 @@ import { describe, expect, test } from "vitest";
 import { SERVER_VERSION } from "./config.js";
 import { SDK_API_VERSION, SDK_COMPATIBILITY } from "./sdk/index.js";
 
-const RELEASE_VERSION = "2.6.0";
+const RELEASE_VERSION = "3.1.0";
 
-describe("V2 release source synchronization", () => {
+describe("V3 release source synchronization", () => {
   test("package, lockfile, server, CLI, and SDK versions agree", async () => {
     const packageJson = JSON.parse(await readFile("package.json", "utf8")) as {
       version: string;
@@ -31,7 +31,7 @@ describe("V2 release source synchronization", () => {
     ]);
     expect(SERVER_VERSION).toBe(RELEASE_VERSION);
     expect(SDK_API_VERSION).toBe(RELEASE_VERSION);
-    expect(SDK_COMPATIBILITY).toMatchObject({ cli_major: 2, export_schema: "2.0.0" });
+    expect(SDK_COMPATIBILITY).toMatchObject({ cli_major: 3, export_schema: "3.0.0", repository_trust_schema: "1.0.0" });
     expect(packageJson.license).toBe("Apache-2.0");
     expect(packageJson.files).toContain("agent-rules");
     expect(packageJson.files).toContain("LICENSE");
@@ -70,7 +70,7 @@ describe("V2 release source synchronization", () => {
     }
   });
 
-  test("release documentation and public projection include V2 surfaces", async () => {
+  test("release documentation and public projection include V3 contracts", async () => {
     const readme = await readFile("README.md", "utf8");
     const changelog = await readFile("CHANGELOG.md", "utf8");
     const cliReference = await readFile("docs/CLI-REFERENCE.md", "utf8");
@@ -81,6 +81,13 @@ describe("V2 release source synchronization", () => {
     expect(changelog).toContain("## [2.1.0] — 2026-08-02");
     expect(changelog).toContain("## [2.5.0] — 2026-08-13");
     expect(changelog).toContain("## [2.6.0] — 2026-08-20");
+    expect(changelog).toContain("## [3.0.0] — 2026-08-23");
+    expect(changelog).toContain("## [3.1.0] — 2026-08-23");
+    expect(readme).toContain("Source Integrity — V3.1");
+    expect(await readFile("docs/V3-REPOSITORY-TRUST-MIGRATION.md", "utf8")).toContain("3.0.0");
+    expect(existsSync("schemas/codeinspectus-export-3.0.0.schema.json")).toBe(true);
+    expect(existsSync("schemas/codeinspectus-sarif-3.0.0.schema.json")).toBe(true);
+    expect(existsSync("schemas/codeinspectus-repository-trust-1.0.0.schema.json")).toBe(true);
     expect(readme).toContain("CLI command reference");
     expect(readme).toContain("reproduce-v2.1-case-study.mjs");
     expect(changelog).toContain("CODEINSPECTUS_CASE_PACKAGE");
@@ -93,6 +100,7 @@ describe("V2 release source synchronization", () => {
       const seed = await readFile("scripts/seed-public.mjs", "utf8");
       expect(seed).toContain('"docs/CLI-REFERENCE.md"');
       expect(seed).toContain('"docs/V2-WORKFLOW-PROVENANCE.md"');
+      expect(seed).toContain('"docs/V3-REPOSITORY-TRUST-MIGRATION.md"');
       expect(seed).toContain('"docs/LICENSE-TRANSITION.md"');
     } else {
       expect(existsSync("docs/CLI-REFERENCE.md")).toBe(true);
