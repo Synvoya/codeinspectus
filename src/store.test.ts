@@ -16,7 +16,9 @@ import {
   getScan,
   saveScan,
   scanPersistenceDisabled,
+  normalizeStoredScanForRuntime,
 } from "./store.js";
+import { createUnavailableRepositoryTrust } from "./repository-trust/schemas.js";
 import { MANAGED_SCANS } from "./config.js";
 import { scanResultSchema } from "./schemas.js";
 
@@ -66,6 +68,14 @@ describe("safeParseScanJson — validate loaded JSON (Claim 2c)", () => {
     };
     const r = safeParseScanJson(JSON.stringify(old));
     expect(r.ok).toBe(true);
+    if (r.ok) {
+      const normalized = normalizeStoredScanForRuntime(r.value);
+      expect(normalized.repository_trust).toMatchObject({
+        schema_version: "1.0.0",
+        coverage: { state: "unavailable" },
+        summary: { total: 0 },
+      });
+    }
   });
 
   test("a stored pre-platform pack-coverage entry remains loadable", () => {
@@ -152,7 +162,7 @@ describe("safeParseScanJson — validate loaded JSON (Claim 2c)", () => {
     expect(parsed.success).toBe(false);
     if (!parsed.success) {
       const paths = parsed.error.issues.map((issue) => issue.path.join("."));
-      expect(paths).toEqual(expect.arrayContaining(["detected_technologies", "pack_coverage"]));
+      expect(paths).toEqual(expect.arrayContaining(["detected_technologies", "pack_coverage", "repository_trust"]));
     }
   });
 
@@ -233,6 +243,7 @@ describe("verification-only persistence isolation", () => {
       offline: true,
       detected_technologies: [],
       pack_coverage: [],
+      repository_trust: createUnavailableRepositoryTrust(),
       summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 },
       findings: [],
       truncated: false,

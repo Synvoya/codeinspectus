@@ -9,6 +9,8 @@ import { describe, test, expect } from "vitest";
 import { summarizeScan, summarizeRescan } from "./summarize.js";
 import { NO_GIT_RECOMMENDATION, DIRTY_RECOMMENDATION } from "./git-safety.js";
 import type { ScanResult, GitSafety, RescanResult, Finding } from "./types.js";
+import { createUnavailableRepositoryTrust } from "./repository-trust/schemas.js";
+import { createEmptyRepositoryTrustChanges } from "./repository-trust/diff.js";
 
 function mkResult(over: Partial<ScanResult> = {}): ScanResult {
   return {
@@ -29,6 +31,7 @@ function mkResult(over: Partial<ScanResult> = {}): ScanResult {
     warnings: [],
     git_safety: { state: "clean" } as GitSafety,
     ...over,
+    repository_trust: over.repository_trust ?? createUnavailableRepositoryTrust(),
   };
 }
 
@@ -182,6 +185,8 @@ function mkRescan(over: Partial<RescanResult> = {}): RescanResult {
     target: "/repo",
     detected_technologies: [],
     pack_coverage: [],
+    repository_trust: createUnavailableRepositoryTrust(),
+    repository_trust_changes: createEmptyRepositoryTrustChanges(),
     resolved: [],
     remaining: [],
     introduced: [],

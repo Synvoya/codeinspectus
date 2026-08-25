@@ -21,6 +21,8 @@ import type {
   Severity,
   ScannerKind,
 } from "./types.js";
+import { createUnavailableRepositoryTrust } from "./repository-trust/schemas.js";
+import { createEmptyRepositoryTrustChanges } from "./repository-trust/diff.js";
 
 let fpCounter = 0;
 function mkFinding(over: Partial<Finding> = {}): Finding {
@@ -77,6 +79,7 @@ function mkScan(over: Partial<ScanResult> = {}): ScanResult {
     // CG-75: a captured config marks the scan as provable-scope (present on CG-75+ scans).
     scan_config: { max_findings: 200 },
     ...over,
+    repository_trust: over.repository_trust ?? createUnavailableRepositoryTrust(),
   };
 }
 
@@ -300,6 +303,8 @@ describe("filterRescanForDisplay — CG-76: threshold hides sub-threshold in dis
       target: "/repo",
       detected_technologies: [],
       pack_coverage: [],
+      repository_trust: createUnavailableRepositoryTrust(),
+      repository_trust_changes: createEmptyRepositoryTrustChanges(),
       resolved: [],
       remaining: [],
       introduced: [],

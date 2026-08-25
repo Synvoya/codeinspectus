@@ -4,6 +4,67 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [3.1.0] — 2026-08-23
+
+### Added
+- Added the first deterministic repository-trust capability: bounded, read-only source-integrity
+  inspection for bidirectional overrides and unbalanced controls, zero-width/default-ignorable
+  token characters, Unicode tag payloads, encoded variation-selector runs, and a reviewed subset
+  of mixed Latin/Greek/Cyrillic identifier confusables.
+- Source-integrity artifacts include exact file, line, code-point column, UTF-8 byte offset, escaped
+  code points, Unicode names, context classification, proposed action, validator identity,
+  confidence, limitations, and approval-required remediation eligibility.
+- Added conservative context handling for initial BOMs, legitimate RTL controls, emoji variation
+  selectors, emoji ZWJ/tag sequences, international-language joiners, short ideographic variation
+  sequences, quoted/comment confusable lookalikes, protected records, symlinks, invalid UTF-8,
+  oversized files, and traversal/output bounds.
+- Dense marker candidates are bounded before artifact materialization. Very long tag/variation
+  runs retain their exact span and total length while rendered evidence is capped at 64 code points;
+  long identifier previews are capped at 128 code points and every truncation remains explicit.
+- Rescans now classify repository-trust artifacts separately as resolved, remaining, introduced, or
+  not re-checked. Absence is called resolved only when the capability ran completely with the same
+  validator identity.
+
+### Changed
+- Package, MCP server, CLI and SDK API versions are synchronized at `3.1.0`. The compatible V3 JSON
+  export remains `3.0.0`, and the independently versioned repository-trust document remains `1.0.0`.
+- Human, MCP, JSON, SARIF and SDK surfaces now expose V3.1 source-integrity execution and artifacts.
+  Explicit AI attribution, C2PA, statistical watermark verification and media processing remain
+  unavailable and are not inferred from Unicode evidence.
+
+### Safety boundary
+- CodeInspectus still never edits source. Cleanup-eligible artifacts require explicit approval for
+  the named file and code point, a reversible smallest edit by the user's coding agent, tests, and
+  a CodeInspectus rescan. V3.1 does not silently normalize or remove characters.
+
+## [3.0.0] — 2026-08-23
+
+### Added
+- Added the versioned `1.0.0` repository-trust contract for non-CWE source-integrity and
+  provenance artifacts. The contract records exact location, marker class, validator,
+  `verified`/`probable`/`informational`/`not_verifiable` state, confidence, limitations, and
+  approval-gated remediation eligibility without treating provenance evidence as a vulnerability.
+- Fresh scans and rescans now expose a `repository_trust` envelope through MCP structured output
+  and human summaries. V3.0 deliberately reports all four future capability classes as
+  `unavailable`; zero artifacts is explicitly not a clean-audit claim.
+- Added packaged V3 JSON and SARIF schemas plus public SDK types for repository-trust documents,
+  artifacts, states, confidence, and capabilities.
+
+### Changed
+- Package, MCP server, CLI, SDK API, and MCP Registry manifest versions are synchronized at
+  `3.0.0`. Canonical JSON export moves to `3.0.0`; the repository-trust document is independently
+  versioned at `1.0.0`. SARIF remains standard version `2.1.0` with V3 CodeInspectus metadata.
+- The SDK now exposes `JsonExportV3`, `SarifExportV3`, `FindingV3`, and `CoverageV3`. Deprecated V2
+  type aliases remain as source-compatibility aliases, but typed commands validate schema `3.0.0`.
+- New sealed bundles identify export schema `3.0.0`. Verification continues to accept sealed V2
+  bundles and validates their legacy identity, findings, coverage, and SARIF consistency.
+- Legacy stored scans remain readable and receive an explicit unavailable repository-trust envelope
+  at runtime; persisted storage schema remains `2.0.0`.
+
+### Not included
+- V3.0 does not detect hidden Unicode, AI attribution, C2PA, or statistical watermarks and does not
+  remove anything. Those capabilities remain separately gated for V3.1–V3.4.
+
 ## [2.6.0] — 2026-08-20
 
 ### Added

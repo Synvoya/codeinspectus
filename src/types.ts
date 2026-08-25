@@ -4,6 +4,8 @@
  * TS types describe the internal model the orchestrator passes around.
  */
 
+import type { RepositoryTrustChanges, RepositoryTrustDocument } from "./repository-trust/schemas.js";
+
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
 export const SEVERITY_RANK: Record<Severity, number> = {
@@ -321,6 +323,8 @@ export interface ScanResult {
   offline: boolean;
   detected_technologies: DetectedTechnology[];
   pack_coverage: DetectorPackCoverage[];
+  /** Versioned non-CWE repository trust/provenance evidence and explicit coverage limits. */
+  repository_trust: RepositoryTrustDocument;
   dependency_coverage?: DependencyCoverage[];
   trivy_db_date?: string;
   summary: SeveritySummary;
@@ -374,6 +378,10 @@ export interface RescanResult {
   target: string;
   detected_technologies: DetectedTechnology[];
   pack_coverage: DetectorPackCoverage[];
+  /** Fresh repository trust/provenance evidence for this rescan. */
+  repository_trust: RepositoryTrustDocument;
+  /** Fail-closed before/after classification for non-CWE repository-trust artifacts. */
+  repository_trust_changes: RepositoryTrustChanges;
   dependency_coverage?: DependencyCoverage[];
   resolved: Finding[];
   remaining: Finding[];

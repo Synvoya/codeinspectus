@@ -79,6 +79,10 @@ const SERVER_INSTRUCTIONS =
   "After approved fixes, call codeinspectus_rescan; never claim fixed unless confirmed. " +
   "Inspect pack_coverage and disclose partial, unavailable, not_run, or not_applicable native packs; " +
   "a ran pack means its listed rules executed, not complete security coverage for that language. " +
+  "Inspect repository_trust coverage separately from vulnerability findings. V3.1 deterministically audits source integrity; " +
+  "other provenance capabilities remain unavailable. Never label hidden Unicode as AI-generated or a vendor watermark. " +
+  "For cleanup-eligible source-integrity artifacts, show the escaped code point, exact file/location and proposed action, then " +
+  "ask for explicit approval for the named file and marker before editing. CodeInspectus itself never removes characters. " +
   "Inspect engine_setup in scan/list-rules output. For repair_required, explain that engine coverage may be partial; " +
   "for db_refresh_recommended, explain the DB freshness/rescan-continuity limitation without calling current findings incomplete. " +
   "When engine readiness is not yet known, call codeinspectus_setup with action=plan before the first scan. " +
@@ -109,7 +113,10 @@ export function createServer(): McpServer {
         "sinks, API-boundary failures, and explicit runtime-control misconfiguration). " +
         "Returns CWE-keyed findings with fix recommendations, detected repository technologies, " +
         "explicit native-pack execution counts, compliance tags, and three-state repository " +
-        "evidence for supported runtime controls. " +
+        "evidence for supported runtime controls. Also returns the V3 repository-trust contract with " +
+        "deterministic V3.1 source-integrity evidence for bidi controls, hidden/default-ignorable characters, " +
+        "Unicode tag and variation-selector payloads, and bounded mixed-script confusables. " +
+        "AI attribution, C2PA and statistical-watermark capabilities remain explicitly unavailable. " +
         "Fully offline — zero network egress at scan time. Never writes to your code or repo.",
       inputSchema: scanInput.shape,
       outputSchema: scanResultSchema.shape,
@@ -166,7 +173,9 @@ export function createServer(): McpServer {
         "Re-run a scan after fixes were applied and diff against a prior scan_id (or the " +
         "most recent scan of the same path). Reports which findings are resolved, which " +
         "remain, and which were newly introduced, plus fresh technology and native-pack " +
-        "execution coverage. Use this to verify fixes. Never writes to your code or repo.",
+        "execution coverage. Repository-trust artifacts are diffed separately with fail-closed " +
+        "resolved, remaining, introduced and not-rechecked states. Use this to verify approved fixes. " +
+        "Never writes to your code or repo.",
       inputSchema: rescanInput.shape,
       outputSchema: rescanResultSchema.shape,
       annotations: { title: "CodeInspectus Rescan", ...READ_ONLY },

@@ -12,6 +12,7 @@ import {
 } from "./gitleaks-suppression.js";
 import { summarizeScan } from "./summarize.js";
 import type { ScanResult } from "./types.js";
+import { createUnavailableRepositoryTrust } from "./repository-trust/schemas.js";
 
 const dirs: string[] = [];
 
@@ -93,6 +94,7 @@ describe("Gitleaks suppression disclosure", () => {
       offline: true,
       detected_technologies: [],
       pack_coverage: [],
+      repository_trust: createUnavailableRepositoryTrust(),
       summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 },
       findings: [],
       truncated: false,

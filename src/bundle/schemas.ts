@@ -22,7 +22,12 @@ export const bundleManifestSchema = z.object({
   schema_version: z.literal(BUNDLE_SCHEMA_VERSION),
   bundle_id: z.string().regex(/^bundle-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
   created_by: z.object({ name: z.literal("codeinspectus"), version: z.string() }),
-  schemas: z.object({ bundle: z.literal(BUNDLE_SCHEMA_VERSION), export: z.literal("2.0.0"), sarif: z.literal("2.1.0"), stored_scan: z.literal("2.0.0") }),
+  schemas: z.object({
+    bundle: z.literal(BUNDLE_SCHEMA_VERSION),
+    export: z.enum(["2.0.0", "3.0.0"]),
+    sarif: z.literal("2.1.0"),
+    stored_scan: z.literal("2.0.0"),
+  }),
   detection_database: z.object({ version: z.string(), date: z.string() }),
   native_engine: z.object({ name: z.literal("codeinspectus-ai"), version: z.string() }),
   engine_platform: z.string(),

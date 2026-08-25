@@ -1,13 +1,13 @@
 # TypeScript SDK
 
-CodeInspectus 2.1 includes a thin typed process wrapper at `codeinspectus/sdk`:
+CodeInspectus 3.1 includes a thin typed process wrapper at `codeinspectus/sdk`:
 
 ```ts
-import { CodeInspectusClient, type JsonExportV2 } from "codeinspectus/sdk";
+import { CodeInspectusClient, type JsonExportV3 } from "codeinspectus/sdk";
 
 const client = new CodeInspectusClient();
 const result = await client.scan("/absolute/path/to/repository", { scanners: ["ai"] });
-const report: JsonExportV2 = result.data;
+const report: JsonExportV3 = result.data;
 
 // Exit 2 can still carry a valid report: inspect coverage before interpreting findings.
 console.log(result.exitCode, report.coverage.aggregate);
@@ -25,9 +25,12 @@ with their typed JSON; spawn, timeout, abort, output-bound and incompatible-cont
 
 ## Versioned contracts
 
-The RC exports explicit contract names:
+The SDK exports explicit contract names:
 
-- `FindingV2`, `CoverageV2`, `AggregateCoverageV2`, `CoverageEvidenceV2`, `JsonExportV2`, `SarifExportV2`
+- `FindingV3`, `CoverageV3`, `JsonExportV3`, `SarifExportV3`
+- `RepositoryTrustDocumentV1`, `RepositoryArtifactV1`, `RepositoryArtifactState`,
+  `RepositoryArtifactConfidence`, `RepositoryTrustCapability`, `RepositoryTrustChangesV1`
+- `AggregateCoverageV2`, `CoverageEvidenceV2` (unchanged aggregate-coverage contracts)
 - `HistoryListEntryV1`, `HistoryListResultV1`, `HistoryComparisonV1`
 - `BaselineComparisonV1`
 - `TriageEventV1`, `TriageAnnotationV1`, `TriageListV1`
@@ -36,10 +39,14 @@ The RC exports explicit contract names:
 - `RepositoryHistoryManifestV1`
 - `IssuePayloadV1`, `IssueAdapter`, `DestinationVisibility`
 
-`SDK_API_VERSION` is `2.6.0`. `SDK_COMPATIBILITY` records the exact schema versions understood
-by typed helpers. The V2 SDK accepts those schema versions and fails closed on another version;
+`SDK_API_VERSION` is `3.1.0`. `SDK_COMPATIBILITY` records export schema `3.0.0` and
+repository-trust schema `1.0.0`. The V3 SDK accepts those schema versions and fails closed on another version;
 additive optional fields within a compatible schema do not break consumers. Removing or changing a
 required field, exit meaning or command semantic requires a new contract version and SDK major.
+
+Deprecated `FindingV2`, `CoverageV2`, `JsonExportV2`, and `SarifExportV2` aliases remain exported
+to reduce source churn, but V3 typed commands return V3 documents. Migrate annotations to the V3
+names and handle the required top-level `repository_trust` field.
 
 This is prepared as a subpath of the main package so there is one install and one scanner. Do not
 publish a separate SDK package until final approval and demonstrated demand justify another

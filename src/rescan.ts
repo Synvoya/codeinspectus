@@ -9,12 +9,13 @@
  */
 
 import { executeScan } from "./scan.js";
-import { getScan, getLatestScanForTarget } from "./store.js";
+import { getScan, getLatestScanForTarget, normalizeStoredScanForRuntime } from "./store.js";
 import { dedupIdentityKeys } from "./dedup.js";
 import { STANDING_DISCLAIMER } from "./config.js";
 import { SEVERITY_RANK } from "./types.js";
 import type { Finding, RescanResult, ScanResult, Severity } from "./types.js";
 import type { RescanInput } from "./schemas.js";
+import { diffRepositoryTrust } from "./repository-trust/diff.js";
 
 /**
  * Diff a prior scan against a fresh rescan by fingerprint, gating "resolved" on provability.
@@ -124,6 +125,8 @@ export function diffRescan(prior: ScanResult, fresh: ScanResult): RescanResult {
     target: fresh.target,
     detected_technologies: fresh.detected_technologies,
     pack_coverage: fresh.pack_coverage,
+    repository_trust: fresh.repository_trust,
+    repository_trust_changes: diffRepositoryTrust(prior.repository_trust, fresh.repository_trust),
     ...(fresh.dependency_coverage ? { dependency_coverage: fresh.dependency_coverage } : {}),
     resolved,
     remaining,
@@ -198,5 +201,8 @@ export async function runRescan(input: RescanInput): Promise<RescanResult> {
     include_compliance: false,
   })).canonical;
 
-  return filterRescanForDisplay(diffRescan(prior, fresh), effectiveThreshold);
+  return filterRescanForDisplay(
+    diffRescan(normalizeStoredScanForRuntime(prior), fresh),
+    effectiveThreshold,
+  );
 }

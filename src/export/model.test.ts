@@ -36,7 +36,7 @@ function scan(overrides: Partial<StoredScanResult> = {}): StoredScanResult {
   };
 }
 
-describe("V2 aggregate coverage", () => {
+describe("V3 aggregate coverage", () => {
   test("is exactly complete only when the canonical full-product execution has no observed gap", () => {
     expect(assessAggregateCoverage(scan()).aggregate).toBe("complete");
   });
@@ -88,10 +88,11 @@ describe("V2 aggregate coverage", () => {
   });
 });
 
-describe("V2 JSON export", () => {
+describe("V3 JSON export", () => {
   test("includes producer and aggregate coverage on every finding and validates at runtime", () => {
     expect(createJsonExport(scan())).toMatchObject({
-      schema_version: "2.0.0", scan: { canonical_findings: true }, coverage: { aggregate: "complete" },
+      schema_version: "3.0.0", scan: { canonical_findings: true }, coverage: { aggregate: "complete" },
+      repository_trust: { schema_version: "1.0.0", coverage: { state: "unavailable" } },
       findings: [{ producer_components: ["opengrep@1"], coverage_context: { aggregate: "complete" } }],
     });
   });

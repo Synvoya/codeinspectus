@@ -11,10 +11,12 @@ import { join, resolve, sep } from "node:path";
 import { MANAGED_SCANS } from "./config.js";
 import { scanIdSchema, storedScanResultSchema } from "./schemas.js";
 import type { ScanResult } from "./types.js";
+import { createUnavailableRepositoryTrust, type RepositoryTrustDocument } from "./repository-trust/schemas.js";
 import { log } from "./logger.js";
 import { sha256Hex } from "./util/hash.js";
 
-export interface StoredScanResult extends ScanResult {
+export interface StoredScanResult extends Omit<ScanResult, "repository_trust"> {
+  repository_trust?: RepositoryTrustDocument;
   storage_schema_version?: "2.0.0";
   canonical_findings?: true;
 }
@@ -29,6 +31,7 @@ export function normalizeStoredScanForRuntime(scan: StoredScanResult): ScanResul
     ...scan,
     detected_technologies: legacy.detected_technologies ?? [],
     pack_coverage: legacy.pack_coverage ?? [],
+    repository_trust: legacy.repository_trust ?? createUnavailableRepositoryTrust(),
     git_safety: legacy.git_safety ?? { state: "unknown" },
   };
 }

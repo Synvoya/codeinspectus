@@ -9,7 +9,7 @@ import { findGitRepositoryRoot, materializeGitCommit, resolveGitCommit } from ".
 import { inspectOutputFile, pathIsWithin, requireSafeScanTarget } from "../path-safety.js";
 import { redactSnippet } from "../redact.js";
 import { executeScan } from "../scan.js";
-import { saveScan, type StoredScanResult } from "../store.js";
+import { normalizeStoredScanForRuntime, saveScan, type StoredScanResult } from "../store.js";
 import type { ScannerKind } from "../types.js";
 import { runGitReadBuffer } from "../util/git.js";
 import {
@@ -214,7 +214,9 @@ export async function runRepositoryHistoryScan(options: RepositoryHistoryOptions
     let snapshot: { directory: string; limitations: string[] } | undefined;
     try {
       snapshot = await materializeGitCommit(repository, record.commit);
-      const source = await dependencies.scan(snapshot.directory, { ...options, maxFindings, since, until });
+      const source = normalizeStoredScanForRuntime(
+        await dependencies.scan(snapshot.directory, { ...options, maxFindings, since, until }),
+      );
       const snapshotLimitations = [...snapshot.limitations, ...(record.change_metadata_partial ? ["Change metadata was incomplete for this commit."] : [])];
       const temporalScope = record.commit === to ? "selected_head" as const : "historical" as const;
       const canonical: StoredScanResult = {
@@ -229,7 +231,7 @@ export async function runRepositoryHistoryScan(options: RepositoryHistoryOptions
           ...snapshotLimitations.map((limitation) => `Repository-history snapshot partial: ${limitation}`)],
         storage_schema_version: "2.0.0", canonical_findings: true,
       };
-      await saveScan(canonical, { canonicalFindings: true });
+      await saveScan(normalizeStoredScanForRuntime(canonical), { canonicalFindings: true });
       const coverage = createJsonExport(canonical).coverage.aggregate;
       record.scan_id = canonical.scan_id; record.aggregate_coverage = coverage; record.finding_count = canonical.findings.length; record.state = coverage;
     } catch (error) {

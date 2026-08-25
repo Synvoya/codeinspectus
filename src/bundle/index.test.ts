@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { Ajv } from "ajv";
 import type { StoredScanResult } from "../store.js";
-import { createSealedBundle, verifySealedBundle } from "./index.js";
+import { createJsonExport } from "../export/model.js";
+import { createSarifExport } from "../export/sarif.js";
+import { createSealedBundle, validateLegacyV2BundlePayloads, verifySealedBundle } from "./index.js";
 
 const cleanup: string[] = [];
 
@@ -46,6 +48,29 @@ async function createdBundle(): Promise<string> {
 }
 
 describe("sealed scan bundles", () => {
+  test("retains a bounded V2 export/SARIF compatibility path", () => {
+    const scanId = "scan-00000000-0000-4000-8000-000000000001";
+    const source = createJsonExport(scan());
+    const rawExport = structuredClone(source) as Record<string, unknown>;
+    rawExport.$schema = "https://codeinspectus.com/schemas/v2.0.0/export.schema.json";
+    rawExport.schema_version = "2.0.0";
+    delete rawExport.repository_trust;
+    const rawSarif = createSarifExport(source);
+    const run = rawSarif.runs[0]!;
+    delete run.invocations[0]?.properties.repository_trust;
+    delete run.properties.repository_trust;
+    run.properties.codeinspectus_schema_version = "2.0.0";
+    for (const result of run.results) {
+      result.fingerprints = { "codeinspectus/v2": result.fingerprints["codeinspectus/v3"]! };
+    }
+    const findings = source.findings;
+    const coverage = source.coverage;
+    expect(() => validateLegacyV2BundlePayloads({ rawExport, rawSarif, scanId, findings, coverage })).not.toThrow();
+    expect(() => validateLegacyV2BundlePayloads({ rawExport, rawSarif, scanId: `${scanId}-other`, findings, coverage })).toThrow(/identity/i);
+    rawSarif.runs[0]!.results[0]!.message.text = "tampered";
+    expect(() => validateLegacyV2BundlePayloads({ rawExport, rawSarif, scanId, findings, coverage })).toThrow(/do not match/i);
+  });
+
   test("creates an exact redacted bundle and verifies every artifact before loading the scan", async () => {
     const directory = await createdBundle();
     const verified = await verifySealedBundle(directory);
@@ -53,12 +78,14 @@ describe("sealed scan bundles", () => {
       schema_version: "1.0.0", scan_id: scan().scan_id,
       detection_database: { version: "1.19.0", date: "2026-08-13" },
       native_engine: { name: "codeinspectus-ai", version: "5.20.0" },
+      schemas: { export: "3.0.0" },
       artifacts: expect.arrayContaining([expect.objectContaining({ path: "artifacts/scan-record.json", sha256: expect.stringMatching(/^[0-9a-f]{64}$/) })]),
     });
     expect(verified.manifest.commodity_engines.every((engine) => engine.integrity_state === "verified" && /^[0-9a-f]{64}$/.test(engine.verified_sha256!))).toBe(true);
     const allBytes = (await Promise.all(["scan-manifest.json", "findings.json", "coverage.json", "report.md", "results.sarif", "artifacts/scan-record.json", "artifacts/export.json"].map((path) => readFile(join(directory, path))))).map(String).join("\n");
     expect(allBytes).not.toContain("RAW-BUNDLE-SECRET-9081726354");
     expect(verified.scan.findings[0]?.message).toMatch(/redacted/i);
+    expect(allBytes).toContain('"repository_trust"');
   });
 
   test("validates actual manifests against the packaged schema and rejects duplicated identities", async () => {

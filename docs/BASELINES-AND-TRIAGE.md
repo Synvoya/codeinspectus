@@ -39,4 +39,4 @@ JSON list/show responses are versioned envelopes containing the exact scope, sou
 
 Recognized secrets in reason and actor fields are redacted on write and again at public output boundaries. Do not use triage annotations as a secrets store.
 
-JSON and SARIF exports add triage context to matching findings while retaining every raw finding and original count. The versioned contracts are in `schemas/codeinspectus-export-2.0.0.schema.json`, `schemas/codeinspectus-sarif-2.0.0.schema.json`, `schemas/codeinspectus-baseline-1.0.0.schema.json`, and `schemas/codeinspectus-triage-1.0.0.schema.json`.
+JSON and SARIF exports add triage context to matching findings while retaining every raw finding and original count. Current contracts are in `schemas/codeinspectus-export-3.0.0.schema.json`, `schemas/codeinspectus-sarif-3.0.0.schema.json`, `schemas/codeinspectus-repository-trust-1.0.0.schema.json`, `schemas/codeinspectus-baseline-1.0.0.schema.json`, and `schemas/codeinspectus-triage-1.0.0.schema.json`. The packaged V2 export/SARIF schemas remain available for historical validation.
