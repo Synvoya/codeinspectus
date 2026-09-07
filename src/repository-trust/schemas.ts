@@ -327,15 +327,15 @@ const UNAVAILABLE_CAPABILITIES: ReadonlyArray<{
 }> = [
   {
     capability: "source_integrity",
-    limitation: "Source-integrity evidence was not recorded for this scan; rerun with V3.1 or later to evaluate it.",
+    limitation: "Source-integrity evidence was not recorded for this scan; rerun with V3.2 or later to evaluate it.",
   },
   {
     capability: "explicit_ai_attribution",
-    limitation: "Explicit AI-attribution auditing is not implemented in V3.1; it remains gated for V3.2.",
+    limitation: "Explicit AI-attribution evidence was not recorded for this scan; rerun with V3.2 or later to evaluate it.",
   },
   {
     capability: "content_provenance",
-    limitation: "C2PA and repository-asset provenance validation are not implemented in V3.1; they remain gated for V3.2.",
+    limitation: "Content-provenance evidence was not recorded for this scan; rerun with V3.2 or later to evaluate it.",
   },
   {
     capability: "statistical_watermark",

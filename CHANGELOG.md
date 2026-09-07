@@ -4,6 +4,36 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [3.2.0] — 2026-09-07
+
+### Added
+- Added bounded, read-only explicit AI-attribution inspection for source/config headers, local git
+  `Co-Authored-By` trailers, and supported image EXIF/XMP/IPTC/PNG metadata. Results verify that a
+  declarative record exists; they do not claim the record is truthful or prove model authorship.
+- Added supported local C2PA Content Credentials inspection through the official optional
+  `@contentauth/c2pa-node` validator. Artifacts distinguish valid/trusted, invalid,
+  present-but-inconclusive, and remote-reference evidence and retain claim generator, declared
+  digital source type, validation state, and bounded status codes.
+- Added deterministic V3.2 aggregation across source integrity, explicit attribution, content
+  provenance, and the still-unavailable statistical-watermark capability without changing the
+  compatible export `3.0.0` or repository-trust `1.0.0` schemas.
+
+### Safety boundary
+- Scans remain read-only and perform zero network egress. Remote manifests, OCSP responses, trust
+  lists, and revocation endpoints are never fetched. Symlinks, parser inputs, traversal, commit
+  history, total bytes, and artifact output are bounded with explicit partial-coverage reporting.
+- C2PA and protected legal/licensing attribution records are evidence-only and never
+  cleanup-eligible. V3.2 does not rewrite text, strip metadata, inspect media pixels/audio/video
+  frames, or implement statistical watermark detection.
+- The official C2PA native binding is an optional npm dependency so unsupported platforms or
+  `--ignore-scripts` installs do not break CodeInspectus; candidate assets then report partial
+  content-provenance coverage.
+
+### Changed
+- Package, MCP server, CLI, and SDK API versions are synchronized at `3.2.0`. Human and MCP
+  summaries now display every repository-trust capability separately instead of labelling all
+  artifacts as source-integrity evidence.
+
 ## [3.1.0] — 2026-08-23
 
 ### Added

@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { SERVER_VERSION } from "./config.js";
 import { SDK_API_VERSION, SDK_COMPATIBILITY } from "./sdk/index.js";
 
-const RELEASE_VERSION = "3.1.0";
+const RELEASE_VERSION = "3.2.0";
 
 describe("V3 release source synchronization", () => {
   test("package, lockfile, server, CLI, and SDK versions agree", async () => {
@@ -83,7 +83,9 @@ describe("V3 release source synchronization", () => {
     expect(changelog).toContain("## [2.6.0] — 2026-08-20");
     expect(changelog).toContain("## [3.0.0] — 2026-08-23");
     expect(changelog).toContain("## [3.1.0] — 2026-08-23");
+    expect(changelog).toContain("## [3.2.0] — 2026-09-07");
     expect(readme).toContain("Source Integrity — V3.1");
+    expect(readme).toContain("AI Provenance Audit — V3.2");
     expect(await readFile("docs/V3-REPOSITORY-TRUST-MIGRATION.md", "utf8")).toContain("3.0.0");
     expect(existsSync("schemas/codeinspectus-export-3.0.0.schema.json")).toBe(true);
     expect(existsSync("schemas/codeinspectus-sarif-3.0.0.schema.json")).toBe(true);

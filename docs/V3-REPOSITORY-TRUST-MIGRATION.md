@@ -3,16 +3,16 @@
 CodeInspectus 3.0.0 introduces a major JSON/SDK contract for repository trust and provenance. It
 does not add repository-trust detectors or cleanup behavior; those remain V3.1–V3.4 work.
 
-CodeInspectus 3.1.0 activates deterministic source-integrity inspection within the same compatible
-export `3.0.0` and repository-trust `1.0.0` contracts. Consumers must inspect per-capability coverage:
-`source_integrity` can now be `ran`, `partial`, or `not_applicable`, while AI attribution, content
-provenance, and statistical-watermark capabilities remain `unavailable`.
+CodeInspectus 3.1.0 activates deterministic source-integrity inspection. CodeInspectus 3.2.0 adds
+bounded explicit AI-attribution and local C2PA/asset-metadata inspection within the same compatible
+export `3.0.0` and repository-trust `1.0.0` contracts. Consumers must inspect each capability's
+coverage independently. Statistical-watermark verification remains `unavailable`.
 
 ## Contract versions
 
 | Surface | V2 | V3 |
 |---|---:|---:|
-| Package / CLI / MCP server / SDK API | 2.6.0 | 3.1.0 |
+| Package / CLI / MCP server / SDK API | 2.6.0 | 3.2.0 |
 | Canonical JSON export | 2.0.0 | 3.0.0 |
 | Repository-trust document | absent | 1.0.0 |
 | SARIF standard | 2.1.0 | 2.1.0 |
@@ -34,11 +34,12 @@ The document is non-CWE and non-severity-bearing. It contains:
   remediation eligibility;
 - `requires_approval: true` on every remediation record.
 
-V3.1 returns overall `coverage.state: "partial"` because only source integrity is implemented. The
-source-integrity capability reports its own `ran`, `partial`, or `not_applicable` state and produces
-deterministic artifacts when markers are observed. An empty artifact array is meaningful only for
-the registered source-integrity checks when that capability reports `ran`; it says nothing about
-the three unavailable provenance/watermark capabilities or unimplemented Unicode confusable space.
+V3.2 keeps overall `coverage.state: "partial"` because statistical-watermark verification is not
+implemented. Source integrity, explicit attribution, and content provenance each report `ran`,
+`partial`, or `not_applicable` independently. C2PA validation can also be partial when the optional
+official peer validator is not explicitly installed or cannot run. An empty artifact array is
+meaningful only for a specific capability that reports `ran`; it is never a general clean-authorship
+claim.
 
 ## JSON consumer migration
 
@@ -81,5 +82,7 @@ and artifact hashes are checked through the legacy compatibility path.
 - Scan-time network egress remains zero.
 - CLI policy exit codes and severity semantics are unchanged.
 - Remediation still requires the user's agent and explicit approval.
-- V3.1 detects bounded source-integrity Unicode markers but does not edit them. It does not detect
-  AI authorship, C2PA, statistical watermarks, or media watermarks.
+- V3.1 detects bounded source-integrity Unicode markers. V3.2 observes explicit attribution and
+  validates supported local C2PA records, but neither version edits them or infers authorship from
+  absent evidence. Statistical, pixel, visible-logo, perceptual, audio, and frame-by-frame watermark
+  detection/removal remain outside the shipped implementation.

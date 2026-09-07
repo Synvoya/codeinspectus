@@ -788,13 +788,13 @@ export async function scanSourceIntegrity(
           capability: "explicit_ai_attribution",
           state: "unavailable",
           validators: [],
-          limitations: ["Explicit AI-attribution auditing is not implemented in V3.1; it remains gated for V3.2."],
+          limitations: ["The source-integrity validator does not run the separate V3.2 explicit-attribution capability."],
         },
         {
           capability: "content_provenance",
           state: "unavailable",
           validators: [],
-          limitations: ["C2PA and repository-asset provenance validation are not implemented in V3.1; they remain gated for V3.2."],
+          limitations: ["The source-integrity validator does not run the separate V3.2 content-provenance capability."],
         },
         {
           capability: "statistical_watermark",
@@ -805,7 +805,7 @@ export async function scanSourceIntegrity(
       ],
       limitations: [
         ...(sourceLimitations.length ? ["Source-integrity coverage was partial; inspect its capability limitations."] : []),
-        "Only source integrity is implemented in V3.1. Other repository-trust capabilities remain unavailable.",
+        "This standalone validator reports source integrity only; the aggregate V3.2 scanner runs the other implemented capabilities.",
       ],
     },
     summary: {

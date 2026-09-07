@@ -98,6 +98,11 @@ On Linux, the current upstream Opengrep assets require glibc. Alpine/musl remain
 native CodeInspectus rules, Gitleaks, and Trivy, but setup marks Opengrep unavailable before any
 download and reports aggregate scan coverage as partial when it is selected.
 
+The official `@contentauth/c2pa-node` validator is an optional peer because its upstream package
+downloads a platform-native binding during its own lifecycle script. Normal CodeInspectus installs
+do not install that peer. Install it explicitly alongside CodeInspectus when local C2PA validation
+is required; otherwise candidate assets report partial `content_provenance` coverage.
+
 ```bash
 # Interactive: inspect coverage, licenses, and sizes; then approve all or choose components.
 npx codeinspectus setup
@@ -326,9 +331,29 @@ sequences, international-language joiners and ambiguous confusables are suppress
 non-destructive. Scans never edit files; cleanup requires explicit approval for the named file and
 marker, a reversible edit by the user's coding agent, tests, and a rescan.
 
-This is **source-integrity protection, not AI-authorship detection**. Explicit AI attribution,
-C2PA, statistical watermark verification and media watermark removal remain unavailable.
+This is **source-integrity protection, not AI-authorship detection**. V3.2's explicit-attribution
+and C2PA results are separate capability records; hidden Unicode is never promoted into either.
 CodeInspectus does not claim that hidden Unicode is a Claude watermark or evidence of AI generation.
+
+### AI Provenance Audit — V3.2
+
+V3.2 activates two more read-only `repository_trust` capabilities:
+
+- `explicit_ai_attribution` deterministically inspects bounded source/config headers, local git
+  commit trailers, and supported image EXIF/XMP/IPTC/PNG metadata for explicit AI-generator or
+  AI-source declarations. These are verified observations of declarative records—not proof that
+  the statement is truthful, proof of vendor origin, or a statistical authorship judgment.
+- `content_provenance` uses the optional official Content Authenticity Initiative Node validator
+  to inspect supported local C2PA Content Credentials. Results distinguish valid, trusted, invalid,
+  present-but-inconclusive, and remote-reference evidence. Offline scans never fetch a remote
+  manifest, OCSP response, trust list, or revocation endpoint.
+
+Every parser and traversal path is bounded, rejects symbolic links, and reports exclusions as
+`partial`. C2PA and legal/licensing attribution records are protected evidence and are never
+cleanup-eligible. V3.2 does not edit files, remove metadata, rewrite text, inspect pixels/audio/video
+frames, or claim that absence of a marker means human authorship. Statistical text-watermark
+verification remains `unavailable` until an authoritative, independently verifiable detector with
+calibrated operating thresholds is available.
 
 See the [V3 migration guide](docs/V3-REPOSITORY-TRUST-MIGRATION.md) for schema and SDK changes.
 
@@ -361,8 +386,10 @@ eligible packages it analyzed, what it deliberately skipped, and the bundled sna
 
 - **"No egress" is precise: zero egress _at scan time_.** Engine binaries and the
   Trivy DB are fetched only by explicit setup/repair commands from verified sources, with
-  SHA256 verification. The scanner functions with the network unplugged. There is
-  **no telemetry, ever.**
+  SHA256 verification. Normal CodeInspectus installation does not install the optional C2PA peer;
+  users who explicitly install that upstream package allow its lifecycle download. Nothing is
+  downloaded during a scan. The scanner functions with the network unplugged. There is **no
+  telemetry, ever.**
 - **Supply-chain pinning is mandatory.** Trivy was supply-chain-compromised twice
   in early 2026; every engine binary is SHA-pinned in `engines.lock.json` and its
   hash is verified before execution. CodeInspectus refuses to run an unpinned or

@@ -79,8 +79,10 @@ const SERVER_INSTRUCTIONS =
   "After approved fixes, call codeinspectus_rescan; never claim fixed unless confirmed. " +
   "Inspect pack_coverage and disclose partial, unavailable, not_run, or not_applicable native packs; " +
   "a ran pack means its listed rules executed, not complete security coverage for that language. " +
-  "Inspect repository_trust coverage separately from vulnerability findings. V3.1 deterministically audits source integrity; " +
-  "other provenance capabilities remain unavailable. Never label hidden Unicode as AI-generated or a vendor watermark. " +
+  "Inspect repository_trust coverage separately from vulnerability findings. V3.1 deterministically audits source integrity. " +
+  "V3.2 audits explicit AI attribution, media metadata, git co-author trailers, and supported C2PA Content Credentials. " +
+  "Treat declarative attribution as an observed claim, not proof of authorship. Never label hidden Unicode as AI-generated or a vendor watermark. " +
+  "Do not remove or alter C2PA, legal, licensing, or attribution records. Statistical watermark detection remains unavailable. " +
   "For cleanup-eligible source-integrity artifacts, show the escaped code point, exact file/location and proposed action, then " +
   "ask for explicit approval for the named file and marker before editing. CodeInspectus itself never removes characters. " +
   "Inspect engine_setup in scan/list-rules output. For repair_required, explain that engine coverage may be partial; " +
@@ -116,7 +118,9 @@ export function createServer(): McpServer {
         "evidence for supported runtime controls. Also returns the V3 repository-trust contract with " +
         "deterministic V3.1 source-integrity evidence for bidi controls, hidden/default-ignorable characters, " +
         "Unicode tag and variation-selector payloads, and bounded mixed-script confusables. " +
-        "AI attribution, C2PA and statistical-watermark capabilities remain explicitly unavailable. " +
+        "V3.2 additionally audits explicit AI attribution in source/git/media metadata and validates supported local C2PA assets " +
+        "with the official optional Content Authenticity Initiative library. Remote manifests and revocation endpoints are never fetched. " +
+        "Statistical-watermark detection remains explicitly unavailable. " +
         "Fully offline — zero network egress at scan time. Never writes to your code or repo.",
       inputSchema: scanInput.shape,
       outputSchema: scanResultSchema.shape,

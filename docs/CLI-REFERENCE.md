@@ -111,7 +111,11 @@ labelled Trivy database disk estimate before approval. `--all` and `--select` ar
 noninteractive approvals. Saved choices prevent repeat prompting; `--reset` removes them.
 
 `install-engines` remains a compatibility alias. `pin-engines` is maintainer-only. Normal scans
-never repair or download engines implicitly. No npm lifecycle script downloads executables.
+never repair or download engines implicitly. The managed Opengrep, Gitleaks, Trivy, and Cosign
+executables are never installed by npm lifecycle scripts. The official C2PA validator is an
+optional peer and is not installed by a normal CodeInspectus installation. Users may explicitly
+install `@contentauth/c2pa-node@0.9.3` alongside CodeInspectus when C2PA validation is required;
+without it, scans keep working and report candidate C2PA asset coverage as partial.
 The pinned Linux Opengrep release assets require glibc. On Alpine/musl, setup blocks Opengrep
 before download while leaving native rules, Gitleaks, and Trivy available; scans report the missing
 Opengrep surface as partial coverage.

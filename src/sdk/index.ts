@@ -18,7 +18,7 @@ import type {
   RepositoryTrustDocument,
 } from "../repository-trust/schemas.js";
 
-export const SDK_API_VERSION = "3.1.0" as const;
+export const SDK_API_VERSION = "3.2.0" as const;
 export const SDK_COMPATIBILITY = Object.freeze({
   cli_major: 3,
   export_schema: "3.0.0",

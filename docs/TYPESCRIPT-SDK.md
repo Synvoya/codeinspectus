@@ -1,6 +1,6 @@
 # TypeScript SDK
 
-CodeInspectus 3.1 includes a thin typed process wrapper at `codeinspectus/sdk`:
+CodeInspectus 3.2 includes a thin typed process wrapper at `codeinspectus/sdk`:
 
 ```ts
 import { CodeInspectusClient, type JsonExportV3 } from "codeinspectus/sdk";
@@ -39,7 +39,7 @@ The SDK exports explicit contract names:
 - `RepositoryHistoryManifestV1`
 - `IssuePayloadV1`, `IssueAdapter`, `DestinationVisibility`
 
-`SDK_API_VERSION` is `3.1.0`. `SDK_COMPATIBILITY` records export schema `3.0.0` and
+`SDK_API_VERSION` is `3.2.0`. `SDK_COMPATIBILITY` records export schema `3.0.0` and
 repository-trust schema `1.0.0`. The V3 SDK accepts those schema versions and fails closed on another version;
 additive optional fields within a compatible schema do not break consumers. Removing or changing a
 required field, exit meaning or command semantic requires a new contract version and SDK major.

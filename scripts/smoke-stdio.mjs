@@ -132,8 +132,14 @@ async function waitFor(id, timeoutMs = 8000) {
   const sourceIntegrity = repositoryTrust?.coverage?.capabilities?.find(
     (capability) => capability.capability === "source_integrity",
   );
-  const unavailableCapabilities = repositoryTrust?.coverage?.capabilities?.filter(
-    (capability) => capability.capability !== "source_integrity" && capability.state === "unavailable",
+  const explicitAttribution = repositoryTrust?.coverage?.capabilities?.find(
+    (capability) => capability.capability === "explicit_ai_attribution",
+  );
+  const contentProvenance = repositoryTrust?.coverage?.capabilities?.find(
+    (capability) => capability.capability === "content_provenance",
+  );
+  const statisticalWatermark = repositoryTrust?.coverage?.capabilities?.find(
+    (capability) => capability.capability === "statistical_watermark",
   );
   if (
     repositoryTrust?.schema_version !== "1.0.0" ||
@@ -143,16 +149,19 @@ async function waitFor(id, timeoutMs = 8000) {
     !sourceIntegrity ||
     !["ran", "partial"].includes(sourceIntegrity.state) ||
     !sourceIntegrity.validators?.includes("codeinspectus-source-integrity@1.0.0") ||
-    unavailableCapabilities?.length !== 3 ||
+    !explicitAttribution || !["ran", "partial", "not_applicable"].includes(explicitAttribution.state) ||
+    (explicitAttribution.state !== "not_applicable" && !explicitAttribution.validators?.includes("codeinspectus-explicit-ai-attribution@1.0.0")) ||
+    !contentProvenance || !["ran", "partial", "not_applicable"].includes(contentProvenance.state) ||
+    !statisticalWatermark || statisticalWatermark.state !== "unavailable" ||
     typeof repositoryTrust?.summary?.total !== "number" ||
     !Array.isArray(repositoryTrust?.artifacts) ||
     repositoryTrust.artifacts.length !== repositoryTrust.summary.total ||
-    repositoryTrust.artifacts.some((artifact) => artifact.kind !== "source_integrity")
+    repositoryTrust.artifacts.some((artifact) => !["source_integrity", "explicit_ai_attribution", "content_provenance"].includes(artifact.kind))
   ) {
     throw new Error("scan returned an invalid V3 repository_trust capability envelope");
   }
-  if (!repositoryTrust.coverage.limitations.some((limitation) => limitation.includes("Other repository-trust capabilities remain unavailable"))) {
-    throw new Error("repository_trust did not preserve the unavailable provenance-capability boundary");
+  if (!repositoryTrust.coverage.limitations.some((limitation) => limitation.includes("Statistical watermark verification remains unavailable"))) {
+    throw new Error("repository_trust did not preserve the unavailable statistical-watermark boundary");
   }
   const pubCoverage = sc.dependency_coverage.find((coverage) => coverage.engine === "codeinspectus-pub");
   if (!pubCoverage || pubCoverage.matching !== "exact-enumerated-versions") {
@@ -208,7 +217,7 @@ async function waitFor(id, timeoutMs = 8000) {
     throw new Error("scan returned incomplete JavaScript baseline SAST pack inventory");
   }
   console.error("✓ codeinspectus_scan structuredContent.scan_id:", sc.scan_id);
-  console.error("✓ repository_trust: V3.1 source integrity ran; three provenance capabilities remain unavailable");
+  console.error("✓ repository_trust: V3.1 source integrity and V3.2 provenance capabilities reported; statistical watermark unavailable");
 
   console.error("\nALL STDIO SMOKE CHECKS PASSED. stdout was pure JSON-RPC.");
   child.kill();

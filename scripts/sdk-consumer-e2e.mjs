@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -17,13 +17,16 @@ try {
   const tarball = join(consumer, packed[0].filename);
   writeFileSync(join(consumer, "package.json"), `${JSON.stringify({ name: "codeinspectus-sdk-independent-consumer", private: true, type: "module" }, null, 2)}\n`);
   execFileSync(npmCommand, ["install", "--ignore-scripts", "--no-audit", "--no-fund", tarball], { cwd: consumer, stdio: "pipe" });
+  if (existsSync(join(consumer, "node_modules/@contentauth/c2pa-node"))) {
+    throw new Error("normal package installation unexpectedly installed the optional C2PA peer");
+  }
 
   writeFileSync(join(consumer, "consumer.mjs"), `
     import { CodeInspectusClient, SDK_API_VERSION, SDK_COMPATIBILITY } from "codeinspectus/sdk";
     const client = new CodeInspectusClient();
     const result = await client.run(["--version"]);
     if (result.exitCode !== 0 || result.stdout.trim() !== ${JSON.stringify(sourceVersion)}) throw new Error("installed CLI invocation failed");
-    if (SDK_API_VERSION !== "3.1.0" || SDK_COMPATIBILITY.export_schema !== "3.0.0" || SDK_COMPATIBILITY.repository_trust_schema !== "1.0.0") throw new Error("SDK compatibility metadata mismatch");
+    if (SDK_API_VERSION !== ${JSON.stringify(sourceVersion)} || SDK_COMPATIBILITY.export_schema !== "3.0.0" || SDK_COMPATIBILITY.repository_trust_schema !== "1.0.0") throw new Error("SDK compatibility metadata mismatch");
     process.stdout.write(JSON.stringify({ sdk: SDK_API_VERSION, cli: result.stdout.trim(), exit: result.exitCode }));
   `);
   const runtime = execFileSync(process.execPath, [join(consumer, "consumer.mjs")], { cwd: consumer, encoding: "utf8" });

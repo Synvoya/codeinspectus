@@ -75,13 +75,15 @@ function repositoryArtifactLines(artifacts: RepositoryArtifact[], n: number): st
 }
 
 function repositoryTrustSummary(document: RepositoryTrustDocument): string {
-  const source = document.coverage.capabilities.find((capability) => capability.capability === "source_integrity");
   const counts = document.summary;
+  const capabilityLines = document.coverage.capabilities.map((capability) =>
+    `\n  ${capability.capability}: ${capability.state} via ${capability.validators.join(", ") || "no validator"}`
+  ).join("");
   return (
     `\n\nRepository trust: ${document.coverage.state} (${counts.total} artifact(s), schema ${document.schema_version})` +
-    (source ? `\n  Source integrity: ${source.state} via ${source.validators.join(", ") || "no validator"}` : "") +
+    capabilityLines +
     `\n  States: ${counts.verified} verified, ${counts.probable} probable, ${counts.informational} informational, ${counts.not_verifiable} not verifiable` +
-    (document.artifacts.length ? `\n  Source-integrity artifacts:\n${repositoryArtifactLines(document.artifacts, 10)}` : "") +
+    (document.artifacts.length ? `\n  Repository-trust artifacts:\n${repositoryArtifactLines(document.artifacts, 10)}` : "") +
     (document.coverage.limitations.length ? `\n  Limits: ${document.coverage.limitations.join(" ")}` : "")
   );
 }

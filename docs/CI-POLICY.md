@@ -59,6 +59,11 @@ location (maximum 50 rows), never messages, snippets, remediation or raw SARIF.
 Do not change this workflow to `pull_request_target` or inject secrets into install/build/scan steps.
 Trusted same-repository PRs and pushes may upload SARIF.
 
+The official C2PA validator is an optional peer and the reference workflow does not install it.
+Repository security findings still run normally; candidate C2PA assets report partial
+`content_provenance` coverage. Explicitly install reviewed `@contentauth/c2pa-node@0.9.3` with
+lifecycle scripts enabled on a supported runner only when CI-level C2PA validation is required.
+
 ### Artifact privacy and retention
 
 SARIF may include redacted source excerpts and repository paths. The reference workflow uploads a

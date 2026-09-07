@@ -1,6 +1,6 @@
 # Third-party notices
 
-This document records third-party software and data used by CodeInspectus 2.6.0. CodeInspectus
+This document records third-party software and data used by CodeInspectus 3.2.0. CodeInspectus
 itself is licensed under Apache-2.0; third-party components retain their own licenses.
 
 ## Separately downloaded security engines
@@ -83,6 +83,10 @@ package distributed by npm retains its own package metadata and license file.
 | Package | Version | License | Copyright / project |
 |---|---:|---|---|
 | `@modelcontextprotocol/sdk` | 1.30.0 | MIT | Copyright (c) 2024 Anthropic, PBC |
+| `@contentauth/c2pa-node` | 0.9.3 | MIT | Content Authenticity Initiative / Adobe contributors; optional native C2PA validator |
+| `@contentauth/c2pa-types` | 0.7.4 | MIT OR Apache-2.0 | Content Authenticity Initiative / Adobe contributors |
+| `@contentauth/c2pa-utilities` | 0.2.2 | MIT | Content Authenticity Initiative / Adobe contributors |
+| `exifreader` | 4.44.0 | MPL-2.0 | Copyright Mattias Wallander and contributors; EXIF/XMP/IPTC parser |
 | `@lezer/python` | 1.1.19 | MIT | Copyright (C) 2020 Marijn Haverbeke and others |
 | `@lezer/common` | 1.5.2 | MIT | Copyright (C) 2018 Marijn Haverbeke and others |
 | `@lezer/lr` | 1.4.10 | MIT | Copyright (C) 2018 Marijn Haverbeke and others |
@@ -94,6 +98,12 @@ package distributed by npm retains its own package metadata and license file.
 Transitive npm dependencies remain separately installed packages and retain their own licenses and
 copyright notices. The exact resolved dependency graph is recorded in `package-lock.json`; generated
 CycloneDX SBOM output provides the machine-readable package inventory.
+
+`@contentauth/c2pa-node` is an optional peer. Normal CodeInspectus installation does not install it;
+users who explicitly install that upstream package allow its platform-native lifecycle download.
+CodeInspectus invokes it only for local, read-only C2PA validation and disables remote-manifest and
+revocation fetching during scans. `exifreader` remains a separately installed npm package;
+CodeInspectus does not modify or redistribute its source.
 
 ## Trademark statement
 

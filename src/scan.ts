@@ -28,7 +28,7 @@ import type {
   SecretSuppressionMetadata,
 } from "./types.js";
 import { createUnavailableRepositoryTrust } from "./repository-trust/schemas.js";
-import { scanSourceIntegrity } from "./repository-trust/source-integrity.js";
+import { scanRepositoryTrust } from "./repository-trust/index.js";
 import type { ScanInput } from "./schemas.js";
 import { log } from "./logger.js";
 import { saveScan } from "./store.js";
@@ -142,8 +142,8 @@ export async function executeScan(
   // engines. Never mutates git or the repo — only reads (rev-parse / status --porcelain).
   const gitSafetyProbe = detectGitSafety(target);
   const technologyProbe = detectTechnologies(target);
-  const repositoryTrustProbe = scanSourceIntegrity(target).catch((error: unknown) => {
-    warnings.push(`Source-integrity detector unavailable: ${error instanceof Error ? error.message : "unknown detector failure"}`);
+  const repositoryTrustProbe = scanRepositoryTrust(target).catch((error: unknown) => {
+    warnings.push(`Repository-trust detectors unavailable: ${error instanceof Error ? error.message : "unknown detector failure"}`);
     return createUnavailableRepositoryTrust();
   });
   const tmpDir = await mkdtemp(join(tmpdir(), "ci-scan-"));
