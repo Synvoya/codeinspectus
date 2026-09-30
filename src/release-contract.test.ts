@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { SERVER_VERSION } from "./config.js";
 import { SDK_API_VERSION, SDK_COMPATIBILITY } from "./sdk/index.js";
 
-const RELEASE_VERSION = "3.2.0";
+const RELEASE_VERSION = "3.3.0";
 
 describe("V3 release source synchronization", () => {
   test("package, lockfile, server, CLI, and SDK versions agree", async () => {
@@ -31,7 +31,7 @@ describe("V3 release source synchronization", () => {
     ]);
     expect(SERVER_VERSION).toBe(RELEASE_VERSION);
     expect(SDK_API_VERSION).toBe(RELEASE_VERSION);
-    expect(SDK_COMPATIBILITY).toMatchObject({ cli_major: 3, export_schema: "3.0.0", repository_trust_schema: "1.0.0" });
+    expect(SDK_COMPATIBILITY).toMatchObject({ cli_major: 3, export_schema: "3.0.0", repository_trust_schema: "1.0.0", cleanup_schema: "1.0.0" });
     expect(packageJson.license).toBe("Apache-2.0");
     expect(packageJson.files).toContain("agent-rules");
     expect(packageJson.files).toContain("LICENSE");
@@ -84,12 +84,16 @@ describe("V3 release source synchronization", () => {
     expect(changelog).toContain("## [3.0.0] — 2026-08-23");
     expect(changelog).toContain("## [3.1.0] — 2026-08-23");
     expect(changelog).toContain("## [3.2.0] — 2026-09-07");
+    expect(changelog).toContain("## [3.3.0] — 2026-09-30");
     expect(readme).toContain("Source Integrity — V3.1");
     expect(readme).toContain("AI Provenance Audit — V3.2");
+    expect(readme).toContain("Verified Repository Cleanup — V3.3");
     expect(await readFile("docs/V3-REPOSITORY-TRUST-MIGRATION.md", "utf8")).toContain("3.0.0");
     expect(existsSync("schemas/codeinspectus-export-3.0.0.schema.json")).toBe(true);
     expect(existsSync("schemas/codeinspectus-sarif-3.0.0.schema.json")).toBe(true);
     expect(existsSync("schemas/codeinspectus-repository-trust-1.0.0.schema.json")).toBe(true);
+    expect(existsSync("schemas/codeinspectus-cleanup-plan-1.0.0.schema.json")).toBe(true);
+    expect(existsSync("schemas/codeinspectus-cleanup-result-1.0.0.schema.json")).toBe(true);
     expect(readme).toContain("CLI command reference");
     expect(readme).toContain("reproduce-v2.1-case-study.mjs");
     expect(changelog).toContain("CODEINSPECTUS_CASE_PACKAGE");

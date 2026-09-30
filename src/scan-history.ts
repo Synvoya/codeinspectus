@@ -1,7 +1,7 @@
 import { relative, resolve, sep } from "node:path";
 import { assessAggregateCoverage } from "./export/model.js";
 import { pathIsWithin } from "./path-safety.js";
-import { dedupIdentityKeys } from "./dedup.js";
+import { findingsMatch, pairMovedFindings } from "./dedup.js";
 import { diffRescan } from "./rescan.js";
 import { executeScan } from "./scan.js";
 import {
@@ -206,11 +206,7 @@ export function listScanHistory(snapshot: ScanStoreSnapshot, filters: HistoryLis
   };
 }
 
-export function findingsMatch(left: Finding, right: Finding): boolean {
-  if (left.fingerprint === right.fingerprint) return true;
-  const keys = new Set(dedupIdentityKeys(left));
-  return dedupIdentityKeys(right).some((key) => keys.has(key));
-}
+export { findingsMatch } from "./dedup.js";
 
 function comparisonCoverageSufficient(oldScan: StoredScanResult, newScan: StoredScanResult): boolean {
   return oldScan.canonical_findings === true && newScan.canonical_findings === true &&
@@ -278,8 +274,12 @@ export function compareScanHistory(
   );
   const matchedOld = new Set<Finding>();
   const items: HistoryComparisonItem[] = [];
+  const moved = pairMovedFindings(
+    oldScan.findings.filter((candidate) => !newScan.findings.some((finding) => findingsMatch(candidate, finding))),
+    newScan.findings.filter((finding) => !oldScan.findings.some((candidate) => findingsMatch(candidate, finding))),
+  );
   for (const finding of newScan.findings) {
-    const prior = oldScan.findings.find((candidate) => findingsMatch(candidate, finding));
+    const prior = oldScan.findings.find((candidate) => findingsMatch(candidate, finding)) ?? moved.get(finding);
     if (prior) {
       matchedOld.add(prior);
       items.push({ state: "Persisting", finding, prior_finding_id: prior.id, evidence: "The finding is present in both compared scans by fingerprint or dedup identity." });

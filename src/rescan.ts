@@ -8,9 +8,12 @@
  * Batch 2 additionally requires identical per-finding detector-component signatures.
  */
 
+import { lstat } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { executeScan } from "./scan.js";
+import { requireSafeScanTarget } from "./path-safety.js";
 import { getScan, getLatestScanForTarget, normalizeStoredScanForRuntime } from "./store.js";
-import { dedupIdentityKeys } from "./dedup.js";
+import { findingsMatch, pairMovedFindings } from "./dedup.js";
 import { STANDING_DISCLAIMER } from "./config.js";
 import { SEVERITY_RANK } from "./types.js";
 import type { Finding, RescanResult, ScanResult, Severity } from "./types.js";
@@ -38,19 +41,21 @@ import { diffRepositoryTrust } from "./repository-trust/diff.js";
  * `low` (same fingerprint) be matched as `remaining` instead of looking absent (CG-75 MAJOR #2),
  * while a genuinely-removed finding is provably `resolved` under a threshold (precision recovered).
  */
-export function diffRescan(prior: ScanResult, fresh: ScanResult): RescanResult {
+export function diffRescan(prior: ScanResult, fresh: ScanResult, missingFiles: ReadonlySet<string> = new Set()): RescanResult {
   const priorByFp = new Map(prior.findings.map((f) => [f.fingerprint, f]));
   const freshByFp = new Map(fresh.findings.map((f) => [f.fingerprint, f]));
   // Dedup-identity keys (location / secret / vuln identity). A finding's surviving fingerprint can
   // FLIP across a git-status transition: reframeLocalHygiene collapses severities, so a co-located
   // Gitleaks(high)⨯AI(critical) secret that merged to the critical representative before can merge
   // to the Gitleaks representative after — a different fingerprint for the SAME live issue. Matching
-  // on dedup identity (not just fingerprint) keeps that from being read as resolved/introduced.
-  const priorKeys = new Set(prior.findings.flatMap(dedupIdentityKeys));
-  const freshKeys = new Set(fresh.findings.flatMap(dedupIdentityKeys));
-  const intersects = (keys: Set<string>, finding: Finding): boolean =>
-    dedupIdentityKeys(finding).some((key) => keys.has(key));
-  const stillPresent = (f: Finding): boolean => priorByFp.has(f.fingerprint) || intersects(priorKeys, f);
+  // on dedup identity (not just fingerprint) keeps that from being read as resolved/introduced;
+  // findingsMatch also refuses matches that a location key alone would make (see dedup.ts).
+  const exactlyPresent = (f: Finding): boolean => priorByFp.has(f.fingerprint) || prior.findings.some((p) => findingsMatch(p, f));
+  const exactlyStillThere = (f: Finding): boolean => freshByFp.has(f.fingerprint) || fresh.findings.some((p) => findingsMatch(f, p));
+  // Unchanged code that only moved lines: paired only among findings the exact pass left over.
+  const moved = pairMovedFindings(prior.findings.filter((f) => !exactlyStillThere(f)), fresh.findings.filter((f) => !exactlyPresent(f)));
+  const movedPrior = new Set(moved.values());
+  const stillPresent = (f: Finding): boolean => exactlyPresent(f) || moved.has(f);
 
   const remaining = fresh.findings.filter(stillPresent);
   const introduced = fresh.findings.filter((f) => !stillPresent(f));
@@ -66,7 +71,8 @@ export function diffRescan(prior: ScanResult, fresh: ScanResult): RescanResult {
     if (freshByFp.has(f.fingerprint)) continue; // still present (exact fingerprint) → remaining
     // Same issue still present under a FLIPPED fingerprint (dedup-survivor change across a
     // git-status transition) → still present, NOT resolved. Counted in `remaining` via stillPresent.
-    if (intersects(freshKeys, f)) continue;
+    if (exactlyStillThere(f)) continue;
+    if (movedPrior.has(f)) continue; // same code, moved lines → remaining
 
     // Absent by both fingerprint AND dedup identity — but was its resolution actually PROVABLE?
     if (!priorConfigCaptured) {
@@ -126,7 +132,7 @@ export function diffRescan(prior: ScanResult, fresh: ScanResult): RescanResult {
     detected_technologies: fresh.detected_technologies,
     pack_coverage: fresh.pack_coverage,
     repository_trust: fresh.repository_trust,
-    repository_trust_changes: diffRepositoryTrust(prior.repository_trust, fresh.repository_trust),
+    repository_trust_changes: diffRepositoryTrust(prior.repository_trust, fresh.repository_trust, { missingFiles }),
     ...(fresh.dependency_coverage ? { dependency_coverage: fresh.dependency_coverage } : {}),
     resolved,
     remaining,
@@ -176,15 +182,26 @@ export function filterRescanForDisplay(
 }
 
 export async function runRescan(input: RescanInput): Promise<RescanResult> {
+  // Compare like with like: resolve the canonical target once and require the prior scan to be of
+  // that same target, so findings from another repository can never be reported as resolved.
+  const targetInspection = await requireSafeScanTarget(input.path);
+  const canonical = targetInspection.canonical_path ?? input.path;
   const prior = input.prior_scan_id
     ? await getScan(input.prior_scan_id)
-    : await getLatestScanForTarget(input.path);
+    : await getLatestScanForTarget(canonical);
 
   if (!prior) {
     throw new Error(
       input.prior_scan_id
         ? `No scan found with id '${input.prior_scan_id}'. Run codeinspectus_scan first, then rescan with that scan_id.`
         : `No prior scan found for path '${input.path}'. Run codeinspectus_scan on this path first, then rescan.`,
+    );
+  }
+
+  if (prior.target !== canonical) {
+    throw new Error(
+      `Scan '${prior.scan_id}' was taken of a different target (${prior.target}), not ${canonical}. ` +
+        "Rescan the same path, or omit prior_scan_id to use the latest scan of this path.",
     );
   }
 
@@ -201,8 +218,19 @@ export async function runRescan(input: RescanInput): Promise<RescanResult> {
     include_compliance: false,
   })).canonical;
 
+  // Artifact paths are relative to the scanned directory, or to a single-file target's directory.
+  const artifactRoot = targetInspection.type === "file" ? dirname(canonical) : canonical;
+  const missingFiles = new Set<string>();
+  for (const artifact of prior.repository_trust?.artifacts ?? []) {
+    const file = artifact.location.file;
+    if (file === ".git" || missingFiles.has(file)) continue;
+    await lstat(join(artifactRoot, file)).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT" || error.code === "ENOTDIR") missingFiles.add(file);
+    });
+  }
+
   return filterRescanForDisplay(
-    diffRescan(normalizeStoredScanForRuntime(prior), fresh),
+    diffRescan(normalizeStoredScanForRuntime(prior), fresh, missingFiles),
     effectiveThreshold,
   );
 }

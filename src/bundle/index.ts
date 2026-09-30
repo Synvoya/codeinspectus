@@ -294,6 +294,9 @@ export async function verifySealedBundle(inputDirectory: string): Promise<Verifi
   try { rawManifest = JSON.parse(manifestBytes.toString("utf8")); }
   catch { throw new Error("Bundle manifest is not valid JSON."); }
   const manifest = bundleManifestSchema.parse(rawManifest);
+  // Parsing drops unknown keys, and the seal covers only the parsed payload. Any content the parse
+  // would discard is therefore unsealed and must be rejected, not silently ignored.
+  if (!isDeepStrictEqual(rawManifest, manifest)) throw new Error("Bundle manifest contains content outside the seal.");
   const { seal, ...payload } = manifest;
   if (manifestPayloadHash(payload) !== seal.manifest_payload_sha256) throw new Error("Bundle manifest seal does not match its payload.");
 

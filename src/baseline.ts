@@ -1,5 +1,6 @@
 import { assessAggregateCoverage } from "./export/model.js";
 import { findingAbsenceProvableAgainst, findingsMatch } from "./scan-history.js";
+import { pairMovedFindings } from "./dedup.js";
 import { SEVERITY_RANK, type Finding, type Severity } from "./types.js";
 import type { StoredScanResult } from "./store.js";
 
@@ -45,11 +46,15 @@ export function compareAgainstBaseline(baseline: StoredScanResult, fresh: Stored
   if (baseline.canonical_findings !== true || fresh.canonical_findings !== true) notes.push("One or both scans lack the canonical-finding marker.");
   if (baselineCoverage !== "complete" || freshCoverage !== "complete") notes.push("One or both scans lack complete aggregate coverage.");
 
+  const moved = pairMovedFindings(
+    baseline.findings.filter((candidate) => !fresh.findings.some((finding) => findingsMatch(candidate, finding))),
+    fresh.findings.filter((finding) => !baseline.findings.some((candidate) => findingsMatch(candidate, finding))),
+  );
   const items: BaselineItem[] = fresh.findings.map((finding) => {
-    const existing = baseline.findings.find((candidate) => findingsMatch(candidate, finding));
+    const existing = baseline.findings.find((candidate) => findingsMatch(candidate, finding)) ?? moved.get(finding);
     if (existing) return {
       state: "Existing", finding, baseline_finding_id: existing.id,
-      evidence: "The finding exists in the baseline by fingerprint or stable dedup identity.",
+      evidence: "The finding exists in the baseline by fingerprint, stable dedup identity, or unchanged moved content.",
     };
     if (foundationComplete && findingAbsenceProvableAgainst(baseline, fresh, finding)) return {
       state: "New", finding,

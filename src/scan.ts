@@ -44,6 +44,7 @@ import { normalizeEngineOutput } from "./sarif/normalize.js";
 import { routeScanFindings } from "./file-routing.js";
 import { detectGitSafety } from "./git-safety.js";
 import { dedupFindings } from "./dedup.js";
+import { scrubCredentialContext } from "./redact.js";
 import { tagFindings } from "./compliance/mapper.js";
 import { buildComplianceOverview } from "./compliance/report.js";
 import { hasUnverifiedSecretCoverage, secretSuppressionWarnings } from "./gitleaks-suppression.js";
@@ -315,22 +316,51 @@ export async function executeScan(
       engineDetails.push(activePubResult.info);
     }
 
+    // Trivy matches Pub advisories by package name only. A git-sourced, custom-hosted, path or SDK
+    // package with a pub.dev name is a different package, so its Trivy matches are name collisions.
+    if (activePubResult?.nonOfficialPackages.length) {
+      const excluded = new Set(activePubResult.nonOfficialPackages.map((pkg) => `${pkg.lockfile}\u0000${pkg.name}`));
+      const before = allFindings.length;
+      allFindings = allFindings.filter((finding) => {
+        if (finding.engine !== "trivy" || !finding.location.file.endsWith("pubspec.lock")) return true;
+        const name = /^Package: (\S+)/.exec(finding.message)?.[1];
+        return !(name && excluded.has(`${finding.location.file}\u0000${name}`));
+      });
+      if (allFindings.length < before) {
+        warnings.push(`${before - allFindings.length} Trivy Pub advisory match(es) were package-name collisions with git-sourced, custom-hosted, path or SDK packages and are not reported.`);
+      }
+    }
+
     // CG-30 git-aware file routing: classify each finding by WHERE it lives (node_modules /
     // build output / git-ignored / tracked) and set severity+framing accordingly. Runs
     // BEFORE dedup so severity-first dedup (CG-24) operates on the corrected severities.
     const { findings: routed, stats: routeStats } = await routeScanFindings(allFindings, target);
-    if (routeStats.dropped_node_modules || routeStats.dropped_build_noise || routeStats.reframed) {
+    // Reframing git-ignored findings is context. Dropping findings is a coverage gap (the router
+    // drops by path segment, so a committed build/ file can be affected), and the aggregate-coverage
+    // classifier keys on the word "dropped", so only a real drop is worded that way.
+    if (routeStats.reframed) {
       warnings.push(
-        `File routing: reframed ${routeStats.reframed} git-ignored finding(s) as local-hygiene ` +
-          `(lower urgency — present on local disk but not committed); dropped ` +
-          `${routeStats.dropped_node_modules} in node_modules and ${routeStats.dropped_build_noise} ` +
-          `non-bundle finding(s) in build output. The §6.1 client-bundle secret check still fires in build output.`,
+        `File routing: ${routeStats.reframed} git-ignored finding(s) reframed as local hygiene ` +
+          "(lower urgency — present on local disk but not committed).",
+      );
+    }
+    if (routeStats.dropped_node_modules || routeStats.dropped_build_noise) {
+      warnings.push(
+        `File routing dropped ${routeStats.dropped_node_modules} finding(s) in node_modules and ` +
+          `${routeStats.dropped_build_noise} non-bundle finding(s) in build output; they are not reported. ` +
+          "The §6.1 client-bundle secret check still covers build output.",
       );
     }
 
     // Dedup (global + secret overlap), then compliance-tag.
     const { findings: deduped, stats } = dedupFindings(routed);
     if (stats.merged > 0) log.debug(`dedup merged ${stats.merged} overlapping findings`);
+    // Single chokepoint before persistence and every presentation surface: context windows can
+    // carry neighbouring or truncated credentials that per-engine redaction cannot localize.
+    for (const finding of deduped) {
+      if (finding.location.snippet) finding.location.snippet = scrubCredentialContext(finding.location.snippet);
+      finding.message = scrubCredentialContext(finding.message);
+    }
     await tagFindings(deduped);
 
     // The canonical set is sorted and assigned stable display ids before ANY presentation

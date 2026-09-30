@@ -3,10 +3,10 @@
 Drop-in rules that make your AI coding agent run CodeInspectus's **scan → surface →
 consent → fix → rescan** loop (PRD §12): the tool reports the findings, your agent
 **surfaces them to you and asks before changing code**, and fixes only what you approve.
-CodeInspectus never edits or deletes your source code or repository — the only file it writes is an optional SBOM (to a managed directory by default, or a path you choose), and engine data + scan history stay under `~/.codeinspectus`; your agent applies any
+Scans and reports never edit or delete your source code or repository (engine data and scan history stay under `~/.codeinspectus`). Only `codeinspectus_apply_cleanup` and `codeinspectus_rollback_cleanup` change a repository, and only for an exact cleanup plan the user approved; `codeinspectus_generate_sbom` writes to a managed directory or an absolute `.json` path the user chooses; your agent applies any
 fix, with your consent. Each scan also returns a read-only **git-safety advisory**: if you have
 uncommitted work — or no git repo — your agent will offer, with your approval, to checkpoint first
-so any fix can be rolled back cleanly (CodeInspectus itself never runs git). All clients use the
+so any fix can be rolled back cleanly (CodeInspectus itself never runs git commands that change your repository). All clients use the
 **same MCP server**; only the rule file location differs. Remediation is deliberately one finding
 at a time: a triage state never authorizes reproduction or edits, and test evidence stays separate
 from CodeInspectus rescan evidence.

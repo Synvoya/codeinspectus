@@ -30,7 +30,8 @@ const IGNORED_DIRECTORIES = new Set([
 ]);
 
 const SUPPORTED_EXTENSIONS = new Set([
-  "adoc", "astro", "bash", "c", "cc", "cfg", "clj", "cljs", "conf", "cpp", "cs", "css",
+  "adoc", "astro", "bash", "bat", "c", "cc", "cfg", "cjs", "clj", "cljs", "cmd", "conf", "cpp", "cs", "css", "cts",
+  "gradle", "groovy", "hcl", "m", "mm", "pl", "pm", "ps1", "psm1", "pyi", "r",
   "dart", "env", "ex", "exs", "fish", "go", "graphql", "gql", "h", "hpp", "html", "ini",
   "java", "js", "json", "jsx", "kt", "kts", "less", "lua", "md", "mdx", "mjs", "mts",
   "php", "plist", "properties", "proto", "py", "rb", "rs", "rst", "scala", "scss", "sh",
@@ -68,6 +69,8 @@ const UNICODE_NAMES = new Map<number, string>([
   [0x202e, "RIGHT-TO-LEFT OVERRIDE"], [0x2060, "WORD JOINER"],
   [0x2061, "FUNCTION APPLICATION"], [0x2062, "INVISIBLE TIMES"],
   [0x2063, "INVISIBLE SEPARATOR"], [0x2064, "INVISIBLE PLUS"],
+  [0x115f, "HANGUL CHOSEONG FILLER"], [0x1160, "HANGUL JUNGSEONG FILLER"], [0x3164, "HANGUL FILLER"],
+  [0xffa0, "HALFWIDTH HANGUL FILLER"],
   [0x2066, "LEFT-TO-RIGHT ISOLATE"], [0x2067, "RIGHT-TO-LEFT ISOLATE"],
   [0x2068, "FIRST STRONG ISOLATE"], [0x2069, "POP DIRECTIONAL ISOLATE"],
   [0xfeff, "ZERO WIDTH NO-BREAK SPACE"],
@@ -89,10 +92,18 @@ const BIDI_CLOSERS = new Map<number, "embedding" | "isolate">([
 ]);
 
 const DIRECTIONAL_MARKS = new Set([0x061c, 0x200e, 0x200f]);
+// Hangul fillers are Default_Ignorable letters (ID_Start in JavaScript and other languages), so
+// they can form an identifier that renders as nothing ("invisible backdoor"). Outside Hangul text
+// they have no legitimate role in source code.
+const HANGUL_FILLERS = new Set([0x115f, 0x1160, 0x3164, 0xffa0]);
 const DEFAULT_IGNORABLES = new Set([
   0x00ad, 0x034f, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0x2061, 0x2062, 0x2063,
-  0x2064, 0xfeff,
+  0x2064, 0xfeff, ...HANGUL_FILLERS,
 ]);
+
+function isHangul(character: string | undefined): boolean {
+  return character !== undefined && /\p{Script=Hangul}/u.test(character) && !HANGUL_FILLERS.has(character.codePointAt(0)!);
+}
 
 const CONFUSABLE_TO_ASCII = new Map<number, string>([
   [0x0391, "A"], [0x0392, "B"], [0x0395, "E"], [0x0396, "Z"], [0x0397, "H"], [0x0399, "I"],
@@ -150,13 +161,14 @@ function isSupported(name: string, direct: boolean): boolean {
   return SUPPORTED_EXTENSIONS.has(extname(name).slice(1).toLowerCase());
 }
 
-function createPositionLookup(content: string): (index: number, locationLength: number) => Position {
+// `byteBase` is the length of a UTF-8 BOM stripped by the decoder, so byte offsets address file bytes.
+function createPositionLookup(content: string, byteBase = 0): (index: number, locationLength: number) => Position {
   const lines = new Uint32Array(content.length + 1);
   const columns = new Uint32Array(content.length + 1);
   const byteOffsets = new Uint32Array(content.length + 1);
   let line = 1;
   let column = 1;
-  let byteOffset = 0;
+  let byteOffset = byteBase;
   for (let index = 0; index < content.length;) {
     const character = String.fromCodePoint(content.codePointAt(index)!);
     for (let unit = 0; unit < character.length; unit++) {
@@ -490,7 +502,9 @@ function scanInvisibleSequences(file: CandidateFile, content: string, maxMarkers
       const legitimateJoiner = (codePoint === 0x200c || codePoint === 0x200d) &&
         ((isEmoji(previous) && isEmoji(next)) || (isNonAsciiLetterOrMark(previous) && isNonAsciiLetterOrMark(next)));
       if (!isInitialBom && !legitimateJoiner) {
-        const tokenContext = !file.prose && isAsciiIdentifier(previous) && isAsciiIdentifier(next);
+        const tokenContext = !file.prose && (HANGUL_FILLERS.has(codePoint)
+          ? !isHangul(previous) && !isHangul(next)
+          : isAsciiIdentifier(previous) && isAsciiIdentifier(next));
         if (!add({
           file, content, index, marker,
           markerClass: tokenContext ? "unicode_zero_width_token" : "unicode_default_ignorable",
@@ -665,6 +679,7 @@ async function discoverFiles(target: string, options: Required<SourceIntegrityOp
 async function safeRead(file: CandidateFile, maxFileBytes: number): Promise<{
   content?: string;
   bytes: number;
+  byteBase?: number;
   limitation?: string;
 }> {
   const flags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0);
@@ -686,7 +701,8 @@ async function safeRead(file: CandidateFile, maxFileBytes: number): Promise<{
     }
     if (buffer.includes(0)) return { bytes: buffer.length, limitation: "A supported path contained binary data and was excluded." };
     try {
-      return { content: new TextDecoder("utf-8", { fatal: true }).decode(buffer), bytes: buffer.length };
+      const byteBase = buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf ? 3 : 0;
+      return { content: new TextDecoder("utf-8", { fatal: true }).decode(buffer), bytes: buffer.length, byteBase };
     } catch {
       return { bytes: buffer.length, limitation: "A supported source file was not valid UTF-8 and was excluded." };
     }
@@ -739,7 +755,7 @@ export async function scanSourceIntegrity(
       }));
       if (artifactBoundReached) break;
     }
-    const locate = markerInputs.length ? createPositionLookup(loaded.content) : undefined;
+    const locate = markerInputs.length ? createPositionLookup(loaded.content, loaded.byteBase) : undefined;
     const candidates = markerInputs.map((input) => artifactFrom(input, locate!)).sort((left, right) =>
       (left.location.start_line ?? 0) - (right.location.start_line ?? 0) ||
       (left.location.start_column ?? 0) - (right.location.start_column ?? 0) ||

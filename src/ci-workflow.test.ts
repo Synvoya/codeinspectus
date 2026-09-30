@@ -19,7 +19,9 @@ describe("shipped GitHub Actions policy workflow", () => {
     expect(executable).not.toMatch(/pull_request_target|secrets\.|github\.token|GITHUB_TOKEN/);
     expect(executable).not.toMatch(/npm ci|npm run|npx /);
     expect(executable).toMatch(/--ignore-scripts/);
-    expect(executable).toMatch(/codeinspectus@3\.1\.0/);
+    // The example pins the exact release being shipped, so it never lags the package.
+    const { version } = JSON.parse(await readFile("package.json", "utf8")) as { version: string };
+    expect(executable).toContain(`codeinspectus@${version}`);
     expect(executable).toMatch(/\$RUNNER_TEMP\/codeinspectus-cli/);
     expect(source).toMatch(/persist-credentials:\s*false/);
   });

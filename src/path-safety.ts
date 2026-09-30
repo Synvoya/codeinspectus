@@ -1,4 +1,4 @@
-import { access, lstat, realpath } from "node:fs/promises";
+import { access, lstat, realpath, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { dirname, isAbsolute, parse, relative, resolve, sep } from "node:path";
 
@@ -402,4 +402,44 @@ export async function inspectOutputDirectory(
     safe,
     ...(error ? { error } : {}),
   };
+}
+
+/**
+ * Whether a symbolic-link directory entry can hide content from a walker that never follows links.
+ * Links are never trusted to be covered elsewhere: walkers skip directories and some detectors key
+ * on exact file names, so a link's real target may not be inspected with the same meaning. A link
+ * is ignored only when its own name is one the walker would never analyze; a directory link, or a
+ * dangling link with a relevant name, is always a gap. When `root` is given, an irrelevant-named
+ * link that resolves outside it is also a gap (whole-tree scanners such as Gitleaks read any name).
+ */
+export async function symlinkEntryIsGap(
+  link: string,
+  name: string,
+  isRelevantName: (name: string) => boolean,
+  root?: string,
+): Promise<boolean> {
+  let isDirectory: boolean;
+  try {
+    isDirectory = (await stat(link)).isDirectory();
+  } catch {
+    return isRelevantName(name);
+  }
+  if (isDirectory || isRelevantName(name)) return true;
+  if (!root) return false;
+  try {
+    return !pathIsWithin(await realpath(root), await realpath(link));
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Documentation and legal files that no technology detector or source analyzer interprets. This is
+ * an allow-list of suffixes: a documentation extension, or a legal name with no extension, a
+ * `-MIT`/`-APACHE-2.0` style variant, or a documentation/text extension. Anything else (`Changelog.vue`,
+ * `license.ts`) is interpretable.
+ */
+export function isDocumentationName(name: string): boolean {
+  return /\.(?:md|mdx|markdown|rst|adoc)$/i.test(name) ||
+    /^(?:license|licence|copying|notice|authors|contributors|changelog)(?:-[a-z0-9]+(?:-[a-z0-9]+|\.[0-9]+)*)?(?:\.(?:md|mdx|markdown|rst|adoc|txt))?$/i.test(name);
 }

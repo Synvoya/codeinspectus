@@ -165,8 +165,12 @@ will not be merged, however useful it otherwise is:
    explicit `repair-engines`. Never add a phone-home.
 6. **Compliance = code-level coverage only.** Never emit "% compliant", "you pass", or any
    certification language; always show the code-visible denominator + disclaimer.
-7. **Read-only tools.** The scanner reads and reports; it never writes to or deletes the user's
-   files (SBOM goes to the managed dir). The agent applies fixes.
+7. **Read-only scanning; one approved mutation surface.** Scan, rescan, and report tools never
+   write to or delete the user's files, and must never run programs named by the scanned
+   repository's config. The only tools that change a repository are the V3.3 cleanup apply and
+   rollback tools, which require an exact approved plan, a managed checkpoint, and a journal before
+   the first write. SBOM output goes to the managed dir or an explicit absolute `.json` path and
+   never replaces a non-SBOM file. The agent applies vulnerability fixes.
 8. **Secret redaction.** No raw secret value in any output — type + location + redacted preview.
 9. **Cross-engine secret dedup.** Overlapping secret findings (e.g. Trivy ⨯ Gitleaks) are
    merged, not double-reported.

@@ -84,7 +84,7 @@ package distributed by npm retains its own package metadata and license file.
 |---|---:|---|---|
 | `@modelcontextprotocol/sdk` | 1.30.0 | MIT | Copyright (c) 2024 Anthropic, PBC |
 | `@contentauth/c2pa-node` | 0.9.3 | MIT | Content Authenticity Initiative / Adobe contributors; optional native C2PA validator |
-| `@contentauth/c2pa-types` | 0.7.4 | MIT OR Apache-2.0 | Content Authenticity Initiative / Adobe contributors |
+| `@contentauth/c2pa-types` | 0.7.4 | MIT | Copyright 2025 Adobe (package LICENSE) |
 | `@contentauth/c2pa-utilities` | 0.2.2 | MIT | Content Authenticity Initiative / Adobe contributors |
 | `exifreader` | 4.44.0 | MPL-2.0 | Copyright Mattias Wallander and contributors; EXIF/XMP/IPTC parser |
 | `@lezer/python` | 1.1.19 | MIT | Copyright (C) 2020 Marijn Haverbeke and others |

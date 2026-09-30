@@ -197,7 +197,8 @@ export function assessAggregateCoverage(scan: StoredScanResult): {
       pushUnique(evidence, {
         category: "dependency_limitation",
         component: `dependency:${dependency.engine}:${dependency.ecosystem}`,
-        state: "partial",
+        // A complete run's notes (snapshot age, non-matching disclosures) are context, not gaps.
+        state: dependency.state === "ran" ? "informational" : "partial",
         detail: limitation,
       });
     }

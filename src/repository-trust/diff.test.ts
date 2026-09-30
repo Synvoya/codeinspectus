@@ -73,3 +73,12 @@ describe("repository-trust rescan diff", () => {
     expect(result.summary).toEqual({ resolved: 0, remaining: 0, introduced: 1, not_rechecked: 0 });
   });
 });
+
+describe("artifacts whose file no longer exists", () => {
+  test("are not confirmed resolved, because the file may have moved outside inspected coverage", () => {
+    const changes = diffRepositoryTrust(document([artifact("1", 3)]), document([]), { missingFiles: new Set(["src/app.ts"]) });
+
+    expect(changes.summary).toMatchObject({ resolved: 0, not_rechecked: 1 });
+    expect(changes.limitations.join(" ")).toMatch(/moved|removed/i);
+  });
+});

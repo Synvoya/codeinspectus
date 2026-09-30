@@ -86,7 +86,7 @@ describe("summarizeScan — git-safety advisory placement (CG-42)", () => {
     );
 
     expect(out).toContain("Native dependency coverage (exact locked-version matching only):");
-    expect(out).toContain("Pub/codeinspectus-pub=partial (1/2 lockfiles, 10/12 eligible packages, 2 skipped, snapshot 2026-07-26)");
+    expect(out).toContain("Pub/codeinspectus-pub=partial (1/2 lockfiles, 10/12 eligible packages, 2 unverifiable git/custom-hosted, snapshot 2026-07-26)");
     expect(out).toContain("One lockfile was malformed.");
   });
 
@@ -244,7 +244,7 @@ describe("summarizeRescan — not_rechecked surfaced in human text (CG-75 Claim 
       }),
     );
 
-    expect(out).toContain("Pub/codeinspectus-pub=ran (1/1 lockfiles, 4/4 eligible packages, 0 skipped, snapshot 2026-07-26)");
+    expect(out).toContain("Pub/codeinspectus-pub=ran (1/1 lockfiles, 4/4 eligible packages, 0 unverifiable git/custom-hosted, snapshot 2026-07-26)");
   });
 
   test("not_rechecked findings appear under a dedicated NOT-confirmed-resolved section with count + note", () => {

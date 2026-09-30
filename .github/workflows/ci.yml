@@ -13,7 +13,7 @@
 #     engine-dependent and runs in the engine job below.
 #
 #   engine (linux/amd64) — fetches + cosign/checksum-verifies + SHA-pins the three
-#     engine binaries and pulls the Trivy vuln DB, then runs the FULL 55/55 eval suite with
+#     engine binaries and pulls the Trivy vuln DB, then runs the FULL eval suite with
 #     engine-backed, native-pack, parity, rescan, provenance, and redaction gates, plus the gitleaks-backed redaction-e2e and a real
 #     fixture scan. Proven feasible in CG-77 recon: every engine has a non-null
 #     linux-x64 pin and a fresh verified install reproduces the committed SHAs.
@@ -94,7 +94,7 @@ jobs:
         run: npm run build
       - name: Unit tests (vitest, full)
         run: npm test
-      - name: MCP stdio transport smoke (boots, lists 6 tools, stdout pure JSON-RPC)
+      - name: MCP stdio transport smoke (boots, lists all tools and annotations, stdout pure JSON-RPC)
         run: node scripts/smoke-stdio.mjs
       - name: Eval — native/no-engine coverage (engine-dependent cases self-skip)
         run: npm run eval

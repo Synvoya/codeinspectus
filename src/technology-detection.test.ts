@@ -1144,4 +1144,52 @@ flask = "not dependency evidence"
     expect(result.detected_technologies).toEqual([]);
     expect(result.limitations).toEqual([{ path: ".", reason: "target_unreadable" }]);
   });
+
+  test("a name-significant symlink is a detection gap even when it resolves inside the tree", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ci-detect-symlink-"));
+    await mkdir(join(root, "rules"));
+    await writeFile(join(root, "rules", "firestore-prod.rules"), "rules_version = '2';\n");
+    await writeFile(join(root, "AGENTS.md"), "# agents\n");
+    try {
+      await symlink(join("rules", "firestore-prod.rules"), join(root, "firestore.rules"));
+      await symlink("AGENTS.md", join(root, "CLAUDE.md"));
+    } catch {
+      return;
+    }
+
+    const result = await detectTechnologies(root);
+    const skipped = JSON.stringify(result);
+
+    expect(skipped).toMatch(/firestore\.rules/);
+    expect(skipped).not.toMatch(/CLAUDE\.md/);
+  });
+
+  test("a documentation-named link that escapes the scanned tree is still a gap", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ci-detect-doclink-"));
+    const outside = await mkdtemp(join(tmpdir(), "ci-detect-doclink-outside-"));
+    await writeFile(join(outside, "notes.md"), "notes\n");
+    await writeFile(join(root, "LICENSE-root"), "license\n");
+    await mkdir(join(root, "packages", "a"), { recursive: true });
+    try {
+      await symlink(join(outside, "notes.md"), join(root, "NOTES.md"));
+      await symlink(join("..", "..", "LICENSE-root"), join(root, "packages", "a", "LICENSE"));
+    } catch {
+      return;
+    }
+
+    const serialized = JSON.stringify(await detectTechnologies(root));
+
+    expect(serialized).toMatch(/NOTES\.md/);
+    expect(serialized).not.toMatch(/packages\/a\/LICENSE/);
+  });
+
+  test("legal-looking names with code extensions are never treated as documentation", async () => {
+    const { isDocumentationName } = await import("./path-safety.js");
+    for (const name of ["license.ts", "LICENSE.json", "notice.py", "license-checker.js", "changelog.yml", "Changelog.vue", "NOTICE.svelte", "LICENSE-foo.vue", "authors.csproj"]) {
+      expect(isDocumentationName(name), name).toBe(false);
+    }
+    for (const name of ["LICENSE", "LICENSE-MIT", "LICENSE-APACHE-2.0", "LICENSE.txt", "NOTICE", "CHANGELOG.md", "README.mdx"]) {
+      expect(isDocumentationName(name), name).toBe(true);
+    }
+  });
 });

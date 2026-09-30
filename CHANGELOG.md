@@ -4,6 +4,116 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [3.3.0] — 2026-09-30
+
+### Added
+- Added `codeinspectus_plan_cleanup`, a fresh read-only planning tool that accepts exact verified
+  repository-trust artifact IDs, reproduces evidence, rejects protected/ambiguous/unsupported
+  records, records preimage hashes, and discloses exact transformations before approval.
+- Added `codeinspectus_apply_cleanup` with exact-scope confirmation, separate attribution/provenance
+  rights confirmation, managed content backups, bounded atomic text edits, same-validator rescans,
+  content-free audit logs, and automatic rollback of already-applied operations on partial failure.
+- Added `codeinspectus_rollback_cleanup`, which restores recorded preimages or removes generated
+  cleaned copies only when their current hashes still match the applied cleanup result.
+- Added copy-only metadata adapters for PNG, JPEG, MP3, WAV, MP4, MOV, M4A and M4V repository
+  assets. Original assets are preserved, metadata-container removal is separately acknowledged,
+  and C2PA/content-provenance cleanup requires an additional copy acknowledgement.
+- Added versioned `1.0.0` cleanup plan/result JSON Schemas and public SDK type exports.
+
+### Safety boundary
+- Scanning and cleanup planning remain read-only. Apply/rollback are the only repository mutation
+  tools and are accurately marked destructive in MCP annotations.
+- Git history and protected legal, licensing and compliance records are never eligible. Structured
+  declarations without a safe bounded adapter are returned for agent guidance instead of guessed edits.
+- The mutation tool does not execute arbitrary repository commands. Tests, formatters and builds are
+  explicitly `not_run` and required until the calling agent completes them.
+- V3.3 does not remove visible logos, alter pixels/audio/video frames, implement statistical
+  watermark detection or rewriting, or claim that cleaned content is human-authored.
+
+### Security
+- Finding snippets and messages are now scrubbed value-agnostically at one point before
+  persistence and every output surface (known token patterns, URL credentials, quoted or unquoted
+  values of credential-named keys, and long high-entropy tokens; UUIDs, SRI hashes, pinned commit
+  SHAs, and variable/template references are kept). Earlier versions could surface neighbouring or window-truncated credentials in
+  `location.snippet` (for example a generic password on the line next to a detected key, or a
+  high-entropy value on the same line as a non-secret finding) through MCP `structuredContent`,
+  `explain_finding`, and local scan history. Scan history written by earlier versions under
+  `~/.codeinspectus/scans` may contain such snippets; delete it and rotate any affected credential.
+- Git is now invoked with command-line overrides that the scanned repository's config cannot
+  change, and engine processes (for example Opengrep's own `git ls-files`) inherit the same
+  overrides as command-scope `GIT_CONFIG_*` environment: fsmonitor hooks, signature programs, hooks
+  and pagers are disabled, and
+  `--no-optional-locks` keeps `status` from rewriting `.git/index`. Working-tree comparisons (git
+  safety, working-tree Git scope) are skipped or refused when the repository config defines filter
+  drivers. Working-tree comparisons never descend into submodule work trees (whose own config can
+  name filter drivers), and repository-location variables such as `GIT_DIR` inherited from a parent
+  git hook are ignored. Earlier versions could run programs named in a scanned repository's
+  `.git/config`.
+- C2PA validator error text is reduced to safe prose before it becomes a coverage limitation:
+  remote manifest URLs lose credentials and query strings, install paths are collapsed, and
+  control characters are removed. Earlier versions could echo a remote URL's token.
+- MCP text content, CLI stdout/stderr, and log lines render control characters from
+  repository-controlled text (file names, metadata fields, messages) as visible `\uXXXX` escapes, so
+  a crafted file name or PNG text chunk can no longer drive a terminal, including through `tee` or
+  `less -R`. JSON and SARIF stay valid with identical parsed data; `--output <file>` writes exact
+  bytes (use it when CSV fields must keep raw control characters).
+- Sealed-bundle verification rejects manifest content outside the seal. Unknown manifest keys were
+  dropped by schema parsing before the seal check, so an added claim such as an `attestation`
+  object verified successfully.
+- Interrupting a commit-mode Git-scoped CLI scan (SIGINT/SIGTERM) now removes the materialized
+  source snapshot before exit. It was previously left under the OS temp directory, including any
+  secrets in the scanned commit.
+
+### Fixed
+- CI policy no longer exits 2 on ordinary repositories because of harmless symbolic links (for
+  example `CLAUDE.md -> AGENTS.md`). Links are still never followed or assumed covered elsewhere; a
+  file link is ignored only when its own name is one the scanner would never analyze (documentation
+  for technology detection, non-source names for language packs, anything but `pubspec.lock` for Pub
+  discovery). Source-named, manifest-named, and directory links remain disclosed coverage gaps.
+- Git-scoped CI enforcement can no longer be bypassed: findings that a change introduces outside
+  the changed paths (for example by deleting the migration that enabled row-level security) are
+  primary (within the declared target and outside git-ignored paths), found by also scanning the
+  base commit; edits hidden by skip-worktree/assume-unchanged and
+  files removed with `git rm --cached` but still on disk are in working-tree scope; submodule pointer
+  changes are reported even with `.gitmodules ignore=all`; and diffs are measured from the merge-base,
+  so changes made only on the base branch are not attributed to the change.
+- Baseline, rescan and history matching can no longer be satisfied by location alone: a different
+  engine's new finding at a moved finding's old location, or a different secret replacing one on the
+  same line, is New rather than Existing (a `--fail-on-new-severity` gate could pass on both).
+- Trivy Pub advisories that match git-sourced, custom-hosted, path or SDK packages only by name are
+  excluded as name collisions (with a disclosed count), matching the native Pub exclusion contract.
+- Native Pub coverage is no longer partial for every Flutter project or once the bundled snapshot is
+  a week old. SDK and path packages are not applicable to Pub advisories; only git and
+  custom-hosted dependencies count as skipped (`packages.skipped`); snapshot age is a freshness note,
+  as for the Trivy DB, and every CLI scan prints it on stderr; and notes from a complete dependency
+  run, the note about reframed git-ignored findings, and Trivy name-collision notes are
+  informational in aggregate coverage (findings the file router actually drops still make it partial).
+- Source integrity now detects Hangul fillers (U+115F, U+1160, U+3164, U+FFA0) used outside
+  Hangul text, the "invisible identifier" backdoor pattern; they were previously not inspected.
+- Rescan, baseline and history comparison no longer report an unchanged finding as resolved plus
+  introduced when lines are inserted above it. Findings are additionally matched by a
+  line-independent content anchor (file, rule, CWE, secret-value hash or normalized snippet, and
+  occurrence order), so a duplicated vulnerable line still counts as new. Fingerprints are unchanged.
+- Rescan refuses a `prior_scan_id` taken of a different target and resolves the latest prior scan by
+  canonical path, so findings from another repository can no longer be reported as resolved.
+- `generate_sbom` refuses a relative `output_path` or one naming an existing non-SBOM file.
+- A repository-trust artifact whose file was removed or moved is `not_rechecked`, not resolved:
+  moving a file with a hidden-Unicode marker into `vendor/`, `build/` or an unsupported extension
+  previously read as a fix. Source-integrity now also inspects `.cjs`, `.cts`, `.pyi`, `.ps1`,
+  `.psm1`, `.bat`, `.cmd`, `.gradle`, `.groovy`, `.hcl`, `.m`, `.mm`, `.pl`, `.pm` and `.r` files,
+  and explicit-attribution inspection covers `.cjs`, `.cts` and `.pyi`.
+- SARIF regenerated from a sealed export uses the export's recorded `generated_by.version` as the
+  driver version. It previously used the running version, so every export-3.0.0 bundle stopped
+  verifying after an upgrade ("do not match the sealed canonical export"); 3.2.0 bundles verify
+  under 3.3.0.
+- Source-integrity `utf8_byte_offset` evidence is now relative to the file bytes when a file starts
+  with a UTF-8 BOM. V3.1.0–3.2.0 reported offsets three bytes low for such files; line and column
+  evidence was unaffected.
+
+### Changed
+- Package, MCP server, CLI and SDK API versions are synchronized at `3.3.0`. Compatible export
+  `3.0.0` and repository-trust `1.0.0` remain unchanged; cleanup contracts are independently `1.0.0`.
+
 ## [3.2.0] — 2026-09-07
 
 ### Added
@@ -25,7 +135,7 @@ AI-drafted and practitioner-reviewed — see the honesty notes in the [README](R
 - C2PA and protected legal/licensing attribution records are evidence-only and never
   cleanup-eligible. V3.2 does not rewrite text, strip metadata, inspect media pixels/audio/video
   frames, or implement statistical watermark detection.
-- The official C2PA native binding is an optional npm dependency so unsupported platforms or
+- The official C2PA native binding is an optional peer dependency (not installed by default) so unsupported platforms or
   `--ignore-scripts` installs do not break CodeInspectus; candidate assets then report partial
   content-provenance coverage.
 
@@ -68,6 +178,8 @@ AI-drafted and practitioner-reviewed — see the honesty notes in the [README](R
   a CodeInspectus rescan. V3.1 does not silently normalize or remove characters.
 
 ## [3.0.0] — 2026-08-23
+
+_Not published separately; this contract migration first shipped to npm in 3.1.0._
 
 ### Added
 - Added the versioned `1.0.0` repository-trust contract for non-CWE source-integrity and
@@ -171,6 +283,8 @@ AI-drafted and practitioner-reviewed — see the honesty notes in the [README](R
   does not break those contracts.
 
 ## [2.1.1] — 2026-08-05
+
+_Not published separately; this dependency patch first shipped to npm in 2.5.0._
 
 ### Security
 - Refreshed transitive production dependency resolutions within the existing declared ranges:

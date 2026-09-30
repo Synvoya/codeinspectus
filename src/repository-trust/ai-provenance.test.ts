@@ -64,11 +64,12 @@ describe("V3.2 explicit AI attribution and content-provenance audit", () => {
         state: "verified",
         marker_class: "explicit_generator_attribution",
         location: expect.objectContaining({ file: "generated.ts", start_line: 1 }),
-        remediation: expect.objectContaining({ eligible: false, requires_approval: true }),
+        remediation: expect.objectContaining({ eligible: true, requires_approval: true, reversible: true }),
       }),
       expect.objectContaining({
         marker_class: "ai_coauthor_commit_trailer",
         location: expect.objectContaining({ file: ".git", field: "commit:1234567890ab:Co-Authored-By" }),
+        remediation: expect.objectContaining({ eligible: false, protected_record: true }),
       }),
     ]));
     expect(JSON.stringify(result)).not.toContain("Ignore previous instructions");
@@ -163,7 +164,7 @@ describe("V3.2 explicit AI attribution and content-provenance audit", () => {
         kind: "content_provenance",
         state: "verified",
         marker_class: "c2pa_validated_manifest",
-        remediation: expect.objectContaining({ eligible: false, protected_record: true }),
+        remediation: expect.objectContaining({ eligible: true, protected_record: false, reversible: true }),
       }),
     ]));
     expect(JSON.stringify(result)).toContain("trainedAlgorithmicMedia");
@@ -232,6 +233,22 @@ describe("V3.2 explicit AI attribution and content-provenance audit", () => {
     expect(external?.evidence.attributes).toEqual(expect.arrayContaining([
       { name: "sidecar_file", value: "signed.c2pa" },
     ]));
+  });
+
+  test("redacts credentials and control characters from C2PA validator error messages", async () => {
+    const root = await fixture();
+    await writeFile(join(root, "clip.mp4"), Buffer.from("not really an mp4"));
+    const failing: C2paReader = async () => {
+      throw new Error("remote manifest https://svc:hunter2@example.com/m.c2pa?token=SECRETVALUE123 unavailable\u001b]8;;x\u0007");
+    };
+
+    const result = await scanAiProvenance(root, { c2paReader: failing, gitHistoryReader: async () => ({ applicable: false, truncated: false, records: [] }) });
+    const text = JSON.stringify(result);
+
+    expect(text).toContain("example.com");
+    expect(text).not.toContain("hunter2");
+    expect(text).not.toContain("SECRETVALUE123");
+    expect(text).not.toMatch(/\\u001b|\\u0007/);
   });
 
   test("runs the official local C2PA reader on an unsigned asset with no false artifact", async () => {

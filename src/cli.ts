@@ -1,3 +1,5 @@
+import { forStream } from "./util/terminal.js";
+import { removeActiveTemporaryDirectories } from "./util/temporary.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -49,6 +51,8 @@ export interface ParsedCliCommand {
 export interface CliIo {
   stdout(text: string): void;
   stderr(text: string): void;
+  /** Raw bytes for sealed evidence (bundle export); everything else is terminal-escaped. */
+  stdoutExact?(bytes: Buffer): void;
 }
 
 export interface CliDependencies {
@@ -66,8 +70,9 @@ export interface CliDependencies {
 }
 
 const DEFAULT_IO: CliIo = {
-  stdout: (text) => process.stdout.write(text),
-  stderr: (text) => process.stderr.write(text),
+  stdout: (text) => process.stdout.write(forStream(text)),
+  stderr: (text) => process.stderr.write(forStream(text)),
+  stdoutExact: (bytes) => process.stdout.write(bytes),
 };
 
 const DEFAULT_DEPS: CliDependencies = {
@@ -309,10 +314,12 @@ export interface SignalHost {
 export function installCliSignalHandlers(host: SignalHost = process): () => void {
   const onInterrupt = (): void => {
     terminateActiveEngineProcesses("SIGTERM");
+    removeActiveTemporaryDirectories();
     host.exit(signalExitCode("SIGINT"));
   };
   const onTerminate = (): void => {
     terminateActiveEngineProcesses("SIGTERM");
+    removeActiveTemporaryDirectories();
     host.exit(signalExitCode("SIGTERM"));
   };
   host.once("SIGINT", onInterrupt);
@@ -521,6 +528,12 @@ export async function runCli(
           : evaluateNewFindingPolicy(baseline, parsed.configuration.fail_on_new_severity)
         : evaluateCiPolicy(policyDocument, parsed.configuration.fail_on_severity);
       if (policy.exit_code !== 0) io.stderr(`CodeInspectus policy: ${policy.reason}\n`);
+      // A stale bundled advisory snapshot does not fail CI, so say so where CI logs are read.
+      for (const coverage of result.dependency_coverage ?? []) {
+        for (const limitation of coverage.limitations) {
+          if (limitation.startsWith("Bundled Pub advisory snapshot is")) io.stderr(`CodeInspectus notice: ${limitation}\n`);
+        }
+      }
       return policy.exit_code;
     } finally {
       cleanupSignals();

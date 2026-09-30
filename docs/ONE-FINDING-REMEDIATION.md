@@ -1,6 +1,6 @@
 # One-finding remediation workflow
 
-CodeInspectus scans and rescans; it never edits a target repository. The shipped agent rules define a conservative workflow for an external coding agent to investigate and remediate exactly one user-selected finding.
+CodeInspectus scans and rescans without editing a target repository; this workflow never uses the separately approved V3.3 repository-trust cleanup tools. The shipped agent rules define a conservative workflow for an external coding agent to investigate and remediate exactly one user-selected finding.
 
 "Accepted finding" in this workflow means the one finding the user selected for investigation. It does not mean the triage state `Accepted`. A triage annotation records review context and never authorizes reproduction, a checkpoint, a regression-test edit, or a source edit.
 

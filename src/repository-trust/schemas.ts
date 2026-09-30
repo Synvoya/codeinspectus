@@ -327,7 +327,7 @@ const UNAVAILABLE_CAPABILITIES: ReadonlyArray<{
 }> = [
   {
     capability: "source_integrity",
-    limitation: "Source-integrity evidence was not recorded for this scan; rerun with V3.2 or later to evaluate it.",
+    limitation: "Source-integrity evidence was not recorded for this scan; rerun with V3.1 or later to evaluate it.",
   },
   {
     capability: "explicit_ai_attribution",

@@ -41,7 +41,7 @@ function dependencyCoverageSummary(coverage: DependencyCoverage[] | undefined): 
       `${entry.ecosystem}/${entry.engine}=${entry.state} ` +
       `(${entry.lockfiles.analyzed}/${entry.lockfiles.discovered} lockfiles, ` +
       `${entry.packages.eligible}/${entry.packages.resolved} eligible packages, ` +
-      `${entry.packages.skipped} skipped${snapshot})${limitation}`
+      `${entry.packages.skipped} unverifiable git/custom-hosted${snapshot})${limitation}`
     );
   });
   return `\n\nNative dependency coverage (exact locked-version matching only):\n  ${lines.join("\n  ")}`;

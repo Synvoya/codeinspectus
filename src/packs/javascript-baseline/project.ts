@@ -8,6 +8,7 @@ import {
   parseJavaScriptSource,
   type JsDocument,
 } from "../react-native/javascript.js";
+import { symlinkEntryIsGap } from "../../path-safety.js";
 
 export const JAVASCRIPT_BASELINE_MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 export const JAVASCRIPT_BASELINE_MAX_SOURCE_FILES = 10_000;
@@ -255,7 +256,9 @@ async function loadUncached(
       const absolute = join(directory, entry.name);
       const rel = relative(absoluteTarget, absolute).replace(/\\/g, "/");
       if (entry.isSymbolicLink()) {
-        notes.add(`Skipped symbolic-link JavaScript/TypeScript path ${rel}.`);
+        if (await symlinkEntryIsGap(absolute, entry.name, sourceExtension)) {
+          notes.add(`Skipped symbolic-link JavaScript/TypeScript path ${rel}.`);
+        }
       } else if (entry.isDirectory()) {
         if (!EXCLUDED_DIRS.has(entry.name.toLowerCase())) await walk(absolute, depth + 1);
       } else if (entry.isFile() && sourceExtension(entry.name)) {

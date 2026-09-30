@@ -155,6 +155,20 @@ describe("sealed scan bundles", () => {
     expect(JSON.parse(verified.contents["artifacts/export.json"].toString("utf8")).coverage.aggregate).toBe("unknown");
   });
 
+  test.each([
+    ["a top-level key", (manifest: Record<string, any>) => { manifest.attestation = { verdict: "no vulnerabilities" }; }],
+    ["a nested key", (manifest: Record<string, any>) => { manifest.scan_scope.note = "reviewed"; }],
+    ["an artifact entry key", (manifest: Record<string, any>) => { manifest.artifacts[0].approved = true; }],
+  ])("rejects manifest content outside the seal: %s", async (_label, mutate) => {
+    const directory = await createdBundle();
+    const path = join(directory, "scan-manifest.json");
+    const manifest = JSON.parse(await readFile(path, "utf8"));
+    mutate(manifest);
+    await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`);
+
+    await expect(verifySealedBundle(directory)).rejects.toThrow(/outside the seal/i);
+  });
+
   test("detects manifest payload tampering independently of artifact hashes", async () => {
     const directory = await createdBundle();
     const path = join(directory, "scan-manifest.json");

@@ -3,6 +3,7 @@
 import { constants, type BigIntStats } from "node:fs";
 import { lstat, open, readdir, type FileHandle } from "node:fs/promises";
 import { basename, dirname, extname, join, parse, relative, resolve } from "node:path";
+import { symlinkEntryIsGap } from "../../path-safety.js";
 
 export const PHP_MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 export const PHP_MAX_SOURCE_FILES = 10_000;
@@ -185,7 +186,7 @@ async function loadUncached(target: string): Promise<PhpProject> {
       const absolute = join(directory, entry.name);
       const display = normalized(relative(absoluteTarget, absolute));
       if (entry.isSymbolicLink()) {
-        limitations.add(`Skipped symbolic-link PHP source entry ${display}.`);
+        if (await symlinkEntryIsGap(absolute, entry.name, sourcePath)) limitations.add(`Skipped symbolic-link PHP source entry ${display}.`);
         continue;
       }
       if (entry.isDirectory()) {

@@ -17,6 +17,8 @@ export interface PubScanResult {
   coverage: DependencyCoverage;
   componentSignatures: Record<string, string>;
   applicability: "applicable" | "ambiguous" | "not_applicable";
+  /** Locked packages that are not pub.dev packages (git, custom-hosted, path, SDK), by lockfile. */
+  nonOfficialPackages: Array<{ lockfile: string; name: string }>;
 }
 
 interface PubScanOptions {
@@ -138,7 +140,14 @@ export async function runPubScan(target: string, options: PubScanOptions = {}): 
   const parsedLockfiles = load.lockfiles.filter((lockfile) => lockfile.status === "parsed").length;
   const applicability = pubApplicability(load);
   const eligible = load.packages.filter(isEligible);
-  const packageSkipped = load.packages.length - eligible.length;
+  const nonOfficialPackages = load.packages
+    .filter((pkg) => !isEligible(pkg))
+    .map((pkg) => ({ lockfile: pkg.lockfile_path, name: pkg.name }));
+  // Skipped = third-party dependencies this engine cannot check (git or custom-hosted). SDK and
+  // path packages are not pub.dev packages and are not applicable to Pub advisories.
+  const unverifiable = load.packages.filter((pkg) => pkg.source === "git" || (pkg.source === "hosted" && pkg.registry !== "official")).length;
+  const notApplicable = load.packages.filter((pkg) => pkg.source === "sdk" || pkg.source === "path").length;
+  const packageSkipped = unverifiable;
   const notes = [...load.notes];
   const databaseAvailable = database.loaded !== undefined;
 
@@ -168,6 +177,7 @@ export async function runPubScan(target: string, options: PubScanOptions = {}): 
       },
       componentSignatures: {},
       applicability,
+      nonOfficialPackages,
     };
   }
   const loadedDatabase = database.loaded!;
@@ -183,10 +193,13 @@ export async function runPubScan(target: string, options: PubScanOptions = {}): 
     ),
   );
   const noLockfile = discoveredCount(load) === 0;
+  // SDK and path packages are not pub.dev packages and have no Pub advisories to match; only git and
+  // custom-hosted dependencies are third-party code this engine cannot check. Snapshot age is a
+  // freshness limitation (disclosed in notes), not missing coverage of the locked inputs.
+  if (notApplicable) notes.push(`${notApplicable} SDK or path package(s) are not pub.dev packages and have no Pub advisories to match.`);
   const incomplete = noLockfile
     || hasIncompleteLockfileCoverage(load)
-    || packageSkipped > 0
-    || database.info.state === "stale";
+    || unverifiable > 0;
   if (!findings.length && parsedLockfiles > 0) {
     notes.push(
       `No eligible locked Pub version matched the ${database.info.active_advisories} active advisories in bundled snapshot ${database.info.version}; this is not a claim of complete vulnerability absence.`,
@@ -220,5 +233,6 @@ export async function runPubScan(target: string, options: PubScanOptions = {}): 
     },
     componentSignatures: pubStaticComponentSignatures(loadedDatabase.content_signature),
     applicability,
+    nonOfficialPackages,
   };
 }

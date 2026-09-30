@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -18,6 +18,7 @@ import type { ScanResult } from "./types.js";
 import { createUnavailableRepositoryTrust } from "./repository-trust/schemas.js";
 import type { StoredScanResult } from "./store.js";
 import { listNativePacks } from "./packs/registry.js";
+import { trackTemporaryDirectory } from "./util/temporary.js";
 import type { TriageSnapshot } from "./triage.js";
 
 const cleanup: string[] = [];
@@ -192,6 +193,25 @@ describe("CLI parser", () => {
 });
 
 describe("CLI stdout/stderr and execution", () => {
+  test("a stale bundled Pub snapshot is announced on stderr even when policy passes", async () => {
+    const capture = ioCapture();
+    const note = "Bundled Pub advisory snapshot is 41 days old; advisories published since then are not included until CodeInspectus is updated.";
+    const deps = dependencies({
+      scan: vi.fn(async () => ({
+        ...emptyScan(),
+        dependency_coverage: [{
+          ecosystem: "Pub" as const, engine: "codeinspectus-pub" as const, state: "ran" as const,
+          lockfiles: { discovered: 1, analyzed: 1 }, packages: { resolved: 1, eligible: 1, skipped: 0 },
+          matching: "exact-enumerated-versions" as const, limitations: [note],
+        }],
+      })),
+    });
+
+    await runCli(["scan", ".", "--format", "json"], capture.io, deps);
+
+    expect(capture.stderr.join("")).toContain(`CodeInspectus notice: ${note}`);
+  });
+
   test("baseline new-finding enforcement retains the full raw report and counts only proven new findings", async () => {
     const capture = ioCapture();
     const baselineId = "scan-00000000-0000-4000-8000-000000000001";
@@ -406,5 +426,23 @@ describe("signal contract", () => {
     cleanupHandlers();
     expect(host.listenerCount("SIGINT")).toBe(0);
     expect(host.listenerCount("SIGTERM")).toBe(0);
+  });
+
+  test.each(["SIGINT", "SIGTERM"] as const)("%s removes live source snapshots before exiting", async (signal) => {
+    class FakeHost extends EventEmitter implements SignalHost {
+      exit(exitCode: number): never {
+        throw new CliUsageError(`exit:${exitCode}`);
+      }
+    }
+    const snapshot = await mkdtemp(join(tmpdir(), "codeinspectus-git-signal-"));
+    await writeFile(join(snapshot, ".env"), "SECRET=value\n");
+    trackTemporaryDirectory(snapshot);
+    const host = new FakeHost();
+    const cleanupHandlers = installCliSignalHandlers(host);
+
+    expect(() => host.emit(signal)).toThrow(/exit:/);
+    cleanupHandlers();
+
+    await expect(stat(snapshot)).rejects.toThrow(/ENOENT/);
   });
 });

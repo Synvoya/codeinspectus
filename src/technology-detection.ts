@@ -9,6 +9,7 @@ import { lstat, open, opendir } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import { basename, dirname, extname, join, relative } from "node:path";
 import type { DetectedTechnology } from "./types.js";
+import { isDocumentationName, symlinkEntryIsGap } from "./path-safety.js";
 import {
   isPythonDependencyManifest,
   parsePythonDependencyManifest,
@@ -1361,10 +1362,13 @@ async function walkDirectory(
     } else if (entry.isFile()) {
       await inspectFile(absolutePath, root, state);
     } else if (entry.isSymbolicLink()) {
-      // Do not follow or read the link. The bounded filename signal lets the Pub loader report
-      // the skipped lockfile as partial coverage instead of incorrectly saying it was inapplicable.
+      // Do not follow or read the link. Detectors key on file names and walkers skip directories,
+      // so a link is never assumed covered elsewhere; only documentation-named file links are
+      // irrelevant. The bounded filename signal lets the Pub loader report a skipped lockfile as
+      // partial instead of inapplicable.
       const evidencePath = relativeEvidence(root, absolutePath);
       if (IGNORED_DIRECTORIES.has(entry.name.toLowerCase())) continue;
+      if (!(await symlinkEntryIsGap(absolutePath, entry.name, (name) => !isDocumentationName(name), root))) continue;
       addLimitation(state, evidencePath, "symlink_skipped");
       if (entry.name.toLowerCase() === "pubspec.lock") addDetection(state, "dart", evidencePath);
     }

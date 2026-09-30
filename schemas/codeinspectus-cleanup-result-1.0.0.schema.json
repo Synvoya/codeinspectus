@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeinspectus.com/schemas/v1.0.0/cleanup-result.schema.json",
+  "title": "CodeInspectus verified repository cleanup result",
+  "type": "object",
+  "required": ["schema_version", "cleanup_id", "plan_id", "outcome", "target", "started_at", "completed_at", "checkpoint", "operations", "repository_trust_before", "repository_trust_after", "repository_trust_changes", "verification", "audit_log_path", "limitations"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "cleanup_id": { "type": "string", "pattern": "^cleanup-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "plan_id": { "type": "string", "pattern": "^cleanup-plan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "outcome": { "enum": ["applied", "incomplete", "rolled_back", "rollback_refused"] },
+    "target": { "type": "string", "minLength": 1 },
+    "started_at": { "type": "string", "format": "date-time" },
+    "completed_at": { "type": "string", "format": "date-time" },
+    "checkpoint": {
+      "type": "object",
+      "required": ["state", "managed", "content_retained"],
+      "properties": {
+        "state": { "enum": ["created", "restored", "preserved"] },
+        "managed": { "const": true },
+        "content_retained": { "const": true }
+      },
+      "additionalProperties": false
+    },
+    "operations": { "type": "array", "items": { "$ref": "#/$defs/operationResult" } },
+    "repository_trust_before": { "$ref": "https://codeinspectus.com/schemas/v1.0.0/repository-trust.schema.json" },
+    "repository_trust_after": { "$ref": "https://codeinspectus.com/schemas/v1.0.0/repository-trust.schema.json" },
+    "repository_trust_changes": { "$ref": "#/$defs/trustChanges" },
+    "verification": {
+      "type": "object",
+      "required": ["same_validators_ran", "targeted_artifacts_resolved", "repository_checks"],
+      "properties": {
+        "same_validators_ran": { "type": "boolean" },
+        "targeted_artifacts_resolved": { "type": "boolean" },
+        "repository_checks": {
+          "type": "object",
+          "required": ["state", "required", "reason"],
+          "properties": {
+            "state": { "const": "not_run" },
+            "required": { "const": true },
+            "reason": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "audit_log_path": { "type": "string", "minLength": 1 },
+    "limitations": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "operationResult": {
+      "type": "object",
+      "required": ["operation_id", "file", "status", "before_sha256", "targeted_artifacts_resolved"],
+      "properties": {
+        "operation_id": { "type": "string" },
+        "file": { "type": "string" },
+        "destination_file": { "type": "string" },
+        "status": { "enum": ["applied", "rolled_back", "unchanged", "failed"] },
+        "before_sha256": { "$ref": "#/$defs/digest" },
+        "after_sha256": { "$ref": "#/$defs/digest" },
+        "targeted_artifacts_resolved": { "type": "boolean" },
+        "limitation": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "changeSummary": {
+      "type": "object",
+      "required": ["resolved", "remaining", "introduced", "not_rechecked"],
+      "properties": {
+        "resolved": { "type": "integer", "minimum": 0 },
+        "remaining": { "type": "integer", "minimum": 0 },
+        "introduced": { "type": "integer", "minimum": 0 },
+        "not_rechecked": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "trustChanges": {
+      "type": "object",
+      "required": ["schema_version", "resolved", "remaining", "introduced", "not_rechecked", "summary", "partial", "limitations"],
+      "properties": {
+        "schema_version": { "const": "1.0.0" },
+        "resolved": { "type": "array", "items": { "$ref": "https://codeinspectus.com/schemas/v1.0.0/repository-trust.schema.json#/$defs/artifact" } },
+        "remaining": { "type": "array", "items": { "$ref": "https://codeinspectus.com/schemas/v1.0.0/repository-trust.schema.json#/$defs/artifact" } },
+        "introduced": { "type": "array", "items": { "$ref": "https://codeinspectus.com/schemas/v1.0.0/repository-trust.schema.json#/$defs/artifact" } },
+        "not_rechecked": { "type": "array", "items": { "$ref": "https://codeinspectus.com/schemas/v1.0.0/repository-trust.schema.json#/$defs/artifact" } },
+        "summary": { "$ref": "#/$defs/changeSummary" },
+        "partial": { "type": "boolean" },
+        "limitations": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      },
+      "additionalProperties": false
+    }
+  }
+}

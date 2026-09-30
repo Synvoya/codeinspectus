@@ -8,6 +8,7 @@
  *   child's streams are piped and captured, never forwarded to our stdout.
  */
 
+import { gitHardenedEnv } from "../util/git.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import { ENGINE_TIMEOUT_MS, MAX_BUFFER_BYTES } from "../config.js";
 import { log } from "../logger.js";
@@ -46,7 +47,9 @@ export async function execBinary(
 
   // Build a clean env. For offline mode we blank common proxy vars and set a
   // dummy NO_PROXY; engines are already invoked with their own offline flags.
-  const baseEnv: Record<string, string> = { ...process.env } as Record<string, string>;
+  // Engines run git themselves (Opengrep lists files with `git ls-files`); a scanned repository's
+  // config must not make those git processes run programs.
+  const baseEnv: Record<string, string> = gitHardenedEnv(process.env) as Record<string, string>;
   if (opts.offline) {
     baseEnv.HTTP_PROXY = "";
     baseEnv.HTTPS_PROXY = "";

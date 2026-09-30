@@ -1,6 +1,6 @@
-# CodeInspectus 2.1 CLI reference
+# CodeInspectus CLI reference
 
-Running `codeinspectus` with no arguments starts the six-tool MCP stdio server. Every explicit
+Running `codeinspectus` with no arguments starts the ten-tool MCP stdio server. Every explicit
 subcommand is a terminal operation. Scans are local and zero-egress; only explicit engine
 installation or repair may use the network.
 

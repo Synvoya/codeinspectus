@@ -9,6 +9,7 @@
 
 import { z } from "zod";
 import { repositoryTrustChangesSchema, repositoryTrustDocumentSchema } from "./repository-trust/schemas.js";
+import { cleanupPlanObjectSchema, cleanupResultSchema } from "./repository-trust/cleanup.js";
 
 // ── Enumerations ────────────────────────────────────────────────────────────
 export const severityEnum = z.enum(["critical", "high", "medium", "low", "info"]);
@@ -376,7 +377,7 @@ export const generateSbomInput = z.object({
   output_path: z
     .string()
     .optional()
-    .describe("Where to write the SBOM file. Default: ~/.codeinspectus/sbom/<project>.<fmt>.json."),
+    .describe("Absolute .json path for the SBOM. An existing file is replaced only if it is already a CycloneDX/SPDX SBOM. Default: ~/.codeinspectus/sbom/<project>.<fmt>.json."),
 });
 
 export const listRulesInput = z.object({
@@ -391,6 +392,30 @@ export const setupInput = z.object({
     .describe("Components to install or decline. Default: all three external engines."),
   confirm_downloads: z.boolean().optional()
     .describe("Must be true for an install that needs network downloads."),
+});
+
+export const cleanupPlanInput = z.object({
+  path: z.string().describe("Absolute path to the repository directory to clean."),
+  artifact_ids: z.array(z.string().regex(/^artifact-[a-z0-9][a-z0-9._:-]{0,127}$/)).min(1).max(100)
+    .describe("Exact verified repository-trust artifact IDs from a fresh scan."),
+  acknowledge_metadata_container_removal: z.boolean().optional()
+    .describe("Acknowledge that supported media adapters remove complete metadata containers and create a new asset copy."),
+  acknowledge_provenance_copy: z.boolean().optional()
+    .describe("Acknowledge that selected C2PA/content provenance will be absent from the cleaned copy while the original is preserved."),
+});
+
+export const cleanupApplyInput = z.object({
+  plan_id: z.string().regex(/^cleanup-plan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
+  approved_artifact_ids: z.array(z.string().regex(/^artifact-[a-z0-9][a-z0-9._:-]{0,127}$/)).min(1).max(100)
+    .describe("Exact artifact IDs approved by the user; must equal the plan scope."),
+  confirm_cleanup: z.boolean().describe("Must be true after the user reviews and approves the exact plan."),
+  confirm_rights_to_modify: z.boolean().optional()
+    .describe("Required when removing explicit attribution or provenance; confirms the user is authorized to create the proposed change."),
+});
+
+export const cleanupRollbackInput = z.object({
+  cleanup_id: z.string().regex(/^cleanup-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
+  confirm_rollback: z.boolean().describe("Must be true after reviewing the exact cleanup record to restore."),
 });
 
 // ── Tool OUTPUT schemas ─────────────────────────────────────────────────────
@@ -421,6 +446,10 @@ export const rescanResultSchema = z.object({
   not_rechecked_note: z.string().optional(),
   disclaimer: z.string(),
 });
+
+export const cleanupPlanOutput = cleanupPlanObjectSchema;
+export const cleanupApplyOutput = cleanupResultSchema;
+export const cleanupRollbackOutput = cleanupResultSchema;
 
 export const complianceControlSchema = z.object({
   id: z.string(),
@@ -581,3 +610,6 @@ export type ExplainFindingInput = z.infer<typeof explainFindingInput>;
 export type GenerateSbomInput = z.infer<typeof generateSbomInput>;
 export type ListRulesInput = z.infer<typeof listRulesInput>;
 export type SetupInput = z.infer<typeof setupInput>;
+export type CleanupPlanInput = z.infer<typeof cleanupPlanInput>;
+export type CleanupApplyInput = z.infer<typeof cleanupApplyInput>;
+export type CleanupRollbackInput = z.infer<typeof cleanupRollbackInput>;

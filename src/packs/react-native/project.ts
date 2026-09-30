@@ -5,6 +5,7 @@ import { lstat, open, opendir, type FileHandle } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 
 import { parseJavaScriptSource, type JsDocument } from "./javascript.js";
+import { symlinkEntryIsGap } from "../../path-safety.js";
 
 export const REACT_NATIVE_MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 export const REACT_NATIVE_MAX_SOURCE_FILES = 10_000;
@@ -324,7 +325,7 @@ async function loadUncached(
       const lower = entry.name.toLowerCase();
       if (entry.isSymbolicLink()) {
         const rel = relative(absoluteTarget, absolute).replace(/\\/g, "/");
-        limitations.add(`Skipped symbolic-link React Native source path ${rel}.`);
+        if (await symlinkEntryIsGap(absolute, entry.name, sourceExtension)) limitations.add(`Skipped symbolic-link React Native source path ${rel}.`);
         continue;
       }
       if (entry.isDirectory()) {

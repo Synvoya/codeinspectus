@@ -375,3 +375,54 @@ describe("diffRescan — introduced + mixed buckets are correct", () => {
     expect(r.summary.not_rechecked).toBe(0);
   });
 });
+
+describe("diffRescan — findings that only moved lines", () => {
+  const at = (fingerprint: string, line: number, snippet = "el.innerHTML = reply;") =>
+    mkFinding({ fingerprint, location: { file: "a.ts", start_line: line, end_line: line, snippet } });
+
+  test("a finding whose unchanged code moved down is remaining, not resolved + introduced", () => {
+    const prior = mkScan({ findings: [at("fp-line-2", 2)] });
+    const fresh = mkScan({ scan_id: "scan-22222222-2222-4222-8222-222222222222", findings: [at("fp-line-4", 4)] });
+
+    const result = diffRescan(prior, fresh);
+
+    expect(result.summary).toMatchObject({ resolved: 0, remaining: 1, introduced: 0 });
+  });
+
+  test("a duplicated vulnerable line is still introduced; multiplicity is preserved", () => {
+    const prior = mkScan({ findings: [at("p1", 10), at("p2", 20)] });
+    const fresh = mkScan({ scan_id: "scan-33333333-3333-4333-8333-333333333333", findings: [at("f1", 12), at("f2", 22), at("f3", 32)] });
+
+    const result = diffRescan(prior, fresh);
+
+    expect(result.summary).toMatchObject({ resolved: 0, remaining: 2, introduced: 1 });
+  });
+
+  test("changed code at a moved line is not matched", () => {
+    const prior = mkScan({ findings: [at("fp-old", 2)] });
+    const fresh = mkScan({ scan_id: "scan-44444444-4444-4444-8444-444444444444", findings: [at("fp-new", 4, "el.innerHTML = other;")] });
+
+    const result = diffRescan(prior, fresh);
+
+    expect(result.summary.introduced).toBe(1);
+  });
+});
+
+describe("diffRescan — content anchors never absorb exact matches", () => {
+  const at = (fingerprint: string, line: number) =>
+    mkFinding({ fingerprint, location: { file: "a.ts", start_line: line, end_line: line, snippet: "el.innerHTML = reply;" } });
+
+  test("a new identical line added without shifting others is introduced", () => {
+    const prior = mkScan({ findings: [at("fp-10", 10)] });
+    const fresh = mkScan({ scan_id: "scan-55555555-5555-4555-8555-555555555555", findings: [at("fp-5", 5), at("fp-10", 10)] });
+
+    expect(diffRescan(prior, fresh).summary).toMatchObject({ remaining: 1, introduced: 1 });
+  });
+
+  test("fixing one of two identical lines is resolved", () => {
+    const prior = mkScan({ findings: [at("fp-10", 10), at("fp-50", 50)] });
+    const fresh = mkScan({ scan_id: "scan-66666666-6666-4666-8666-666666666666", findings: [at("fp-50", 50)] });
+
+    expect(diffRescan(prior, fresh).summary).toMatchObject({ resolved: 1, remaining: 1 });
+  });
+});

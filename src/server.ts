@@ -1,9 +1,10 @@
 /**
  * CodeInspectus MCP server — registers local security/reporting tools over stdio.
  *
- * All tools are read-only with respect to the user's files. Each returns both a
- * human-readable text block and validated structuredContent. Errors are returned
- * as actionable messages (isError:true), never thrown across the transport.
+ * Scan/report tools are read-only with respect to the user's files. The V3.3 apply and rollback
+ * tools are the explicit, approval-gated mutation surface. Every tool returns both a human-readable
+ * text block and validated structuredContent. Errors are actionable (isError:true), never thrown
+ * across the transport.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -21,6 +22,9 @@ import {
   generateSbomInput,
   listRulesInput,
   setupInput,
+  cleanupPlanInput,
+  cleanupApplyInput,
+  cleanupRollbackInput,
   scanResultSchema,
   rescanResultSchema,
   complianceReportOutput,
@@ -28,6 +32,9 @@ import {
   sbomOutput,
   listRulesOutput,
   setupOutput,
+  cleanupPlanOutput,
+  cleanupApplyOutput,
+  cleanupRollbackOutput,
   type ScanInput,
   type RescanInput,
   type ComplianceReportInput,
@@ -35,6 +42,9 @@ import {
   type GenerateSbomInput,
   type ListRulesInput,
   type SetupInput,
+  type CleanupPlanInput,
+  type CleanupApplyInput,
+  type CleanupRollbackInput,
 } from "./schemas.js";
 
 import { runScan } from "./scan.js";
@@ -45,6 +55,7 @@ import { generateSbom } from "./sbom.js";
 import { listRules } from "./rules.js";
 import { summarizeScan, summarizeRescan } from "./summarize.js";
 import { buildSetupPlan, declineSetupComponents, formatSetupPlan, installSetupComponents, SETUP_COMPONENTS } from "./setup.js";
+import { applyRepositoryCleanup, planRepositoryCleanup, rollbackRepositoryCleanup } from "./repository-trust/cleanup.js";
 
 const READ_ONLY = {
   readOnlyHint: true,
@@ -71,20 +82,28 @@ const NETWORKED_MANAGED_WRITE = {
   openWorldHint: true,
 } as const;
 
+const TARGET_MUTATION = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: false,
+  openWorldHint: false,
+} as const;
+
 const SERVER_INSTRUCTIONS =
-  "CodeInspectus reports; it never edits source. When asked to review security—or after making " +
+  "CodeInspectus scans and reports without editing source. V3.3 cleanup is the only target-repository mutation surface. When asked to review security—or after making " +
   "security-relevant code changes—call codeinspectus_scan with an absolute path. Present findings " +
-  "before editing, critical/high first, with file:line, risk, and remediation. Do not apply fixes " +
+  "before editing, critical/high first, with file:line, risk, and remediation. After approved fixes, " +
+  "call codeinspectus_rescan; never claim fixed unless confirmed. Do not apply fixes " +
   "without granular user approval. If git_safety recommends a checkpoint, ask before running git. " +
-  "After approved fixes, call codeinspectus_rescan; never claim fixed unless confirmed. " +
   "Inspect pack_coverage and disclose partial, unavailable, not_run, or not_applicable native packs; " +
   "a ran pack means its listed rules executed, not complete security coverage for that language. " +
   "Inspect repository_trust coverage separately from vulnerability findings. V3.1 deterministically audits source integrity. " +
   "V3.2 audits explicit AI attribution, media metadata, git co-author trailers, and supported C2PA Content Credentials. " +
   "Treat declarative attribution as an observed claim, not proof of authorship. Never label hidden Unicode as AI-generated or a vendor watermark. " +
-  "Do not remove or alter C2PA, legal, licensing, or attribution records. Statistical watermark detection remains unavailable. " +
-  "For cleanup-eligible source-integrity artifacts, show the escaped code point, exact file/location and proposed action, then " +
-  "ask for explicit approval for the named file and marker before editing. CodeInspectus itself never removes characters. " +
+  "Never alter Git history or protected legal, licensing, or compliance records. Statistical watermark detection remains unavailable. " +
+  "For cleanup-eligible artifacts, call codeinspectus_plan_cleanup and show the exact files, transformations, limitations, and artifact IDs. " +
+  "Only after granular user approval call codeinspectus_apply_cleanup with the exact approved IDs and confirmations. Media cleanup creates a copy; it never overwrites the original asset. " +
+  "Run relevant repository tests, formatters, and builds after apply; cleanup is incomplete until those checks and the same-validator rescan pass. Use codeinspectus_rollback_cleanup if an approved change must be restored. " +
   "Inspect engine_setup in scan/list-rules output. For repair_required, explain that engine coverage may be partial; " +
   "for db_refresh_recommended, explain the DB freshness/rescan-continuity limitation without calling current findings incomplete. " +
   "When engine readiness is not yet known, call codeinspectus_setup with action=plan before the first scan. " +
@@ -93,8 +112,7 @@ const SERVER_INSTRUCTIONS =
   "engines silently or during a scan. A terminal is not required for MCP setup. " +
   "For exposed secrets, advise rotation at the provider and keep values redacted. Treat " +
   "codeinspectus_compliance_report as code-level control coverage only, never certification or a " +
-  "percent-compliant claim. codeinspectus_generate_sbom writes an artifact; the other tools do not " +
-  "modify the target repository.";
+  "percent-compliant claim. codeinspectus_generate_sbom writes only an SBOM (managed directory, or an absolute .json path the user chooses; it never replaces a non-SBOM file); only the explicitly approved V3.3 apply/rollback tools edit repository files.";
 
 export function createServer(): McpServer {
   const server = new McpServer(
@@ -191,6 +209,83 @@ export function createServer(): McpServer {
       } catch (err) {
         log.error("rescan failed", err);
         return fail(describeError("codeinspectus_rescan failed", err));
+      }
+    },
+  );
+
+  // ── codeinspectus_plan_cleanup ──────────────────────────────────────────────
+  server.registerTool(
+    "codeinspectus_plan_cleanup",
+    {
+      title: "Plan verified repository cleanup",
+      description:
+        "Create a fresh, read-only V3.3 cleanup plan for exact verified repository-trust artifact IDs. " +
+        "The plan reproduces current evidence, rejects protected, ambiguous, or unsupported records, hashes every preimage, " +
+        "and discloses exact text edits or copy-only media metadata transformations. It never changes the repository.",
+      inputSchema: cleanupPlanInput.shape,
+      outputSchema: cleanupPlanOutput.shape,
+      annotations: { title: "CodeInspectus Cleanup Plan", ...READ_ONLY },
+    },
+    async (args: CleanupPlanInput): Promise<ToolResult> => {
+      try {
+        const result = await planRepositoryCleanup(args);
+        const text = result.outcome === "ready"
+          ? `Cleanup plan ${result.plan_id} is ready for ${result.artifact_ids.length} exact artifact(s) across ${result.operations.length} operation(s). Show the plan and obtain granular approval before apply.`
+          : `Cleanup plan ${result.plan_id} is blocked: ${result.blockers.map((item) => `${item.artifact_id} (${item.reason})`).join("; ")}`;
+        return ok(text, result as unknown as Record<string, unknown>);
+      } catch (err) {
+        log.error("plan_cleanup failed", err);
+        return fail(describeError("codeinspectus_plan_cleanup failed", err));
+      }
+    },
+  );
+
+  // ── codeinspectus_apply_cleanup ─────────────────────────────────────────────
+  server.registerTool(
+    "codeinspectus_apply_cleanup",
+    {
+      title: "Apply approved repository cleanup",
+      description:
+        "Apply one exact ready V3.3 cleanup plan after explicit approval. Requires an exact artifact-ID match and confirmation, " +
+        "creates managed content backups, uses atomic bounded edits, creates new media copies, reruns the same repository-trust validators, " +
+        "and writes a content-free audit log. This modifies selected source files and/or creates named cleaned copies.",
+      inputSchema: cleanupApplyInput.shape,
+      outputSchema: cleanupApplyOutput.shape,
+      annotations: { title: "CodeInspectus Apply Cleanup", ...TARGET_MUTATION },
+    },
+    async (args: CleanupApplyInput): Promise<ToolResult> => {
+      try {
+        const result = await applyRepositoryCleanup(args);
+        return ok(
+          `Cleanup ${result.cleanup_id}: ${result.outcome}. Targeted artifacts resolved=${result.verification.targeted_artifacts_resolved}; same validators ran=${result.verification.same_validators_ran}. Repository tests, formatters, and build remain required.`,
+          result as unknown as Record<string, unknown>,
+        );
+      } catch (err) {
+        log.error("apply_cleanup failed", err);
+        return fail(describeError("codeinspectus_apply_cleanup failed", err));
+      }
+    },
+  );
+
+  // ── codeinspectus_rollback_cleanup ──────────────────────────────────────────
+  server.registerTool(
+    "codeinspectus_rollback_cleanup",
+    {
+      title: "Roll back repository cleanup",
+      description:
+        "Restore an applied V3.3 cleanup from its managed checkpoint after explicit confirmation. " +
+        "Rollback refuses to overwrite files or cleaned copies that changed after cleanup.",
+      inputSchema: cleanupRollbackInput.shape,
+      outputSchema: cleanupRollbackOutput.shape,
+      annotations: { title: "CodeInspectus Rollback Cleanup", ...TARGET_MUTATION },
+    },
+    async (args: CleanupRollbackInput): Promise<ToolResult> => {
+      try {
+        const result = await rollbackRepositoryCleanup(args);
+        return ok(`Cleanup ${result.cleanup_id}: ${result.outcome}.`, result as unknown as Record<string, unknown>);
+      } catch (err) {
+        log.error("rollback_cleanup failed", err);
+        return fail(describeError("codeinspectus_rollback_cleanup failed", err));
       }
     },
   );

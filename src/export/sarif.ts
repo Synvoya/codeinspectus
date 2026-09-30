@@ -1,4 +1,3 @@
-import { SERVER_VERSION } from "../config.js";
 import type { Severity } from "../types.js";
 import type { JsonExport } from "./schemas.js";
 import { SARIF_SCHEMA_URI, sarifExportSchema, type SarifExport } from "./schemas.js";
@@ -29,7 +28,7 @@ export function createSarifExport(source: JsonExport): SarifExport {
     runs: [{
       tool: { driver: {
         name: "CodeInspectus",
-        version: SERVER_VERSION,
+        version: source.generated_by.version,
         informationUri: "https://codeinspectus.com",
         rules,
       } },

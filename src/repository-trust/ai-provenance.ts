@@ -1,8 +1,6 @@
 import { constants } from "node:fs";
 import { lstat, open, readdir } from "node:fs/promises";
 import { basename, dirname, extname, join, relative } from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import ExifReader from "exifreader";
 import { fingerprint } from "../util/hash.js";
 import type {
@@ -10,8 +8,7 @@ import type {
   RepositoryArtifactConfidence,
   RepositoryArtifactState,
 } from "./schemas.js";
-
-const execFileAsync = promisify(execFile);
+import { runGitReadBuffer } from "../util/git.js";
 
 export const EXPLICIT_AI_ATTRIBUTION_VALIDATOR = "codeinspectus-explicit-ai-attribution@1.0.0" as const;
 export const MEDIA_METADATA_VALIDATOR = "codeinspectus-media-metadata@1.0.0" as const;
@@ -35,7 +32,7 @@ const IGNORED_DIRECTORIES = new Set([
 ]);
 
 const TEXT_EXTENSIONS = new Set([
-  "astro", "bash", "c", "cc", "cfg", "clj", "cljs", "conf", "cpp", "cs", "css", "dart",
+  "astro", "bash", "c", "cc", "cfg", "cjs", "clj", "cljs", "conf", "cpp", "cs", "css", "cts", "dart", "pyi",
   "env", "ex", "exs", "fish", "go", "graphql", "gql", "h", "hpp", "html", "ini", "java",
   "js", "json", "jsx", "kt", "kts", "less", "lua", "mjs", "mts", "php", "plist",
   "properties", "proto", "py", "rb", "rs", "scala", "scss", "sh", "sol", "sql", "svelte",
@@ -197,6 +194,19 @@ function safeRemoteReference(value: string): string | undefined {
   }
 }
 
+/**
+ * Validator errors are third-party text that can embed remote manifest URLs (with credentials or
+ * tokens), absolute install paths, and terminal control sequences. Reduce them to safe prose.
+ */
+function safeValidatorMessage(message: string): string {
+  return clipped(message
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+    .replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>()]+/gi, (url) => safeRemoteReference(url) ?? "[remote reference omitted]")
+    .replace(/(?:[A-Za-z]:)?[\\/][^\s"']*node_modules[\\/][^\s"']*/g, "[install path]")
+    .replace(/\s+/g, " ")
+    .trim());
+}
+
 function makeArtifact(input: {
   kind: "explicit_ai_attribution" | "content_provenance";
   markerClass: string;
@@ -221,7 +231,8 @@ function makeArtifact(input: {
     input.line ?? 0, input.column ?? 0, ...input.attributes.map((item) => `${item.name}:${item.value}`),
   ]);
   const isProtected = protectedRecord(input.file) || input.file === ".git" ||
-    input.file.startsWith(".git/") || input.kind === "content_provenance";
+    input.file.startsWith(".git/");
+  const eligible = state === "verified" && !isProtected;
   return {
     artifact_id: `artifact-${input.kind === "explicit_ai_attribution" ? "ai" : "cp"}-${fp.slice(7, 31)}`,
     fingerprint: fp,
@@ -251,13 +262,17 @@ function makeArtifact(input: {
     confidence,
     limitations: input.limitations ?? [],
     remediation: {
-      eligible: false,
+      eligible,
       requires_approval: true,
-      reversible: false,
+      reversible: eligible,
       protected_record: isProtected,
       reason: isProtected
-        ? "This provenance or protected attribution record is evidence and is not cleanup-eligible."
-        : "V3.2 is read-only. A later approval-gated cleanup workflow must checkpoint, edit, test, and rescan this exact record.",
+        ? "This legal, compliance, licensing, or Git-history attribution record is protected and is not cleanup-eligible."
+        : eligible
+          ? input.kind === "content_provenance"
+            ? "V3.3 may create a cleaned copy after exact approval; the original provenance-bearing asset must remain recoverable."
+            : "V3.3 may remediate this exact deterministic record after file-scoped approval, checkpointing, validation, and rescan."
+          : "Only verified deterministic records can enter the V3.3 cleanup workflow.",
     },
   };
 }
@@ -618,15 +633,19 @@ function c2paArtifact(file: CandidateFile, inspection: C2paInspection): Reposito
 export const defaultGitHistoryReader: GitHistoryReader = async (target, maxCommits) => {
   const cwd = (await lstat(target)).isDirectory() ? target : dirname(target);
   try {
-    const root = (await execFileAsync("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
-      encoding: "utf8",
-      maxBuffer: 1024 * 1024,
-    })).stdout.trim();
-    const output = (await execFileAsync(
-      "git",
-      ["-C", root, "log", `--max-count=${maxCommits + 1}`, "--format=%H%x00%B%x00", "-z"],
-      { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 },
-    )).stdout;
+    // The hardened read-only layer: repository config cannot make git run signature programs.
+    const top = await runGitReadBuffer(cwd, ["rev-parse", "--show-toplevel"], { maxBytes: 64 * 1024 });
+    if (top.code !== 0) return { applicable: false, truncated: false, records: [] };
+    const root = top.stdout.toString("utf8").trim();
+    let log;
+    try {
+      log = await runGitReadBuffer(root, ["log", "--no-show-signature", `--max-count=${maxCommits + 1}`, "--format=%H%x00%B%x00", "-z"], { maxBytes: 8 * 1024 * 1024 });
+    } catch {
+      // Output beyond the bound: report truncated coverage rather than a silent "ran" with no records.
+      return { applicable: true, truncated: true, records: [] };
+    }
+    if (log.code !== 0) return { applicable: false, truncated: false, records: [] };
+    const output = log.stdout.toString("utf8");
     const fields = output.split("\u0000").filter((field) => field.length > 0);
     const records: GitAttribution[] = [];
     let commits = 0;
@@ -791,7 +810,7 @@ export async function scanAiProvenance(
         }));
         if (artifact) add(artifact);
       } catch (error) {
-        const message = error instanceof Error ? clipped(error.message) : "unknown validator error";
+        const message = error instanceof Error ? safeValidatorMessage(error.message) : "unknown validator error";
         contentLimitations.add(`${file.relative}: official C2PA validation could not complete (${message}).`);
       }
     }

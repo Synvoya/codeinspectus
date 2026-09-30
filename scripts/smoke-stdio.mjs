@@ -86,6 +86,9 @@ async function waitFor(id, timeoutMs = 8000) {
     "codeinspectus_scan",
     "codeinspectus_setup",
     "codeinspectus_rescan",
+    "codeinspectus_plan_cleanup",
+    "codeinspectus_apply_cleanup",
+    "codeinspectus_rollback_cleanup",
     "codeinspectus_compliance_report",
     "codeinspectus_explain_finding",
     "codeinspectus_generate_sbom",
@@ -94,6 +97,29 @@ async function waitFor(id, timeoutMs = 8000) {
   for (const e of expected) {
     if (!tools.includes(e)) throw new Error(`missing tool ${e}`);
   }
+  // Only apply/rollback may modify the target repository; clients rely on these hints for consent UX.
+  const mutation = { readOnlyHint: false, destructiveHint: true };
+  const managedWrite = { readOnlyHint: false, destructiveHint: false };
+  const readOnly = { readOnlyHint: true, destructiveHint: false };
+  const expectedHints = {
+    codeinspectus_scan: readOnly,
+    codeinspectus_setup: managedWrite,
+    codeinspectus_rescan: readOnly,
+    codeinspectus_plan_cleanup: readOnly,
+    codeinspectus_apply_cleanup: mutation,
+    codeinspectus_rollback_cleanup: mutation,
+    codeinspectus_compliance_report: readOnly,
+    codeinspectus_explain_finding: readOnly,
+    codeinspectus_generate_sbom: managedWrite,
+    codeinspectus_list_rules: readOnly,
+  };
+  for (const tool of list.result.tools) {
+    const hints = expectedHints[tool.name];
+    for (const [hint, value] of Object.entries(hints ?? {})) {
+      if (tool.annotations?.[hint] !== value) throw new Error(`${tool.name} ${hint} must be ${value}`);
+    }
+  }
+  console.error("✓ tool annotations: only apply/rollback are destructive target mutations");
 
   send({
     jsonrpc: "2.0",

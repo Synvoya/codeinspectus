@@ -64,6 +64,49 @@ function vulnerabilityIdentities(f: Finding): string[] {
     .filter((identity, index, all) => all.indexOf(identity) === index);
 }
 
+/**
+ * Line-independent content anchors for cross-scan matching. A finding whose code is unchanged but
+ * moved (lines inserted above it) keeps the same file, rule, CWE, secret-value hash and normalized
+ * snippet, so it must not read as resolved + introduced. The occurrence index (in line order)
+ * preserves multiplicity: a duplicated vulnerable line still counts as a new occurrence.
+ * Findings with neither a snippet nor a secret-value hash get no anchor.
+ */
+export function contentAnchors(findings: readonly Finding[]): Map<Finding, string> {
+  const anchors = new Map<Finding, string>();
+  const occurrences = new Map<string, number>();
+  const ordered = [...findings].sort((left, right) =>
+    left.location.file.localeCompare(right.location.file) ||
+    left.location.start_line - right.location.start_line ||
+    left.location.end_line - right.location.end_line);
+  for (const finding of ordered) {
+    // A secret's value hash is itself line-independent; its context window is not.
+    const snippet = finding.secret_value_hash ? "" : finding.location.snippet?.replace(/\s+/g, " ").trim() ?? "";
+    if (!snippet && !finding.secret_value_hash) continue;
+    const base = [finding.location.file, finding.rule_id, [...finding.cwe].sort().join(","), finding.secret_value_hash ?? "", snippet].join("\u0000");
+    const index = occurrences.get(base) ?? 0;
+    occurrences.set(base, index + 1);
+    anchors.set(finding, `${base}\u0000${index}`);
+  }
+  return anchors;
+}
+
+/**
+ * Pair findings that only moved lines. Anchors are computed over the findings each side left
+ * unmatched by the exact (fingerprint / dedup-identity) pass, so within this pass an unchanged
+ * identical occurrence cannot absorb a genuinely new or fixed one. The exact pass itself is
+ * location-keyed and has its own known limits (see the audit backlog). Returns fresh → prior (1:1).
+ */
+export function pairMovedFindings(priorUnmatched: readonly Finding[], freshUnmatched: readonly Finding[]): Map<Finding, Finding> {
+  const priorByAnchor = new Map<string, Finding>();
+  for (const [finding, anchor] of contentAnchors(priorUnmatched)) priorByAnchor.set(anchor, finding);
+  const pairs = new Map<Finding, Finding>();
+  for (const [finding, anchor] of contentAnchors(freshUnmatched)) {
+    const prior = priorByAnchor.get(anchor);
+    if (prior) pairs.set(finding, prior);
+  }
+  return pairs;
+}
+
 /** All stable cross-scan identities for one finding, including every vulnerability alias. */
 export function dedupIdentityKeys(f: Finding): string[] {
   if (
@@ -226,4 +269,20 @@ export function dedupFindings(findings: Finding[]): { findings: Finding[]; stats
     findings: result,
     stats: { before: findings.length, after: result.length, merged: findings.length - result.length },
   };
+}
+
+/**
+ * Whether two findings from different scans are the same issue. Beyond an exact fingerprint, a
+ * shared dedup-identity key (location/CWE, secret location, or vulnerability identity) matches only
+ * when it cannot hide a different issue: two known secret values must be equal, and a location key
+ * also needs a producing engine in common (the dedup-survivor flip keeps its merged engines).
+ */
+export function findingsMatch(left: Finding, right: Finding): boolean {
+  if (left.fingerprint === right.fingerprint) return true;
+  if (left.secret_value_hash && right.secret_value_hash && left.secret_value_hash !== right.secret_value_hash) return false;
+  const keys = new Set(dedupIdentityKeys(left));
+  const shared = dedupIdentityKeys(right).filter((key) => keys.has(key));
+  if (!shared.length) return false;
+  if (shared.some((key) => key.startsWith("vuln|"))) return true;
+  return left.engines.some((engine) => right.engines.includes(engine));
 }

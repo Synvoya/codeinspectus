@@ -8,6 +8,8 @@
  * console.log anywhere in src/.
  */
 
+import { terminalSafe } from "./util/terminal.js";
+
 type Level = "debug" | "info" | "warn" | "error";
 
 const LEVEL_ORDER: Record<Level, number> = {
@@ -31,7 +33,8 @@ function emit(level: Level, args: unknown[]): void {
     typeof a === "string" ? a : safeStringify(a),
   );
   // process.stderr.write — never process.stdout.
-  process.stderr.write(`[codeinspectus ${ts} ${level}] ${parts.join(" ")}\n`);
+  // Messages can carry repository paths; never let them drive the terminal.
+  process.stderr.write(`[codeinspectus ${ts} ${level}] ${terminalSafe(parts.join(" "))}\n`);
 }
 
 function safeStringify(value: unknown): string {

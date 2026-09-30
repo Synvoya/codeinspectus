@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeinspectus.com/schemas/v1.0.0/cleanup-plan.schema.json",
+  "title": "CodeInspectus verified repository cleanup plan",
+  "type": "object",
+  "required": ["schema_version", "plan_id", "plan_digest", "created_at", "target", "outcome", "artifact_ids", "operations", "blockers", "checkpoint", "approval", "verification", "limitations"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "plan_id": { "type": "string", "pattern": "^cleanup-plan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "plan_digest": { "$ref": "#/$defs/digest" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "target": { "type": "string", "minLength": 1 },
+    "outcome": { "enum": ["ready", "blocked"] },
+    "artifact_ids": { "$ref": "#/$defs/artifactIds" },
+    "operations": { "type": "array", "items": { "$ref": "#/$defs/operation" } },
+    "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
+    "checkpoint": {
+      "type": "object",
+      "required": ["required", "strategy", "original_assets_preserved_for_copy_operations"],
+      "properties": {
+        "required": { "const": true },
+        "strategy": { "const": "managed_content_backup" },
+        "original_assets_preserved_for_copy_operations": { "const": true }
+      },
+      "additionalProperties": false
+    },
+    "approval": {
+      "type": "object",
+      "required": ["required", "exact_artifact_ids", "rights_confirmation_required", "metadata_container_acknowledged", "provenance_copy_acknowledged"],
+      "properties": {
+        "required": { "const": true },
+        "exact_artifact_ids": { "$ref": "#/$defs/artifactIds" },
+        "rights_confirmation_required": { "type": "boolean" },
+        "metadata_container_acknowledged": { "type": "boolean" },
+        "provenance_copy_acknowledged": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "verification": {
+      "type": "object",
+      "required": ["same_validator_rescan_required", "repository_checks_required", "repository_checks_state"],
+      "properties": {
+        "same_validator_rescan_required": { "const": true },
+        "repository_checks_required": { "const": true },
+        "repository_checks_state": { "const": "not_run" }
+      },
+      "additionalProperties": false
+    },
+    "limitations": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "artifactId": { "type": "string", "pattern": "^artifact-[a-z0-9][a-z0-9._:-]{0,127}$" },
+    "artifactIds": { "type": "array", "minItems": 1, "maxItems": 100, "uniqueItems": true, "items": { "$ref": "#/$defs/artifactId" } },
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "edit": {
+      "type": "object",
+      "required": ["artifact_id", "kind", "byte_start", "byte_end"],
+      "properties": {
+        "artifact_id": { "$ref": "#/$defs/artifactId" },
+        "kind": { "enum": ["remove_utf8_range", "remove_attribution_line"] },
+        "byte_start": { "type": "integer", "minimum": 0 },
+        "byte_end": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "operation": {
+      "type": "object",
+      "required": ["operation_id", "artifact_ids", "file", "action", "mode", "transformation", "preimage_sha256", "preimage_bytes", "validators"],
+      "properties": {
+        "operation_id": { "type": "string", "pattern": "^operation-[a-z0-9]{16}$" },
+        "artifact_ids": { "$ref": "#/$defs/artifactIds" },
+        "file": { "type": "string", "minLength": 1 },
+        "destination_file": { "type": "string", "minLength": 1 },
+        "action": { "enum": ["edit_text", "create_sanitized_asset_copy"] },
+        "mode": { "enum": ["in_place", "copy"] },
+        "transformation": { "type": "string", "minLength": 1 },
+        "preimage_sha256": { "$ref": "#/$defs/digest" },
+        "preimage_bytes": { "type": "integer", "minimum": 0 },
+        "validators": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "edits": { "type": "array", "items": { "$ref": "#/$defs/edit" } }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "action": { "const": "edit_text" } } },
+          "then": { "required": ["edits"], "properties": { "mode": { "const": "in_place" } }, "not": { "required": ["destination_file"] } }
+        },
+        {
+          "if": { "properties": { "action": { "const": "create_sanitized_asset_copy" } } },
+          "then": { "required": ["destination_file"], "properties": { "mode": { "const": "copy" } }, "not": { "required": ["edits"] } }
+        }
+      ]
+    },
+    "blocker": {
+      "type": "object",
+      "required": ["artifact_id", "file", "reason"],
+      "properties": {
+        "artifact_id": { "$ref": "#/$defs/artifactId" },
+        "file": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

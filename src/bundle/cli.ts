@@ -4,7 +4,12 @@ import { scanIdSchema } from "../schemas.js";
 import type { StoredScanResult } from "../store.js";
 import { createSealedBundle, verifySealedBundle } from "./index.js";
 
-export interface BundleCliIo { stdout(text: string): void; stderr(text: string): void }
+export interface BundleCliIo {
+  stdout(text: string): void;
+  stderr(text: string): void;
+  /** Raw bytes, bypassing terminal escaping: sealed evidence must be exported byte-for-byte. */
+  stdoutExact?(bytes: Buffer): void;
+}
 export interface BundleCliDependencies {
   loadScan(scanId: string): Promise<StoredScanResult>;
   create(scan: StoredScanResult, outputDirectory: string): ReturnType<typeof createSealedBundle>;
@@ -84,7 +89,9 @@ export async function runBundleCli(
       if (!parsed.format) throw new BundleUsageError("bundle export requires --format json or --format sarif.");
       if (parsed.outputDirectory) throw new BundleUsageError("bundle export does not accept --output-dir.");
       const bundle = await dependencies.verify(parsed.positional[0]!);
-      io.stdout(bundle.contents[parsed.format === "sarif" ? "results.sarif" : "artifacts/export.json"].toString("utf8"));
+      const sealed = bundle.contents[parsed.format === "sarif" ? "results.sarif" : "artifacts/export.json"];
+      if (io.stdoutExact) io.stdoutExact(sealed);
+      else io.stdout(sealed.toString("utf8"));
       return 0;
     }
     if (action === "compare") {

@@ -299,19 +299,26 @@ useful when you want the same policy persisted explicitly in a repository.
 | `codeinspectus_scan` | Full local scan of a path (engines + AI checks). Returns CWE-keyed findings, detected technologies, exact native-pack and Pub dependency coverage, remediations, framework tags, and three-state repository evidence for supported runtime controls. |
 | `codeinspectus_setup` | Offline setup plan, saved decline choices, or approval-gated verified downloads to `~/.codeinspectus`; never writes to the target repository. |
 | `codeinspectus_rescan` | Re-scan after fixes; diffs vs a prior scan → resolved / remaining / introduced, with fresh technology and pack coverage. |
+| `codeinspectus_plan_cleanup` | Fresh read-only V3.3 plan for exact verified repository-trust artifact IDs, including preimage hashes, transformations, blockers and approval requirements. |
+| `codeinspectus_apply_cleanup` | Apply one explicitly approved exact plan with managed backups, atomic bounded edits/copy-only media cleanup, same-validator verification and a content-free audit log. |
+| `codeinspectus_rollback_cleanup` | Restore an applied cleanup only when current bytes still match the recorded post-clean state. |
 | `codeinspectus_compliance_report` | Per-framework **code-level control coverage** (not certification). |
 | `codeinspectus_explain_finding` | Deep explanation + full remediation for one finding. |
-| `codeinspectus_generate_sbom` | CycloneDX/SPDX SBOM using Trivy plus native Pub inventory/fallback (written to the managed dir by default, or a path you choose). |
+| `codeinspectus_generate_sbom` | CycloneDX/SPDX SBOM using Trivy plus native Pub inventory/fallback (written to the managed dir by default, or an absolute `.json` path you choose; never replaces an existing non-SBOM file). |
 | `codeinspectus_list_rules` | Active detectors, native-pack inventory/rule ownership, engine versions, detection-DB + Trivy/Pub DB provenance and freshness, and structured machine setup/repair state. |
 
-CodeInspectus **never edits or deletes your source code or repository** — it reads and
-reports; your agent applies the fixes. It stores engine data and scan history under
-`~/.codeinspectus`; the only file it writes is an optional SBOM — to a managed directory
-by default, or a path you choose (see `codeinspectus_generate_sbom`).
+CodeInspectus scans, plans and reports without repository mutation. The only source/repository
+mutation surfaces are the explicitly approved V3.3 apply/rollback tools. It stores engine data,
+scan history, cleanup checkpoints and content-free audit records under `~/.codeinspectus`.
+`codeinspectus_generate_sbom` can also write an optional SBOM to a managed directory by default,
+or to an absolute `.json` path you choose; it refuses to replace any existing file that is not
+already an SBOM. Git runs only in read-only mode with command-line overrides, so a scanned
+repository's own config cannot make a scan run programs (fsmonitor hooks, signature programs, or
+filter drivers) or rewrite `.git/index`.
 
 Each scan also reports a read-only **git-safety** state: if there's no git repo or
 uncommitted changes, it recommends creating a checkpoint before fixes — your agent
-runs git only with your approval; the tool never does.
+runs git only with your approval; the tool never runs git commands that change your repository.
 
 ### Source Integrity — V3.1
 
@@ -328,8 +335,8 @@ length while capping rendered evidence to 64 code points; dense candidates and i
 bounded before output materialization and incomplete work is reported as partial. Initial BOMs,
 legitimate RTL text, emoji variation/ZWJ/tag
 sequences, international-language joiners and ambiguous confusables are suppressed or kept
-non-destructive. Scans never edit files; cleanup requires explicit approval for the named file and
-marker, a reversible edit by the user's coding agent, tests, and a rescan.
+non-destructive. Scans never edit files. V3.3 cleanup requires an exact plan, explicit approval for
+the named file and marker, a recoverable checkpoint, the smallest supported edit, tests, and a rescan.
 
 This is **source-integrity protection, not AI-authorship detection**. V3.2's explicit-attribution
 and C2PA results are separate capability records; hidden Unicode is never promoted into either.
@@ -349,11 +356,44 @@ V3.2 activates two more read-only `repository_trust` capabilities:
   manifest, OCSP response, trust list, or revocation endpoint.
 
 Every parser and traversal path is bounded, rejects symbolic links, and reports exclusions as
-`partial`. C2PA and legal/licensing attribution records are protected evidence and are never
-cleanup-eligible. V3.2 does not edit files, remove metadata, rewrite text, inspect pixels/audio/video
-frames, or claim that absence of a marker means human authorship. Statistical text-watermark
+`partial`. V3.2 detection remains read-only. Git-history, legal, licensing and compliance records
+remain protected; verified non-protected artifacts can enter V3.3's separately approved workflow.
+V3.2 does not remove metadata, rewrite text, inspect pixels/audio/video frames, or claim that absence
+of a marker means human authorship. Statistical text-watermark
 verification remains `unavailable` until an authoritative, independently verifiable detector with
 calibrated operating thresholds is available.
+
+### Verified Repository Cleanup — V3.3
+
+V3.3 adds three MCP tools: `codeinspectus_plan_cleanup`, `codeinspectus_apply_cleanup`, and
+`codeinspectus_rollback_cleanup`. Planning always runs a fresh repository-trust audit and accepts
+only exact verified artifact IDs. It rejects changed, ambiguous, protected, unsupported, duplicate,
+or over-broad scope and records SHA-256 preimages plus the exact transformation before approval.
+
+Apply requires the ready plan ID, the identical artifact-ID set, `confirm_cleanup=true`, and a
+separate rights confirmation for attribution or provenance. Text cleanup is limited to exact
+verified UTF-8 ranges and standalone attribution comments. It creates a managed content backup,
+uses atomic replacement, reruns the same validators, and emits a content-free audit record.
+Before the first write it verifies every preimage, computes every output, and persists all backups
+plus a content-free journal, so an apply interrupted at any point can be rolled back after a
+restart; new planning for that repository is blocked, naming the cleanup ID, until it is reviewed.
+Rollback restores only when post-clean bytes still match the recorded result; it refuses to
+overwrite later user changes and never touches anything if one file changed.
+
+Supported media adapters create a new `*.codeinspectus-clean.*` copy and preserve the original.
+They strip hard-bound metadata containers from PNG, JPEG, MP3, WAV, MP4, MOV, M4A and M4V assets
+without changing encoded image, audio, or video payloads; ISO BMFF chunk offsets are rewritten so the
+copy still plays, and fragmented or externally indexed MP4/MOV files are refused. Image metadata
+artifacts come from the built-in parser; audio and video assets become eligible only through C2PA
+artifacts reported by the optional official validator. Container-level removal
+must be acknowledged because unrelated metadata in the selected container can also be removed.
+C2PA cleanup requires a separate provenance-copy acknowledgement. The cleaned copy is scanned
+independently; the original evidence-bearing asset remains untouched.
+
+CodeInspectus does not run arbitrary repository commands. The result therefore marks repository
+tests, formatters and builds as `not_run` and required; the calling coding agent must run the
+relevant checks before presenting cleanup as complete. V3.3 never rewrites Git history, removes
+visible logos, changes pixels/frames/audio, detects statistical watermarks, or claims human authorship.
 
 See the [V3 migration guide](docs/V3-REPOSITORY-TRUST-MIGRATION.md) for schema and SDK changes.
 

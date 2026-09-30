@@ -19,6 +19,9 @@ describe("SARIF export", () => {
       }],
     } satisfies JsonExport;
     const sarif = createSarifExport(source);
+    // The driver version comes from the export, so a sealed bundle's SARIF can be regenerated
+    // byte-for-byte by any later release during verification.
+    expect(sarif.runs[0]!.tool.driver.version).toBe("3");
     expect(sarif.runs[0]).toMatchObject({
       tool: { driver: { rules: [{ id: "r1", help: { text: "fix it" } }] } },
       results: [{ ruleId: "r1", level: "error", fingerprints: { "codeinspectus/v3": "fp" }, locations: [{ physicalLocation: { artifactLocation: { uri: "src/app.ts" } } }], properties: { aggregate_coverage: "partial", producer_components: ["opengrep@1"] } }],

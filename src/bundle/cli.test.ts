@@ -28,6 +28,18 @@ describe("bundle CLI", () => {
     expect(output.stderr).toEqual([]);
   });
 
+  test("export writes the sealed bytes exactly through the raw channel", async () => {
+    const sealed = Buffer.from('{"message":"x\u0085y\u001b"}\n', "utf8");
+    const exact: Buffer[] = [];
+    const output = capture();
+    const deps = dependencies({ verify: vi.fn(async () => ({ manifest, scan, contents: { "artifacts/export.json": sealed, "results.sarif": sealed } }) as never) });
+
+    await runBundleCli(["export", "/bundle", "--format", "sarif"], { ...output.io, stdoutExact: (bytes: Buffer) => exact.push(bytes) }, deps);
+
+    expect(Buffer.concat(exact).equals(sealed)).toBe(true);
+    expect(output.stdout).toEqual([]);
+  });
+
   test("verify, export, and compare always call verification first", async () => {
     for (const argv of [["verify", "/bundle"], ["export", "/bundle", "--format", "json"], ["compare", "/old", "/new", "--format", "json"]]) {
       const output = capture(); const verify = vi.fn(async () => ({ manifest, scan, contents: { "artifacts/export.json": Buffer.from("{}\n"), "results.sarif": Buffer.from("{}\n") } }) as never); const deps = dependencies({ verify });

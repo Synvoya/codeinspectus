@@ -5,6 +5,7 @@ import { lstat, open, opendir, type FileHandle } from "node:fs/promises";
 import { basename, dirname, extname, join, parse, relative, resolve } from "node:path";
 
 import { parsePythonSource, type PythonDocument } from "./python.js";
+import { symlinkEntryIsGap } from "../../path-safety.js";
 
 export const PYTHON_MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 export const PYTHON_MAX_SOURCE_FILES = 10_000;
@@ -453,7 +454,7 @@ async function loadUncached(
       const lower = entry.name.toLowerCase();
       if (entry.isSymbolicLink()) {
         const displayPath = relative(absoluteTarget, absolute).replace(/\\/g, "/");
-        limitations.add(`Skipped symbolic-link Python source path ${displayPath}.`);
+        if (await symlinkEntryIsGap(absolute, entry.name, sourceExtension)) limitations.add(`Skipped symbolic-link Python source path ${displayPath}.`);
         continue;
       }
       if (entry.isDirectory()) {

@@ -87,6 +87,6 @@ describe("public SDK process wrapper", () => {
     const client = new CodeInspectusClient();
     await expect(client.run(["--version"], { signal: controller.signal })).rejects.toBeInstanceOf(CodeInspectusSdkError);
     await expect(client.run(["--version"], { signal: controller.signal })).rejects.toMatchObject({ code: "ABORTED" });
-    expect(SDK_COMPATIBILITY).toMatchObject({ export_schema: "3.0.0", repository_trust_schema: "1.0.0", bundle_schema: "1.0.0", repository_history_schema: "1.0.0", issue_payload_schema: "1.0.0", cli_major: 3 });
+    expect(SDK_COMPATIBILITY).toMatchObject({ export_schema: "3.0.0", repository_trust_schema: "1.0.0", cleanup_schema: "1.0.0", bundle_schema: "1.0.0", repository_history_schema: "1.0.0", issue_payload_schema: "1.0.0", cli_major: 3 });
   });
 });

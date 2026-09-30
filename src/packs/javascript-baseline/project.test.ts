@@ -68,4 +68,51 @@ describe("JavaScript baseline project loader", () => {
     expect(project.files).toEqual([]);
     expect(project.limitations?.join(" ")).toMatch(/symbolic-link path/i);
   });
+
+  test("a symlink with a non-source name is not a coverage gap", async () => {
+    const root = await temporaryRoot();
+    await writeFile(join(root, "AGENTS.md"), "# agents\n");
+    await writeFile(join(root, "app.ts"), `createHash("md5");\n`);
+    try {
+      await symlink("AGENTS.md", join(root, "CLAUDE.md"));
+    } catch {
+      return;
+    }
+
+    const project = await loadJavaScriptBaselineProject(root);
+
+    expect(project.limitations).toEqual([]);
+  });
+
+  test("source-named and directory links are gaps even when they resolve inside the project", async () => {
+    const root = await temporaryRoot();
+    await mkdir(join(root, "vendor"));
+    await writeFile(join(root, "vendor", "impl.ts"), `createHash("md5");\n`);
+    try {
+      await symlink(join("vendor", "impl.ts"), join(root, "alias.ts"));
+      await symlink("vendor", join(root, "lib"));
+    } catch {
+      return;
+    }
+
+    const project = await loadJavaScriptBaselineProject(root);
+
+    expect(project.limitations?.join(" ")).toMatch(/alias\.ts/);
+    expect(project.limitations?.join(" ")).toMatch(/\blib\b/);
+  });
+
+  test("a symlink to source outside the project is still disclosed", async () => {
+    const root = await temporaryRoot();
+    const outside = await temporaryRoot();
+    await writeFile(join(outside, "external.ts"), `createHash("md5");\n`);
+    try {
+      await symlink(join(outside, "external.ts"), join(root, "external.ts"));
+    } catch {
+      return;
+    }
+
+    const project = await loadJavaScriptBaselineProject(root);
+
+    expect(project.limitations?.join(" ")).toMatch(/symbolic-link.*external\.ts/i);
+  });
 });

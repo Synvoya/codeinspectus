@@ -21,14 +21,16 @@ npm run eval         # drives the built server over MCP stdio
 Expected: all non-skipped evals PASS. Engine-dependent evals (E16 Opengrep SQLi,
 E17 Trivy SCA, E18 Opengrep CORS precision, and E34-E36 Opengrep/native parity)
 auto-SKIP when the binary/DB cannot run — that is acceptable, a FAIL is not. The
-suite currently has 58 evals; with Trivy active but Opengrep unavailable the expected
-result is 53 passed, 0 failed, 5 skipped. E17 skips only without the Trivy DB. E22,
+suite currently has 59 evals; with Trivy active but Opengrep unavailable the expected
+result is 54 passed, 0 failed, 5 skipped. E17 skips only without the Trivy DB. E22,
 E53, and E54 cover Supabase Edge, Next.js admin, and Express admin auth/authz. E55/E56
 cover exact source-integrity evidence, vendor-neutral classification, read-only behavior,
 and bidirectional same-path trust-artifact rescans; both must not skip.
-E57 covers explicit source attribution, real parsed media metadata, protected read-only
-remediation semantics, human capability summaries, and same-path trust-artifact rescans; it must
-not skip. The official C2PA adapter must additionally be tested against known-good and known-bad
+E57 covers explicit source attribution, real parsed media metadata, protected-record and
+approval-gated remediation semantics, human capability summaries, and same-path trust-artifact
+rescans; it must not skip. E58 drives the built MCP through fresh cleanup planning, exact approval,
+managed checkpointing, atomic source cleanup, same-validator verification and rollback; it must not
+skip. The official C2PA adapter must additionally be tested against known-good and known-bad
 upstream fixtures before release because the repository does not redistribute that external corpus.
 E20/E21 include the Referrer-Policy and Permissions-Policy checks. E23/E24 are
 engine-independent MCP stdio checks over the
@@ -111,7 +113,7 @@ npx vitest run \
   src/packs/registry.test.ts \
   src/pub/*.test.ts \
   src/technology-detection.test.ts \
-  src/provenance.test.ts
+  src/provenance.test.ts \
   src/repository-trust/*.test.ts
 ```
 Expected: all focused tests pass; manifest `1.19.0` owns exactly 72 native rule IDs (29

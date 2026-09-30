@@ -19,7 +19,7 @@
  *   - clean   — inside a work tree with nothing uncommitted. Silent (no recommendation).
  */
 
-import { runGitRead, type GitReadResult } from "./util/git.js";
+import { IGNORE_SUBMODULE_WORKTREES, repositoryFilterDrivers, runGitRead, type GitReadResult } from "./util/git.js";
 import type { GitSafety } from "./types.js";
 
 export type { GitSafety, GitSafetyState } from "./types.js";
@@ -54,9 +54,18 @@ export async function detectGitSafety(
   // 2. Inside a work tree — is it dirty? `status --porcelain` lists modified/staged tracked files
   //    and untracked NON-ignored files, and by default OMITS ignored files, so a repo that differs
   //    only in gitignored files reads as clean (deliberate: don't nag about ignored noise).
+  // `status` compares the working tree and would run filter drivers named by the repository's
+  // own config. Report unknown rather than execute repository-controlled programs.
+  if (run === runGitRead) {
+    try {
+      if ((await repositoryFilterDrivers(target)).length > 0) return { state: "unknown" };
+    } catch {
+      return { state: "unknown" };
+    }
+  }
   let status: GitReadResult;
   try {
-    status = await run(target, ["status", "--porcelain"]);
+    status = await run(target, ["status", "--porcelain", IGNORE_SUBMODULE_WORKTREES]);
   } catch {
     return { state: "unknown" };
   }

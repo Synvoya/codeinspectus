@@ -26,7 +26,7 @@ try {
     const client = new CodeInspectusClient();
     const result = await client.run(["--version"]);
     if (result.exitCode !== 0 || result.stdout.trim() !== ${JSON.stringify(sourceVersion)}) throw new Error("installed CLI invocation failed");
-    if (SDK_API_VERSION !== ${JSON.stringify(sourceVersion)} || SDK_COMPATIBILITY.export_schema !== "3.0.0" || SDK_COMPATIBILITY.repository_trust_schema !== "1.0.0") throw new Error("SDK compatibility metadata mismatch");
+    if (SDK_API_VERSION !== ${JSON.stringify(sourceVersion)} || SDK_COMPATIBILITY.export_schema !== "3.0.0" || SDK_COMPATIBILITY.repository_trust_schema !== "1.0.0" || SDK_COMPATIBILITY.cleanup_schema !== "1.0.0") throw new Error("SDK compatibility metadata mismatch");
     process.stdout.write(JSON.stringify({ sdk: SDK_API_VERSION, cli: result.stdout.trim(), exit: result.exitCode }));
   `);
   const runtime = execFileSync(process.execPath, [join(consumer, "consumer.mjs")], { cwd: consumer, encoding: "utf8" });
@@ -37,6 +37,7 @@ try {
       CodeInspectusClient, type AggregateCoverageV2, type BaselineComparisonV1,
       type BundleManifestV1, type BulkManifestV1, type RepositoryHistoryManifestV1, type IssuePayloadV1, type FindingV2, type HistoryComparisonV1,
       type HistoryListResultV1, type JsonExportV2, type TriageAnnotationV1,
+      type CleanupPlanV1, type CleanupResultV1,
     } from "codeinspectus/sdk";
     const client = new CodeInspectusClient();
     const operation: Promise<{ data: JsonExportV2 }> = client.scan("/tmp/repository");
@@ -44,7 +45,8 @@ try {
       finding: FindingV2, coverage: AggregateCoverageV2, history: HistoryListResultV1,
       comparison: HistoryComparisonV1, baseline: BaselineComparisonV1,
       annotation: TriageAnnotationV1, bundle: BundleManifestV1, bulk: BulkManifestV1, repositoryHistory: RepositoryHistoryManifestV1, issue: IssuePayloadV1,
-    ): string { return [finding.id, coverage, history.schema_version, comparison.schema_version, baseline.schema_version, annotation.annotation_id, bundle.bundle_id, bulk.run_id, repositoryHistory.run_id, issue.adapter].join(":"); }
+      cleanupPlan: CleanupPlanV1, cleanupResult: CleanupResultV1,
+    ): string { return [finding.id, coverage, history.schema_version, comparison.schema_version, baseline.schema_version, annotation.annotation_id, bundle.bundle_id, bulk.run_id, repositoryHistory.run_id, issue.adapter, cleanupPlan.plan_id, cleanupResult.cleanup_id].join(":"); }
     void operation; void consume;
   `);
   const tsc = resolve(repository, "node_modules/typescript/bin/tsc");

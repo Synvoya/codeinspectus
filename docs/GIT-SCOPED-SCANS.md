@@ -19,7 +19,8 @@ is not persisted.
 
 JSON, SARIF, stored history, and text output identify:
 
-- the requested and resolved base/head commits;
+- the requested base and the resolved diff base (the merge-base of base and head, so changes made
+  only on the base branch are not attributed to the change) and head commits;
 - added, modified, deleted, renamed, untracked, and ignored paths;
 - binary, generated/build, and submodule state as independent flags;
 - whether each path was inspected;
@@ -34,10 +35,15 @@ context, bounded enumeration, or any such uninspected changed surface makes Git 
 `partial`, and CI returns exit code 2 rather than treating it as clean.
 
 Working-tree mode compares the resolved base against the combined index and filesystem,
-then adds non-ignored untracked files. It scans the current repository in place without
+then adds non-ignored untracked files. Index entries flagged `skip-worktree` or
+`assume-unchanged` whose content differs, and files removed with `git rm --cached` that are still
+on disk (even if now ignored), are also in scope because git would otherwise hide those edits. It scans the current repository in place without
 writing it. Commit mode scans the exact resolved head snapshot, so later branch movement
 cannot change what was inspected.
 
-Severity enforcement applies to `primary` findings. Supporting-context findings remain in
-the raw JSON/SARIF/history record for review but do not make an unrelated change fail the
-threshold. Incomplete Git or scanner coverage still takes precedence and returns exit code 2.
+Severity enforcement applies to `primary` findings. A change can also introduce a finding in an
+unchanged file (for example by deleting the migration that enabled row-level security), so the
+diff base is scanned too: any supporting-context finding that is not present in the base is new
+and treated as `primary`. Supporting-context findings that already existed remain in the raw
+JSON/SARIF/history record for review but do not make an unrelated change fail the threshold.
+Submodule pointer changes are reported even when `.gitmodules` sets `ignore = all`. Incomplete Git or scanner coverage still takes precedence and returns exit code 2.

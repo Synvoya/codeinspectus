@@ -2,7 +2,7 @@
 
 After you generate or substantially modify code in this repo, run the CodeInspectus
 loop. **Principle: CodeInspectus REPORTS; the user DECIDES; you fix only with consent.**
-CodeInspectus never edits or deletes your source code or repository — the only file it writes is an optional SBOM (managed directory by default, or a path you choose), and engine data + scan history stay under `~/.codeinspectus`.
+Scans and reports never edit or delete your source code or repository (engine data and scan history stay under `~/.codeinspectus`). Only `codeinspectus_apply_cleanup` and `codeinspectus_rollback_cleanup` change a repository, and only for an exact cleanup plan the user approved; `codeinspectus_generate_sbom` writes to a managed directory or an absolute `.json` path the user chooses.
 
 1. **Scan.** Call `codeinspectus_scan` with the absolute repo path. It runs locally with
    zero network egress and returns CWE-keyed findings, each with a `remediation`. Inspect
@@ -21,9 +21,9 @@ CodeInspectus never edits or deletes your source code or repository — the only
    check the scan's read-only `git_safety` advisory: if `state` is `no_git` or `dirty`, surface its
    `recommendation` and — **only with the user's approval** — offer to create a rollback point (`git
    init` + an initial commit, or commit/stash the current changes) so a fix can be undone cleanly.
-   **CodeInspectus never runs git and never writes to the repo; YOU run git, and only if the user
+   **CodeInspectus never runs git commands that change the repo, and scans never write to it; YOU run git, and only if the user
    approves** (`clean`/`unknown` → say nothing). Do not edit yet; the selected finding's
-   source-and-test proposal has its own approval gate below. CodeInspectus never writes files.
+   source-and-test proposal has its own approval gate below. Scans never write files.
 5. **Rescan after the contract below.** After its approved source patch and tests, call
    `codeinspectus_rescan` (same path) and report `resolved`, still firing, and introduced findings.
    Do not claim a fix worked unless the exact-prior-scan rescan confirms it.
@@ -59,3 +59,16 @@ proof gap. Then apply the source patch, run focused and relevant tests, and call
 `codeinspectus_rescan` on the same target with the exact original scan ID as `prior_scan_id`. Claim scanner resolution only when the target is in CodeInspectus `resolved`;
 `remaining` is unresolved and `not_rechecked` is a proof gap. Do not fix unrelated findings.
 Report investigation evidence, regression evidence, test evidence, and rescan/proof gaps separately.
+
+## Repository-trust cleanup (only when the user asks)
+
+Repository-trust artifacts (hidden Unicode, explicit AI attribution, media metadata, C2PA) are
+evidence, not vulnerabilities; remove one only when the user asks. Call
+`codeinspectus_plan_cleanup` with exact artifact IDs from a fresh scan, show every file,
+transformation, blocker, and limitation in the plan, and get approval for that exact plan. Then call
+`codeinspectus_apply_cleanup` with the same IDs and `confirm_cleanup=true`; pass
+`confirm_rights_to_modify=true` only after the user confirms they may remove that attribution or
+provenance. Media cleanup writes a new `.codeinspectus-clean` copy and never changes the original.
+Git history and legal, licensing, and compliance records are never eligible. Run the repository's
+tests, formatter, and build afterwards; cleanup is incomplete until they pass. Use
+`codeinspectus_rollback_cleanup` with the returned cleanup ID to restore an approved change.

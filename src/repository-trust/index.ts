@@ -47,7 +47,7 @@ export async function scanRepositoryTrust(
         ...(implementedStates.includes("partial")
           ? ["One or more implemented repository-trust capabilities reported partial coverage; inspect capability limitations."]
           : []),
-        "Statistical watermark verification remains unavailable; V3.2 does not rewrite text or remove provenance records.",
+        "Statistical watermark verification remains unavailable; V3.3 cleanup is limited to separately approved deterministic records and never performs statistical rewriting.",
       ],
     },
     summary: {

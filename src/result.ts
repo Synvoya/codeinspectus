@@ -6,6 +6,8 @@
  * (PRD §11: "guide the agent to a fix").
  */
 
+import { terminalSafe } from "./util/terminal.js";
+
 export interface ToolTextContent {
   type: "text";
   text: string;
@@ -21,14 +23,14 @@ export interface ToolResult {
 
 export function ok(text: string, structured: Record<string, unknown>): ToolResult {
   return {
-    content: [{ type: "text", text }],
+    content: [{ type: "text", text: terminalSafe(text) }],
     structuredContent: structured,
   };
 }
 
 export function fail(text: string): ToolResult {
   return {
-    content: [{ type: "text", text }],
+    content: [{ type: "text", text: terminalSafe(text) }],
     isError: true,
   };
 }

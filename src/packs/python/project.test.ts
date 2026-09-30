@@ -106,6 +106,18 @@ for code, *parameters in control_codes:
     expect(loaded.limitations?.join(" ")).toMatch(/symbolic-link Python source path src\/linked\.py/i);
   });
 
+  test("a source-named link into a directory the walker skips is still a coverage gap", async () => {
+    const directory = await project();
+    await mkdir(join(directory, "examples"));
+    await mkdir(join(directory, "src"));
+    await writeFile(join(directory, "examples", "tool_impl.py"), "import os\n", "utf8");
+    await symlink(join("..", "examples", "tool_impl.py"), join(directory, "src", "tool.py"));
+
+    const loaded = await loadPythonProject(directory);
+
+    expect(loaded.limitations?.join(" ")).toMatch(/symbolic-link Python source path src\/tool\.py/i);
+  });
+
   test("rejects a directory target reached through a symbolic-link ancestor", async () => {
     const directory = await project();
     const inside = join(directory, "inside");

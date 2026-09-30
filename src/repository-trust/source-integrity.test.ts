@@ -90,6 +90,33 @@ describe("V3.1 deterministic source-integrity scanner", () => {
     expect(document.artifacts.some((artifact) => artifact.marker_class === "unicode_mixed_script_identifier")).toBe(false);
   });
 
+  test("verifies a Hangul filler used as an invisible identifier but not inside Hangul text", async () => {
+    const root = await fixture();
+    await writeFile(join(root, "backdoor.js"), "const { timeout,\u3164} = req.query;\nexec(\u3164);\n", "utf8");
+    await writeFile(join(root, "korean.js"), "const syllable = \"\u1100\u1160\";\n", "utf8");
+
+    const document = await scanSourceIntegrity(root);
+    const verified = document.artifacts.filter((item) => item.state === "verified");
+
+    expect(verified.length).toBeGreaterThan(0);
+    expect(verified.every((item) => item.location.file === "backdoor.js")).toBe(true);
+    expect(JSON.stringify(verified[0]?.evidence.attributes)).toContain("U+3164");
+  });
+
+  test("reports UTF-8 byte offsets relative to the file bytes when a BOM is present", async () => {
+    const root = await fixture();
+    const path = join(root, "bom.ts");
+    await writeFile(path, "﻿const user​name = 1;\n", "utf8");
+    const bytes = await readFile(path);
+
+    const document = await scanSourceIntegrity(root);
+    const artifact = document.artifacts.find((item) => item.marker_class === "unicode_zero_width_token");
+    const offset = artifact?.evidence.attributes.find((item) => item.name === "utf8_byte_offset")?.value;
+
+    expect(offset).toBe(bytes.indexOf(Buffer.from("​", "utf8")));
+    expect(artifact?.location).toMatchObject({ start_line: 1, start_column: 11 });
+  });
+
   test("is deterministic, scans a direct file, and never mutates the target", async () => {
     const root = await fixture();
     const path = join(root, "single.py");

@@ -6,15 +6,17 @@ does not add repository-trust detectors or cleanup behavior; those remain V3.1â€
 CodeInspectus 3.1.0 activates deterministic source-integrity inspection. CodeInspectus 3.2.0 adds
 bounded explicit AI-attribution and local C2PA/asset-metadata inspection within the same compatible
 export `3.0.0` and repository-trust `1.0.0` contracts. Consumers must inspect each capability's
-coverage independently. Statistical-watermark verification remains `unavailable`.
+coverage independently. CodeInspectus 3.3.0 adds independently versioned cleanup plan/result
+contracts and explicitly approved mutation tools. Statistical-watermark verification remains `unavailable`.
 
 ## Contract versions
 
 | Surface | V2 | V3 |
 |---|---:|---:|
-| Package / CLI / MCP server / SDK API | 2.6.0 | 3.2.0 |
+| Package / CLI / MCP server / SDK API | 2.6.0 | 3.3.0 |
 | Canonical JSON export | 2.0.0 | 3.0.0 |
 | Repository-trust document | absent | 1.0.0 |
+| Cleanup plan / result | absent | 1.0.0 |
 | SARIF standard | 2.1.0 | 2.1.0 |
 | Stored scan | 2.0.0 | 2.0.0 |
 | Sealed bundle manifest | 1.0.0 | 1.0.0 |
@@ -76,13 +78,27 @@ New sealed bundles record export schema `3.0.0`. The V3 verifier continues to ac
 manifests that record export schema `2.0.0`; their sealed export, findings, coverage, SARIF identity,
 and artifact hashes are checked through the legacy compatibility path.
 
+## V3.3 cleanup contract
+
+`codeinspectus_plan_cleanup` is read-only and returns a `1.0.0` cleanup plan. Apply requires the
+exact plan and artifact IDs plus explicit confirmation. Attribution/provenance scope requires a
+separate rights confirmation. Managed checkpoints and content-free audit records live outside the
+target repository under CodeInspectus machine state.
+
+Text edits are bounded to exact verified byte ranges or standalone attribution comments. Supported
+media cleanup creates a new copy and preserves the original. Rollback is hash-guarded and refuses
+to overwrite post-clean user changes. Cleanup results always report repository checks as `not_run`
+and required because CodeInspectus does not execute arbitrary target-repository commands.
+
 ## Unchanged behavior
 
 - Scans remain local and read-only.
 - Scan-time network egress remains zero.
 - CLI policy exit codes and severity semantics are unchanged.
-- Remediation still requires the user's agent and explicit approval.
+- Remediation still requires granular explicit approval; the calling agent must run relevant tests,
+  formatters and builds before reporting completion.
 - V3.1 detects bounded source-integrity Unicode markers. V3.2 observes explicit attribution and
   validates supported local C2PA records, but neither version edits them or infers authorship from
-  absent evidence. Statistical, pixel, visible-logo, perceptual, audio, and frame-by-frame watermark
-  detection/removal remain outside the shipped implementation.
+  absent evidence. V3.3 can remove deterministic metadata into a preserved-original clean copy.
+  Statistical, pixel, visible-logo, perceptual, audio, and frame-by-frame watermark detection/removal
+  remain outside the shipped implementation.

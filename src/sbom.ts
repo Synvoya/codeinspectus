@@ -8,8 +8,8 @@
 
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
-import { join, basename, dirname } from "node:path";
+import { lstat, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { join, basename, dirname, extname, isAbsolute } from "node:path";
 import { resolve as resolvePath } from "node:path";
 import { MANAGED_ROOT } from "./config.js";
 import { runTrivySbom } from "./engines/trivy.js";
@@ -135,6 +135,35 @@ function hasPubDiscoverySignal(load: Awaited<ReturnType<typeof loadPubLockfiles>
     || skipped.traversal_limit_reached > 0;
 }
 
+/**
+ * A caller-chosen SBOM path is an explicit absolute `.json` path, and may only replace an existing
+ * regular file that is itself a CycloneDX or SPDX document. Anything else is refused before any
+ * engine writes, so generate_sbom can never replace source or configuration files.
+ */
+async function requireSafeSbomOutput(requested: string): Promise<string> {
+  if (!isAbsolute(requested)) throw new Error("output_path must be an absolute path.");
+  const outputPath = resolvePath(requested);
+  if (extname(outputPath).toLowerCase() !== ".json") throw new Error("output_path must name a .json file.");
+  let existing;
+  try {
+    existing = await lstat(outputPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return outputPath;
+    throw error;
+  }
+  if (!existing.isFile()) throw new Error("output_path exists and is not a regular file.");
+  let document: Record<string, unknown> | undefined;
+  try {
+    document = JSON.parse(await readFile(outputPath, "utf8")) as Record<string, unknown>;
+  } catch {
+    document = undefined;
+  }
+  if (document?.bomFormat !== "CycloneDX" && typeof document?.spdxVersion !== "string") {
+    throw new Error("output_path already exists and is not an SBOM; choose a new path so no existing file is replaced.");
+  }
+  return outputPath;
+}
+
 async function writeJsonAtomic(path: string, document: Record<string, unknown>): Promise<void> {
   const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
   try {
@@ -170,7 +199,7 @@ export async function generateSbom(input: GenerateSbomInput): Promise<SbomResult
 
   const base = basename(target.replace(/\/$/, "")) || "project";
   const defaultOut = join(MANAGED_ROOT, "sbom", `${base}.${format}.json`);
-  const outputPath = input.output_path ? resolvePath(input.output_path) : defaultOut;
+  const outputPath = input.output_path ? await requireSafeSbomOutput(input.output_path) : defaultOut;
   await mkdir(dirname(outputPath), { recursive: true });
 
   const [trivyRun, pubLoad] = await Promise.all([

@@ -11,6 +11,7 @@ import { constants } from "node:fs";
 import { lstat, open, readdir } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { symlinkEntryIsGap } from "../path-safety.js";
 
 export const PUB_LOCKFILE_LIMITS = Object.freeze({
   max_bytes_per_lockfile: 2 * 1024 * 1024,
@@ -650,6 +651,9 @@ export async function discoverPubLockfiles(
         continue;
       }
       if (entry.isSymbolicLink()) {
+        // Discovery only reads files named pubspec.lock; any other file link is irrelevant, while a
+        // pubspec.lock link or a directory link can hide a lockfile and is disclosed.
+        if (!(await symlinkEntryIsGap(absolutePath, entry.name, (name) => name.toLowerCase() === "pubspec.lock"))) continue;
         if (lower === "pubspec.lock") {
           skipped.symlinked_lockfiles++;
           notes.add(`Skipped symbolic-link Pub lockfile ${forwardSlash(relative(root, absolutePath))}.`);

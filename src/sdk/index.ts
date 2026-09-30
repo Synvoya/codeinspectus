@@ -17,12 +17,14 @@ import type {
   RepositoryTrustChanges,
   RepositoryTrustDocument,
 } from "../repository-trust/schemas.js";
+import type { CleanupPlan, CleanupResult } from "../repository-trust/cleanup.js";
 
-export const SDK_API_VERSION = "3.2.0" as const;
+export const SDK_API_VERSION = "3.3.0" as const;
 export const SDK_COMPATIBILITY = Object.freeze({
   cli_major: 3,
   export_schema: "3.0.0",
   repository_trust_schema: "1.0.0",
+  cleanup_schema: "1.0.0",
   history_schema: "1.0.0",
   baseline_schema: "1.0.0",
   triage_schema: "1.0.0",
@@ -50,6 +52,8 @@ export type SarifExportV2 = SarifExportV3;
 export type RepositoryTrustDocumentV1 = RepositoryTrustDocument;
 export type RepositoryArtifactV1 = RepositoryArtifact;
 export type RepositoryTrustChangesV1 = RepositoryTrustChanges;
+export type CleanupPlanV1 = CleanupPlan;
+export type CleanupResultV1 = CleanupResult;
 export type {
   RepositoryArtifactConfidence,
   RepositoryArtifactState,

@@ -84,7 +84,7 @@ export async function inspectPubDatabase(
         license: snapshot.license,
         attribution: snapshot.attribution,
         ...(state === "stale"
-          ? { note: `Bundled Pub advisory snapshot is ${ageDays} days old; refresh it before the next release.` }
+          ? { note: `Bundled Pub advisory snapshot is ${ageDays} days old; advisories published since then are not included until CodeInspectus is updated.` }
           : {}),
       },
     };

@@ -1,13 +1,17 @@
 import { chmod, lstat, mkdir, mkdtemp, open, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import type { ScanInput } from "./schemas.js";
 import { executeScan, projectScanForDisplay } from "./scan.js";
 import { saveScan } from "./store.js";
 import type { Finding, GitScanScope, GitScopeEntry, ScanResult } from "./types.js";
-import { runGitReadBuffer } from "./util/git.js";
+import { IGNORE_SUBMODULE_WORKTREES, repositoryFilterDrivers, runGitReadBuffer } from "./util/git.js";
+import { releaseTemporaryDirectory, trackTemporaryDirectory } from "./util/temporary.js";
 import { requireSafeScanTarget } from "./path-safety.js";
 import { detectGitSafety } from "./git-safety.js";
+import { findingsMatch } from "./scan-history.js";
+import { isDocumentationName } from "./path-safety.js";
+import { pairMovedFindings } from "./dedup.js";
 
 const MAX_REVISION_LENGTH = 256;
 const MAX_SCOPE_ENTRIES = 50_000;
@@ -72,8 +76,8 @@ function inTarget(path: string, prefix: string): boolean {
 
 async function binaryPaths(repository: string, base: string, head?: string): Promise<Set<string>> {
   const args = head
-    ? ["diff", "--numstat", "-z", "--no-renames", "--no-ext-diff", base, head]
-    : ["diff", "--numstat", "-z", "--no-renames", "--no-ext-diff", base];
+    ? ["diff", "--numstat", "-z", "--no-renames", "--no-ext-diff", "--no-textconv", IGNORE_SUBMODULE_WORKTREES, base, head]
+    : ["diff", "--numstat", "-z", "--no-renames", "--no-ext-diff", "--no-textconv", IGNORE_SUBMODULE_WORKTREES, base];
   const result = await runGitReadBuffer(repository, args);
   if (result.code !== 0) throw new Error(`Git could not enumerate binary changes${result.stderr ? `: ${result.stderr}` : "."}`);
   const binary = new Set<string>();
@@ -86,8 +90,8 @@ async function binaryPaths(repository: string, base: string, head?: string): Pro
 
 async function changedEntries(repository: string, base: string, head: string | undefined, prefix: string): Promise<GitScopeEntry[]> {
   const args = head
-    ? ["diff", "--name-status", "-z", "--find-renames", "--no-ext-diff", base, head]
-    : ["diff", "--name-status", "-z", "--find-renames", "--no-ext-diff", base];
+    ? ["diff", "--name-status", "-z", "--find-renames", "--no-ext-diff", "--no-textconv", IGNORE_SUBMODULE_WORKTREES, base, head]
+    : ["diff", "--name-status", "-z", "--find-renames", "--no-ext-diff", "--no-textconv", IGNORE_SUBMODULE_WORKTREES, base];
   const result = await runGitReadBuffer(repository, args);
   if (result.code !== 0) throw new Error(`Git could not enumerate changed paths${result.stderr ? `: ${result.stderr}` : "."}`);
   const values = splitNul(result.stdout);
@@ -230,9 +234,15 @@ async function markSubmodules(
   return [];
 }
 
-export async function materializeGitCommit(repository: string, commit: string): Promise<{ directory: string; limitations: string[] }> {
+export async function materializeGitCommit(repository: string, commit: string): Promise<{
+  directory: string;
+  limitations: string[];
+  skipped: Array<{ path: string; kind: "symlink" | "submodule" }>;
+}> {
   const directory = await mkdtemp(join(tmpdir(), "codeinspectus-git-"));
+  trackTemporaryDirectory(directory);
   const limitations: string[] = [];
+  const skipped: Array<{ path: string; kind: "symlink" | "submodule" }> = [];
   try {
     const tree = await runGitReadBuffer(repository, ["ls-tree", "-r", "-z", "--full-tree", commit], { maxBytes: 32 * 1024 * 1024 });
     if (tree.code !== 0) throw new Error(`Git could not enumerate commit tree${tree.stderr ? `: ${tree.stderr}` : "."}`);
@@ -247,11 +257,13 @@ export async function materializeGitCommit(repository: string, commit: string): 
       const [mode, type, object] = header;
       if (type === "commit" || mode === "160000") {
         limitations.push(`Submodule gitlink ${path} was not materialized.`);
+        skipped.push({ path, kind: "submodule" });
         continue;
       }
       if (type !== "blob" || !/^[0-9a-f]{40,64}$/.test(object!)) throw new Error(`Unsupported Git tree entry at ${path}.`);
       if (mode === "120000") {
         limitations.push(`Symbolic link ${path} was not materialized.`);
+        skipped.push({ path, kind: "symlink" });
         continue;
       }
       const blob = await runGitReadBuffer(repository, ["cat-file", "blob", object!], { maxBytes: MAX_BLOB_BYTES });
@@ -264,9 +276,10 @@ export async function materializeGitCommit(repository: string, commit: string): 
       await writeFile(destination, blob.stdout, { flag: "wx" });
       if (mode === "100755") await chmod(destination, 0o755);
     }
-    return { directory, limitations };
+    return { directory, limitations, skipped };
   } catch (error) {
     await rm(directory, { recursive: true, force: true });
+    releaseTemporaryDirectory(directory);
     throw error;
   }
 }
@@ -291,18 +304,129 @@ function scopeLimitations(entries: GitScopeEntry[], materialization: string[]): 
 }
 
 /** Execute a read-only Git-scoped scan and persist only the final original-repository record. */
+/** The merge-base of `base` and `head`, so changes made only on the base branch are not attributed to the change. */
+async function mergeBase(repository: string, base: string, head: string): Promise<string | undefined> {
+  const result = await runGitReadBuffer(repository, ["merge-base", "--end-of-options", base, head], { maxBytes: 1024 });
+  const commit = result.stdout.toString("utf8").trim();
+  return result.code === 0 && /^[0-9a-f]{40,64}$/.test(commit) ? commit : undefined;
+}
+
+/**
+ * Git hides working-tree edits to index entries flagged skip-worktree or assume-unchanged, and a
+ * path removed from the index with `git rm --cached` shows as deleted even though an edited copy is
+ * still on disk. Both are changes in the working tree, so they are brought into scope.
+ */
+async function appendHiddenWorkingTreeChanges(repository: string, prefix: string, entries: GitScopeEntry[]): Promise<void> {
+  for (const entry of entries) {
+    if (entry.status !== "deleted") continue;
+    const present = await lstat(join(repository, entry.path)).then((metadata) => metadata.isFile(), () => false);
+    if (!present) continue;
+    const inspection = await inspectUntrackedFile(join(repository, entry.path));
+    entry.status = "modified";
+    entry.binary = inspection.binary;
+    entry.inspected = inspection.readable && !entry.generated && !inspection.binary;
+    entry.note = "Removed from the index but still present in the working tree; scanned as a working-tree change.";
+  }
+  const deletedPresent = new Set(entries.filter((entry) => entry.status === "modified").map((entry) => entry.path));
+  for (let index = entries.length - 1; index >= 0; index--) {
+    if (entries[index]!.status === "ignored" && deletedPresent.has(entries[index]!.path)) entries.splice(index, 1);
+  }
+  const listed = await runGitReadBuffer(repository, ["ls-files", "-v", "-z"], { maxBytes: 32 * 1024 * 1024 });
+  if (listed.code !== 0) throw new Error(`Git could not enumerate index flags${listed.stderr ? `: ${listed.stderr}` : "."}`);
+  const known = new Set(entries.map((entry) => entry.path));
+  for (const record of splitNul(listed.stdout)) {
+    const tag = record.slice(0, 1);
+    const path = record.slice(2);
+    if (!(tag === "S" || /^[a-z]$/.test(tag)) || !safeRepoPath(path) || !inTarget(path, prefix) || known.has(path)) continue;
+    const absolute = join(repository, path);
+    if (!(await lstat(absolute).then((metadata) => metadata.isFile(), () => false))) continue;
+    const indexed = await runGitReadBuffer(repository, ["ls-files", "-s", "-z", "--", path], { maxBytes: 64 * 1024 });
+    const blob = indexed.stdout.toString("utf8").split(" ")[1];
+    const current = await runGitReadBuffer(repository, ["hash-object", "--no-filters", "--", absolute], { maxBytes: 1024 });
+    if (blob && current.code === 0 && current.stdout.toString("utf8").trim() === blob) continue;
+    const inspection = await inspectUntrackedFile(absolute);
+    entries.push({
+      status: "modified", path, binary: inspection.binary, generated: generatedPath(path), submodule: false,
+      inspected: inspection.readable && !generatedPath(path) && !inspection.binary,
+      note: "Index entry is flagged skip-worktree or assume-unchanged, which hides its changes from git; scanned as a working-tree change.",
+    });
+    if (entries.length > MAX_SCOPE_ENTRIES) throw new Error(`Git scope exceeds the ${MAX_SCOPE_ENTRIES}-entry safety limit.`);
+  }
+}
+
+/**
+ * A change can introduce a finding outside the changed paths, for example deleting a migration that
+ * enabled row-level security. Scan the base commit with the same configuration and promote every
+ * supporting-context finding that is not present there (by identity or as moved content).
+ */
+async function findingsIntroducedOutsideChanges(
+  repository: string,
+  base: string,
+  input: ScanInput,
+  findings: Finding[],
+  primary: Set<string>,
+  prefix: string,
+  ignored: ReadonlySet<string>,
+): Promise<{ introduced: Set<Finding>; limitation?: string }> {
+  // Only findings inside the declared target and outside git-ignored paths can be promoted: a
+  // per-package job must not fail on another package, and ignored files are outside the scope.
+  const supporting = findings.filter((finding) =>
+    scopeRole(finding.location.file, primary) === "supporting_context" &&
+    inTarget(finding.location.file.replace(/\\/g, "/"), prefix) &&
+    !ignored.has(finding.location.file.replace(/\\/g, "/")));
+  if (!supporting.length) return { introduced: new Set() };
+  let snapshot: Awaited<ReturnType<typeof materializeGitCommit>>;
+  try {
+    snapshot = await materializeGitCommit(repository, base);
+  } catch (error) {
+    return { introduced: new Set(), limitation: `The base commit could not be scanned to find findings introduced outside the changed paths: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  try {
+    const baseFindings = (await executeScan({ ...input, path: snapshot.directory }, { persist: false })).canonical.findings;
+    const unmatched = supporting.filter((finding) => !baseFindings.some((candidate) => findingsMatch(candidate, finding)));
+    const moved = pairMovedFindings(
+      baseFindings.filter((candidate) => !findings.some((finding) => findingsMatch(candidate, finding))),
+      unmatched,
+    );
+    // Submodule contents are not in the base snapshot, so findings inside a submodule are not
+    // comparable and are never promoted. A base symlink that a scanner could interpret (anything
+    // but documentation) might carry context that changes base findings, so it fails closed.
+    const submodules = snapshot.skipped.filter((item) => item.kind === "submodule").map((item) => item.path);
+    const interpretableLinks = snapshot.skipped.filter((item) => item.kind === "symlink" && !isDocumentationName(basename(item.path)));
+    const inSubmodule = (file: string) => submodules.some((path) => file === path || file.startsWith(`${path}/`));
+    return {
+      introduced: new Set(unmatched.filter((finding) => !moved.has(finding) && !inSubmodule(finding.location.file.replace(/\\/g, "/")))),
+      ...(interpretableLinks.length ? {
+        limitation: `Base-commit symbolic link(s) ${interpretableLinks.map((item) => item.path).join(", ")} could not be materialized, so findings introduced outside the changed paths may be incomplete.`,
+      } : {}),
+    };
+  } finally {
+    await rm(snapshot.directory, { recursive: true, force: true }).catch(() => undefined);
+    releaseTemporaryDirectory(snapshot.directory);
+  }
+}
+
 export async function runGitScopedScan(input: ScanInput, request: GitScopeRequest): Promise<ScanResult> {
   const targetInspection = await requireSafeScanTarget(input.path);
   if (targetInspection.type !== "directory") throw new Error("Git-scoped scans require a directory target.");
   const repository = await findGitRepositoryRoot(targetInspection.canonical_path);
   const prefix = targetPrefix(repository, targetInspection.canonical_path);
-  const base = await resolveGitCommit(repository, request.base, "--diff/--base");
+  const requestedBase = await resolveGitCommit(repository, request.base, "--diff/--base");
   if (request.mode === "commit_diff" && !request.head) throw new Error("A commit-diff scan requires an exact head revision.");
   const head = request.mode === "commit_diff" ? await resolveGitCommit(repository, request.head!, "--head") : undefined;
+  const base = await mergeBase(repository, requestedBase, head ?? "HEAD") ?? requestedBase;
+  if (!head) {
+    // Comparing the working tree makes git run the repository's own filter drivers.
+    const drivers = await repositoryFilterDrivers(repository);
+    if (drivers.length) {
+      throw new Error(`Working-tree Git scope refused: the repository config defines filter driver(s) ${drivers.join(", ")} that git would execute. Use --head with an exact commit, or remove the drivers.`);
+    }
+  }
   const entries = await changedEntries(repository, base, head, prefix);
   const enumerationLimitations = request.mode === "working_tree"
     ? await appendWorkingTreeOnlyEntries(repository, prefix, entries)
     : [];
+  if (request.mode === "working_tree") await appendHiddenWorkingTreeChanges(repository, prefix, entries);
   if (request.mode === "working_tree") await classifyWorkingTreeLinks(repository, entries);
   const gitlinkLimitations = await markSubmodules(repository, entries, [base, ...(head ? [head] : [])], request.mode === "working_tree");
 
@@ -327,8 +451,19 @@ export async function runGitScopedScan(input: ScanInput, request: GitScopeReques
   try {
     const execution = await executeScan({ ...input, path: scanTarget }, { persist: false });
     const primary = new Set(primaryPaths(entries));
-    const limitations = scopeLimitations(entries, [...materializationLimitations, ...enumerationLimitations, ...gitlinkLimitations]);
-    const scopedFindings = execution.canonical.findings.map((finding) => ({ ...finding, scope_role: scopeRole(finding.location.file, primary) }));
+    const ignoredPaths = new Set(entries.filter((entry) => entry.status === "ignored").map((entry) => entry.path));
+    const introducedCheck = await findingsIntroducedOutsideChanges(repository, base, input, execution.canonical.findings, primary, prefix, ignoredPaths);
+    const limitations = scopeLimitations(entries, [
+      ...materializationLimitations, ...enumerationLimitations, ...gitlinkLimitations,
+      ...(introducedCheck.limitation ? [introducedCheck.limitation] : []),
+    ]);
+    const scopedFindings = execution.canonical.findings.map((finding) => ({
+      ...finding,
+      scope_role: introducedCheck.introduced.has(finding) ? "primary" as const : scopeRole(finding.location.file, primary),
+    }));
+    const introducedNote = introducedCheck.introduced.size
+      ? [`${introducedCheck.introduced.size} finding(s) outside the changed paths are new relative to the base commit and are treated as primary.`]
+      : [];
     const scope: GitScanScope = {
       schema_version: "1.0.0",
       mode: request.mode,
@@ -350,11 +485,14 @@ export async function runGitScopedScan(input: ScanInput, request: GitScopeReques
       findings: scopedFindings,
       git_scope: scope,
       git_safety: request.mode === "commit_diff" ? await detectGitSafety(repository) : execution.canonical.git_safety,
-      warnings: [...execution.canonical.warnings, ...limitations.map((limitation) => `Git scope partial: ${limitation}`)],
+      warnings: [...execution.canonical.warnings, ...introducedNote, ...limitations.map((limitation) => `Git scope partial: ${limitation}`)],
     };
     await saveScan(canonical, { canonicalFindings: true });
     return projectScanForDisplay(canonical, input);
   } finally {
-    if (cleanup) await rm(cleanup, { recursive: true, force: true }).catch(() => undefined);
+    if (cleanup) {
+      await rm(cleanup, { recursive: true, force: true }).catch(() => undefined);
+      releaseTemporaryDirectory(cleanup);
+    }
   }
 }

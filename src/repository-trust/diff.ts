@@ -35,6 +35,7 @@ function sorted(artifacts: RepositoryArtifact[]): RepositoryArtifact[] {
 export function diffRepositoryTrust(
   prior: RepositoryTrustDocument,
   fresh: RepositoryTrustDocument,
+  options: { missingFiles?: ReadonlySet<string> } = {},
 ): RepositoryTrustChanges {
   const priorByFingerprint = new Map(prior.artifacts.map((artifact) => [artifact.fingerprint, artifact]));
   const freshByFingerprint = new Map(fresh.artifacts.map((artifact) => [artifact.fingerprint, artifact]));
@@ -47,6 +48,13 @@ export function diffRepositoryTrust(
   for (const artifact of prior.artifacts) {
     if (freshByFingerprint.has(artifact.fingerprint)) continue;
     const capability = artifact.kind;
+    // A removed file and a file moved into an excluded directory or unsupported extension look the
+    // same from inside inspected coverage, so disappearance with the file is not proof of a fix.
+    if (options.missingFiles?.has(artifact.location.file)) {
+      notRechecked.push(artifact);
+      limitations.add("An artifact's file was removed or moved; if it moved outside inspected coverage the marker may remain, so it is not confirmed resolved.");
+      continue;
+    }
     const freshCoverage = coverageFor(fresh, capability);
     const priorValidators = validatorsFor(prior, capability);
     const freshValidators = validatorsFor(fresh, capability);
