@@ -8,7 +8,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runScan } from "./scan.js";
-import { scrubCredentialContext } from "./redact.js";
+import { isConfigurationFile, scrubCredentialContext } from "./redact.js";
 
 const GENERIC_PASSWORD = "Pq7xL9vR2mT8kW4nB6yH3jD5";
 const GITHUB_TOKEN = `ghp_${"A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"}`;
@@ -100,6 +100,30 @@ describe("scrubCredentialContext", () => {
     expect(scrubCredentialContext(text)).toBe(text);
   });
 
+  test.each([
+    ["a lowercase YAML literal", "client_secret: supersecretvalue", "supersecretvalue"],
+    ["a lowercase .env literal", "api_token=correcthorsebattery", "correcthorsebattery"],
+    ["a camelCase YAML literal", "  password: hunterTwoHunter", "hunterTwoHunter"],
+  ])("masks %s in a configuration file", (_label, text, secret) => {
+    expect(scrubCredentialContext(text, { literalValues: true })).not.toContain(secret);
+  });
+
+  test.each([
+    ["an env placeholder", "password: ${DB_PASSWORD}"],
+    ["a bare env reference", "api_key: $API_KEY"],
+    ["a template placeholder", "client_secret: {{ vault_client_secret }}"],
+    ["a boolean", "token_auth: false"],
+  ])("keeps %s in a configuration file", (_label, text) => {
+    expect(scrubCredentialContext(text, { literalValues: true })).toBe(text);
+  });
+
+  test("recognizes configuration files by name", () => {
+    for (const file of ["config/app.yaml", ".github/workflows/ci.yml", ".env", ".env.production", "settings.ini", "pyproject.toml", "app.properties", "prod.tfvars"]) {
+      expect(isConfigurationFile(file), file).toBe(true);
+    }
+    for (const file of ["src/app.ts", "main.py", "yaml.ts", "Dockerfile"]) expect(isConfigurationFile(file), file).toBe(false);
+  });
+
   test("keeps ordinary code readable", () => {
     const code = `if (user.user_metadata.role === "admin") { return renderDashboard(sessionId); }`;
     expect(scrubCredentialContext(code)).toBe(code);
@@ -124,6 +148,27 @@ describe("scan output redaction", () => {
     for (const secret of [GENERIC_PASSWORD, GITHUB_TOKEN, AWS_SECRET, HEADER_KEY, STRIPE_KEY]) {
       expect(leaks(output, secret), secret.slice(0, 4)).toBe(false);
     }
+  });
+
+  // `client_secret: supersecretvalue` reads like a variable reference in code, so the generic scrub
+  // keeps it; in a YAML file it is a literal and used to leak through the finding snippet.
+  test("a lowercase literal on the same line as a finding in a YAML file is masked", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ci-scan-yaml-literal-"));
+    await mkdir(join(dir, ".github", "workflows"), { recursive: true });
+    await writeFile(join(dir, ".github", "workflows", "triage.yml"), [
+      "on: issues",
+      "jobs:",
+      "  triage:",
+      "    runs-on: ubuntu-latest",
+      "    steps:",
+      "      - { run: 'echo \"${{ github.event.issue.title }}\"', env: { client_secret: supersecretvalue } }",
+      "",
+    ].join("\n"));
+
+    const result = await runScan({ path: dir, scanners: ["ai"] });
+
+    expect(result.findings.length).toBeGreaterThan(0);
+    expect(JSON.stringify(result)).not.toContain("supersecretvalue");
   });
 
   test("a finding on a very long minified line is scrubbed quickly", async () => {

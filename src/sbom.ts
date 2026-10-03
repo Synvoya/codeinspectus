@@ -286,7 +286,7 @@ export async function generateSbom(input: GenerateSbomInput): Promise<SbomResult
       limitations: unique(limitations),
       note: unique([
         baseNote ?? "",
-        trivyFailure ?? "SBOM generation failed. Ensure Trivy is installed (`codeinspectus repair-engines`).",
+        trivyFailure ?? "SBOM generation failed. Ensure Trivy is installed (`codeinspectus setup`).",
         parsedLockfiles === 0 ? "No parseable pubspec.lock was available for native fallback." : "",
       ]).join(" "),
     };

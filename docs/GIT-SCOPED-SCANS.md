@@ -31,8 +31,9 @@ JSON, SARIF, stored history, and text output identify:
 Deleted content is not scanned; the resulting tree and supporting context are. Ignored paths
 are enumerated as excluded metadata. Binary content, generated/build artifacts, symbolic
 links, and submodule contents are not presented as inspected source. A gap in required
-context, bounded enumeration, or any such uninspected changed surface makes Git scope
-`partial`, and CI returns exit code 2 rather than treating it as clean.
+context or any such uninspected changed surface makes Git scope `partial`, and CI returns exit
+code 2 rather than treating it as clean. A change set or tree beyond the 50,000-entry enumeration
+limit stops the scan with an error (also exit code 2) instead of reporting a partial result.
 
 Working-tree mode compares the resolved base against the combined index and filesystem,
 then adds non-ignored untracked files. Index entries flagged `skip-worktree` or

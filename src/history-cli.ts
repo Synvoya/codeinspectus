@@ -14,6 +14,7 @@ import { normalizeStoredScanForRuntime, type ScanStoreSnapshot, type StoredScanR
 import { summarizeScan } from "./summarize.js";
 import { redactSnippet } from "./redact.js";
 import type { Severity } from "./types.js";
+import { inlineField } from "./util/terminal.js";
 
 const SEVERITIES: readonly Severity[] = ["critical", "high", "medium", "low", "info"];
 const STATUSES: readonly HistoryScanStatus[] = ["clean", "findings", "partial", "unknown"];
@@ -149,7 +150,7 @@ function listText(result: ReturnType<typeof listScanHistory>): string {
 function comparisonText(result: ReturnType<typeof compareScanHistory>): string {
   const safeResult = comparisonJson(result);
   const lines = safeResult.items.map((item) =>
-    `${item.state}: ${item.finding.severity} ${item.finding.rule_id} ${item.finding.location.file}:${item.finding.location.start_line}`);
+    `${item.state}: ${item.finding.severity} ${item.finding.rule_id} ${inlineField(item.finding.location.file)}:${item.finding.location.start_line}`);
   return [
     `CodeInspectus comparison ${safeResult.old_scan_id} -> ${safeResult.new_scan_id}`,
     ...Object.entries(safeResult.summary).map(([state, count]) => `  ${state}: ${count}`),

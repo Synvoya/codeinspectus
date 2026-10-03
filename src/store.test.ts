@@ -14,6 +14,7 @@ import {
   resolveScanPath,
   safeParseScanJson,
   getScan,
+  getLatestScanForTarget,
   saveScan,
   scanPersistenceDisabled,
   normalizeStoredScanForRuntime,
@@ -228,6 +229,23 @@ describe("verification-only persistence isolation", () => {
     expect(scanPersistenceDisabled({ [INTERNAL_DISABLE_SCAN_PERSISTENCE_ENV]: "0" })).toBe(false);
     expect(scanPersistenceDisabled({ [INTERNAL_DISABLE_SCAN_PERSISTENCE_ENV]: "true" })).toBe(false);
     expect(scanPersistenceDisabled({ [INTERNAL_DISABLE_SCAN_PERSISTENCE_ENV]: "1" })).toBe(true);
+  });
+
+  // A newer Git-scoped scan (changed paths only) used to be picked as the implicit rescan prior.
+  test("the implicit rescan prior is the latest full scan, never a Git-scoped one", async () => {
+    const target = `/tmp/codeinspectus-prior-${randomUUID()}`;
+    const fixture = (scanId: string, startedAt: string, gitScope?: unknown) => ({
+      scan_id: scanId, target, started_at: startedAt, duration_ms: 1, engines_run: [], engine_details: [], offline: true,
+      detected_technologies: [], pack_coverage: [], repository_trust: createUnavailableRepositoryTrust(),
+      summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 }, findings: [], truncated: false,
+      total_findings_before_limit: 0, disclaimer: "prior fixture", warnings: [], git_safety: { state: "unknown" as const },
+      ...(gitScope ? { git_scope: gitScope as never } : {}),
+    });
+    const full = `scan-${randomUUID()}`;
+    await saveScan(fixture(full, "2026-10-01T00:00:00.000Z"), { canonicalFindings: true });
+    await saveScan(fixture(`scan-${randomUUID()}`, "2026-10-02T00:00:00.000Z", { mode: "working_tree" }), { canonicalFindings: true });
+
+    expect((await getLatestScanForTarget(target))?.scan_id).toBe(full);
   });
 
   test("a verification scan stays available in memory but is not written to the managed store", async () => {

@@ -12,7 +12,7 @@ import { lstat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { executeScan } from "./scan.js";
 import { requireSafeScanTarget } from "./path-safety.js";
-import { getScan, getLatestScanForTarget, normalizeStoredScanForRuntime } from "./store.js";
+import { getScan, getLatestScanForTarget, isFullScan, normalizeStoredScanForRuntime } from "./store.js";
 import { findingsMatch, pairMovedFindings } from "./dedup.js";
 import { STANDING_DISCLAIMER } from "./config.js";
 import { SEVERITY_RANK } from "./types.js";
@@ -202,6 +202,13 @@ export async function runRescan(input: RescanInput): Promise<RescanResult> {
     throw new Error(
       `Scan '${prior.scan_id}' was taken of a different target (${prior.target}), not ${canonical}. ` +
         "Rescan the same path, or omit prior_scan_id to use the latest scan of this path.",
+    );
+  }
+
+  if (!isFullScan(prior)) {
+    throw new Error(
+      `Scan '${prior.scan_id}' was a Git-scoped or repository-history scan; rescan compares against a full scan of ${canonical}. ` +
+        "Pass the scan_id of a full scan of this path, or omit prior_scan_id to use the latest one.",
     );
   }
 

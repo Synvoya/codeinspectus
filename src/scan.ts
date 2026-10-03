@@ -44,7 +44,7 @@ import { normalizeEngineOutput } from "./sarif/normalize.js";
 import { routeScanFindings } from "./file-routing.js";
 import { detectGitSafety } from "./git-safety.js";
 import { dedupFindings } from "./dedup.js";
-import { scrubCredentialContext } from "./redact.js";
+import { isConfigurationFile, scrubCredentialContext } from "./redact.js";
 import { tagFindings } from "./compliance/mapper.js";
 import { buildComplianceOverview } from "./compliance/report.js";
 import { hasUnverifiedSecretCoverage, secretSuppressionWarnings } from "./gitleaks-suppression.js";
@@ -358,8 +358,9 @@ export async function executeScan(
     // Single chokepoint before persistence and every presentation surface: context windows can
     // carry neighbouring or truncated credentials that per-engine redaction cannot localize.
     for (const finding of deduped) {
-      if (finding.location.snippet) finding.location.snippet = scrubCredentialContext(finding.location.snippet);
-      finding.message = scrubCredentialContext(finding.message);
+      const scrub = { literalValues: isConfigurationFile(finding.location.file) };
+      if (finding.location.snippet) finding.location.snippet = scrubCredentialContext(finding.location.snippet, scrub);
+      finding.message = scrubCredentialContext(finding.message, scrub);
     }
     await tagFindings(deduped);
 

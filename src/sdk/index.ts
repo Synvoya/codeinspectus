@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { BaselineComparison } from "../baseline.js";
 import type { BundleManifest } from "../bundle/schemas.js";
@@ -19,7 +20,7 @@ import type {
 } from "../repository-trust/schemas.js";
 import type { CleanupPlan, CleanupResult } from "../repository-trust/cleanup.js";
 
-export const SDK_API_VERSION = "3.3.0" as const;
+export const SDK_API_VERSION = "3.3.1" as const;
 export const SDK_COMPATIBILITY = Object.freeze({
   cli_major: 3,
   export_schema: "3.0.0",
@@ -189,10 +190,25 @@ function appendOption(args: string[], option: string, value: string | number | u
   if (value !== undefined) args.push(option, String(value));
 }
 
+/** Path operands are made absolute so a value such as `--working-tree` can never be parsed as a CLI option. */
+function pathOperand(value: string, cwd: string | undefined): string {
+  return resolve(cwd ?? process.cwd(), value);
+}
+
+/** Identifier operands (scan and finding IDs) never start with "-"; refuse one that would parse as an option. */
+function idOperand(value: string): string {
+  if (value.startsWith("-")) throw new TypeError(`CodeInspectus SDK: identifier must not start with "-": ${JSON.stringify(value.slice(0, 64))}`);
+  return value;
+}
+
 function parseJsonResult<T>(result: CodeInspectusCommandResult, expectedSchema: string): CodeInspectusJsonCommandResult<T> {
   let data: unknown;
   try { data = JSON.parse(result.stdout); }
-  catch { throw new CodeInspectusSdkError("INVALID_JSON", "CodeInspectus did not return valid JSON for the typed SDK operation.", result); }
+  catch {
+    // A CLI usage error prints no JSON; surface its exit code and first stderr line instead of only "invalid JSON".
+    const reason = result.stderr.split("\n").map((line) => line.trim()).find(Boolean);
+    throw new CodeInspectusSdkError("INVALID_JSON", `CodeInspectus did not return valid JSON for the typed SDK operation (exit ${result.exitCode})${reason ? `: ${reason.slice(0, 300)}` : "."}`, result);
+  }
   if (!data || typeof data !== "object") throw new CodeInspectusSdkError("INVALID_JSON", "CodeInspectus returned a non-object JSON document.", result);
   if ((data as { schema_version?: unknown }).schema_version !== expectedSchema) {
     throw new CodeInspectusSdkError("INCOMPATIBLE_CONTRACT", `Expected CodeInspectus schema ${expectedSchema}.`, result);
@@ -281,7 +297,7 @@ export class CodeInspectusClient {
   }
 
   async scan(target: string, options: ScanOptions = {}): Promise<CodeInspectusJsonCommandResult<JsonExportV3>> {
-    const args = ["scan", target, "--format", "json"];
+    const args = ["scan", pathOperand(target, this.options.cwd), "--format", "json"];
     if (options.scanners?.length) args.push("--scanner", options.scanners.join(","));
     appendOption(args, "--severity", options.severityThreshold);
     appendOption(args, "--max-findings", options.maxFindings);
@@ -295,7 +311,7 @@ export class CodeInspectusClient {
   }
 
   async exportScan(scanId: string, options: CommandRunOptions = {}): Promise<CodeInspectusJsonCommandResult<JsonExportV3>> {
-    return parseJsonResult<JsonExportV3>(await this.run(["export", scanId, "--format", "json"], options), SDK_COMPATIBILITY.export_schema);
+    return parseJsonResult<JsonExportV3>(await this.run(["export", idOperand(scanId), "--format", "json"], options), SDK_COMPATIBILITY.export_schema);
   }
 
   async listHistory(options: HistoryListOptions = {}): Promise<CodeInspectusJsonCommandResult<HistoryListResultV1>> {
@@ -311,11 +327,11 @@ export class CodeInspectusClient {
   }
 
   async compareHistory(oldScanId: string, newScanId: string, options: CommandRunOptions = {}): Promise<CodeInspectusJsonCommandResult<HistoryComparisonV1>> {
-    return parseJsonResult<HistoryComparisonV1>(await this.run(["scans", "compare", oldScanId, newScanId, "--format", "json"], options), SDK_COMPATIBILITY.history_schema);
+    return parseJsonResult<HistoryComparisonV1>(await this.run(["scans", "compare", idOperand(oldScanId), idOperand(newScanId), "--format", "json"], options), SDK_COMPATIBILITY.history_schema);
   }
 
   async scanRepositoryHistory(repository: string, options: RepositoryHistoryScanOptions): Promise<CodeInspectusJsonCommandResult<RepositoryHistoryManifestV1>> {
-    const args = ["history", "scan", repository, "--from", options.from, "--to", options.to, "--since", options.since, "--until", options.until, "--max-commits", String(options.maxCommits), "--format", "json"];
+    const args = ["history", "scan", pathOperand(repository, this.options.cwd), "--from", options.from, "--to", options.to, "--since", options.since, "--until", options.until, "--max-commits", String(options.maxCommits), "--format", "json"];
     appendOption(args, "--manifest", options.manifestPath);
     if (options.scanners?.length) args.push("--scanner", options.scanners.join(","));
     appendOption(args, "--max-findings", options.maxFindings);
@@ -324,18 +340,18 @@ export class CodeInspectusClient {
   }
 
   async createIssuePayload(scanId: string, findingId: string, options: IssuePayloadOptions): Promise<CodeInspectusJsonCommandResult<IssuePayloadV1>> {
-    const args = ["issue", "export", scanId, findingId, "--adapter", options.adapter, "--visibility", options.visibility];
+    const args = ["issue", "export", idOperand(scanId), idOperand(findingId), "--adapter", options.adapter, "--visibility", options.visibility];
     appendOption(args, "--output", options.output);
     return parseJsonResult<IssuePayloadV1>(await this.run(args, options), SDK_COMPATIBILITY.issue_payload_schema);
   }
 
   async listTriage(scanId: string, options: CommandRunOptions & { limit?: number } = {}): Promise<CodeInspectusJsonCommandResult<TriageListV1>> {
-    const args = ["triage", "list", scanId, "--format", "json"];
+    const args = ["triage", "list", idOperand(scanId), "--format", "json"];
     appendOption(args, "--limit", options.limit);
     return parseJsonResult<TriageListV1>(await this.run(args, options), SDK_COMPATIBILITY.triage_schema);
   }
 
   async verifyBundle(path: string, options: CommandRunOptions = {}): Promise<CodeInspectusJsonCommandResult<BundleManifestV1>> {
-    return parseJsonResult<BundleManifestV1>(await this.run(["bundle", "verify", path, "--format", "json"], options), SDK_COMPATIBILITY.bundle_schema);
+    return parseJsonResult<BundleManifestV1>(await this.run(["bundle", "verify", pathOperand(path, this.options.cwd), "--format", "json"], options), SDK_COMPATIBILITY.bundle_schema);
   }
 }

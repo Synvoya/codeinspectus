@@ -34,13 +34,35 @@ export interface OutputPathInspection {
   error?: string;
 }
 
+/**
+ * Root-owned links directly under the filesystem root (macOS /tmp, /var, /etc) are operating-system
+ * layout that a scanned repository cannot create, even when the scan runs as root. An output path
+ * through one is collapsed to its real path first, so every later check (no link components,
+ * containment in the scan target) runs on the canonical path. Windows reports uid 0 for every file,
+ * so it gets no exemption.
+ */
+async function collapseSystemRootLink(path: string): Promise<string> {
+  if (process.platform === "win32") return path;
+  const root = parse(path).root;
+  const first = path.slice(root.length).split(sep).find(Boolean);
+  if (!first) return path;
+  const head = resolve(root, first);
+  try {
+    const metadata = await lstat(head);
+    if (!metadata.isSymbolicLink() || metadata.uid !== 0) return path;
+    return resolve(await realpath(head), relative(head, path));
+  } catch {
+    return path;
+  }
+}
+
 /** Inspect an exact output file without following symlinks or creating parents. */
 export async function inspectOutputFile(
   input: string,
   canonicalTarget: string | undefined,
   approveInsideTarget: boolean,
 ): Promise<OutputPathInspection> {
-  const resolvedPath = resolve(input);
+  const resolvedPath = await collapseSystemRootLink(resolve(input));
   const insideTarget = canonicalTarget ? pathIsWithin(canonicalTarget, resolvedPath) : false;
   const base = {
     mode: "file" as const,
@@ -303,7 +325,7 @@ export async function inspectOutputDirectory(
     };
   }
 
-  const resolvedPath = resolve(input);
+  const resolvedPath = await collapseSystemRootLink(resolve(input));
   if (containsTraversalSegment(input)) {
     return {
       mode: "directory",

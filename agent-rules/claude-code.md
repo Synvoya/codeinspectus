@@ -7,8 +7,8 @@ Scans and reports never edit or delete your source code or repository (engine da
 1. **Scan.** Call `codeinspectus_scan` with the absolute repo path. It runs locally with
    zero network egress and returns CWE-keyed findings, each with a `remediation`. Inspect
    `engine_setup`: if it is not `ready`, explain the exact state (partial engine coverage only for
-   `repair_required`; DB freshness/rescan continuity for `db_refresh_recommended`) and ask before
-   running `npx codeinspectus repair-engines` in the user's terminal. Never download engines
+   `repair_required`; DB freshness/rescan continuity for `db_refresh_recommended`) and ask for approval
+   before setup through `codeinspectus_setup` (plan first) or `npx codeinspectus setup`. Never download engines
    silently or as part of the scan.
 2. **Surface — always, before touching any code.** Present the findings to the user first.
    Group by severity, **criticals first**. For each finding give: (a) a plain-language

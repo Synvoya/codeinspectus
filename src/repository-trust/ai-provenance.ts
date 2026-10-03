@@ -1,4 +1,5 @@
 import { constants } from "node:fs";
+import { inflateSync } from "node:zlib";
 import { lstat, open, readdir } from "node:fs/promises";
 import { basename, dirname, extname, join, relative } from "node:path";
 import ExifReader from "exifreader";
@@ -460,12 +461,74 @@ function flattenMetadata(value: unknown, path = "", output: Array<{ field: strin
   return output;
 }
 
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const PNG_TEXT_MAX_INFLATED_BYTES = 256 * 1024;
+
+/**
+ * ExifReader only decompresses zTXt and compressed iTXt chunks in its async mode, and does so without
+ * an output bound. Read them here with a hard inflate limit so a compression bomb is a disclosed
+ * limitation, not a memory spike, and the text is still checked for explicit AI declarations.
+ */
+function compressedPngText(buffer: Buffer): { entries: Array<{ field: string; value: string }>; limited: boolean } {
+  const entries: Array<{ field: string; value: string }> = [];
+  let limited = false;
+  if (buffer.length < 8 || !buffer.subarray(0, 8).equals(PNG_SIGNATURE)) return { entries, limited };
+  let offset = 8;
+  for (let chunks = 0; offset + 12 <= buffer.length && chunks < 10_000; chunks++) {
+    const length = buffer.readUInt32BE(offset);
+    const type = buffer.toString("latin1", offset + 4, offset + 8);
+    const dataEnd = offset + 8 + length;
+    if (dataEnd + 4 > buffer.length || type === "IEND") break;
+    if (type === "zTXt" || type === "iTXt") {
+      const data = buffer.subarray(offset + 8, dataEnd);
+      const keywordEnd = data.indexOf(0);
+      let compressed: Buffer | undefined;
+      let encoding: BufferEncoding = "latin1";
+      if (keywordEnd > 0 && keywordEnd <= 79) {
+        if (type === "zTXt" && data[keywordEnd + 1] === 0) compressed = data.subarray(keywordEnd + 2);
+        if (type === "iTXt" && data[keywordEnd + 1] === 1 && data[keywordEnd + 2] === 0) {
+          const languageEnd = data.indexOf(0, keywordEnd + 3);
+          const translatedEnd = languageEnd < 0 ? -1 : data.indexOf(0, languageEnd + 1);
+          if (translatedEnd >= 0) { compressed = data.subarray(translatedEnd + 1); encoding = "utf8"; }
+        }
+      }
+      if (compressed) {
+        try {
+          const text = inflateSync(compressed, { maxOutputLength: PNG_TEXT_MAX_INFLATED_BYTES }).toString(encoding);
+          entries.push({ field: `png.${type}.${data.toString("latin1", 0, keywordEnd)}`, value: clipped(text) });
+        } catch {
+          limited = true;
+        }
+      }
+    }
+    offset = dataEnd + 4;
+  }
+  return { entries, limited };
+}
+
+/** Metadata field names come from the file: escape anything outside printable ASCII and bound the length. */
+function safeMetadataField(field: string): string {
+  const escaped = field.replace(/[^\x20-\x7e]/g, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  return escaped.length > 160 ? `${escaped.slice(0, 160)}…` : escaped;
+}
+
 function scanMediaMetadata(file: CandidateFile, buffer: Buffer): { artifacts: RepositoryArtifact[]; limitation?: string } {
+  const compressed = compressedPngText(buffer);
+  const compressedLimitation = compressed.limited
+    ? `${file.relative}: a compressed PNG text chunk could not be inspected within the ${PNG_TEXT_MAX_INFLATED_BYTES / 1024} KiB bound.`
+    : undefined;
   try {
-    const tags = ExifReader.load(buffer, { expanded: true, async: false });
+    let tags: unknown = {};
+    try {
+      tags = ExifReader.load(buffer, { expanded: true, async: false });
+    } catch (error) {
+      // A PNG may carry only compressed text chunks, which ExifReader reports as missing metadata.
+      if (!(error instanceof ExifReader.errors.MetadataMissingError) || !compressed.entries.length) throw error;
+    }
     const artifacts: RepositoryArtifact[] = [];
     const seen = new Set<string>();
-    for (const entry of flattenMetadata(tags)) {
+    for (const rawEntry of [...flattenMetadata(tags), ...compressed.entries]) {
+      const entry = { field: safeMetadataField(rawEntry.field), value: rawEntry.value };
       if (!AI_VENDOR_PATTERN.test(entry.value) && !AI_SOURCE_TYPE_PATTERN.test(entry.value)) continue;
       // ExifReader intentionally exposes some container tags through multiple compatibility
       // groups (for example png, pngText, and value/description views). Report one semantic
@@ -493,9 +556,9 @@ function scanMediaMetadata(file: CandidateFile, buffer: Buffer): { artifacts: Re
         limitations: ["Metadata is declarative and can be added, changed, or removed independently of the media content."],
       }));
     }
-    return { artifacts };
+    return { artifacts, ...(compressedLimitation ? { limitation: compressedLimitation } : {}) };
   } catch (error) {
-    if (error instanceof ExifReader.errors.MetadataMissingError) return { artifacts: [] };
+    if (error instanceof ExifReader.errors.MetadataMissingError) return { artifacts: [], ...(compressedLimitation ? { limitation: compressedLimitation } : {}) };
     return { artifacts: [], limitation: `${file.relative}: EXIF/XMP metadata could not be parsed.` };
   }
 }
@@ -631,15 +694,22 @@ function c2paArtifact(file: CandidateFile, inspection: C2paInspection): Reposito
 }
 
 export const defaultGitHistoryReader: GitHistoryReader = async (target, maxCommits) => {
-  const cwd = (await lstat(target)).isDirectory() ? target : dirname(target);
+  const isDirectory = (await lstat(target)).isDirectory();
+  const cwd = isDirectory ? target : dirname(target);
   try {
     // The hardened read-only layer: repository config cannot make git run signature programs.
-    const top = await runGitReadBuffer(cwd, ["rev-parse", "--show-toplevel"], { maxBytes: 64 * 1024 });
+    const top = await runGitReadBuffer(cwd, ["rev-parse", "--show-toplevel", "--show-prefix"], { maxBytes: 64 * 1024 });
     if (top.code !== 0) return { applicable: false, truncated: false, records: [] };
-    const root = top.stdout.toString("utf8").trim();
+    const [root = "", prefix = ""] = top.stdout.toString("utf8").split(/\r?\n/);
+    // A subdirectory or single-file scan only reports trailers on commits that touched that target,
+    // not every commit in the enclosing repository.
+    const scope = isDirectory ? prefix.replace(/\/$/, "") : `${prefix}${basename(target)}`;
     let log;
     try {
-      log = await runGitReadBuffer(root, ["log", "--no-show-signature", `--max-count=${maxCommits + 1}`, "--format=%H%x00%B%x00", "-z"], { maxBytes: 8 * 1024 * 1024 });
+      log = await runGitReadBuffer(root, [
+        "log", "--no-show-signature", `--max-count=${maxCommits + 1}`, "--format=%H%x00%B%x00", "-z",
+        ...(scope ? ["--", `:(literal)${scope}`] : []),
+      ], { maxBytes: 8 * 1024 * 1024 });
     } catch {
       // Output beyond the bound: report truncated coverage rather than a silent "ran" with no records.
       return { applicable: true, truncated: true, records: [] };

@@ -30,6 +30,48 @@ async function root(): Promise<string> {
   const value = await mkdtemp(join(await realpath(tmpdir()), "ci-triage-")); cleanup.push(value); return value;
 }
 
+function located(fp: string, line: number, snippet: string): Finding {
+  const base = finding(fp);
+  return { ...base, id: `CI-${line}`, location: { file: "src/a.ts", start_line: line, end_line: line, snippet } };
+}
+
+// Fingerprints include line numbers: inserting lines above a triaged finding used to drop its
+// annotation from every later scan, baseline and export.
+describe("triage carry-over across moved lines", () => {
+  async function carried(sourceFindings: Finding[], freshFindings: Finding[], freshTarget = "/repo") {
+    const directory = await root();
+    const source = scan(1, "/repo", sourceFindings);
+    const fresh = scan(2, freshTarget, freshFindings);
+    const event = createTriageEvent({ scan: source, finding: sourceFindings[0]!, state: "Accepted", reason: "reviewed" });
+    await writeTriageEvent(event, { root: directory });
+    const snapshot = await inspectTriageStore(fresh, { root: directory, includeMemory: false, loadScan: async (id) => (id === source.scan_id ? source : undefined) });
+    return matchingTriageAnnotations(fresh, snapshot).map((match) => match.finding_id);
+  }
+
+  test("an annotation follows a finding that only moved lines", async () => {
+    expect(await carried([located("fp-3", 3, "eval(input)")], [located("fp-9", 9, "eval(input)")])).toEqual(["CI-9"]);
+  });
+
+  test("changed code is not the same finding", async () => {
+    expect(await carried([located("fp-3", 3, "eval(input)")], [located("fp-9", 9, "eval(otherInput)")])).toEqual([]);
+  });
+
+  test("a duplicated identical line never inherits the original's triage state", async () => {
+    expect(await carried([located("fp-3", 3, "eval(input)")], [located("fp-2", 2, "eval(input)"), located("fp-9", 9, "eval(input)")])).toEqual([]);
+  });
+
+  test("a source scan of another target is never used", async () => {
+    const directory = await root();
+    const source = scan(1, "/other", [located("fp-3", 3, "eval(input)")]);
+    const fresh = scan(2, "/repo", [located("fp-9", 9, "eval(input)")]);
+    const event = { ...createTriageEvent({ scan: fresh, finding: fresh.findings[0]!, state: "Accepted", reason: "reviewed" }), source_scan_id: source.scan_id,
+      finding_identity: { fingerprint: "fp-3", rule_id: "rule", file: "src/a.ts", producer_components: ["rule:a"] } };
+    await writeTriageEvent(event, { root: directory });
+    const snapshot = await inspectTriageStore(fresh, { root: directory, includeMemory: false, loadScan: async () => source });
+    expect(matchingTriageAnnotations(fresh, snapshot)).toEqual([]);
+  });
+});
+
 describe("append-only triage store", () => {
   test("projects create, update and delete events without deleting audit history", async () => {
     const directory = await root(); const source = scan(); const item = source.findings[0]!;

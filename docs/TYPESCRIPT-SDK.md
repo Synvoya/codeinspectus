@@ -40,7 +40,7 @@ The SDK exports explicit contract names:
 - `RepositoryHistoryManifestV1`
 - `IssuePayloadV1`, `IssueAdapter`, `DestinationVisibility`
 
-`SDK_API_VERSION` is `3.3.0`. `SDK_COMPATIBILITY` records export schema `3.0.0`,
+`SDK_API_VERSION` is `3.3.1`. `SDK_COMPATIBILITY` records export schema `3.0.0`,
 repository-trust schema `1.0.0`, and cleanup schema `1.0.0`. The V3 SDK accepts those schema versions and fails closed on another version;
 additive optional fields within a compatible schema do not break consumers. Removing or changing a
 required field, exit meaning or command semantic requires a new contract version and SDK major.

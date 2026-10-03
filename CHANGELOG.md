@@ -4,6 +4,72 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [3.3.1] — 2026-10-04
+
+### Security
+- MCP `scan`, `rescan`, `generate_sbom` and `plan_cleanup` refuse an empty or relative `path`. It
+  previously resolved against the MCP server's working directory, so a client could scan (or plan
+  cleanup in) a directory other than the one it meant.
+- The TypeScript SDK passes scan targets, repository paths and bundle paths to the CLI as absolute
+  paths, and refuses scan or finding IDs that start with `-`. Untrusted input such as
+  `--working-tree` could previously be parsed as a CLI option.
+- Finding snippets from configuration files (YAML, `.env`, `.npmrc`, `.pypirc`, INI, TOML, properties, HCL) mask
+  unquoted lowercase values of credential-named keys, such as `client_secret: supersecretvalue`.
+  In code these read as variable references and are kept; in configuration files they are literals
+  and leaked. Placeholders (`${VAR}`, `$VAR`, `{{ … }}`) and booleans are kept.
+- Text output renders line breaks and bidirectional controls in file names, notes and warnings as
+  visible `\uXXXX` escapes. A file name containing a newline could start a fake line, such as a
+  fake critical finding, in the scan summary, `scans compare` and `triage` output.
+- Git child processes no longer inherit `GIT_LITERAL_PATHSPECS`, `GIT_GLOB_PATHSPECS`,
+  `GIT_NOGLOB_PATHSPECS` or `GIT_ICASE_PATHSPECS` from the caller, so pathspec matching cannot be
+  changed by the environment CodeInspectus runs in.
+- Issue payloads (`issue export`) turn `&` and `<` from repository text into entities and show
+  zero-width and bidirectional characters as visible escapes. A crafted file name or message could
+  previously open raw HTML, such as a link, in tracker Markdown or render as different text.
+
+### Fixed
+- `--output` and `--output-dir` accept paths below root-owned top-level system links such as macOS
+  `/tmp` (they were refused as symbolic-link components). The link is resolved first and every
+  other check, including whether the output is inside the scan target, runs on the real path.
+  User-created links remain refused.
+- Triage annotations follow a finding that only moved lines. Fingerprints include line numbers, so
+  inserting lines above a triaged finding dropped its annotation from later scans, baselines and
+  exports. The annotation's source scan (same target) supplies a line-independent content anchor;
+  identical occurrences carry over only while their count is unchanged, so a duplicated line never
+  inherits the original's triage state.
+- Rescan's implicit prior is the latest full scan of the target. A newer Git-scoped scan (changed
+  paths only) or repository-history scan was selected, making unchanged findings look newly
+  introduced; passing one explicitly as `prior_scan_id` is now refused with an explanation.
+- Scanning a subdirectory or a single file reports AI co-author trailers only from commits that
+  touched that path, not from every commit in the enclosing repository.
+- Compressed PNG text chunks (`zTXt`, compressed `iTXt`) are inspected for explicit AI
+  declarations with a 256 KiB inflate bound; they were silently skipped while explicit attribution
+  reported `ran`. A chunk beyond the bound is a disclosed limitation. Metadata field names taken
+  from a file are escaped and length-bounded in `location.field`.
+- Under a severity display filter, the text headline lists only the included levels and says lower
+  severities are hidden. It printed `0 medium` under `--severity high` while medium findings existed.
+  JSON `summary` keeps counting the displayed set, as before.
+- Engine setup advice points to `npx codeinspectus setup` or the `codeinspectus_setup` tool (plan
+  first) everywhere, including `engine_setup.repair_command`, scan text, engine errors and the agent
+  rules. Setup also covers hash-mismatched engines and a Trivy DB without provenance;
+  `repair-engines` remains for advanced use.
+- SDK errors for a CLI usage failure include the exit code and the CLI's stderr reason instead of only
+  "did not return valid JSON".
+
+### Documentation
+- CLI reference: `scans rerun` supports `text|json`; `bundle export` supports `json|sarif` and writes
+  to stdout; `history scan` dates are UTC RFC 3339 timestamps; `preflight` accepts text/JSON output
+  and no policy or Git scope options.
+- Git-scoped scans: a change set beyond the 50,000-entry limit stops with an error (exit 2) rather
+  than reporting partial scope.
+- The multi-review skill defaults to one review round; another needs user approval.
+- Rule provenance states that the Lezer and smol-toml licenses are listed in
+  `THIRD-PARTY-NOTICES.md` and ship in their own npm packages (they were described as reproduced).
+
+### Changed
+- Package, MCP server, CLI and SDK API versions are synchronized at `3.3.1`. Export `3.0.0`,
+  repository-trust `1.0.0` and cleanup `1.0.0` contracts are unchanged.
+
 ## [3.3.0] — 2026-09-30
 
 ### Added

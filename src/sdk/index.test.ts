@@ -1,6 +1,6 @@
 import { access, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { CodeInspectusClient, CodeInspectusSdkError, SDK_COMPATIBILITY } from "./index.js";
 
@@ -22,6 +22,21 @@ afterEach(async () => {
 });
 
 describe("public SDK process wrapper", () => {
+  test("a CLI usage error reports its exit code and stderr reason", async () => {
+    const script = await fakeCli(`process.stderr.write("CodeInspectus history: History --format must be text or json.\\n"); process.exitCode = 2;`);
+    const client = new CodeInspectusClient({ command: process.execPath, commandArgs: [script] });
+    await expect(client.exportScan("scan-1")).rejects.toMatchObject({ code: "INVALID_JSON", message: expect.stringContaining("(exit 2): CodeInspectus history: History --format must be text or json.") });
+  });
+
+  test("never lets a path or identifier operand parse as a CLI option", async () => {
+    const script = await fakeCli(`process.stdout.write(JSON.stringify({ schema_version: "3.0.0", scan: {}, coverage: { aggregate: "complete" }, repository_trust: { schema_version: "1.0.0" }, findings: [] }));`);
+    const client = new CodeInspectusClient({ command: process.execPath, commandArgs: [script], cwd: tmpdir() });
+    const result = await client.scan("--working-tree");
+    expect(result.args[1]).toBe(resolve(tmpdir(), "--working-tree"));
+    await expect(client.exportScan("--format=csv")).rejects.toThrow(TypeError);
+    await expect(client.createIssuePayload("scan-1", "--output=/tmp/x", { adapter: "github", visibility: "private" })).rejects.toThrow(TypeError);
+  });
+
   test("passes arguments without a shell and returns valid partial-policy JSON at exit 2", async () => {
     const script = await fakeCli(`
       const args = process.argv.slice(2);
@@ -33,8 +48,8 @@ describe("public SDK process wrapper", () => {
     const client = new CodeInspectusClient({ command: process.execPath, commandArgs: [script] });
     const result = await client.scan(target, { scanners: ["ai"], includeCompliance: false });
     expect(result.exitCode).toBe(2);
-    expect(result.data).toMatchObject({ schema_version: "3.0.0", scan: { target }, coverage: { aggregate: "partial" }, repository_trust: { schema_version: "1.0.0" } });
-    expect(result.args).toEqual(["scan", target, "--format", "json", "--scanner", "ai", "--no-compliance"]);
+    expect(result.data).toMatchObject({ schema_version: "3.0.0", scan: { target: resolve(target) }, coverage: { aggregate: "partial" }, repository_trust: { schema_version: "1.0.0" } });
+    expect(result.args).toEqual(["scan", resolve(target), "--format", "json", "--scanner", "ai", "--no-compliance"]);
     await expect(access("/tmp/sdk-shell-injection-must-not-exist")).rejects.toThrow();
   });
 
@@ -63,13 +78,13 @@ describe("public SDK process wrapper", () => {
     const comparison = await client.compareHistory("scan-00000000-0000-4000-8000-000000000001", "scan-00000000-0000-4000-8000-000000000002");
     expect(comparison.args.slice(0, 2)).toEqual(["scans", "compare"]);
     const repositoryHistory = await client.scanRepositoryHistory("/repo", { from: "v1", to: "HEAD", since: "2026-07-01T00:00:00Z", until: "2026-07-31T00:00:00Z", maxCommits: 10, scanners: ["ai"], includeCompliance: false });
-    expect(repositoryHistory.args).toEqual(["history", "scan", "/repo", "--from", "v1", "--to", "HEAD", "--since", "2026-07-01T00:00:00Z", "--until", "2026-07-31T00:00:00Z", "--max-commits", "10", "--format", "json", "--scanner", "ai", "--no-compliance"]);
+    expect(repositoryHistory.args).toEqual(["history", "scan", resolve("/repo"), "--from", "v1", "--to", "HEAD", "--since", "2026-07-01T00:00:00Z", "--until", "2026-07-31T00:00:00Z", "--max-commits", "10", "--format", "json", "--scanner", "ai", "--no-compliance"]);
     const issue = await client.createIssuePayload("scan-00000000-0000-4000-8000-000000000001", "CI-0001", { adapter: "github", visibility: "private", output: "/evidence/issue.json" });
     expect(issue.args).toEqual(["issue", "export", "scan-00000000-0000-4000-8000-000000000001", "CI-0001", "--adapter", "github", "--visibility", "private", "--output", "/evidence/issue.json"]);
     const triage = await client.listTriage("scan-00000000-0000-4000-8000-000000000001", { limit: 2 });
     expect(triage.args).toContain("triage");
     const bundle = await client.verifyBundle("/evidence/bundle");
-    expect(bundle.args).toEqual(["bundle", "verify", "/evidence/bundle", "--format", "json"]);
+    expect(bundle.args).toEqual(["bundle", "verify", resolve("/evidence/bundle"), "--format", "json"]);
   }, SDK_MULTI_PROCESS_TEST_TIMEOUT_MS);
 
   test("bounds output and timeout independently", async () => {

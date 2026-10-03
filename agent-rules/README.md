@@ -46,9 +46,9 @@ Codex defaults MCP tool calls to 60 seconds. CodeInspectus allows each security
 engine up to five minutes, so 600 seconds prevents premature client timeouts on
 larger repositories. This Codex-only setting does not alter other clients.
 
-First run: `npx codeinspectus repair-engines` once to fetch + verify the required engine
-binaries and offline Trivy DB. Later scans expose structured `engine_setup` state; if it is not
-`ready`, the agent must explain the coverage impact and ask before running this networked repair.
+First run: `npx codeinspectus setup` (or `codeinspectus_setup` from the agent) reviews, fetches and verifies
+the engine binaries and offline Trivy DB after approval. Later scans expose structured `engine_setup` state; if it is not
+`ready`, the agent must explain the coverage impact and ask before running this networked setup.
 
 ## 2. Install the rule
 

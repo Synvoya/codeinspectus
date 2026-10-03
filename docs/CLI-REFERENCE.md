@@ -28,7 +28,8 @@ Policy and Git scope options:
 - `--diff BASE_REVISION --head HEAD_REVISION`
 - `--working-tree --base BASE_REVISION`
 
-`preflight` never scans, repairs, downloads, authenticates, or writes. A Git-scoped scan reports
+`preflight` never scans, repairs, downloads, authenticates, or writes. It accepts the shared scan
+options with `--format text|json` only; policy and Git scope options apply to `scan`. A Git-scoped scan reports
 changed and supporting-context findings separately and never checks out or changes repository state.
 
 ## Export, history, and triage
@@ -39,7 +40,7 @@ codeinspectus scans list [--repository PATH] [--path PATH] [--severity LEVEL]
                          [--status clean|findings|partial|unknown] [--since DATE] [--until DATE]
                          [--limit N] [--format text|json]
 codeinspectus scans show SCAN_ID [--format text|json]
-codeinspectus scans rerun SCAN_ID [--format text|json|sarif|csv]
+codeinspectus scans rerun SCAN_ID [--format text|json]
 codeinspectus scans compare OLD_SCAN_ID NEW_SCAN_ID [--format text|json]
 
 codeinspectus triage add SCAN_ID FINDING_ID --state STATE --reason TEXT [--actor LABEL]
@@ -58,12 +59,13 @@ suppresses the raw finding.
 ```bash
 codeinspectus bundle create SCAN_ID --output-dir DIRECTORY
 codeinspectus bundle verify BUNDLE_DIRECTORY
-codeinspectus bundle export BUNDLE_DIRECTORY --format json|sarif|csv [--output FILE]
+codeinspectus bundle export BUNDLE_DIRECTORY --format json|sarif
 codeinspectus bundle compare OLD_BUNDLE NEW_BUNDLE [--format text|json]
 ```
 
 Verification checks the manifest schema, allowed paths, artifact hashes, redaction boundary, and
-embedded canonical scan before a bundle can be exported or compared.
+embedded canonical scan before a bundle can be exported or compared. `bundle export` writes the
+sealed JSON or SARIF artifact byte-for-byte to stdout; redirect it to save a file.
 
 ## Bounded repository sets and history
 
@@ -72,12 +74,12 @@ codeinspectus bulk scan PARENT [--concurrency N] [--max-repositories N]
                                [--max-attempts N] [--manifest FILE] [--format text|json]
 
 codeinspectus history scan REPOSITORY --from REVISION --to REVISION
-  --since YYYY-MM-DD --until YYYY-MM-DD --max-commits N [scan options]
+  --since 2026-07-01T00:00:00Z --until 2026-07-31T23:59:59Z --max-commits N [scan options]
 ```
 
 Bulk mode discovers only immediate, already-existing local Git repositories; it never clones or
-discovers an account. Repository-history mode requires exact revision/date/count bounds and caps a
-request at 50 commits. Shallow, truncated, omitted, failed, or cancelled work cannot report complete.
+discovers an account. Repository-history mode requires exact revision/date/count bounds (dates are explicit UTC RFC 3339
+timestamps) and caps a request at 50 commits. Shallow, truncated, omitted, failed, or cancelled work cannot report complete.
 
 ## Review-only tracker payloads
 

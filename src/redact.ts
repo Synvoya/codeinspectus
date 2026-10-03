@@ -132,6 +132,19 @@ function isReference(value: string, key: string): boolean {
     /^[a-z_$][A-Za-z_$]*$/.test(value);
 }
 
+/** Configuration and data files, where an unquoted value after `key:` or `key=` is always a literal. */
+const CONFIGURATION_FILE_RE = /(?:^|[\\/])(?:\.env(?:\.[\w.-]+)?|\.npmrc|\.pypirc|[^\\/]*\.(?:ya?ml|ini|cfg|conf|toml|properties|env|tfvars|hcl))$/i;
+
+export function isConfigurationFile(file: string): boolean {
+  return CONFIGURATION_FILE_RE.test(file);
+}
+
+/** In a configuration file only placeholders and booleans are not literal credential values. */
+function isConfigurationPlaceholder(value: string): boolean {
+  return /^(?:true|false|null|none|nil|yes|no|on|off|~)$/i.test(value) ||
+    /^\$\{?[A-Za-z_][\w.:-]*\}?$/.test(value) || /^(?:\$\{|\{\{|%\(|<[^>]+>$)/.test(value);
+}
+
 /**
  * A value after Bearer/Basic/Token/Digest is a credential unless it reads as a plain lowercase word
  * ("Token revocation", "Basic middleware"). Basic values are base64, whose length is a multiple of 4.
@@ -152,7 +165,15 @@ function masked(length: number): string {
  * high-entropy tokens that mix letters and digits. UUIDs, SRI hashes, pinned commit SHAs,
  * template interpolations, and variable/member references are kept so the context stays useful.
  */
-export function scrubCredentialContext(text: string): string {
+export interface CredentialScrubOptions {
+  /**
+   * The text comes from a configuration or data file (see isConfigurationFile). There an unquoted
+   * lowercase value such as `client_secret: supersecretvalue` is a literal, not a code reference.
+   */
+  literalValues?: boolean;
+}
+
+export function scrubCredentialContext(text: string, options: CredentialScrubOptions = {}): string {
   if (!text) return text;
   let out = redactSnippet(text).replace(URL_CREDENTIAL_RE, (_match, prefix: string, password: string, at: string) =>
     `${prefix}${masked(password.length)}${at}`);
@@ -161,7 +182,9 @@ export function scrubCredentialContext(text: string): string {
   out = out.replace(QUOTED_CREDENTIAL_RE, (match, prefix: string, quote: string, value: string) =>
     value.includes("[redacted") || value.includes("${") ? match : `${prefix}${quote}${masked(value.length)}${quote}`);
   out = out.replace(UNQUOTED_CREDENTIAL_RE, (match, prefix: string, value: string) =>
-    value.includes("[redacted") || isReference(value, prefix.replace(/["'\]\s:=]+$/, "")) ? match : `${prefix}${masked(value.length)}`);
+    value.includes("[redacted") || (options.literalValues ? isConfigurationPlaceholder(value) : isReference(value, prefix.replace(/["'\]\s:=]+$/, "")))
+      ? match
+      : `${prefix}${masked(value.length)}`);
   return out.replace(TOKEN_RE, (token, offset: number, whole: string) => {
     if (UUID_RE.test(token) || SRI_RE.test(token)) return token;
     if (whole[offset - 1] === "@" && COMMIT_SHA_RE.test(token)) return token;

@@ -333,14 +333,23 @@ export async function inspectScanStore(options: {
   };
 }
 
-/** Most recent scan for a given target path (for rescan default). */
+/**
+ * Rescan runs a fresh full scan, so only a full scan is a like-for-like prior. A Git-scoped scan
+ * (changed paths only) or a repository-history revision scan would make unchanged findings look
+ * newly introduced.
+ */
+export function isFullScan(scan: StoredScanResult): boolean {
+  return !scan.git_scope && !scan.history_revision;
+}
+
+/** Most recent full scan for a given target path (for rescan default). */
 export async function getLatestScanForTarget(
   target: string,
 ): Promise<StoredScanResult | undefined> {
   // Prefer in-memory (current session) by started_at desc.
   let best: StoredScanResult | undefined;
   for (const r of memory.values()) {
-    if (r.target === target && (!best || r.started_at > best.started_at)) best = r;
+    if (r.target === target && isFullScan(r) && (!best || r.started_at > best.started_at)) best = r;
   }
   if (best) return best;
   try {
@@ -356,7 +365,7 @@ export async function getLatestScanForTarget(
       }
       // Validate before use; never let a corrupt/foreign entry through (CG-75 Claim 2c).
       const parsed = safeParseScanJson(raw);
-      if (parsed.ok && parsed.value.target === target) candidates.push(parsed.value);
+      if (parsed.ok && parsed.value.target === target && isFullScan(parsed.value)) candidates.push(parsed.value);
     }
     candidates.sort((a, b) => (a.started_at < b.started_at ? 1 : -1));
     return candidates[0];

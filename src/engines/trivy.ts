@@ -78,7 +78,7 @@ export async function runTrivy(
       // A common offline failure is a missing DB — give an actionable hint.
       const dbHint = trivyDbDate
         ? ""
-        : " The Trivy vuln DB may be missing; run `codeinspectus repair-engines` to populate the offline DB snapshot.";
+        : " The Trivy vuln DB may be missing; run `codeinspectus setup` to populate the offline DB snapshot.";
       return note(version, t0, `Trivy produced no SARIF (exit ${res.code}).${dbHint} stderr: ${trunc(res.stderr)}`, trivyDbDate);
     }
 

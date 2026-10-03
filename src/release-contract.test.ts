@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { SERVER_VERSION } from "./config.js";
 import { SDK_API_VERSION, SDK_COMPATIBILITY } from "./sdk/index.js";
 
-const RELEASE_VERSION = "3.3.0";
+const RELEASE_VERSION = "3.3.1";
 
 describe("V3 release source synchronization", () => {
   test("package, lockfile, server, CLI, and SDK versions agree", async () => {
@@ -85,6 +85,7 @@ describe("V3 release source synchronization", () => {
     expect(changelog).toContain("## [3.1.0] — 2026-08-23");
     expect(changelog).toContain("## [3.2.0] — 2026-09-07");
     expect(changelog).toContain("## [3.3.0] — 2026-09-30");
+    expect(changelog).toContain("## [3.3.1] — 2026-10-04");
     expect(readme).toContain("Source Integrity — V3.1");
     expect(readme).toContain("AI Provenance Audit — V3.2");
     expect(readme).toContain("Verified Repository Cleanup — V3.3");

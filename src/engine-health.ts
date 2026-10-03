@@ -24,7 +24,7 @@ import type {
   TrivyDbHealthState,
 } from "./types.js";
 
-export const ENGINE_REPAIR_COMMAND = "npx codeinspectus repair-engines";
+export const ENGINE_REPAIR_COMMAND = "npx codeinspectus setup";
 const ENGINE_ORDER: EngineName[] = ["opengrep", "gitleaks", "trivy"];
 
 export interface EngineHealthProbe {
@@ -136,5 +136,5 @@ export function engineSetupMessage(status: EngineSetupStatus): string {
     issue ? `engines ${issue}` : undefined,
     status.trivy_db.state !== "ready" ? `Trivy DB ${status.trivy_db.state}` : undefined,
   ].filter(Boolean);
-  return `${parts.join("; ")}. Run \`${status.repair_command}\` after user approval.`;
+  return `${parts.join("; ")}. After user approval, run \`${status.repair_command}\` (or the codeinspectus_setup tool, planning first).`;
 }

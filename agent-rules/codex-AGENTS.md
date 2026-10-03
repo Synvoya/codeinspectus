@@ -5,8 +5,8 @@
 1. **Scan** — `codeinspectus_scan` (absolute repo path); local, zero-egress; returns CWE-keyed
    findings, each with a `remediation`. Inspect `engine_setup`: if it is not `ready`, explain the
    exact state (partial engine coverage only for `repair_required`; DB freshness/rescan continuity
-   for `db_refresh_recommended`) and ask before running `npx codeinspectus repair-engines` in the user's
-   terminal. Never download engines silently or as part of the scan.
+   for `db_refresh_recommended`) and ask for approval before setup through `codeinspectus_setup` (plan first) or
+   `npx codeinspectus setup`. Never download engines silently or as part of the scan.
 2. **Surface first** — show the user the findings before any edit: grouped by severity
    (**criticals first**), each with a plain-language risk explanation, the `file:line`, and the
    recommended fix. **Never fix silently; never skip straight to patching.**

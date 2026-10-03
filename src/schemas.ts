@@ -7,6 +7,7 @@
  * objects that satisfy these schemas exactly.
  */
 
+import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { repositoryTrustChangesSchema, repositoryTrustDocumentSchema } from "./repository-trust/schemas.js";
 import { cleanupPlanObjectSchema, cleanupResultSchema } from "./repository-trust/cleanup.js";
@@ -323,8 +324,13 @@ export const storedScanResultSchema = scanResultSchema.extend({
 });
 
 // ── Tool INPUT schemas ──────────────────────────────────────────────────────
+// MCP clients run in a different working directory than the server, so a relative or empty path
+// would silently resolve against the server's cwd. Every path-taking tool requires an absolute path.
+const absolutePath = (description: string) =>
+  z.string().min(1).refine((value) => isAbsolute(value), { message: "Must be an absolute path." }).describe(description);
+
 export const scanInput = z.object({
-  path: z.string().describe("Absolute path to the repository or directory to scan."),
+  path: absolutePath("Absolute path to the repository or directory to scan."),
   severity_threshold: severityEnum
     .optional()
     .describe("Only return findings at or above this severity (default: info — all)."),
@@ -347,7 +353,7 @@ export const scanInput = z.object({
 });
 
 export const rescanInput = z.object({
-  path: z.string().describe("Absolute path to the repository or directory to rescan."),
+  path: absolutePath("Absolute path to the repository or directory to rescan."),
   prior_scan_id: scanIdSchema
     .optional()
     .describe("scan_id of a previous scan to diff against. Defaults to the most recent scan of this path."),
@@ -369,7 +375,7 @@ export const explainFindingInput = z.object({
 });
 
 export const generateSbomInput = z.object({
-  path: z.string().describe("Absolute path to the project to generate an SBOM for."),
+  path: absolutePath("Absolute path to the project to generate an SBOM for."),
   format: z
     .enum(["cyclonedx", "spdx"])
     .optional()
@@ -395,7 +401,7 @@ export const setupInput = z.object({
 });
 
 export const cleanupPlanInput = z.object({
-  path: z.string().describe("Absolute path to the repository directory to clean."),
+  path: absolutePath("Absolute path to the repository directory to clean."),
   artifact_ids: z.array(z.string().regex(/^artifact-[a-z0-9][a-z0-9._:-]{0,127}$/)).min(1).max(100)
     .describe("Exact verified repository-trust artifact IDs from a fresh scan."),
   acknowledge_metadata_container_removal: z.boolean().optional()

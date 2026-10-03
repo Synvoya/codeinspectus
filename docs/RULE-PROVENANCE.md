@@ -129,8 +129,9 @@ for CodeInspectus from the maintainer's detector contracts and primary Python fr
 documentation, including LangChain's documented FAISS and WebBaseLoader contracts, Python's pickle
 warning, and OWASP's SSRF and GenAI prompt-injection/excessive-agency guidance.
 They were not ported, translated, or derived from Opengrep, Semgrep, Trivy, or
-another detection corpus. The Lezer Python parser and smol-toml dependency licenses are reproduced
-in `THIRD-PARTY-NOTICES.md`; those parsing libraries do not supply detection rules. This is an
+another detection corpus. The Lezer Python parser and smol-toml dependencies are listed with their
+licenses in `THIRD-PARTY-NOTICES.md` and installed as separate npm packages that carry their own
+license files; those parsing libraries do not supply detection rules. This is an
 original first-party authorship record under the existing self-diligence frame, not an independent
 legal clearance.
 The Go AI pack adds one independently authored TypeScript structural rule,

@@ -37,6 +37,8 @@ const INHERITED_REPOSITORY_ENV = [
   "GIT_COMMON_DIR", "GIT_NAMESPACE", "GIT_PREFIX", "GIT_EXTERNAL_DIFF",
   // A parent's `git -c` parameters are applied after GIT_CONFIG_* and would override the hardening.
   "GIT_CONFIG_PARAMETERS",
+  // Pathspec semantics must not depend on the caller's shell (CodeInspectus passes `:(literal)` paths).
+  "GIT_LITERAL_PATHSPECS", "GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS", "GIT_ICASE_PATHSPECS",
 ];
 
 // The same overrides as GIT_HARDENING_ARGS, expressed as command-scope config in the environment so

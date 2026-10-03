@@ -13,7 +13,7 @@ contracts and explicitly approved mutation tools. Statistical-watermark verifica
 
 | Surface | V2 | V3 |
 |---|---:|---:|
-| Package / CLI / MCP server / SDK API | 2.6.0 | 3.3.0 |
+| Package / CLI / MCP server / SDK API | 2.6.0 | 3.3.1 |
 | Canonical JSON export | 2.0.0 | 3.0.0 |
 | Repository-trust document | absent | 1.0.0 |
 | Cleanup plan / result | absent | 1.0.0 |

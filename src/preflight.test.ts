@@ -126,7 +126,7 @@ describe("offline preflight", () => {
         { engine: "trivy", version: "1", state: "ready" },
       ],
       trivy_db: { state: "ready" },
-      repair_command: "npx codeinspectus repair-engines",
+      repair_command: "npx codeinspectus setup",
       network_required: true,
     });
     const root = await temporaryRoot();

@@ -4,7 +4,12 @@
  */
 import { describe, expect, test } from "vitest";
 import { fail, ok } from "./result.js";
-import { forStream, terminalSafe } from "./util/terminal.js";
+import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { forStream, inlineField, terminalSafe } from "./util/terminal.js";
+import { runScan } from "./scan.js";
+import { summarizeScan } from "./summarize.js";
 
 const HOSTILE = "img\u001b]8;;https://evil.example\u0007click\u001b]8;;\u0007\u009b2J\u0085.png";
 
@@ -37,4 +42,26 @@ describe("terminal-safe human output", () => {
     expect(result.structuredContent).toEqual({ file: HOSTILE });
     expect(fail(`error in ${HOSTILE}`).content[0]!.text).not.toMatch(/[\u001b\u0007\u009b]/);
   });
+});
+
+describe("single-line fields in text output", () => {
+  test("line breaks and bidirectional controls in a field are visible escapes", () => {
+    expect(inlineField("src/b\nFAKE: critical.ts")).toBe("src/b\\u000aFAKE: critical.ts");
+    expect(inlineField("a\r b\u0085c")).toBe("a\\u000d\\u2028b\\u0085c");
+    expect(inlineField("src/‮txt.exe")).toBe("src/\\u202etxt.exe");
+    expect(inlineField("src/ordinary file.ts")).toBe("src/ordinary file.ts");
+  });
+
+  // A file name containing a newline used to start a fake line ("FAKE: critical finding…") in the
+  // human-readable scan summary.
+  test.skipIf(process.platform === "win32")("a file name with a newline cannot inject a line into the scan summary", async () => {
+    const dir = await mkdtemp(join(await realpath(tmpdir()), "ci-inline-field-"));
+    await mkdir(join(dir, "src"));
+    await writeFile(join(dir, "src", "b\nFAKE: critical finding injected.ts"), "const c = new OpenAI({ dangerouslyAllowBrowser: true });\n");
+
+    const summary = summarizeScan(await runScan({ path: dir, scanners: ["ai"] }));
+
+    expect(summary).toContain("src/b\\u000aFAKE: critical finding injected.ts:1");
+    expect(summary.split("\n").some((line) => line.startsWith("FAKE"))).toBe(false);
+  }, 30_000);
 });

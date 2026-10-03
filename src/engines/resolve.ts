@@ -92,8 +92,8 @@ function candidatePaths(engine: EngineName): string[] {
 
 function installHint(engine: EngineName): string {
   return (
-    `Engine '${engine}' is not available. Run \`codeinspectus repair-engines\` once per machine ` +
-    `to fetch and SHA-pin the engine binaries (this is the only network step; install-time only). ` +
+    `Engine '${engine}' is not available. Run \`codeinspectus setup\` (or the codeinspectus_setup tool) once per machine ` +
+    `to review, fetch and SHA-pin the engine binaries; downloads happen only after approval. ` +
     `Expected at: ${join(MANAGED_BIN, binaryFilename(engine))}.`
   );
 }
@@ -167,7 +167,7 @@ export async function resolveEngine(
         `  expected (lockfile): ${entry.sha256}\n` +
         `  actual (on disk):    ${actual}\n` +
         `Refusing to execute a binary that does not match its pin (possible tampering). ` +
-        `Run \`codeinspectus repair-engines\` from a trusted network, or restore the verified binary.`,
+        `Run \`codeinspectus setup\` from a trusted network, or restore the verified binary.`,
     );
   }
 

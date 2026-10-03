@@ -90,6 +90,20 @@ describe("summarizeScan — git-safety advisory placement (CG-42)", () => {
     expect(out).toContain("One lockfile was malformed.");
   });
 
+  // `summary` counts the displayed set; under `--severity high` the headline used to print "0 medium"
+  // while medium findings existed and were only hidden.
+  test("a severity display filter lists only the included levels and says lower ones are hidden", () => {
+    const filtered = summarizeScan(mkResult({
+      summary: { critical: 0, high: 1, medium: 0, low: 0, info: 0, total: 1 },
+      scan_config: { severity_threshold: "high", max_findings: 200 },
+    }));
+    expect(filtered).toContain("1 findings at or above high — 0 critical, 1 high. Lower severities are hidden by the display filter");
+    expect(filtered).not.toContain("0 medium");
+
+    const unfiltered = summarizeScan(mkResult({ summary: { critical: 0, high: 1, medium: 1, low: 0, info: 0, total: 2 } }));
+    expect(unfiltered).toContain("2 findings — 0 critical, 1 high, 1 medium, 0 low, 0 info.");
+  });
+
   test("no_git → recommendation under 'Before you fix:', and NO 'Warnings:' section", () => {
     const out = summarizeScan(
       mkResult({ git_safety: { state: "no_git", recommendation: NO_GIT_RECOMMENDATION }, warnings: [] }),

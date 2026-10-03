@@ -6,7 +6,8 @@ import { MANAGED_TRIAGE, SERVER_VERSION } from "./config.js";
 import { redactSnippet } from "./redact.js";
 import { sha256Hex } from "./util/hash.js";
 import type { Finding } from "./types.js";
-import type { StoredScanResult } from "./store.js";
+import { getScan, type StoredScanResult } from "./store.js";
+import { contentAnchors } from "./dedup.js";
 import { scanIdSchema } from "./schemas.js";
 
 export const TRIAGE_SCHEMA_VERSION = "1.0.0" as const;
@@ -57,6 +58,11 @@ export interface TriageAnnotation extends Omit<TriageEvent, "event_id" | "operat
 export interface TriageSnapshot {
   events: TriageEvent[];
   annotations: TriageAnnotation[];
+  /**
+   * Line-independent content anchor of each annotated finding in its source scan, by annotation ID.
+   * Fingerprints include line numbers, so this lets an annotation follow a finding that only moved.
+   */
+  source_anchors?: Record<string, { anchor: string; occurrences: number }>;
   corrupt_record_count: number;
   corrupt_records: Array<{ file: string; error: string }>;
   inspected_files: number;
@@ -202,7 +208,45 @@ function projectAnnotations(events: TriageEvent[]): { annotations: TriageAnnotat
   };
 }
 
-export async function inspectTriageStore(scan: StoredScanResult, options: { root?: string; includeMemory?: boolean } = {}): Promise<TriageSnapshot> {
+/** Bound on distinct source scans loaded to carry annotations across moved lines. */
+const TRIAGE_CARRY_OVER_MAX_SOURCE_SCANS = 50;
+
+function identityMatches(finding: Finding, identity: TriageEvent["finding_identity"]): boolean {
+  const candidate = triageFindingIdentity(finding);
+  return candidate.fingerprint === identity.fingerprint && candidate.rule_id === identity.rule_id && candidate.file === identity.file &&
+    JSON.stringify(candidate.producer_components) === JSON.stringify(identity.producer_components);
+}
+
+async function sourceAnchors(
+  scan: StoredScanResult,
+  annotations: TriageAnnotation[],
+  loadScan: (scanId: string) => Promise<StoredScanResult | undefined>,
+): Promise<NonNullable<TriageSnapshot["source_anchors"]>> {
+  const anchors: NonNullable<TriageSnapshot["source_anchors"]> = {};
+  const sources = new Map<string, { findings: Finding[]; anchors: Map<Finding, string>; occurrences: Map<string, number> }>();
+  for (const annotation of annotations) {
+    if (annotation.deleted || annotation.source_scan_id === scan.scan_id) continue;
+    let source = sources.get(annotation.source_scan_id);
+    if (!source) {
+      if (sources.size >= TRIAGE_CARRY_OVER_MAX_SOURCE_SCANS) continue;
+      const loaded = await loadScan(annotation.source_scan_id).catch(() => undefined);
+      const findings = loaded && loaded.target === scan.target ? loaded.findings : [];
+      const sourceAnchorMap = contentAnchors(findings);
+      source = { findings, anchors: sourceAnchorMap, occurrences: occurrenceCounts(sourceAnchorMap.values()) };
+      sources.set(annotation.source_scan_id, source);
+    }
+    const original = source.findings.find((finding) => identityMatches(finding, annotation.finding_identity));
+    const anchor = original ? source.anchors.get(original) : undefined;
+    if (anchor) anchors[annotation.annotation_id] = { anchor, occurrences: source.occurrences.get(anchorBase(anchor)) ?? 0 };
+  }
+  return anchors;
+}
+
+export async function inspectTriageStore(scan: StoredScanResult, options: {
+  root?: string;
+  includeMemory?: boolean;
+  loadScan?: (scanId: string) => Promise<StoredScanResult | undefined>;
+} = {}): Promise<TriageSnapshot> {
   const root = options.root ?? MANAGED_TRIAGE;
   const scope = triageScopeForScan(scan);
   const directory = scopeDirectory(root, scope.scope_id);
@@ -281,7 +325,9 @@ export async function inspectTriageStore(scan: StoredScanResult, options: { root
   corrupt.push(...projection.invalid);
   const validEventIds = new Set(events.filter((event) => !projection.invalid.some((item) => item.file === `${event.event_id}.json`)).map((event) => event.event_id));
   return {
-    events: events.filter((event) => validEventIds.has(event.event_id)), annotations: projection.annotations, corrupt_record_count: corrupt.length,
+    events: events.filter((event) => validEventIds.has(event.event_id)), annotations: projection.annotations,
+    source_anchors: await sourceAnchors(scan, projection.annotations, options.loadScan ?? getScan),
+    corrupt_record_count: corrupt.length,
     corrupt_records: corrupt.slice(0, 100), inspected_files: inspected, candidate_files: names.length,
     bytes_read: bytesRead, truncated, available: true,
   };
@@ -293,15 +339,38 @@ export function matchingTriageAnnotations(scan: StoredScanResult, snapshot: Tria
 }> {
   const scope = triageScopeForScan(scan);
   const output: Array<{ finding_id: string; annotation: TriageAnnotation }> = [];
+  let anchored: ReturnType<typeof byAnchor> | undefined;
   for (const annotation of snapshot.annotations) {
     if (annotation.deleted || annotation.scope.scope_id !== scope.scope_id || annotation.scope.repository !== scope.repository || annotation.scope.target !== scope.target) continue;
-    const finding = scan.findings.find((candidate) => {
-      const identity = triageFindingIdentity(candidate);
-      return identity.fingerprint === annotation.finding_identity.fingerprint &&
-        identity.rule_id === annotation.finding_identity.rule_id && identity.file === annotation.finding_identity.file &&
-        JSON.stringify(identity.producer_components) === JSON.stringify(annotation.finding_identity.producer_components);
-    });
+    const exact = scan.findings.find((candidate) => identityMatches(candidate, annotation.finding_identity));
+    // A finding that only moved lines has a new fingerprint; follow it by its source-scan content anchor.
+    // Identical occurrences are paired by order, so carry over only when their count is unchanged: a
+    // duplicated line must never inherit the original's triage state and hide a new finding.
+    const source = exact ? undefined : snapshot.source_anchors?.[annotation.annotation_id];
+    anchored ??= byAnchor(scan.findings);
+    const moved = source && anchored.occurrences.get(anchorBase(source.anchor)) === source.occurrences
+      ? anchored.findings.get(source.anchor) : undefined;
+    const finding = exact ?? (moved && JSON.stringify(triageFindingIdentity(moved).producer_components) ===
+      JSON.stringify(annotation.finding_identity.producer_components) ? moved : undefined);
     if (finding) output.push({ finding_id: finding.id, annotation });
   }
   return output.sort((a, b) => a.finding_id.localeCompare(b.finding_id) || a.annotation.annotation_id.localeCompare(b.annotation.annotation_id));
+}
+
+/** contentAnchors() appends the occurrence index as the last NUL-separated field. */
+function anchorBase(anchor: string): string {
+  return anchor.slice(0, anchor.lastIndexOf("\u0000"));
+}
+
+function occurrenceCounts(anchors: Iterable<string>): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const anchor of anchors) counts.set(anchorBase(anchor), (counts.get(anchorBase(anchor)) ?? 0) + 1);
+  return counts;
+}
+
+function byAnchor(findings: readonly Finding[]): { findings: Map<string, Finding>; occurrences: Map<string, number> } {
+  const map = contentAnchors(findings);
+  const output = new Map<string, Finding>();
+  for (const [finding, anchor] of map) output.set(anchor, finding);
+  return { findings: output, occurrences: occurrenceCounts(map.values()) };
 }

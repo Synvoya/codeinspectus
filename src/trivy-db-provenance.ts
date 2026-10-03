@@ -1,10 +1,10 @@
 import type { TrivyDbProvenance } from "./types.js";
 
 export const TRIVY_DB_PROVENANCE_INSTRUCTION =
-  "Run `codeinspectus repair-engines` once to enable CVE rescan tracking.";
+  "Run `codeinspectus setup` once to enable CVE rescan tracking.";
 
 export const TRIVY_DB_PROVENANCE_MESSAGE =
-  "CVE rescan tracking is not yet enabled on this machine. Run `codeinspectus repair-engines` once to turn it on. (Your current scan results are complete and unaffected.)";
+  "CVE rescan tracking is not yet enabled on this machine. Run `codeinspectus setup` once to turn it on. (Your current scan results are complete and unaffected.)";
 
 /**
  * Advisory metadata only. A Trivy vulnerability scan that completed without the

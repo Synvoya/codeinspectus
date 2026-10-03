@@ -74,6 +74,12 @@ describe.skipIf(process.platform === "win32")("git invocations treat the scanned
     expect(env.GIT_CONFIG_PARAMETERS).toBeUndefined();
   });
 
+  test("pathspec semantics do not depend on the caller's environment", () => {
+    const env = gitHardenedEnv({ GIT_LITERAL_PATHSPECS: "1", GIT_GLOB_PATHSPECS: "1", GIT_NOGLOB_PATHSPECS: "1", GIT_ICASE_PATHSPECS: "1", PATH: "/usr/bin" });
+
+    for (const name of ["GIT_LITERAL_PATHSPECS", "GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS", "GIT_ICASE_PATHSPECS"]) expect(env[name]).toBeUndefined();
+  });
+
   test("does not refresh or lock the index while checking git safety", async () => {
     const { dir } = await repo();
     await makeStatDirty(dir);

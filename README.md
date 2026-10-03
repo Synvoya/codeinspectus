@@ -132,7 +132,7 @@ no silent npm `postinstall` download. `repair-engines` remains available for adv
 the older `install-engines` command remains a compatibility alias.
 
 If a Trivy DB was installed before 0.3.2, scan output tells your agent that CVE rescan
-tracking is not yet enabled. The agent should run `npx codeinspectus repair-engines`
+tracking is not yet enabled. The agent should run setup (`codeinspectus_setup`, or `npx codeinspectus setup`)
 once; this re-fetches the DB through the verified install path and records its provenance.
 Until then, vanished CVEs conservatively report `not_rechecked`; current scan findings
 remain complete and unaffected.

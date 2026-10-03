@@ -17,6 +17,7 @@ import {
   type TriageState,
 } from "./triage.js";
 import type { StoredScanResult } from "./store.js";
+import { inlineField } from "./util/terminal.js";
 
 export interface TriageCliIo { stdout(text: string): void; stderr(text: string): void }
 export interface TriageCliDependencies {
@@ -121,10 +122,10 @@ function render(value: unknown, format: "text" | "json"): string {
   if (format === "json") return `${JSON.stringify(value, null, 2)}\n`;
   if (Array.isArray(value)) return `${value.map((item) => {
     const annotation = item as TriageAnnotation;
-    return `${annotation.annotation_id}  ${annotation.deleted ? "Deleted" : annotation.state}  ${annotation.finding_identity.file}  ${annotation.reason}`;
+    return `${annotation.annotation_id}  ${annotation.deleted ? "Deleted" : annotation.state}  ${inlineField(annotation.finding_identity.file)}  ${annotation.reason}`;
   }).join("\n")}\n`;
   const annotation = value as TriageAnnotation;
-  return `${annotation.annotation_id}\nState: ${annotation.deleted ? "Deleted" : annotation.state}\nFinding: ${annotation.finding_identity.rule_id} ${annotation.finding_identity.file}\nReason: ${annotation.reason}${annotation.actor ? `\nActor: ${annotation.actor}` : ""}\n`;
+  return `${annotation.annotation_id}\nState: ${annotation.deleted ? "Deleted" : annotation.state}\nFinding: ${annotation.finding_identity.rule_id} ${inlineField(annotation.finding_identity.file)}\nReason: ${annotation.reason}${annotation.actor ? `\nActor: ${annotation.actor}` : ""}\n`;
 }
 
 function inspectionEnvelope(snapshot: TriageSnapshot) {

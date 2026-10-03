@@ -3,10 +3,11 @@
  * Kept compact to protect the agent's context window (PRD §5 output discipline).
  */
 
-import type { ScanResult, RescanResult, Finding, DependencyCoverage } from "./types.js";
+import { SEVERITY_RANK, type ScanResult, type RescanResult, type Finding, type DependencyCoverage } from "./types.js";
 import { TRIVY_DB_PROVENANCE_MESSAGE } from "./trivy-db-provenance.js";
 import { engineSetupMessage } from "./engine-health.js";
 import type { RepositoryArtifact, RepositoryTrustDocument } from "./repository-trust/schemas.js";
+import { inlineField } from "./util/terminal.js";
 
 function technologyAndPackSummary(
   technologies: ScanResult["detected_technologies"],
@@ -22,7 +23,7 @@ function technologyAndPackSummary(
             `${pack.pack_id}=${pack.state} ` +
             `(${pack.analyzers.ran}/${pack.analyzers.registered} analyzers, ` +
             `${pack.rules.ran}/${pack.rules.registered} rules)` +
-            (pack.note ? ` — ${pack.note}` : ""),
+            (pack.note ? ` — ${inlineField(pack.note)}` : ""),
         )
         .join("\n  ")
     : "none registered";
@@ -36,7 +37,7 @@ function dependencyCoverageSummary(coverage: DependencyCoverage[] | undefined): 
   if (!coverage?.length) return "";
   const lines = coverage.map((entry) => {
     const snapshot = entry.database_version ? `, snapshot ${entry.database_version}` : "";
-    const limitation = entry.note ? ` — ${entry.note}` : "";
+    const limitation = entry.note ? ` — ${inlineField(entry.note)}` : "";
     return (
       `${entry.ecosystem}/${entry.engine}=${entry.state} ` +
       `(${entry.lockfiles.analyzed}/${entry.lockfiles.discovered} lockfiles, ` +
@@ -52,7 +53,7 @@ function topLines(findings: Finding[], n: number): string {
     .slice(0, n)
     .map(
       (f) =>
-        `  • [${f.severity}]${f.scope_role ? ` [${f.scope_role === "primary" ? "changed" : "supporting context"}]` : ""} ${f.title} — ${f.location.file}:${f.location.start_line} (${f.cwe.join(", ")}, ${f.engine})`,
+        `  • [${f.severity}]${f.scope_role ? ` [${f.scope_role === "primary" ? "changed" : "supporting context"}]` : ""} ${inlineField(f.title)} — ${inlineField(f.location.file)}:${f.location.start_line} (${f.cwe.join(", ")}, ${f.engine})`,
     )
     .join("\n");
 }
@@ -68,9 +69,9 @@ function repositoryArtifactLines(artifacts: RepositoryArtifact[], n: number): st
     const column = artifact.location.start_column ? `:${artifact.location.start_column}` : "";
     const codePoints = artifactAttribute(artifact, "code_points") ?? artifact.marker_class;
     const action = artifactAttribute(artifact, "proposed_action");
-    return `  • [${artifact.state}] ${artifact.marker_class} ${codePoints} — ${artifact.location.file}:${line}${column}` +
+    return `  • [${artifact.state}] ${artifact.marker_class} ${inlineField(codePoints)} — ${inlineField(artifact.location.file)}:${line}${column}` +
       (artifact.remediation.eligible ? " — approval required before cleanup" : " — evidence only") +
-      (action ? `\n    ${action}` : "");
+      (action ? `\n    ${inlineField(action)}` : "");
   }).join("\n");
 }
 
@@ -84,22 +85,36 @@ function repositoryTrustSummary(document: RepositoryTrustDocument): string {
     capabilityLines +
     `\n  States: ${counts.verified} verified, ${counts.probable} probable, ${counts.informational} informational, ${counts.not_verifiable} not verifiable` +
     (document.artifacts.length ? `\n  Repository-trust artifacts:\n${repositoryArtifactLines(document.artifacts, 10)}` : "") +
-    (document.coverage.limitations.length ? `\n  Limits: ${document.coverage.limitations.join(" ")}` : "")
+    (document.coverage.limitations.length ? `\n  Limits: ${document.coverage.limitations.map(inlineField).join(" ")}` : "")
   );
 }
 
-export function summarizeScan(r: ScanResult): string {
+/**
+ * `summary` counts the displayed (severity-filtered) set, so under a display filter only the included
+ * levels are listed. Printing "0 medium" under `--severity high` read as "no medium findings".
+ */
+function severityHeadline(r: ScanResult): string {
   const s = r.summary;
+  const threshold = r.scan_config?.severity_threshold;
+  if (!threshold || threshold === "info") {
+    return `${s.total} findings — ${s.critical} critical, ${s.high} high, ${s.medium} medium, ${s.low} low, ${s.info} info.`;
+  }
+  const levels = (["critical", "high", "medium", "low", "info"] as const).filter((level) => SEVERITY_RANK[level] >= SEVERITY_RANK[threshold]);
+  return `${s.total} findings at or above ${threshold} — ${levels.map((level) => `${s[level]} ${level}`).join(", ")}. ` +
+    "Lower severities are hidden by the display filter and kept in the stored scan.";
+}
+
+export function summarizeScan(r: ScanResult): string {
   const head =
-    `CodeInspectus scan of ${r.target}\n` +
-    `${s.total} findings — ${s.critical} critical, ${s.high} high, ${s.medium} medium, ${s.low} low, ${s.info} info.\n` +
+    `CodeInspectus scan of ${inlineField(r.target)}\n` +
+    `${severityHeadline(r)}\n` +
     `Engines: ${r.engines_run.join(", ")} | offline: ${r.offline}` +
     (r.trivy_db_date ? ` | trivy DB: ${r.trivy_db_date}` : "") +
     (r.secret_coverage === "unverified" ? " | secret coverage: UNVERIFIED" : "");
 
   const engineNotes = r.engine_details
     .filter((e) => !e.ran && e.note)
-    .map((e) => `  ! ${e.engine}: ${e.note}`)
+    .map((e) => `  ! ${e.engine}: ${inlineField(e.note ?? "")}`)
     .join("\n");
 
   const orderedFindings = r.git_scope
@@ -113,14 +128,14 @@ export function summarizeScan(r: ScanResult): string {
     ? `\n\n(${r.total_findings_before_limit} total before limit; ${r.findings.length} shown.)`
     : "";
 
-  const warn = r.warnings.length ? `\n\nWarnings:\n  - ${r.warnings.join("\n  - ")}` : "";
+  const warn = r.warnings.length ? `\n\nWarnings:\n  - ${r.warnings.map(inlineField).join("\n  - ")}` : "";
   const eng = engineNotes ? `\n\nEngine status:\n${engineNotes}` : "";
 
   // CG-42: the read-only git-safety advisory gets its OWN "Before you fix:" line — deliberately
   // NOT under "Warnings:" (a non-expert reads Warnings as "problems in my code"; this is a pre-fix
   // safety nudge, not a finding). Present only for no_git / dirty (recommendation is set); silent otherwise.
   const beforeFix = r.git_safety?.recommendation
-    ? `\n\nBefore you fix:\n  ${r.git_safety.recommendation}`
+    ? `\n\nBefore you fix:\n  ${inlineField(r.git_safety.recommendation)}`
     : "";
 
   const dbProvenance = r.trivy_db_provenance?.state === "unrecorded"
@@ -166,11 +181,11 @@ export function summarizeRescan(r: RescanResult): string {
   // failure this guards against. Surfaced in both this text and structuredContent.
   const notRechecked = r.not_rechecked.length
     ? `\n\nCould not re-check — NOT confirmed resolved:\n${topLines(r.not_rechecked, 10)}` +
-      (r.not_rechecked_note ? `\n  ⚠ ${r.not_rechecked_note}` : "")
+      (r.not_rechecked_note ? `\n  ⚠ ${inlineField(r.not_rechecked_note)}` : "")
     : "";
 
   return (
-    `CodeInspectus rescan of ${r.target} (vs ${r.prior_scan_id})\n` +
+    `CodeInspectus rescan of ${inlineField(r.target)} (vs ${r.prior_scan_id})\n` +
     `Resolved: ${r.summary.resolved} | Remaining: ${r.summary.remaining} | ` +
     `Newly introduced: ${r.summary.introduced} | Not re-checked: ${r.summary.not_rechecked}` +
     technologyAndPackSummary(r.detected_technologies, r.pack_coverage) +

@@ -7,10 +7,18 @@ import { ISSUE_PAYLOAD_SCHEMA_URI, ISSUE_PAYLOAD_SCHEMA_VERSION, issuePayloadSch
 const MAX_BODY = 20_000;
 
 function compareText(a: string, b: string): number { return a < b ? -1 : a > b ? 1 : 0; }
-function cleanText(value: string): string { return redactSnippet(value).replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim(); }
+// Zero-width and bidirectional controls from repository text are made visible so a tracker cannot
+// render a file name or message differently from what it contains (the tool adds its own U+200B after
+// "@" afterwards, only to stop mentions).
+const INVISIBLE_OR_BIDI = /[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
+function cleanText(value: string): string {
+  return redactSnippet(value).replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/\s+/g, " ").trim()
+    .replace(INVISIBLE_OR_BIDI, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
 function truncate(value: string, maximum: number): string { return value.length <= maximum ? value : `${value.slice(0, maximum - 15)}… [truncated]`; }
 function markdown(value: string): string {
-  return cleanText(value).replace(/@/g, "@\u200b").replace(/([\\`*_{}\[\]()#+.!|>~-])/g, "\\$1");
+  // `&` and `<` become entities so repository text cannot open raw HTML or entities in tracker Markdown.
+  return cleanText(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/@/g, "@\u200b").replace(/([\\`*_{}\[\]()#+.!|>~-])/g, "\\$1");
 }
 
 function labels(severity: string, cwe: string[]): string[] {

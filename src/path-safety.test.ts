@@ -1,16 +1,21 @@
 import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   containsTraversalSegment,
   inspectOutputDirectory,
+  inspectOutputFile,
   inspectTargetPath,
   outputContainmentRoot,
   pathIsWithin,
 } from "./path-safety.js";
 
 const cleanup: string[] = [];
+const systemTmpIsRootLink = (() => {
+  try { const metadata = lstatSync("/tmp"); return metadata.isSymbolicLink() && metadata.uid === 0; } catch { return false; }
+})();
 
 async function temporaryRoot(): Promise<string> {
   const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-path-safety-"));
@@ -135,6 +140,30 @@ describe("output safety", () => {
     await symlink(outside, linked);
     const result = await inspectOutputDirectory(linked, root, true);
     expect(result).toMatchObject({ safe: false, symlink_safe: false });
+  });
+
+  test("still rejects a file output below a user-created symlinked directory", async () => {
+    const root = await temporaryRoot();
+    const outside = await temporaryRoot();
+    await symlink(outside, join(root, "linked"));
+    const result = await inspectOutputFile(join(root, "linked", "out.json"), undefined, false);
+    expect(result).toMatchObject({ safe: false, symlink_safe: false });
+  });
+
+  // macOS /tmp is a root-owned link to /private/tmp; `--output /tmp/report.json` used to be refused.
+  test.skipIf(!systemTmpIsRootLink || process.platform === "win32")("accepts output below a root-owned system link such as macOS /tmp", async () => {
+    const result = await inspectOutputFile(join("/tmp", `codeinspectus-${process.pid}-out.json`), undefined, false);
+    expect(result).toMatchObject({ safe: true, symlink_safe: true, canonical_path: join(await realpath("/tmp"), `codeinspectus-${process.pid}-out.json`) });
+  });
+
+  test.skipIf(!systemTmpIsRootLink || process.platform === "win32")("compares containment on the canonical path behind a system link", async () => {
+    const target = await mkdtemp(join(await realpath("/tmp"), "codeinspectus-target-"));
+    cleanup.push(target);
+    const viaLink = join("/tmp", target.split("/").pop()!);
+    const file = await inspectOutputFile(join(viaLink, "out.json"), target, false);
+    expect(file).toMatchObject({ inside_target: true, safe: false });
+    const directory = await inspectOutputDirectory(join(viaLink, "reports"), target, false);
+    expect(directory).toMatchObject({ inside_target: true, safe: false });
   });
 });
 

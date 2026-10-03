@@ -19,3 +19,14 @@ export function terminalSafe(text: string): string {
 export function forStream(text: string): string {
   return terminalSafe(text);
 }
+
+/**
+ * A single-line field inside human-readable output (a file name, a note, a warning). Line breaks
+ * (CR, LF, NEL, U+2028/U+2029) and bidirectional controls are rendered as `\uXXXX`, so a crafted
+ * file name can neither start a fake output line nor visually reorder the text around it.
+ */
+const INLINE_BREAKING = /[\n\r\u0085\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+
+export function inlineField(text: string): string {
+  return text.replace(INLINE_BREAKING, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
