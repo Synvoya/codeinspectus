@@ -2386,7 +2386,7 @@ async function main() {
         assert(pubEngine?.version === "1.0.0" && pubEngine.available === true, "native Pub engine inventory is unavailable");
         const pubDb = lr.advisory_databases?.find((database: any) => database.engine === "codeinspectus-pub");
         assert(["current", "stale"].includes(pubDb?.state), `unexpected Pub database state ${pubDb?.state}`);
-        assert(pubDb.active_advisories === 11 && pubDb.affected_packages === 10, "Pub database inventory changed");
+        assert(pubDb.active_advisories === 12 && pubDb.affected_packages === 11, "Pub database inventory changed");
         assert(pubDb.matching === "exact-enumerated-versions" && pubDb.license === "CC-BY-4.0", "Pub database provenance changed");
         assert(/^sha256:[a-f0-9]{64}$/.test(pubDb.content_digest), "Pub database content digest missing");
       },

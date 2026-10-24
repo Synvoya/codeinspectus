@@ -71,6 +71,15 @@ node dist/index.js verify-engines    # every binary's SHA256 must match engines.
 node dist/index.js repair-engines opengrep  # healthy selected engine is an offline no-op
 ```
 
+## Dependency advisories (release gate)
+```bash
+npm audit --omit=dev                 # runtime dependencies shipped in the npm package
+npx codeinspectus setup              # refresh the Trivy DB when engine_setup reports db_refresh_recommended
+```
+Before every release, fix each high or critical runtime advisory, or record it under "Known issue" in
+the CHANGELOG with its reachability and the release that will fix it. Re-run the audit on the
+intended release commit; advisories published after the previous release are the usual gap.
+
 ## Fixture scan (manual)
 ```bash
 npx tsx scripts/dev-scan.ts "$(pwd)/fixtures/vulnerable-app"

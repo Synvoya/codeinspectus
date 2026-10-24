@@ -146,8 +146,8 @@ describe("listRules native pack inventory", () => {
       expect.objectContaining({
         engine: "codeinspectus-pub",
         ecosystem: "Pub",
-        active_advisories: 11,
-        affected_packages: 10,
+        active_advisories: 12,
+        affected_packages: 11,
         matching: "exact-enumerated-versions",
         license: "CC-BY-4.0",
       }),

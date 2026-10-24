@@ -4,6 +4,36 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [3.3.2] — 2026-10-24
+
+### Security
+- `smol-toml` 1.7.1 → 1.9.1 (GHSA-r4xh-jqrq-34v2, moderate). A crafted TOML file in a scanned
+  repository could make parsing take quadratic time and stall a scan. CodeInspectus parses Supabase
+  `config.toml` and Python `pyproject.toml` from scan targets, so the path was reachable, and the
+  exact pin meant every fresh 3.3.1 install received the vulnerable version.
+- MCP TypeScript SDK floor raised to `^1.32.2` and the lockfile refreshed (`proxy-addr` 2.0.8,
+  `body-parser` 2.4.0, `express` 5.3.0, `hono` 4.13.13, `ip-address` 10.7.4, `fast-uri` 3.1.9). The
+  SDK advisories (GHSA-6qxp-vccf-f47h, GHSA-22jm-h49p-29qw, GHSA-6prh-2h8m-c8cw, GHSA-46jr-4wx8-v453,
+  GHSA-rvq5-wwqv-78pq) and the transitive HTTP-server advisories affect HTTP and OAuth transports.
+  CodeInspectus uses only the stdio transport, and fresh 3.3.1 installs already resolved patched
+  versions.
+- Bundled OSV Pub advisory snapshot refreshed to `2026-10-24.0b3ac85734d3`: 12 active advisories
+  across 11 packages (was 11 from 2026-08-20), adding GHSA-cr65-55v9-xhvv for `dio_http2_adapter`.
+
+### Known issue
+- `zod` 3.x is affected by GHSA-mrhx-c7xc-m3w5 (memory exhaustion while validating oversized
+  constrained collections). The fix exists only in zod 4.6.6 and later, a major upgrade scheduled for
+  3.4.0. The inputs zod validates are local (MCP tool input over stdio, CodeInspectus's own stores)
+  or size-bounded (bundle verification reads at most 16 MiB per artifact and 64 MiB per bundle).
+
+### Changed
+- Development dependencies updated to patched versions: `vitest` 4.1.12, `vite` 8.3.5,
+  `brace-expansion` and `source-map-js`. They are not part of the published package.
+
+### Documentation
+- `docs/context/verify.md`: `npm audit --omit=dev` is now a release gate. Each high or critical
+  runtime advisory must be fixed or recorded as a known issue before release.
+
 ## [3.3.1] — 2026-10-04
 
 ### Security
