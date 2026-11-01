@@ -55,7 +55,10 @@ Each finding has one state:
 
 - `Persisting`: the finding exists in both scans by fingerprint or stable deduplication identity.
 - `Resolved`: the finding is absent from the new scan, both scans have complete canonical
-  whole-product coverage, every producer ran, and producer-component signatures are compatible.
+  whole-product coverage (or are partial only through language or component gaps that scan accepted,
+  such as `php-sast` or `vue-sast`, where no engine reports SAST findings), every producer ran, and
+  producer-component signatures are compatible. Accepted `sast-parse-errors` and lockfile gaps never
+  count: an engine may have analyzed that input in the other scan.
 - `New`: the finding is absent from the old scan under compatible like-for-like producer coverage,
   and does not occur in the complete bounded earlier history.
 - `Reopened`: a three-point history proves that the same finding occurred before the old scan, was
@@ -71,5 +74,7 @@ missing V2 provenance is treated as uncertainty rather than invented evidence.
 
 Malformed and traversal-shaped IDs are rejected before file access. The loader accepts only regular
 managed files whose filename and embedded scan ID agree; symlinks, foreign records, and invalid JSON
-are rejected or isolated. History commands return `0` only for a complete requested result and `2`
-for usage errors, unavailable/corrupt/bounded history, or comparisons containing unknown states.
+are rejected or isolated. History commands return `0` only for a complete requested result (a
+comparison counts as complete when both scans are complete or partial only through accepted language
+or component gaps) and `2` for usage errors, unavailable/corrupt/bounded history, or comparisons
+containing unknown states.

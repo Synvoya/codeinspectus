@@ -48,7 +48,6 @@ rules:
       confidence: LOW
     patterns:
       - pattern-either:
-          - pattern: $T = Math.random()
           - pattern: const $V = Math.random()
       - metavariable-pattern:
           metavariable: $V

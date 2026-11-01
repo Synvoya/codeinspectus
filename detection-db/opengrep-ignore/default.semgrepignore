@@ -1,0 +1,40 @@
+# CodeInspectus managed Opengrep ignore list. Opengrep reads this file instead of a scanned
+# repository's .semgrepignore (SEMGREP_R2C_INTERNAL_EXPLICIT_SEMGREPIGNORE), so a repository cannot
+# remove files from SAST. The patterns below are Opengrep 1.33.1's built-in default list, unchanged.
+# At run time CodeInspectus appends the build-output folders of src/config.ts BUILD_DIRS, where file
+# routing drops Opengrep findings anyway, so the two lists cannot drift apart.
+# Attribution: the default list is copied from Opengrep's .semgrepignore template
+# (https://github.com/opengrep/opengrep, LGPL-2.1).
+
+
+# Git administrative folder or file
+.git
+.svn
+.hg
+_darcs
+CVS
+
+# Common large paths
+build/
+vendor/
+dist/
+*.min.js
+.env/
+.tox/
+
+# package managers
+node_modules/
+.npm/
+.yarn/
+.venv/
+_opam/
+_build/
+_cargo/
+# note that PHP composer uses vendor/ and C++ conan uses build/
+# .venv is used both by Go and Python
+
+# Common test paths
+test/
+tests/
+testsuite/
+*_test.go

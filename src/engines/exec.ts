@@ -31,6 +31,14 @@ export interface ExecOptions {
 
 const activeEngineProcesses = new Set<ChildProcess>();
 
+/**
+ * Engine configuration inherited from the MCP host, shell or CI job must never narrow a scan:
+ * SEMGREP_BASELINE_REF made Opengrep 1.33.1 scan 0 files with a valid empty report, and TRIVY_SEVERITY
+ * or TRIVY_CONFIG cut Trivy's results, while coverage read complete. Only the wrapper's own settings
+ * (`opts.env`) reach the engine.
+ */
+const INHERITED_ENGINE_ENV = /^(?:SEMGREP|OPENGREP|R2C|TRIVY|GITLEAKS)_/i;
+
 /** Best-effort synchronous shutdown used by the CLI's SIGINT/SIGTERM handlers. */
 export function terminateActiveEngineProcesses(signal: NodeJS.Signals = "SIGTERM"): void {
   for (const child of activeEngineProcesses) {
@@ -50,6 +58,7 @@ export async function execBinary(
   // Engines run git themselves (Opengrep lists files with `git ls-files`); a scanned repository's
   // config must not make those git processes run programs.
   const baseEnv: Record<string, string> = gitHardenedEnv(process.env) as Record<string, string>;
+  for (const key of Object.keys(baseEnv)) if (INHERITED_ENGINE_ENV.test(key)) delete baseEnv[key];
   if (opts.offline) {
     baseEnv.HTTP_PROXY = "";
     baseEnv.HTTPS_PROXY = "";

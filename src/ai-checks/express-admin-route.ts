@@ -6,6 +6,7 @@
  * authorization evidence. Ambiguous middleware, receivers, paths, and handlers stay silent.
  */
 
+import type { NativeGapRecord } from "../native-gaps.js";
 import type { Finding } from "../types.js";
 import {
   isConditionallyExecuted,
@@ -51,6 +52,8 @@ function generatedOrVendoredSource(path: string): boolean {
 export interface ExpressAdminRouteAnalysis {
   findings: Finding[];
   notes: string[];
+  /** Declared gaps: per-file call bound, unresolved candidates, and the loader's own records. */
+  gaps: NativeGapRecord[];
 }
 
 interface HandlerBody {
@@ -1135,6 +1138,7 @@ export async function runExpressAdminRouteAnalysis(target: string): Promise<Expr
   const findings: Finding[] = [];
   let omittedFindings = 0;
   const notes = new Set(project.limitations ?? []);
+  const gaps: NativeGapRecord[] = [...(project.gaps ?? [])];
   for (const document of project.files) {
     // Route ownership and middleware provenance cannot be recovered reliably from generated or
     // third-party bundles. Excluding them also prevents a minified asset from consuming the
@@ -1142,9 +1146,7 @@ export async function runExpressAdminRouteAnalysis(target: string): Promise<Expr
     if (generatedOrVendoredSource(document.path)) continue;
     const calls = jsCalls(document);
     if (calls.length > MAX_CALLS_PER_FILE) {
-      notes.add(
-        `Skipped Express admin-route analysis for ${document.path}: ${calls.length} calls exceed the ${MAX_CALLS_PER_FILE}-call file bound.`,
-      );
+      gaps.push({ id: "oversized-files", path: document.path });
       continue;
     }
     const index = buildDocumentIndex(document, calls);
@@ -1209,36 +1211,12 @@ export async function runExpressAdminRouteAnalysis(target: string): Promise<Expr
       if (findings.length < MAX_FINDINGS) findings.push(finding(document, index, route));
       else omittedFindings++;
     }
-    if (middlewareUnknown > 0) {
-      notes.add(
-        `Express admin-route analysis left ${middlewareUnknown} candidate(s) in ${document.path} unresolved because prior app/router.use middleware could not be proven irrelevant.`,
-      );
-    }
-    if (routeMiddlewareUnknown > 0) {
-      notes.add(
-        `Express admin-route analysis left ${routeMiddlewareUnknown} candidate(s) in ${document.path} unresolved because route middleware could not be proven to be non-security Express middleware.`,
-      );
-    }
-    if (mountedGuardUnknown > 0) {
-      notes.add(
-        `Express admin-route analysis left ${mountedGuardUnknown} candidate(s) in ${document.path} unresolved because the router is mounted behind unresolved middleware.`,
-      );
-    }
-    if (ambiguousMountUnknown > 0) {
-      notes.add(
-        `Express admin-route analysis left ${ambiguousMountUnknown} candidate(s) in ${document.path} unresolved because a guarded router mount alias was reassigned or otherwise ambiguous.`,
-      );
-    }
-    if (handlerUnknown > 0) {
-      notes.add(
-        `Express admin-route analysis left ${handlerUnknown} candidate(s) in ${document.path} unresolved because the final route handler body was not statically available.`,
-      );
-    }
-    if (inHandlerGuardUnknown > 0) {
-      notes.add(
-        `Express admin-route analysis left ${inHandlerGuardUnknown} candidate(s) in ${document.path} unresolved because a plausible in-handler access-control guard was outside the exact proof grammar.`,
-      );
-    }
+    if (middlewareUnknown > 0) gaps.push({ id: "express-routes-unresolved", path: document.path });
+    if (routeMiddlewareUnknown > 0) gaps.push({ id: "express-routes-unresolved", path: document.path });
+    if (mountedGuardUnknown > 0) gaps.push({ id: "express-routes-unresolved", path: document.path });
+    if (ambiguousMountUnknown > 0) gaps.push({ id: "express-routes-unresolved", path: document.path });
+    if (handlerUnknown > 0) gaps.push({ id: "express-routes-unresolved", path: document.path });
+    if (inHandlerGuardUnknown > 0) gaps.push({ id: "express-routes-unresolved", path: document.path });
     if (publicUtilityUnknown > 0) {
       notes.add(
         `Express admin-route analysis left ${publicUtilityUnknown} public-looking login/callback/health/status candidate(s) in ${document.path} unresolved.`,
@@ -1252,6 +1230,7 @@ export async function runExpressAdminRouteAnalysis(target: string): Promise<Expr
   return {
     findings,
     notes: boundedNotes(notes, omittedFindings),
+    gaps,
   };
 }
 

@@ -17,6 +17,7 @@ export const javascriptBaselinePack: NativeDetectorPack = {
     "Two selected JavaScript/TypeScript crypto rules only; this is not complete SAST or language coverage.",
     "Findings are reconciled against the bundled Opengrep rules before they surface; Opengrep remains the fallback on mismatches or native parser limitations.",
     "Bounded structural parsing has no type checker, module graph, or interprocedural data flow and never executes target code.",
+    "Native JavaScript/TypeScript analysis uses a lightweight lexer, not a full parser: these are pattern checks for ordinary code and can be evaded by deliberately crafted code while a file reads as parsed. When the SAST scanner runs, Opengrep's full parser still scans the same files for generic sinks; a full parser replacement is planned for 4.0.",
   ],
   isApplicable: (detectedTechnologies) => detectedTechnologies.some(
     (technology) => technology.id === "javascript" || technology.id === "typescript",
@@ -33,7 +34,7 @@ export const javascriptBaselinePack: NativeDetectorPack = {
     ruleIds: [...JAVASCRIPT_BASELINE_RULE_IDS],
     run: async () => {
       const result = await runJavaScriptBaselineCandidates(target);
-      return { findings: result.findings, notes: result.limitations };
+      return { findings: result.findings, notes: result.limitations, ...(result.gaps.length ? { gaps: result.gaps } : {}) };
     },
   }],
 };

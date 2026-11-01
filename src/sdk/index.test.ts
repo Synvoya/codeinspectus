@@ -51,6 +51,9 @@ describe("public SDK process wrapper", () => {
     expect(result.data).toMatchObject({ schema_version: "3.0.0", scan: { target: resolve(target) }, coverage: { aggregate: "partial" }, repository_trust: { schema_version: "1.0.0" } });
     expect(result.args).toEqual(["scan", resolve(target), "--format", "json", "--scanner", "ai", "--no-compliance"]);
     await expect(access("/tmp/sdk-shell-injection-must-not-exist")).rejects.toThrow();
+    // Final review I-2: the typed scan can opt in to accepting declared coverage gaps.
+    const accepted = await client.scan(target, { acceptGaps: ["php-sast", "deno-lock"] });
+    expect(accepted.args).toEqual(["scan", resolve(target), "--format", "json", "--accept-gaps", "php-sast,deno-lock"]);
   });
 
   test("rejects incompatible typed contracts with the bounded process result attached", async () => {

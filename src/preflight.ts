@@ -1,3 +1,4 @@
+import type { CoverageGapId } from "./coverage-gaps.js";
 import {
   DEFAULT_MAX_FINDINGS,
   ENGINE_TIMEOUT_MS,
@@ -41,6 +42,8 @@ export interface CliScanConfiguration {
   baseline_scan_id?: string;
   fail_on_new_severity?: Severity;
   git_scope?: { mode: "commit_diff" | "working_tree"; base: string; head?: string };
+  /** Declared coverage gap ids accepted for CI (`--accept-gaps`). */
+  accept_gaps?: CoverageGapId[];
 }
 
 export interface PreflightPackApplicability {

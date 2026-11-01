@@ -93,7 +93,8 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   "ai:ios-ats-weak-tls": "1:concrete-production-domain-weak-tls-exception",
   "ai:ios-data-protection": "1:explicit-default-file-protection-none",
   [REACT_NATIVE_PACK_DISPATCH_COMPONENT]: "1:react-native-pack-dispatch",
-  [REACT_NATIVE_JAVASCRIPT_PARSER_COMPONENT]: "1:bounded-javascript-typescript-jsx-structural-parser",
+  // 2: JSX-aware retry accepts files the context-free pass rejected (coverage-honesty patch).
+  [REACT_NATIVE_JAVASCRIPT_PARSER_COMPONENT]: "2:bounded-javascript-typescript-jsx-structural-parser-jsx-text-retry",
   "ai:react-native-sensitive-async-storage": "1:proven-async-storage-sensitive-write",
   "ai:react-native-webview-untrusted-content": "1:proven-untrusted-webview-content-flow",
   "ai:react-native-webview-mixed-content": "1:explicit-production-webview-mixed-content",
@@ -106,7 +107,9 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   [PYTHON_LEZER_PARSER_COMPONENT]: "3:bounded-lezer-gated-python-parser-valid-yield-star-targets",
   [JAVASCRIPT_BASELINE_PACK_DISPATCH_COMPONENT]: "1:javascript-baseline-pack-dispatch",
   [JAVASCRIPT_AI_PACK_DISPATCH_COMPONENT]: "1:javascript-typescript-pack-dispatch",
-  [JAVASCRIPT_BASELINE_PARSER_COMPONENT]: "1:bounded-javascript-typescript-structural-parser",
+  // 2: JSX-aware retry and Yarn tooling skip change which files are analyzed, so a prior finding in
+  // a now-skipped or newly bounded-out file reads "not re-checked", never "resolved".
+  [JAVASCRIPT_BASELINE_PARSER_COMPONENT]: "2:bounded-javascript-typescript-structural-parser-jsx-retry-yarn-skip",
   [NATIVE_SAST_RECONCILIATION_COMPONENT]: "1:exact-opengrep-pre-dedup-reconciliation",
   "sast:javascript-weak-hash": "1:weak-hash-md5-sha1",
   "sast:javascript-weak-cipher": "1:weak-cipher-and-deprecated-create-cipher",

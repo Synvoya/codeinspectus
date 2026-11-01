@@ -20,6 +20,9 @@ Shared scan options:
 - `--output FILE` or `--output-dir DIRECTORY`
 - `--allow-output-in-target` for an explicitly approved output directory inside the target
 - `--no-compliance`
+- `--accept-gaps <id[,id]>` (scan only): accept named coverage gaps such as `php-sast` or
+  `deno-lock` so they alone do not fail CI; coverage still reads `partial` and the gaps stay listed.
+  Gap ids are documented in [CI-POLICY.md](CI-POLICY.md#declared-coverage-gaps).
 
 Policy and Git scope options:
 

@@ -400,8 +400,11 @@ See the [V3 migration guide](docs/V3-REPOSITORY-TRUST-MIGRATION.md) for schema a
 `detected_technologies` explains the bounded repository signals CodeInspectus saw.
 `pack_coverage` separately reports how many registered native analyzers and rules actually ran.
 A pack state of `ran` means those listed rules executed; it is not a claim of complete security
-coverage for the named language or framework. `not_applicable` means the installed pack did not
-match detected project technology; `not_run`, `partial`, and `unavailable` distinguish scanner
+coverage for the named language or framework. Native packs use a lightweight lexer, not a full parser:
+they are pattern checks for ordinary code and can be evaded by deliberately crafted code (for example a
+call hidden from the lexer while the file still reads as parsed). When the SAST scanner runs,
+Opengrep's full parser still scans the same files for generic sinks; a full parser replacement is
+planned for 4.0. `not_applicable` means the installed pack did not match detected project technology; `not_run`, `partial`, and `unavailable` distinguish scanner
 filtering from incomplete or failed execution. The Flutter pack runs only when bounded repository
 signals identify Flutter; an ordinary Dart package does not activate it. Android and iOS packs
 likewise require bounded platform-project evidence and report their own platform metadata.

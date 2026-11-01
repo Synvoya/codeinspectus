@@ -299,8 +299,9 @@ describe("component signatures", () => {
       return [ruleId, components, aiSignaturesForComponents(components)];
     });
 
+    // Intentional: javascript:bounded-structural-parser revision 2 (JSX retry, Yarn tooling skip).
     expect(signature(JSON.stringify(compatibilityProjection))).toBe(
-      "sha256:ffdee4da7384ca0f18627b6cf579d77046fddf187bc345835b13c6917363a0da",
+      "sha256:363e23c1f369bded71eba1734129db21ff6cbb52754a6c4fe51fc34b98155f9b",
     );
     expect(compatibilityProjection.every(([ruleId, components]) =>
       ruleId === "ci-ai-edge-fn-no-auth"
@@ -459,8 +460,8 @@ describe("Flutter detection manifest", () => {
     };
     const flutterRules = manifest.custom_rules.filter((rule) => rule.pack_id === "flutter");
 
-    expect(manifest.version).toBe("1.19.0");
-    expect(manifest.date).toBe("2026-08-13");
+    expect(manifest.version).toBe("1.19.1");
+    expect(manifest.date).toBe("2026-10-31");
     expect(manifest.custom_rules).toHaveLength(94);
     expect(flutterRules).toHaveLength(6);
     expect(flutterRules.map((rule) => ({

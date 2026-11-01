@@ -1,3 +1,4 @@
+import type { NativeGapRecord } from "../native-gaps.js";
 import type {
   DetectedTechnology,
   DetectorPackCoverage,
@@ -12,6 +13,8 @@ export interface NativeAnalyzerResult {
   evidence?: SecurityControlEvidence[];
   /** Bounded, non-secret execution limitations surfaced in this pack's coverage note. */
   notes?: readonly string[];
+  /** Declared coverage gaps hit at the exact code site (native-gaps.ts); never derived from notes. */
+  gaps?: readonly NativeGapRecord[];
 }
 
 /**
@@ -76,4 +79,6 @@ export interface NativePackExecution {
   analyzers: readonly RegisteredNativeAnalyzer[];
   results: readonly PromiseSettledResult<NativeAnalyzerResult>[];
   packCoverage: DetectorPackCoverage[];
+  /** Declared coverage gaps the analyzers emitted as structured records. */
+  gapRecords: NativeGapRecord[];
 }

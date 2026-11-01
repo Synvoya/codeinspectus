@@ -104,6 +104,7 @@ describe("React Native project loader bounds", () => {
     const results = await Promise.all(analyzers.map((analyzer) => analyzer.run()));
     expect(results).toHaveLength(4);
     expect(results.every((result) => result.notes?.some((note) => note.includes("Dynamic JSX spread props")))).toBe(true);
-    expect(results.every((result) => result.notes?.some((note) => note.includes("structurally malformed")))).toBe(true);
+    // An unparsed file is a structured native-parse-errors record in every analyzer's result.
+    expect(results.every((result) => result.gaps?.some((gap) => gap.id === "native-parse-errors" && gap.path === "Broken.ts"))).toBe(true);
   });
 });

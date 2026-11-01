@@ -12,6 +12,7 @@ import { detectGitSafety } from "./git-safety.js";
 import { findingsMatch } from "./scan-history.js";
 import { isDocumentationName } from "./path-safety.js";
 import { pairMovedFindings } from "./dedup.js";
+import { escapeScanDisplayText } from "./display-path.js";
 
 const MAX_REVISION_LENGTH = 256;
 const MAX_SCOPE_ENTRIES = 50_000;
@@ -478,7 +479,7 @@ export async function runGitScopedScan(input: ScanInput, request: GitScopeReques
       completeness: limitations.length ? "partial" : "complete",
       limitations,
     };
-    const canonical: ScanResult = {
+    const canonical: ScanResult = escapeScanDisplayText({
       ...execution.canonical,
       target: targetInspection.canonical_path,
       repository_root: repository,
@@ -486,7 +487,7 @@ export async function runGitScopedScan(input: ScanInput, request: GitScopeReques
       git_scope: scope,
       git_safety: request.mode === "commit_diff" ? await detectGitSafety(repository) : execution.canonical.git_safety,
       warnings: [...execution.canonical.warnings, ...introducedNote, ...limitations.map((limitation) => `Git scope partial: ${limitation}`)],
-    };
+    });
     await saveScan(canonical, { canonicalFindings: true });
     return projectScanForDisplay(canonical, input);
   } finally {

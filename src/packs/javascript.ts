@@ -109,7 +109,7 @@ function createJavaScriptAnalyzers(target: string): readonly NativeAnalyzer[] {
         const result = await runNextjsAdminRouteAnalysis(target);
         return {
           findings: result.findings,
-          ...(result.notes.length ? { notes: result.notes } : {}),
+          ...(result.gaps.length ? { gaps: result.gaps } : {}),
         };
       },
     },
@@ -126,6 +126,7 @@ function createJavaScriptAnalyzers(target: string): readonly NativeAnalyzer[] {
         return {
           findings: result.findings,
           ...(result.notes.length ? { notes: result.notes } : {}),
+          ...(result.gaps.length ? { gaps: result.gaps } : {}),
         };
       },
     },
@@ -197,6 +198,7 @@ export const javascriptPack: NativeDetectorPack = {
   platforms: [],
   limitations: [
     "Rule-specific static analysis only; listed languages and frameworks are not complete coverage claims.",
+    "Native JavaScript/TypeScript analysis uses a lightweight lexer, not a full parser: these are pattern checks for ordinary code and can be evaded by deliberately crafted code while a file reads as parsed. When the SAST scanner runs, Opengrep's full parser still scans the same files for generic sinks; a full parser replacement is planned for 4.0.",
     "Client-secret checks also inspect selected HTML and framework component files; runtime-control checks inspect selected repository configuration shapes.",
     "Model-tool command execution analysis is intrafile, import-proven, and bounded to direct flow or one named local wrapper; cross-module dispatch and runtime sandbox/approval state are not resolved.",
     "General model-output execution analysis is intrafile and bounded to recognized SDK output plus global eval/Function or import-proven shell-string APIs; custom wrappers, streams, indirect aliases, and runtime controls are not resolved.",

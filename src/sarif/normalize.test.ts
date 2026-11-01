@@ -191,6 +191,27 @@ describe("Opengrep SAST classification", () => {
   });
 });
 
+describe("Trivy license results are never secrets", () => {
+  // Field validation: ghostfolio's "MIT in passport-headerapikey" was a secret, CWE-798, high.
+  test("a package name with a secret-like word stays a license finding", () => {
+    const sarif: SarifLog = {
+      runs: [{
+        tool: { driver: { name: "trivy", rules: [{ id: "passport-headerapikey:MIT", name: "License", properties: { tags: ["license", "notice"] } }] } },
+        results: [{
+          ruleId: "passport-headerapikey:MIT", level: "note",
+          message: { text: "Artifact: package-lock.json\nLicense MIT\nPkgName: passport-headerapikey\n Classification: notice" },
+          locations: [{ physicalLocation: { artifactLocation: { uri: "package-lock.json" }, region: { startLine: 1 } } }],
+        }],
+      }],
+    };
+    const [finding] = normalizeSarif(sarif, "trivy", TARGET);
+    expect(finding?.finding_kind).toBe("license");
+    expect(finding?.is_secret).toBeUndefined();
+    expect(finding?.cwe).not.toContain("CWE-798");
+    expect(finding?.message).toContain("PkgName: passport-headerapikey");
+  });
+});
+
 describe("Trivy finding_kind and provenance attribution are structural", () => {
   test.each([
     ["LanguageSpecificPackageVulnerability", ["vulnerability", "security"], "vulnerability", true],
@@ -211,5 +232,27 @@ describe("Trivy finding_kind and provenance attribution are structural", () => {
     expect(finding?.finding_kind).toBe(expectedKind);
     expect(finding?.producer_components).toContain("trivy:checks");
     expect(finding?.producer_components?.includes("trivy:vulnerability-db")).toBe(needsDb);
+  });
+});
+
+describe("Trivy dependency remediation", () => {
+  // Field re-test (immich mobile/android/Gemfile.lock): Ruby advisories state the fix as a
+  // constraint with a space, which left 12 findings with the generic remediation.
+  test("keeps a fixed-version constraint that contains spaces", () => {
+    const sarif: SarifLog = {
+      runs: [{
+        tool: { driver: { name: "trivy", rules: [{ id: "CVE-2026-35611", name: "LanguageSpecificPackageVulnerability", shortDescription: { text: "addressable: Denial of Service via crafted URI templates" }, properties: { tags: ["vulnerability"] } }] } },
+        results: [{
+          ruleId: "CVE-2026-35611",
+          message: { text: "Package: addressable\nInstalled Version: 2.8.6\nVulnerability CVE-2026-35611\nSeverity: HIGH\nFixed Version: ~> 2.8.7, >= 2.9.0\nLink: [CVE-2026-35611](https://avd.aquasec.com/nvd/cve-2026-35611)" },
+          locations: [{ physicalLocation: { artifactLocation: { uri: "Gemfile.lock" }, region: { startLine: 1 } } }],
+        }],
+      }],
+    };
+    const [finding] = normalizeSarif(sarif, "trivy", TARGET);
+    expect(finding?.title).toBe("addressable: Denial of Service via crafted URI templates (addressable@2.8.6)");
+    expect(finding?.remediation.summary).toBe(
+      "Upgrade addressable from 2.8.6 to a fixed version (~> 2.8.7, >= 2.9.0; choose the one on your release line), then rebuild the lockfile.",
+    );
   });
 });

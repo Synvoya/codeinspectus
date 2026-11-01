@@ -12,6 +12,7 @@ import { executeScan } from "../scan.js";
 import { normalizeStoredScanForRuntime, saveScan, type StoredScanResult } from "../store.js";
 import type { ScannerKind } from "../types.js";
 import { runGitReadBuffer } from "../util/git.js";
+import { escapePathForDisplay } from "../display-path.js";
 import {
   REPOSITORY_HISTORY_SCHEMA_URI,
   REPOSITORY_HISTORY_SCHEMA_VERSION,
@@ -217,7 +218,9 @@ export async function runRepositoryHistoryScan(options: RepositoryHistoryOptions
       const source = normalizeStoredScanForRuntime(
         await dependencies.scan(snapshot.directory, { ...options, maxFindings, since, until }),
       );
-      const snapshotLimitations = [...snapshot.limitations, ...(record.change_metadata_partial ? ["Change metadata was incomplete for this commit."] : [])];
+      // The snapshot scan is already escaped (escapeScanDisplayText); snapshot limitations name paths too.
+      const snapshotLimitations = [...snapshot.limitations, ...(record.change_metadata_partial ? ["Change metadata was incomplete for this commit."] : [])]
+        .map(escapePathForDisplay);
       const temporalScope = record.commit === to ? "selected_head" as const : "historical" as const;
       const canonical: StoredScanResult = {
         ...source, target: repository, repository_root: repository,

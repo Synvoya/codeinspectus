@@ -3,6 +3,7 @@
  * Kept compact to protect the agent's context window (PRD §5 output discipline).
  */
 
+import { describeCoverageGap } from "./coverage-gaps.js";
 import { SEVERITY_RANK, type ScanResult, type RescanResult, type Finding, type DependencyCoverage } from "./types.js";
 import { TRIVY_DB_PROVENANCE_MESSAGE } from "./trivy-db-provenance.js";
 import { engineSetupMessage } from "./engine-health.js";
@@ -163,6 +164,15 @@ export function summarizeScan(r: ScanResult): string {
       })()
     : "";
 
+  const accepted = new Set<string>(r.accepted_gaps ?? []);
+  const gaps = r.coverage_gaps?.length
+    ? `\n\nCoverage gaps (coverage is partial; accept with --accept-gaps <id> / accept_gaps):\n  - ` +
+      r.coverage_gaps.map((gap) => inlineField(describeCoverageGap(gap, accepted.has(gap.id)))).join("\n  - ")
+    : "";
+  const notes = r.coverage_notes?.length
+    ? `\n\nCoverage notes (informational; not gaps):\n  - ` +
+      r.coverage_notes.map((note) => inlineField(note.detail)).join("\n  - ")
+    : "";
   const nativeCoverage = technologyAndPackSummary(r.detected_technologies, r.pack_coverage);
   const repositoryTrust = repositoryTrustSummary(r.repository_trust);
   const dependencyCoverage = dependencyCoverageSummary(r.dependency_coverage);
@@ -172,7 +182,7 @@ export function summarizeScan(r: ScanResult): string {
       ` | ${r.git_scope.entries.length} change record(s) | ${r.git_scope.primary_finding_count} changed-path finding(s) | ${r.git_scope.supporting_context_finding_count} supporting-context finding(s) | ${r.git_scope.completeness}`
     : "";
 
-  return `${head}${gitScope}${nativeCoverage}${repositoryTrust}${dependencyCoverage}${body}${trunc}${controlEvidence}${dbProvenance}${engineSetup}${beforeFix}${eng}${warn}\n\n${r.disclaimer}`;
+  return `${head}${gitScope}${nativeCoverage}${repositoryTrust}${dependencyCoverage}${body}${trunc}${controlEvidence}${dbProvenance}${engineSetup}${beforeFix}${eng}${gaps}${notes}${warn}\n\n${r.disclaimer}`;
 }
 
 export function summarizeRescan(r: RescanResult): string {

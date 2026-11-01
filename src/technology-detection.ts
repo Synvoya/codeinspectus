@@ -9,7 +9,7 @@ import { lstat, open, opendir } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import { basename, dirname, extname, join, relative } from "node:path";
 import type { DetectedTechnology } from "./types.js";
-import { isDocumentationName, symlinkEntryIsGap } from "./path-safety.js";
+import { isDocumentationName, symlinkEntryIsGap, symlinkTargetInside } from "./path-safety.js";
 import {
   isPythonDependencyManifest,
   parsePythonDependencyManifest,
@@ -1437,6 +1437,20 @@ function detectionLimits(
       1,
     ),
   };
+}
+
+/**
+ * Ruling 30 (review I-3): whether a link this walker skipped has its real target inside `root` in a
+ * folder the walker visits (not ignored, within the default depth bound). Only such a link is the
+ * acceptable gap symlinked-paths; a scan target that is itself a link never is.
+ */
+export async function detectionVisitsLinkTarget(root: string, evidencePath: string): Promise<boolean> {
+  if (evidencePath === ".") return false;
+  const target = await symlinkTargetInside(join(root, evidencePath), root);
+  if (!target) return false;
+  const directories = target.isDirectory ? target.segments : target.segments.slice(0, -1);
+  return directories.length <= DEFAULT_DETECTION_LIMITS.maxDepth &&
+    !directories.some((segment) => IGNORED_DIRECTORIES.has(segment.toLowerCase()));
 }
 
 /** Detect repository technologies without executing target code or using the network. */

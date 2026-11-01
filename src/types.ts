@@ -5,6 +5,7 @@
  */
 
 import type { RepositoryTrustChanges, RepositoryTrustDocument } from "./repository-trust/schemas.js";
+import type { CoverageGap, CoverageGapId, CoverageNote } from "./coverage-gaps.js";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -335,10 +336,16 @@ export interface ScanResult {
   compliance_overview?: ComplianceOverview;
   disclaimer: string;
   warnings: string[];
-  /** Secret-scanner coverage status. Unverified when Gitleaks did not run or .gitleaksignore exists. */
+  /** Secret-scanner coverage status. Unverified when Gitleaks did not run or a .gitleaksignore entry can match. */
   secret_coverage?: "verified" | "unverified";
   /** Redacted metadata only: channel names, counts, and relative file paths. */
   secret_suppression?: SecretSuppressionMetadata;
+  /** Inputs no bundled engine analyzes (stable ids); each makes aggregate coverage partial. */
+  coverage_gaps?: CoverageGap[];
+  /** Gap ids the caller accepted for CI (`accept_gaps`); accepted gaps stay listed in coverage_gaps. */
+  accepted_gaps?: CoverageGapId[];
+  /** Informational scope disclosures that are not gaps and never lower coverage. */
+  coverage_notes?: CoverageNote[];
   /** Component id -> content/semantic signature. Optional only for legacy stored scans. */
   component_signatures?: Record<string, string>;
   /** Code-visible runtime-control evidence. Metadata only; never affects posture scores. */

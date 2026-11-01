@@ -11,6 +11,7 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { repositoryTrustChangesSchema, repositoryTrustDocumentSchema } from "./repository-trust/schemas.js";
 import { cleanupPlanObjectSchema, cleanupResultSchema } from "./repository-trust/cleanup.js";
+import { COVERAGE_GAP_IDS } from "./coverage-gaps.js";
 
 // ── Enumerations ────────────────────────────────────────────────────────────
 export const severityEnum = z.enum(["critical", "high", "medium", "low", "info"]);
@@ -280,6 +281,13 @@ export const scanResultSchema = z.object({
   warnings: z.array(z.string()),
   secret_coverage: z.enum(["verified", "unverified"]).optional(),
   secret_suppression: secretSuppressionSchema.optional(),
+  coverage_gaps: z.array(z.object({
+    id: z.enum(COVERAGE_GAP_IDS),
+    files: z.number().int().nonnegative(),
+    examples: z.array(z.string()),
+  })).optional(),
+  accepted_gaps: z.array(z.enum(COVERAGE_GAP_IDS)).optional(),
+  coverage_notes: z.array(z.object({ component: z.string(), detail: z.string() })).optional(),
   component_signatures: z.record(z.string()).optional(),
   security_control_evidence: z.array(securityControlEvidenceSchema).optional(),
   trivy_db_provenance: z
@@ -350,6 +358,13 @@ export const scanInput = z.object({
     .boolean()
     .optional()
     .describe("Include the per-framework compliance overview in the result (default: true)."),
+  accept_gaps: z
+    .array(z.enum(COVERAGE_GAP_IDS))
+    .optional()
+    .describe(
+      "Coverage gap ids to accept for CI (e.g. php-sast, deno-lock). Coverage still reads partial and the " +
+        "gaps stay listed; CI passes coverage only when every other cause is absent.",
+    ),
 });
 
 export const rescanInput = z.object({

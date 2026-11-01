@@ -1,0 +1,9 @@
+{
+    "name": "codeinspectus/dev-deps-fixture",
+    "require": {
+        "guzzlehttp/guzzle": "7.9.3"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "10.5.26"
+    }
+}

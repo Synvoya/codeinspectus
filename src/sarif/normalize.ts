@@ -12,9 +12,10 @@ import type { EngineOutput } from "../engines/types.js";
 import type { SarifLog, SarifRule, SarifResult, SarifProps } from "./types.js";
 import { normalizeSeverity } from "../severity.js";
 import { findSecret, hashSecret, redactSecretText } from "../redact.js";
-import { remediationForCwe } from "../remediation.js";
+import { dependencyRemediation, remediationForCwe } from "../remediation.js";
 import { fingerprint as fp } from "../util/hash.js";
 import { externalFindingComponents } from "../provenance.js";
+import { DEPENDENCY_SCOPE_PROPERTY } from "../engines/trivy-dev-scope.js";
 
 const CWE_RE = /CWE[-_ ]?(\d{1,5})/gi;
 const OWASP_WEB_RE = /OWASP[-_ ]?(A\d{2}:\d{4})/gi;
@@ -141,6 +142,10 @@ function isSecretFinding(engine: Engine, rule: SarifRule | undefined, ruleId: st
   // requests (for example CORS `credentials: true`) without detecting a credential
   // value. Treating that word as a secret signal misclassifies the finding.
   if (engine === "opengrep") return Boolean(findSecret(snippet));
+  // A Trivy license result's rule id is `<package>:<license>`, so a package named like
+  // `passport-headerapikey` matched the keywords below (field validation: MIT reported as a secret).
+  const tags = (rule?.properties?.tags ?? []).map((tag) => tag.toLowerCase());
+  if (engine === "trivy" && (rule?.name === "License" || tags.includes("license"))) return false;
   const hay = `${ruleId} ${rule?.name ?? ""} ${(rule?.properties?.tags ?? []).join(" ")}`.toLowerCase();
   if (hay.includes("secret") || hay.includes("credential") || hay.includes("api-key") || hay.includes("apikey")) {
     return true;
@@ -163,6 +168,17 @@ export function findingKindForSarif(
   if (name === "license" || tags.includes("license")) return "license";
   if (name === "misconfiguration" || tags.includes("misconfiguration")) return "misconfiguration";
   return "other";
+}
+
+/** Trivy's SARIF vulnerability message: `Package: …`, `Installed Version: …`, `Fixed Version: a, b`. */
+function trivyDependency(message: string): { name: string; installed: string; fixed: string[] } | undefined {
+  const name = /^Package: (\S{1,256})$/m.exec(message)?.[1];
+  const installed = /^Installed Version: (\S{1,128})$/m.exec(message)?.[1];
+  const fixedLine = /^Fixed Version:(.*)$/m.exec(message)?.[1];
+  if (!name || !installed || fixedLine === undefined) return undefined;
+  const fixed = fixedLine.split(",").map((version) => version.trim()).filter(Boolean);
+  // A fix may be a constraint with spaces (Ruby: `>= 2.9.0`); the line itself has no newline.
+  return fixed.every((version) => version.length <= 128) ? { name, installed, fixed } : undefined;
 }
 
 export function normalizeEngineOutput(output: EngineOutput, target: string): Finding[] {
@@ -258,10 +274,26 @@ function normalizeResult(
     liveSecret,
   });
 
-  const title = deriveTitle(rule?.shortDescription?.text, rule?.name, message, rawRuleId, ruleId, isSecret);
+  const baseTitle = deriveTitle(rule?.shortDescription?.text, rule?.name, message, rawRuleId, ruleId, isSecret);
+  // Trivy's vulnerability message carries the package, installed and fixed versions. They feed the
+  // title and remediation only; the fingerprint inputs and the location are unchanged.
+  const dependency = engine === "trivy" && findingKind === "vulnerability" ? trivyDependency(messageText) : undefined;
+  // Development-only packages (marked by the Trivy wrapper) are named as such in the text: export 3.0.0
+  // has no field for it, and title and message are not fingerprint inputs.
+  const devScope = engine === "trivy" && result.properties?.[DEPENDENCY_SCOPE_PROPERTY] === "dev";
+  const title = dependency
+    ? `${baseTitle} (${dependency.name}@${dependency.installed}${devScope ? ", dev dependency" : ""})`
+    : devScope ? `${baseTitle} (dev dependency)` : baseTitle;
+  if (devScope) {
+    message = `${message}\nDependency scope: development only (devDependencies or packages-dev). Front-end builds ` +
+      "such as Nuxt, Vite, Next and SvelteKit can still bundle development dependencies into what ships.";
+  }
 
   const fingerprint = fp([engine, file, startLine, endLine, cwes[0], ruleId, secretValueHash]);
-  const remediation = remediationForCwe(cwes);
+  // A CWE taken from the advisory text (e.g. CWE-400) describes the library bug, not the fix.
+  const remediation = dependency
+    ? dependencyRemediation(dependency.name, dependency.installed, dependency.fixed, remediationForCwe(["CWE-1395"]))
+    : remediationForCwe(cwes);
   const owaspWeb = extractOwaspWeb(rule?.properties?.tags, result.properties?.tags);
   const owaspApi = OWASP_API_BY_RULE[ruleId] ?? [];
 

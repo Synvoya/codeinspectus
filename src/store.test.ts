@@ -5,10 +5,26 @@
  * before use (never crash on corrupt data, never return unvalidated data).
  */
 
-import { describe, test, expect } from "vitest";
-import { access, readdir } from "node:fs/promises";
+import { afterAll, describe, test, expect, vi } from "vitest";
+import { access, copyFile, mkdir, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { resolve, sep } from "node:path";
+import { join, resolve, sep } from "node:path";
+
+// The managed store lives in a temporary root, never in the developer's HOME: a scan written there
+// by another CodeInspectus build must not decide whether this suite passes.
+const store = vi.hoisted(() => ({
+  root: `${(process.env.TMPDIR ?? process.env.TEMP ?? "/tmp").replace(/[\\/]+$/, "")}/ci-store-test-${process.pid}-${Date.now()}`,
+}));
+
+vi.mock("./config.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./config.js")>();
+  const { join: joinPath } = await import("node:path");
+  return { ...actual, MANAGED_ROOT: store.root, MANAGED_SCANS: joinPath(store.root, "scans") };
+});
+
+afterAll(async () => {
+  await rm(store.root, { recursive: true, force: true });
+});
 import {
   INTERNAL_DISABLE_SCAN_PERSISTENCE_ENV,
   resolveScanPath,
@@ -194,19 +210,14 @@ describe("safeParseScanJson — validate loaded JSON (Claim 2c)", () => {
 
 describe("getScan — end-to-end against real managed store", () => {
   test("a REAL prior stored scan id still loads and validates", async () => {
-    let files: string[] = [];
-    try {
-      files = (await readdir(MANAGED_SCANS)).filter((f) => f.endsWith(".json"));
-    } catch {
-      /* no managed dir in this env */
-    }
-    if (!files.length) {
-      // No stored scans here — nothing to assert; the corrupt/containment cases still cover logic.
-      return;
-    }
-    const first = files[0];
-    if (!first) return;
-    const id = first.replace(/\.json$/, "");
+    // A scan CodeInspectus 3.3.2 wrote to its managed store (only the target path is scrubbed).
+    const id = "scan-667bc391-6a84-4a6c-9dec-012ef384085c";
+    expect(MANAGED_SCANS.startsWith(store.root)).toBe(true);
+    await mkdir(MANAGED_SCANS, { recursive: true });
+    await copyFile(
+      resolve("fixtures/coverage-honesty-corpus/trivy-dependency/stored-scan-3.3.2.json"),
+      join(MANAGED_SCANS, `${id}.json`),
+    );
     const scan = await getScan(id);
     expect(scan).toBeDefined();
     expect(scan!.scan_id).toBe(id);

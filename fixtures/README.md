@@ -178,3 +178,28 @@ expectations in the test file are the public spec).
   that must remain inert while raw scanner findings stay unchanged.
 - `agent-multi-review-workflow/` — synthetic confirmed, disproven, speculative, not-rechecked, and
   exact-rescan outcomes for bounded orchestration and strict evidence-lane separation.
+- `coverage-honesty-corpus/` — small repositories reduced from the 2026-10-31 field re-test, one per
+  coverage-honesty fix. `opengrep-utf8/` carries a UTF-8 `.semgrepignore` and a non-ASCII line next
+  to a planted `eval()`; MCP eval E62 scans it with no host locale and requires Opengrep to run and
+  return the snippet intact.
+  `opengrep-ignore-suppress/` has a `.semgrepignore` that names `src/`, where the planted `eval()`
+  lives; E63 requires Opengrep to still report it and to keep its default `*.min.js` exclusion.
+  `trivy-dependency/` holds a lockfile project, the Trivy 0.76.1 SARIF for it and the scan
+  CodeInspectus 3.3.2 stored from that run; `src/trivy-dependency-remediation.test.ts` replays the
+  SARIF and requires unchanged finding ids and fingerprints with package-specific remediation. The
+  stored scan was written by commit `baa246b` (version 3.3.2 with the Trivy 0.76.1 pin), not by the
+  released 3.3.2 package with Trivy 0.71.2; normalization is unchanged between the two, but it is not
+  a release artefact.
+  `jsx-text/` is a Next.js page whose JSX text holds apostrophes, bare `/` separators and a
+  parenthetical; E65 requires both JavaScript packs to analyze it.
+  `gitleaksignore-relative/` pairs a fake `api_key` with a relative `.gitleaksignore` entry that
+  Gitleaks' directory scan cannot match; E66 requires the finding and `verified` secret coverage,
+  then writes an absolute entry at runtime and requires the finding hidden and coverage `unverified`.
+  `coverage-gaps/` has a PHP file, a `deno.lock`, and a `package.json` and `composer.json` without
+  lockfiles; E73 requires the gaps `php-sast`, `deno-lock`, `no-lockfile-npm` and
+  `no-lockfile-composer`.
+  `opengrep-rules/` has one folder per bundled Opengrep rule id: `tp/` cases the rule must report,
+  and for the SSRF, path-traversal and insecure-random rules `fp/` cases it must not report and
+  `known-gap/` cases it does not report today (template-literal URLs and paths, a literal prefix
+  before request input, `token = Math.random()`). E75 runs every bundled rule over it and fails on a
+  finding outside `tp/`, a missed `tp/` file, or any Opengrep skip or "Internal matching error".

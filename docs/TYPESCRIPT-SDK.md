@@ -23,6 +23,30 @@ stdout/stderr, timeout and cancellation are bounded. Valid policy exits (`1` and
 with their typed JSON; spawn, timeout, abort, output-bound and incompatible-contract failures throw
 `CodeInspectusSdkError`.
 
+## Coverage gaps
+
+Inputs no bundled engine analyzes (for example PHP source with no bundled SAST rules, a `deno.lock`, a
+`package.json` without a lockfile, or files Opengrep could only partly parse) are declared coverage
+gaps with stable ids. A gap makes `coverage.aggregate` read `partial`, so `client.scan()` exits 2 by
+default. Each gap appears in `coverage.evidence` as an item with `component: "gap:<id>"`,
+`category: "declared_scope"` and `state: "partial"`, and each id you accepted as an item with
+`component: "accepted-gap:<id>"` and `state: "informational"`; the gap ids are listed in
+[CI-POLICY.md](CI-POLICY.md#declared-coverage-gaps).
+
+```ts
+const result = await client.scan(repository, { failOnSeverity: "high", acceptGaps: ["php-sast", "deno-lock"] });
+// Exit 0 or 1 is now possible although coverage.aggregate is still "partial".
+```
+
+`acceptGaps` maps to `--accept-gaps`. An accepted gap stays listed and partial; the policy passes
+coverage only when every non-complete evidence item is a gap you named. Any other cause still exits 2,
+and an unknown id makes the CLI reject the command (the SDK throws `CodeInspectusSdkError`).
+`client.compareHistory()` honours a stored scan's accepted language and component gaps
+(`<language>-sast`, `vue-sast`, `svelte-sast`, `astro-sast`); accepted `sast-parse-errors` and lockfile
+gaps still make the comparison partial, because an engine may have analyzed that input in the other
+scan. Gap ids are never removed: when a release closes a gap, its id is no longer reported but is still
+accepted as a no-op, so a configured list keeps working across upgrades.
+
 ## Versioned contracts
 
 The SDK exports explicit contract names:

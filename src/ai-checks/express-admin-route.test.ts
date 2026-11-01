@@ -592,7 +592,7 @@ describe("Express admin route access-control boundary", () => {
   });
 
   test("finds only statically-proven, clearly naked Express admin routes", async () => {
-    const { findings, notes } = await runExpressAdminRouteAnalysis(root);
+    const { findings, notes, gaps } = await runExpressAdminRouteAnalysis(root);
     expect(findings.map((item) => [item.location.file, item.location.start_line])).toEqual([
       ["tp/aliased-late-sink.ts", 3],
       ["tp/auth-denial-privileged-sink.ts", 3],
@@ -638,18 +638,16 @@ describe("Express admin route access-control boundary", () => {
       expect(item.location.snippet).toMatch(/\.(?:get|post|put|patch|delete)\(/);
     }
     expect(notes).toEqual(expect.arrayContaining([
-      expect.stringMatching(/malformed.*malformed\/broken\.ts/i),
-      expect.stringMatching(/computed-use\.ts.*prior app\/router\.use middleware/i),
-      expect.stringMatching(/metachar-use\.ts.*prior app\/router\.use middleware/i),
-      expect.stringMatching(/case-insensitive-use\.ts.*prior app\/router\.use middleware/i),
       expect.stringMatching(/public-looking login\/callback\/health\/status.*public-admin-utility\.ts/i),
-      expect.stringMatching(/guarded-router-mount\.ts.*router is mounted behind unresolved middleware/i),
-      expect.stringMatching(/route-middleware\.ts.*route middleware could not be proven/i),
-      expect.stringMatching(/ambiguous-handler\.ts.*final route handler body was not statically available/i),
-      expect.stringMatching(/guarded-router-alias\.ts.*router is mounted behind unresolved middleware/i),
-      expect.stringMatching(/ambiguous-router-alias\.ts.*mount alias was reassigned or otherwise ambiguous/i),
-      expect.stringMatching(/ambiguous-mixed-router-alias\.ts.*mount alias was reassigned or otherwise ambiguous/i),
-      expect.stringMatching(/unsupported-plausible-guard\.ts.*plausible in-handler access-control guard/i),
+    ]));
+    // Pre-release field validation item 3: unparsed files and unresolved candidates are structured
+    // gap records, never notes, so they can be accepted by id.
+    expect(notes.join(" ")).not.toMatch(/structurally malformed|unresolved because/);
+    expect(gaps.map((gap) => `${gap.id} ${gap.path}`)).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^native-parse-errors .*malformed\/broken\.ts$/),
+      ...["computed-use", "metachar-use", "case-insensitive-use", "guarded-router-mount", "route-middleware",
+        "ambiguous-handler", "guarded-router-alias", "ambiguous-router-alias", "ambiguous-mixed-router-alias",
+        "unsupported-plausible-guard"].map((name) => expect.stringMatching(new RegExp(`^express-routes-unresolved .*${name}\\.ts$`))),
     ]));
   });
 
@@ -696,12 +694,12 @@ describe("Express admin route access-control boundary", () => {
           "const app = express();",
           ...routes(300),
         ].join("\n")),
+        // Public-looking routes still produce notes (unresolved candidates are gap records now).
         ...Array.from({ length: 30 }, (_, index) =>
           writeFile(join(directory, `unknown-${String(index).padStart(2, "0")}.ts`), [
             'import express from "express";',
             "const app = express();",
-            "app.use(maybePrefix, maybeGuard);",
-            `app.get('/admin/unknown-${index}', (_req, res) => res.sendStatus(204));`,
+            "app.get('/admin/status', (_req, res) => res.sendStatus(204));",
           ].join("\n"))
         ),
       ]);
@@ -727,9 +725,7 @@ describe("Express admin route access-control boundary", () => {
       ].join("\n"));
       const result = await runExpressAdminRouteAnalysis(directory);
       expect(result.findings).toHaveLength(0);
-      expect(result.notes).toEqual(expect.arrayContaining([
-        expect.stringMatching(/calls\.ts.*exceed.*2048-call file bound/i),
-      ]));
+      expect(result.gaps).toEqual([{ id: "oversized-files", path: "calls.ts" }]);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -770,8 +766,7 @@ describe("Express admin route access-control boundary", () => {
         writeFile(join(directory, `unknown-${String(index).padStart(2, "0")}.ts`), [
           'import express from "express";',
           "const app = express();",
-          "app.use(maybePrefix, maybeGuard);",
-          `app.get('/admin/item-${index}', (_req, res) => res.sendStatus(204));`,
+          "app.get('/admin/status', (_req, res) => res.sendStatus(204));",
         ].join("\n"))
       ));
       const result = await runExpressAdminRouteAnalysis(directory);

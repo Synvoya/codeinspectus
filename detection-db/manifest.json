@@ -1,7 +1,7 @@
 {
   "name": "CodeInspectus Detection Database",
-  "version": "1.19.0",
-  "date": "2026-08-13",
+  "version": "1.19.1",
+  "date": "2026-10-31",
   "description": "CodeInspectus's curated first-party detections. Native packs cover bounded AI/framework checks plus selected reconciled SAST rules; separately downloaded external engines remain additive fallbacks and broader scanners.",
   "engine_versions": {
     "opengrep": "1.33.1",
