@@ -12,8 +12,9 @@ import { join, resolve, sep } from "node:path";
 
 // The managed store lives in a temporary root, never in the developer's HOME: a scan written there
 // by another CodeInspectus build must not decide whether this suite passes.
+// The platform separator, so path.join(root, "scans") still starts with root on Windows (public CI).
 const store = vi.hoisted(() => ({
-  root: `${(process.env.TMPDIR ?? process.env.TEMP ?? "/tmp").replace(/[\\/]+$/, "")}/ci-store-test-${process.pid}-${Date.now()}`,
+  root: `${(process.env.TMPDIR ?? process.env.TEMP ?? "/tmp").replace(/[\\/]+$/, "")}${process.platform === "win32" ? "\\" : "/"}ci-store-test-${process.pid}-${Date.now()}`,
 }));
 
 vi.mock("./config.js", async (importOriginal) => {

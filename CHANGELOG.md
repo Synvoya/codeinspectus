@@ -69,7 +69,8 @@ AI-drafted and practitioner-reviewed — see the honesty notes in the [README](R
 ### Fixed
 - Opengrep now runs under a UTF-8 locale. When the MCP host set no locale, a non-ASCII byte in a
   repository's `.semgrepignore` ended the Opengrep run with no SARIF, so the scan lost all SAST
-  results and read `partial`; non-ASCII snippet text was also replaced.
+  results and read `partial`; non-ASCII snippet text was also replaced. The locale is `en_US.UTF-8`
+  on macOS (releases before macOS 26 have no `C.UTF-8`) and `C.UTF-8` elsewhere.
 - A repository's `.semgrepignore` no longer controls which files Opengrep scans. Opengrep read it
   from its working directory, which was the scan target, so a file naming `src/` removed that
   directory from SAST while coverage still read `complete`. Opengrep now reads a managed copy of its

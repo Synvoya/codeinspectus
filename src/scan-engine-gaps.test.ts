@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -154,24 +154,22 @@ describe("engine-reported coverage gaps", () => {
   });
 
   // Security review: gaps come only from structured records. A file whose name spells a gap note, next
-  // to a genuine failure (an unreadable source), still leaves the pack partial with no gap id to accept.
+  // to a genuine failure, still leaves the pack partial with no gap id to accept. The failure is a
+  // non-UTF-8 source, which every OS produces (public CI: chmod 000 does not deny reads on Windows).
   test("a path that spells a gap note cannot turn a real failure into an acceptable gap", async () => {
     const dir = await mkdtemp(join(tmpdir(), "ci-native-gaps-forged-"));
     await writeFile(join(dir, "package.json"), "{}\n", "utf8");
     await writeFile(join(dir, "app.ts"), "export const safe = true;\n", "utf8");
     const forged = join(dir, "Skipped oversized JavaScript", "TypeScript source x.js");
     await mkdir(join(dir, "Skipped oversized JavaScript"));
-    await writeFile(forged, "export const x = 1;\n", "utf8");
-    await chmod(forged, 0o000);
-    try {
-      const { canonical } = await executeScan({ path: dir, scanners: ["ai", "sast"] }, { persist: false });
-      expect(canonical.pack_coverage.find((pack) => pack.pack_id === "javascript-baseline")?.state).toBe("partial");
-      expect(canonical.coverage_gaps ?? []).toEqual([]);
-      const document = createJsonExport({ ...canonical, storage_schema_version: "2.0.0", canonical_findings: true });
-      const partial = document.coverage.evidence.filter((item) => item.state === "partial");
-      expect(partial.some((item) => !item.component.startsWith("gap:"))).toBe(true);
-    } finally {
-      await chmod(forged, 0o644);
-    }
+    await writeFile(forged, Buffer.from([0x65, 0x78, 0x70, 0xff, 0xfe, 0x0a]));
+    const { canonical } = await executeScan({ path: dir, scanners: ["ai", "sast"] }, { persist: false });
+    const baseline = canonical.pack_coverage.find((pack) => pack.pack_id === "javascript-baseline");
+    expect(baseline?.state).toBe("partial");
+    expect(baseline?.note).toContain("Skipped non-UTF-8 JavaScript/TypeScript source");
+    expect(canonical.coverage_gaps ?? []).toEqual([]);
+    const document = createJsonExport({ ...canonical, storage_schema_version: "2.0.0", canonical_findings: true });
+    const partial = document.coverage.evidence.filter((item) => item.state === "partial");
+    expect(partial.some((item) => !item.component.startsWith("gap:"))).toBe(true);
   });
 });

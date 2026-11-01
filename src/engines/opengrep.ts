@@ -36,7 +36,9 @@ export const OPENGREP_EFFECTIVE_IGNORE_NAME = "opengrep.semgrepignore";
  * findings anyway, BUILD_DIRS in src/config.ts, so no folder whose findings routing would keep is
  * skipped. Folders already in Opengrep's defaults (build/, dist/) are not repeated.
  */
-export function effectiveOpengrepIgnoreList(defaults: string): string {
+export function effectiveOpengrepIgnoreList(raw: string): string {
+  // A Windows git checkout gives the defaults CRLF line endings (public CI); Opengrep gets LF only.
+  const defaults = raw.replace(/\r\n?/g, "\n");
   const present = new Set(defaults.split("\n").map((line) => line.trim()));
   const added = [...BUILD_DIRS].map((folder) => `${folder}/`).filter((pattern) => !present.has(pattern));
   return `${defaults.replace(/\n*$/, "\n")}\n# Build output (src/config.ts BUILD_DIRS; file routing drops Opengrep findings there).\n` +
@@ -142,17 +144,20 @@ export function buildOpengrepArgs(target: string, sarifPath: string, reportPath:
  * Opengrep's Python front end decodes text with the locale's encoding. Without a UTF-8 locale (a
  * GUI-launched MCP host often has none) one non-ASCII byte in a scanned ignore file ends the run
  * with no SARIF, and non-ASCII snippet text is replaced. `PYTHONUTF8` does not reach the frozen
- * binary, so the locale itself is set.
+ * binary, so the locale itself is set. It must exist on the host: macOS before 26 has no C.UTF-8 (the
+ * public CI macOS runner fell back to ASCII), while every macOS ships en_US.UTF-8; Linux images have
+ * C.UTF-8. A missing locale still fails closed: no SARIF means Opengrep did not run.
  */
-export function opengrepExecEnvironment(tmpDir: string): Record<string, string> {
+export function opengrepExecEnvironment(tmpDir: string, platform: NodeJS.Platform = process.platform): Record<string, string> {
+  const locale = platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8";
   return {
     XDG_CACHE_HOME: MANAGED_OPENGREP_CACHE,
     SEMGREP_LOG_FILE: join(tmpDir, "opengrep.log"),
     SEMGREP_VERSION_CACHE_PATH: join(tmpDir, "opengrep-version-cache"),
     OPENGREP_ENABLE_VERSION_CHECK: "0",
     SEMGREP_R2C_INTERNAL_EXPLICIT_SEMGREPIGNORE: join(tmpDir, OPENGREP_EFFECTIVE_IGNORE_NAME),
-    LC_ALL: "C.UTF-8",
-    LANG: "C.UTF-8",
+    LC_ALL: locale,
+    LANG: locale,
   };
 }
 

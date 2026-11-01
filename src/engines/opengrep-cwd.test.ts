@@ -46,7 +46,8 @@ describe("Opengrep ignore policy", () => {
     expect(output.ran).toBe(true);
     expect(seen.cwd).toBe(target);
     expect(seen.ignoreFile).toBe(join(scratch, OPENGREP_EFFECTIVE_IGNORE_NAME));
-    expect(seen.ignoreList.startsWith(await readFile(OPENGREP_IGNORE_FILE, "utf8"))).toBe(true);
+    // A Windows checkout may have CRLF defaults; the effective list is always LF.
+    expect(seen.ignoreList.startsWith((await readFile(OPENGREP_IGNORE_FILE, "utf8")).replace(/\r\n?/g, "\n"))).toBe(true);
     for (const pattern of ["node_modules/", "build/", "vendor/", "dist/", "test/", "tests/", "*.min.js"]) {
       expect(seen.ignoreList.split("\n")).toContain(pattern);
     }
@@ -61,7 +62,7 @@ describe("Opengrep ignore policy", () => {
     const target = await mkdtemp(join(tmpdir(), "ci-opengrep-build-dirs-"));
     roots.push(scratch, target);
     await runOpengrep(target, scratch);
-    const defaults = new Set((await readFile(OPENGREP_IGNORE_FILE, "utf8")).split("\n"));
+    const defaults = new Set((await readFile(OPENGREP_IGNORE_FILE, "utf8")).replace(/\r\n?/g, "\n").split("\n"));
     const added = seen.ignoreList.split("\n").filter((line) => line && !line.startsWith("#") && !defaults.has(line));
     expect(new Set(added)).toEqual(new Set([...BUILD_DIRS].map((folder) => `${folder}/`).filter((pattern) => !defaults.has(pattern))));
     for (const kept of [".vercel/", ".turbo/", ".parcel-cache/", "coverage/"]) expect(seen.ignoreList.split("\n")).not.toContain(kept);

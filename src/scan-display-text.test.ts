@@ -33,11 +33,15 @@ describe("repository paths in scan warnings and notes", () => {
     await writeFile(join(dir, "app.js"), "export const ok = 1;\n", "utf8");
     await mkdir(join(dir, `app${RLO}x`));
     await writeFile(join(dir, `app${RLO}x`, "pubspec.yaml"), "name: x\n", "utf8");
-    // Unreadable source and folder: partial causes that stay warnings and pack notes.
+    // Unreadable source and folder: partial causes that stay warnings and pack notes. chmod cannot deny
+    // reads on Windows (public CI, win32-x64), so those two surfaces are checked on POSIX only.
+    const readDenial = process.platform !== "win32";
     await writeFile(join(dir, `locked${RLO}.js`), "export const x = 1;\n", "utf8");
-    await chmod(join(dir, `locked${RLO}.js`), 0o000);
     await mkdir(join(dir, `closed${RLO}dir`));
-    await chmod(join(dir, `closed${RLO}dir`), 0o000);
+    if (readDenial) {
+      await chmod(join(dir, `locked${RLO}.js`), 0o000);
+      await chmod(join(dir, `closed${RLO}dir`), 0o000);
+    }
     // A link outside the target: a Pub and technology-detection limitation (Ruling 30: not a gap).
     await symlink(outside, join(dir, `out${RLO}link`));
     // A link to a file inside the target: the symlinked-paths gap counts it but never shows it.
@@ -49,13 +53,17 @@ describe("repository paths in scan warnings and notes", () => {
       const { canonical } = await executeScan({ path: dir, scanners: ["ai", "sast", "vuln"] }, { persist: false });
 
       // Technology detection warning and evidence.
-      expect(canonical.warnings.find((warning) => warning.startsWith("Technology detection was partial"))).toContain(`closed${ESCAPED}dir (directory_unreadable)`);
+      if (readDenial) {
+        expect(canonical.warnings.find((warning) => warning.startsWith("Technology detection was partial"))).toContain(`closed${ESCAPED}dir (directory_unreadable)`);
+      }
       expect(canonical.warnings.find((warning) => warning.startsWith("Technology detection was partial"))).toContain(`out${ESCAPED}link (symlink_skipped)`);
       expect(canonical.detected_technologies.flatMap((technology) => technology.evidence)).toContain(`app${ESCAPED}x/pubspec.yaml`);
       // Native-pack notes and the warnings built from them.
       const baseline = canonical.pack_coverage.find((pack) => pack.pack_id === "javascript-baseline")!;
-      expect(baseline.note).toContain(`Skipped unreadable JavaScript/TypeScript source locked${ESCAPED}.js.`);
-      expect(canonical.warnings.some((warning) => warning.startsWith("Native pack javascript-baseline partial") && warning.includes(`locked${ESCAPED}.js`))).toBe(true);
+      if (readDenial) {
+        expect(baseline.note).toContain(`Skipped unreadable JavaScript/TypeScript source locked${ESCAPED}.js.`);
+        expect(canonical.warnings.some((warning) => warning.startsWith("Native pack javascript-baseline partial") && warning.includes(`locked${ESCAPED}.js`))).toBe(true);
+      }
       // Dependency coverage limitations.
       expect(canonical.dependency_coverage?.flatMap((dependency) => dependency.limitations))
         .toContain(`Skipped symbolic-link path out${ESCAPED}link during Pub lockfile discovery.`);

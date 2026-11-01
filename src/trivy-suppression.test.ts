@@ -59,7 +59,16 @@ describe("Trivy inline ignore comments", () => {
   });
 
   // Security review: a candidate the search cannot read must never read as "no inline ignores".
-  test("a symlinked or unreadable candidate and an unreadable folder make the result unverified", async () => {
+  test("a symlinked candidate makes the result unverified", async () => {
+    const root = await tree({ "real/main.tf": "resource \"aws_s3_bucket\" \"a\" {}\n" });
+    await symlink(join(root, "real", "main.tf"), join(root, "linked.tf"));
+    const found = await detectTrivyInlineIgnores(root);
+    expect(found).toEqual({ comments: 0, paths: [], unchecked: ["linked.tf"] });
+  });
+
+  // chmod cannot deny reads on Windows (public CI, win32-x64), so the unreadable cases run on POSIX only;
+  // on Windows the same read and open errors take the same path.
+  test.skipIf(process.platform === "win32")("a symlinked or unreadable candidate and an unreadable folder make the result unverified", async () => {
     const root = await tree({ "real/main.tf": "resource \"aws_s3_bucket\" \"a\" {}\n", "locked/main.tf": "\n", "closed/x/main.tf": "\n" });
     await symlink(join(root, "real", "main.tf"), join(root, "linked.tf"));
     await chmod(join(root, "locked", "main.tf"), 0o000);

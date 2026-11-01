@@ -63,6 +63,13 @@ describe("Gitleaks working directory", () => {
     const output = await runGitleaks(target, scratch);
     seen.uri = "";
 
+    if (process.platform === "win32") {
+      // Final review Minor 5: Windows never links (a junction with a trailing separator is unverified
+      // there), so the target is scanned at its real path and secret coverage reads unverified.
+      expect(seen.source).toBe(target);
+      expect(output.coverageWarnings).toEqual([expect.stringContaining("Secret coverage unverified")]);
+      return;
+    }
     expect(seen.source).toBe(`${join(scratch, "gitleaks-source", "target")}${sep}`);
     expect(seen.sourceEntries).toEqual(["config.yml"]);
     expect(output.sarif?.runs?.[0]?.results?.[0]?.locations?.[0]?.physicalLocation?.artifactLocation?.uri).toBe(join(target, "config.yml"));
