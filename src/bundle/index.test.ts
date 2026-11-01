@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, realpath, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +8,7 @@ import type { StoredScanResult } from "../store.js";
 import { createJsonExport } from "../export/model.js";
 import { createSarifExport } from "../export/sarif.js";
 import { createSealedBundle, validateLegacyV2BundlePayloads, verifySealedBundle } from "./index.js";
+import { bundleManifestSchema } from "./schemas.js";
 
 const cleanup: string[] = [];
 
@@ -40,11 +42,18 @@ function scan(id = "00000000-0000-4000-8000-000000000001", startedAt = "2026-07-
   };
 }
 
-async function createdBundle(): Promise<string> {
+async function createdBundle(input: StoredScanResult = scan()): Promise<string> {
   const parent = await root();
   const directory = join(parent, "scan-results");
-  await createSealedBundle(scan(), directory);
+  await createSealedBundle(input, directory);
   return directory;
+}
+
+/** Sealed by the released 3.3.2 CLI (`bundle create`) from a scan of fixtures/vulnerable-app; local paths were rewritten to /fixture/* before sealing. */
+const BUNDLE_SEALED_BY_3_3_2 = "fixtures/sealed-bundle-3.3.2/bundle";
+
+function jsonSchemaValidator(path: string) {
+  return readFile(path, "utf8").then((text) => new Ajv({ strict: false, validateSchema: false, formats: { "date-time": true } }).compile(JSON.parse(text)));
 }
 
 describe("sealed scan bundles", () => {
@@ -75,13 +84,15 @@ describe("sealed scan bundles", () => {
     const directory = await createdBundle();
     const verified = await verifySealedBundle(directory);
     expect(verified.manifest).toMatchObject({
-      schema_version: "1.0.0", scan_id: scan().scan_id,
+      schema_version: "1.1.0", scan_id: scan().scan_id,
       detection_database: { version: "1.19.0", date: "2026-08-13" },
       native_engine: { name: "codeinspectus-ai", version: "5.20.0" },
       schemas: { export: "3.0.0" },
       artifacts: expect.arrayContaining([expect.objectContaining({ path: "artifacts/scan-record.json", sha256: expect.stringMatching(/^[0-9a-f]{64}$/) })]),
     });
-    expect(verified.manifest.commodity_engines.every((engine) => engine.integrity_state === "verified" && /^[0-9a-f]{64}$/.test(engine.verified_sha256!))).toBe(true);
+    const ran = verified.manifest.commodity_engines.filter((engine) => engine.ran);
+    expect(ran.map((engine) => engine.engine)).toEqual(["opengrep", "gitleaks", "trivy"]);
+    expect(ran.every((engine) => engine.integrity_state === "verified" && /^[0-9a-f]{64}$/.test(engine.verified_sha256!))).toBe(true);
     const allBytes = (await Promise.all(["scan-manifest.json", "findings.json", "coverage.json", "report.md", "results.sarif", "artifacts/scan-record.json", "artifacts/export.json"].map((path) => readFile(join(directory, path))))).map(String).join("\n");
     expect(allBytes).not.toContain("RAW-BUNDLE-SECRET-9081726354");
     expect(verified.scan.findings[0]?.message).toMatch(/redacted/i);
@@ -91,8 +102,7 @@ describe("sealed scan bundles", () => {
   test("validates actual manifests against the packaged schema and rejects duplicated identities", async () => {
     const directory = await createdBundle();
     const manifest = JSON.parse(await readFile(join(directory, "scan-manifest.json"), "utf8"));
-    const schema = JSON.parse(await readFile("schemas/codeinspectus-bundle-manifest-1.0.0.schema.json", "utf8"));
-    const validate = new Ajv({ strict: false, validateSchema: false, formats: { "date-time": true } }).compile(schema);
+    const validate = await jsonSchemaValidator("schemas/codeinspectus-bundle-manifest-1.1.0.schema.json");
     expect(validate(manifest), JSON.stringify(validate.errors)).toBe(true);
     const duplicateEngine = structuredClone(manifest);
     duplicateEngine.commodity_engines[1].engine = "opengrep";
@@ -100,6 +110,85 @@ describe("sealed scan bundles", () => {
     const duplicateArtifact = structuredClone(manifest);
     duplicateArtifact.artifacts[1].path = duplicateArtifact.artifacts[0].path;
     expect(validate(duplicateArtifact)).toBe(false);
+  });
+
+  test("new bundles seal 1.1.0 with four commodity engines", async () => {
+    const verified = await verifySealedBundle(await createdBundle());
+    expect(verified.manifest).toMatchObject({
+      $schema: "https://codeinspectus.com/schemas/bundle/1.1.0/manifest.schema.json",
+      schema_version: "1.1.0",
+      schemas: { bundle: "1.1.0" },
+    });
+    expect(verified.manifest.commodity_engines.map((engine) => engine.engine)).toEqual(["opengrep", "gitleaks", "trivy", "osv-scanner"]);
+    // The fixture scan predates osv-scanner: it did not run, so its integrity is not recorded.
+    expect(verified.manifest.commodity_engines[3]).toEqual({ engine: "osv-scanner", version: "2.7.0", ran: false, integrity_state: "not_recorded" });
+    for (const path of ["findings.json", "coverage.json"] as const) {
+      expect(JSON.parse(verified.contents[path].toString("utf8")).schema_version).toBe("1.1.0");
+    }
+  });
+
+  test("records osv-scanner integrity with the same mapping as the other commodity engines", async () => {
+    const ranScan = scan();
+    ranScan.engine_details.push({ engine: "osv-scanner", version: "2.7.0", available: true, ran: true, finding_count: 0, duration_ms: 1 });
+    ranScan.engine_setup!.engines.push({ engine: "osv-scanner", version: "2.7.0", state: "ready" });
+    const ran = (await verifySealedBundle(await createdBundle(ranScan))).manifest.commodity_engines[3];
+    expect(ran).toEqual({ engine: "osv-scanner", version: "2.7.0", ran: true, integrity_state: "verified", verified_sha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
+
+    // A machine without osv-scanner seals it unavailable, exactly as a missing opengrep, gitleaks or trivy.
+    const missingScan = scan();
+    missingScan.engine_setup!.engines.push({ engine: "osv-scanner", version: "2.7.0", state: "missing" });
+    const missing = (await verifySealedBundle(await createdBundle(missingScan))).manifest.commodity_engines[3];
+    expect(missing).toEqual({ engine: "osv-scanner", version: "2.7.0", ran: false, integrity_state: "unavailable" });
+
+    // Installed but not run (not applicable, or vuln not selected): integrity is not recorded.
+    const idleScan = scan();
+    idleScan.engine_setup!.engines.push({ engine: "osv-scanner", version: "2.7.0", state: "ready" });
+    const idle = (await verifySealedBundle(await createdBundle(idleScan))).manifest.commodity_engines[3];
+    expect(idle).toEqual({ engine: "osv-scanner", version: "2.7.0", ran: false, integrity_state: "not_recorded" });
+  });
+
+  test("1.0.0 bundles sealed by 3.3.2 still verify", async () => {
+    const verified = await verifySealedBundle(BUNDLE_SEALED_BY_3_3_2);
+    expect(verified.manifest).toMatchObject({
+      $schema: "https://codeinspectus.com/schemas/bundle/1.0.0/manifest.schema.json",
+      schema_version: "1.0.0",
+      created_by: { name: "codeinspectus", version: "3.3.2" },
+      schemas: { bundle: "1.0.0", export: "3.0.0" },
+    });
+    expect(verified.manifest.commodity_engines.map((engine) => engine.engine)).toEqual(["opengrep", "gitleaks", "trivy"]);
+    expect(verified.scan.scan_id).toBe(verified.manifest.scan_id);
+    expect(verified.scan.findings.length).toBeGreaterThan(0);
+    expect(JSON.parse(verified.contents["findings.json"].toString("utf8")).schema_version).toBe("1.0.0");
+  });
+
+  test("each manifest version pins its own commodity engine set and schema identity", async () => {
+    const legacy = JSON.parse(await readFile(join(BUNDLE_SEALED_BY_3_3_2, "scan-manifest.json"), "utf8"));
+    const current = JSON.parse(await readFile(join(await createdBundle(), "scan-manifest.json"), "utf8"));
+    expect(bundleManifestSchema.safeParse(legacy).success).toBe(true);
+    expect(bundleManifestSchema.safeParse(current).success).toBe(true);
+
+    const legacyWithOsv = structuredClone(legacy);
+    legacyWithOsv.commodity_engines.push({ engine: "osv-scanner", version: "2.7.0", ran: false, integrity_state: "not_recorded" });
+    const currentWithoutOsv = structuredClone(current);
+    currentWithoutOsv.commodity_engines.pop();
+    const currentDuplicateOsv = structuredClone(current);
+    currentDuplicateOsv.commodity_engines[2] = { ...currentDuplicateOsv.commodity_engines[3] };
+    const mixedIdentity = structuredClone(current);
+    mixedIdentity.$schema = legacy.$schema;
+    const mixedSchemas = structuredClone(current);
+    mixedSchemas.schemas.bundle = "1.0.0";
+    for (const invalid of [legacyWithOsv, currentWithoutOsv, currentDuplicateOsv, mixedIdentity, mixedSchemas]) {
+      expect(bundleManifestSchema.safeParse(invalid).success).toBe(false);
+    }
+
+    const validateLegacy = await jsonSchemaValidator("schemas/codeinspectus-bundle-manifest-1.0.0.schema.json");
+    const validateCurrent = await jsonSchemaValidator("schemas/codeinspectus-bundle-manifest-1.1.0.schema.json");
+    expect(validateLegacy(legacy), JSON.stringify(validateLegacy.errors)).toBe(true);
+    expect(validateLegacy(current)).toBe(false);
+    expect(validateCurrent(legacy)).toBe(false);
+    for (const invalid of [currentWithoutOsv, currentDuplicateOsv, mixedIdentity, mixedSchemas]) {
+      expect(validateCurrent(invalid)).toBe(false);
+    }
   });
 
   test("rejects missing, corrupted, swapped, extra, and traversal-shaped artifacts", async () => {
@@ -167,6 +256,25 @@ describe("sealed scan bundles", () => {
     await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`);
 
     await expect(verifySealedBundle(directory)).rejects.toThrow(/outside the seal/i);
+  });
+
+  test("rejects findings or coverage whose schema version differs from the manifest, even when re-sealed", async () => {
+    for (const artifact of ["findings.json", "coverage.json"]) {
+      const directory = await createdBundle();
+      const document = JSON.parse(await readFile(join(directory, artifact), "utf8"));
+      document.schema_version = "1.0.0";
+      const bytes = Buffer.from(`${JSON.stringify(document, null, 2)}\n`, "utf8");
+      await writeFile(join(directory, artifact), bytes);
+      // Re-seal the manifest so only the version mismatch is left to catch.
+      const path = join(directory, "scan-manifest.json");
+      const { seal, ...payload } = JSON.parse(await readFile(path, "utf8"));
+      const entry = payload.artifacts.find((item: { path: string }) => item.path === artifact);
+      entry.bytes = bytes.length;
+      entry.sha256 = createHash("sha256").update(bytes).digest("hex");
+      seal.manifest_payload_sha256 = createHash("sha256").update(`${JSON.stringify(payload, null, 2)}\n`).digest("hex");
+      await writeFile(path, `${JSON.stringify({ ...payload, seal }, null, 2)}\n`);
+      await expect(verifySealedBundle(directory)).rejects.toThrow(/schema version does not match the manifest/);
+    }
   });
 
   test("detects manifest payload tampering independently of artifact hashes", async () => {

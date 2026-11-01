@@ -6,6 +6,45 @@ AI-drafted and practitioner-reviewed — see the honesty notes in the [README](R
 
 ## [Unreleased]
 
+### Added
+- Added Google's osv-scanner 2.7.0 as a fourth managed engine, installed only after approval like
+  Opengrep, Gitleaks and Trivy. `engines.lock.json` ships its binary SHA-256 for five platforms; the
+  maintainer pin step recorded each one only after verifying the release's `SHA256SUMS` and its
+  cosign-verified SLSA build provenance (`checksums+slsa`). When you approve the install, setup
+  repeats both checks and refuses a binary whose SHA-256 differs from the shipped pin. It matches
+  the package versions recorded in lockfiles and manifests against OSV.dev data, with no
+  reachability or call analysis.
+- osv-scanner runs fully offline: `--offline`, no dependency resolution, no call analysis, and no
+  network I/O during a scan. A managed `--config` stops a repository's own `osv-scanner.toml` from
+  suppressing findings. An ecosystem whose OSV database is not installed is reported `unavailable`
+  with a setup warning, never as clean, and the other ecosystems still scan. If osv-scanner still
+  stops at a database it cannot load, its findings are kept but its coverage reads `partial` with a
+  warning, and a rescan reports findings it may have missed as not re-checked rather than resolved.
+- Added OSV database setup. `codeinspectus setup --path REPOSITORY` offers only the databases for the
+  ecosystems the repository's lockfiles name, and `--osv-ecosystems LIST` approves an exact list.
+  `repair-engines osv-scanner --osv-ecosystems PyPI` downloads exactly that list. Databases come
+  only from `https://osv-vulnerabilities.storage.googleapis.com/<Ecosystem>/all.zip`, after
+  approval, for npm, PyPI, Packagist, Go, crates.io, RubyGems, Maven, NuGet and Pub (language
+  ecosystems; never distribution ones). OSV publishes no signature, so integrity is TLS plus a
+  SHA-256 recorded at install time. The MCP `codeinspectus_setup` tool takes `path` and
+  `osv_ecosystems` too.
+- Malicious-package advisories (`MAL-`, OpenSSF Malicious Packages) are reported as critical with
+  CWE-506 and credential-rotation remediation. Compliance mapping now covers `MAL-`, `PYSEC-`,
+  `GO-`, `RUSTSEC-` and `OSV-` (OSS-Fuzz) advisory ids.
+- Dependency findings are de-duplicated per package: osv-scanner, Trivy and the native Pub matcher
+  merge when they report the same advisory for the same package, and the same advisory on two
+  different packages stays two findings.
+- `codeinspectus_list_rules` lists osv-scanner and one `advisory_databases` entry per installed OSV
+  database, with OSV data licensing and attribution. `preflight` lists osv-scanner for dependency
+  scans as additive. A missing osv-scanner does not make engine setup `repair_required`.
+- Sealed bundles seal manifest `1.1.0`, which records four commodity engines (Opengrep, Gitleaks,
+  Trivy and osv-scanner). Bundles sealed up to 3.3.2 use manifest `1.0.0` and still verify.
+- The TypeScript SDK exposes `SDK_COMPATIBILITY.bundle_schemas_verified` (`["1.0.0", "1.1.0"]`), the
+  bundle manifest versions `verifyBundle` accepts.
+- `THIRD-PARTY-NOTICES.md` and `NOTICE` now attribute osv-scanner (Apache-2.0) and the OSV data
+  sources and their licenses: GHSA, PyPA, OSS-Fuzz and Go (CC BY 4.0), OpenSSF Malicious Packages
+  (Apache-2.0), Drupal (MIT) and RustSec (CC0 1.0). This is attribution, not a legal review.
+
 ### Changed
 - Engine pins: Opengrep 1.23.0 → 1.33.1 and Trivy 0.71.2 → 0.76.1. Gitleaks 8.30.1 is already the
   latest release. Trivy 0.76.1 is built with Go 1.27.3, which distrusts the compromised eMudhra
@@ -14,10 +53,28 @@ AI-drafted and practitioner-reviewed — see the honesty notes in the [README](R
 - Opengrep releases since v1.31.0 are signed by `rolling-release.yml` on per-release
   `release-vX.Y.Z` branches instead of `main`. The lockfile pins the exact `release-v1.33.1`
   identity, and verification stays fail-closed.
+- `SDK_COMPATIBILITY.bundle_schema` is now `1.1.0`, the manifest version this release seals. It was
+  `1.0.0`. Use `bundle_schemas_verified` for the versions `verifyBundle` accepts.
+- Export schema `3.0.0` is unchanged. Exports carry no structured `package` field; the package is
+  kept internally for de-duplication.
 
 ### Upgrade note
 - Existing installs report the old Opengrep and Trivy binaries as a SHA256 mismatch and do not run
-  them. Run `npx codeinspectus repair-engines` to install the pinned versions.
+  them. Run `npx codeinspectus repair-engines` to install the pinned versions. That command also
+  installs osv-scanner 2.7.0, unless you declined it in `setup` (then run
+  `repair-engines osv-scanner` to install it), but downloads no new OSV database; OSV databases you
+  already installed may be refreshed if they are stale or have lost their install record.
+- To scan dependencies with osv-scanner, approve the databases your repository needs:
+  `npx codeinspectus setup --select osv-scanner --path /absolute/path/to/repository`. Until you do,
+  scans report each missing ecosystem as `unavailable` with a setup warning.
+- Installing osv-scanner can detach existing triage annotations from dependency findings that it
+  merges into. The merged finding can carry a different fingerprint, so an annotation recorded
+  against the earlier finding may stop matching. The finding resurfaces for triage; nothing is
+  hidden.
+- Builds up to 3.3.2 cannot verify bundles sealed with manifest `1.1.0` (`bundle verify` exits 2).
+  Bundles sealed by 3.3.2 and earlier still verify with this release.
+- `SDK_COMPATIBILITY.bundle_schema` changed from `1.0.0` to `1.1.0`. Consumers that compared it to
+  decide which bundles to accept should read `bundle_schemas_verified` instead.
 
 ## [3.3.2] — 2026-10-24
 

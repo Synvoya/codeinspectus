@@ -1,8 +1,8 @@
 /**
  * Scan orchestrator (PRD §3 data flow):
- *   run engines (Opengrep/Gitleaks/Trivy) + AI-code checks as subprocesses/analyzers
- *   → normalize each SARIF into the CWE-keyed schema
- *   → dedup (global + Trivy⨯Gitleaks secret overlap)
+ *   run engines (Opengrep/Gitleaks/Trivy/osv-scanner) + AI-code checks as subprocesses/analyzers
+ *   → normalize each SARIF into the CWE-keyed schema (osv-scanner and native Pub emit findings directly)
+ *   → dedup (global + Trivy⨯Gitleaks secret overlap + package-aware vulnerability merge)
  *   → compliance-tag each finding
  *   → sort, threshold, paginate → §5 envelope.
  *
@@ -36,6 +36,9 @@ import { saveScan } from "./store.js";
 import { runOpengrep } from "./engines/opengrep.js";
 import { runGitleaks } from "./engines/gitleaks.js";
 import { runTrivy, type TrivyScanner } from "./engines/trivy.js";
+import { runOsvScanner } from "./engines/osv-scanner.js";
+import { osvContribution } from "./osv/contribution.js";
+import { detectOsvLockfiles } from "./osv/ecosystems.js";
 import type { EngineOutput } from "./engines/types.js";
 import { runAiChecks } from "./ai-checks/index.js";
 import { nativePackNotRunCoverage } from "./packs/registry.js";
@@ -182,13 +185,19 @@ export async function executeScan(
     // infer a language hidden behind an unreadable/symlinked subtree; the Pub loader must get a
     // chance to report that omission as partial rather than the envelope saying not_applicable.
     const pubTask = runVuln ? runPubScan(target) : undefined;
+    // Offline against the per-ecosystem OSV databases setup installed; additive to Trivy and native Pub.
+    const osvTask = runVuln ? runOsvScanner(target, tmpDir) : undefined;
+    // Bounded, name-only walk, run alongside the engines; used only to reconcile an osv-scanner run that happened.
+    const osvLockfilesTask = runVuln ? detectOsvLockfiles(target) : undefined;
 
-    const [engineOutputs, nativeResult, technologyDetection, pubResult, repositoryTrust] = await Promise.all([
+    const [engineOutputs, nativeResult, technologyDetection, pubResult, repositoryTrust, osvResult, osvLockfiles] = await Promise.all([
       Promise.all(tasks),
       nativeTask ?? Promise.resolve(undefined),
       technologyProbe,
       pubTask ?? Promise.resolve(undefined),
       repositoryTrustProbe,
+      osvTask ?? Promise.resolve(undefined),
+      osvLockfilesTask ?? Promise.resolve([]),
     ]);
 
     if (technologyDetection.limitations.length) {
@@ -233,6 +242,18 @@ export async function executeScan(
       warnings.push(
         `Native Pub dependency coverage ${activePubResult.coverage.state}: ${activePubResult.coverage.note ?? "see dependency_coverage limitations"}`,
       );
+    }
+    const osv = osvResult
+      ? osvContribution(
+          osvResult,
+          // Lockfile detection is only for reconciling a run that happened; it never invents osv coverage.
+          osvResult.info.available ? osvLockfiles : [],
+          activePubResult?.coverage.state === "ran" || activePubResult?.coverage.state === "partial",
+        )
+      : undefined;
+    if (osv) {
+      dependencyCoverage.push(...osv.coverage);
+      warnings.push(...osv.warnings);
     }
 
     // Normalize engine SARIF → findings; track per-engine raw counts.
@@ -315,19 +336,24 @@ export async function executeScan(
       Object.assign(componentSignatures, activePubResult.componentSignatures);
       engineDetails.push(activePubResult.info);
     }
+    if (osvResult && osv?.include) {
+      allFindings.push(...osvResult.findings);
+      Object.assign(componentSignatures, osvResult.componentSignatures);
+      engineDetails.push(osv.info);
+    }
 
-    // Trivy matches Pub advisories by package name only. A git-sourced, custom-hosted, path or SDK
-    // package with a pub.dev name is a different package, so its Trivy matches are name collisions.
+    // Trivy and osv-scanner match Pub advisories by package name only. A git-sourced, custom-hosted,
+    // path or SDK package with a pub.dev name is a different package, so those matches are name collisions.
     if (activePubResult?.nonOfficialPackages.length) {
       const excluded = new Set(activePubResult.nonOfficialPackages.map((pkg) => `${pkg.lockfile}\u0000${pkg.name}`));
       const before = allFindings.length;
       allFindings = allFindings.filter((finding) => {
-        if (finding.engine !== "trivy" || !finding.location.file.endsWith("pubspec.lock")) return true;
-        const name = /^Package: (\S+)/.exec(finding.message)?.[1];
+        if ((finding.engine !== "trivy" && finding.engine !== "osv-scanner") || !finding.location.file.endsWith("pubspec.lock")) return true;
+        const name = finding.package?.name;
         return !(name && excluded.has(`${finding.location.file}\u0000${name}`));
       });
       if (allFindings.length < before) {
-        warnings.push(`${before - allFindings.length} Trivy Pub advisory match(es) were package-name collisions with git-sourced, custom-hosted, path or SDK packages and are not reported.`);
+        warnings.push(`${before - allFindings.length} Trivy or osv-scanner Pub advisory match(es) were package-name collisions with git-sourced, custom-hosted, path or SDK packages and are not reported.`);
       }
     }
 

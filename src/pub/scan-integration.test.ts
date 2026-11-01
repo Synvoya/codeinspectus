@@ -15,6 +15,17 @@ vi.mock("../engines/trivy.js", () => ({
   readTrivyDbDate: vi.fn(async () => undefined),
 }));
 vi.mock("../store.js", () => ({ saveScan: vi.fn(async () => undefined) }));
+// osv-scanner is covered by scan-osv-integration.test.ts; here it is absent so no binary ever runs.
+vi.mock("../engines/osv-scanner.js", () => ({
+  runOsvScanner: vi.fn(async () => ({
+    info: { engine: "osv-scanner", version: "unknown", available: false, ran: false, finding_count: 0, duration_ms: 0 },
+    applicable: false,
+    findings: [],
+    coverage: [],
+    componentSignatures: {},
+    warnings: [],
+  })),
+}));
 
 const { runScan } = await import("../scan.js");
 const { scanResultSchema } = await import("../schemas.js");

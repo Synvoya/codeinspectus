@@ -23,6 +23,12 @@ describe("native Pub SCA corpus", () => {
     expect(result.findings.every((finding) =>
       finding.producer_components?.includes("codeinspectus-pub:osv-snapshot"),
     )).toBe(true);
+    // The structured package is what lets dedup merge Pub with Trivy and osv-scanner per package.
+    expect(result.findings.find((finding) => finding.title.includes("archive@3.3.7"))?.package)
+      .toEqual({ ecosystem: "Pub", name: "archive", version: "3.3.7" });
+    expect(result.findings.every((finding) =>
+      finding.package?.ecosystem === "Pub" && finding.title.includes(`${finding.package.name}@${finding.package.version}`),
+    )).toBe(true);
     expect(result.coverage).toMatchObject({
       state: "partial",
       lockfiles: { discovered: 1, analyzed: 1 },

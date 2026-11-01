@@ -27,9 +27,23 @@ scan-results/
 ```
 
 The versioned manifest records CodeInspectus, schema, detection-database, native-engine and
-commodity-engine versions; verified platform SHA-256 pins where the stored scan proves them;
+commodity-engine (Opengrep, Gitleaks, Trivy and osv-scanner) versions; verified platform SHA-256
+pins where the stored scan proves them;
 component signatures; target and exact Git revision when available; scan configuration/scope;
 start/completion/seal timestamps; and byte length plus SHA-256 for every retained artifact.
+
+## Manifest versions
+
+New bundles are sealed with manifest `1.1.0`. It records four commodity engines, each exactly once:
+Opengrep, Gitleaks, Trivy and osv-scanner. Bundles sealed by CodeInspectus 3.3.2 and earlier use
+manifest `1.0.0`, which records the first three, and they still verify, export and compare
+unchanged. Both versions share the same artifacts, redaction boundary and seal algorithm, and the
+sealed canonical export stays on export schema `3.0.0`.
+
+Builds up to 3.3.2 cannot verify a `1.1.0` bundle: they reject the manifest version, and
+`bundle verify` exits 2. Verify a `1.1.0` bundle with the build that sealed it or a newer one.
+The TypeScript SDK exposes both versions in `SDK_COMPATIBILITY`; see
+[TYPESCRIPT-SDK.md](TYPESCRIPT-SDK.md).
 
 All public content is redacted before hashing and persistence. The canonical export is retained
 as an artifact so a later CodeInspectus version can return the exact sealed JSON contract without

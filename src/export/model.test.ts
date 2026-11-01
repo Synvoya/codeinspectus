@@ -73,6 +73,63 @@ describe("V3 aggregate coverage", () => {
     }));
   });
 
+  describe("osv-scanner dependency coverage", () => {
+    const nativePub = (state: "ran" | "partial" | "not_applicable") => ({
+      ecosystem: "Pub", engine: "codeinspectus-pub" as const, state,
+      lockfiles: { discovered: state === "not_applicable" ? 0 : 1, analyzed: state === "not_applicable" ? 0 : 1 },
+      packages: { resolved: 0, eligible: 0, skipped: 0 },
+      matching: "exact-enumerated-versions" as const, limitations: [],
+    });
+    const osv = (ecosystem: string, state: "unavailable" | "partial") => ({
+      ecosystem, engine: "osv-scanner" as const, state,
+      lockfiles: { discovered: 0, analyzed: 0 }, packages: { resolved: 0, eligible: 0, skipped: 0 },
+      matching: "osv-scanner-offline" as const,
+      limitations: [`${ecosystem} not checked by osv-scanner.`], note: `${ecosystem} not checked by osv-scanner.`,
+    });
+    const osvNotRun = { engine: "osv-scanner" as const, version: "2.7.0", available: true, ran: false, finding_count: 0, duration_ms: 1, note: "osv-scanner checked nothing." };
+    const base = scan();
+
+    test.each(["unavailable", "partial"] as const)(
+      "with native Pub coverage, an osv-scanner Pub entry that is %s is a note and keeps the aggregate complete",
+      (state) => {
+        const result = assessAggregateCoverage(scan({
+          engine_details: [...base.engine_details, osvNotRun],
+          dependency_coverage: [nativePub("ran"), osv("Pub", state)],
+        }));
+        expect(result.aggregate).toBe("complete");
+        expect(result.evidence).toContainEqual(expect.objectContaining({ component: "dependency:osv-scanner:Pub", state: "informational" }));
+        expect(result.evidence).toContainEqual(expect.objectContaining({ component: "engine:osv-scanner", state: "informational" }));
+      },
+    );
+
+    test("native Pub partial still makes the osv-scanner Pub entry note-only (the native gap alone is partial)", () => {
+      const result = assessAggregateCoverage(scan({
+        engine_details: [...base.engine_details, osvNotRun],
+        dependency_coverage: [nativePub("partial"), osv("Pub", "unavailable")],
+      }));
+      expect(result.evidence.filter((item) => item.component.includes("osv-scanner")).every((item) => item.state === "informational")).toBe(true);
+    });
+
+    test("other ecosystems, or Pub without native coverage, stay coverage gaps", () => {
+      expect(assessAggregateCoverage(scan({
+        engine_details: [...base.engine_details, osvNotRun],
+        dependency_coverage: [nativePub("ran"), osv("npm", "unavailable")],
+      })).aggregate).toBe("partial");
+      expect(assessAggregateCoverage(scan({
+        dependency_coverage: [nativePub("not_applicable"), osv("Pub", "unavailable")],
+      })).aggregate).toBe("partial");
+      // A run that checked nothing for another reason is still a gap even when its only entry is Pub.
+      expect(assessAggregateCoverage(scan({
+        engine_details: [...base.engine_details, osvNotRun],
+        dependency_coverage: [nativePub("ran"), osv("Pub", "unavailable"), osv("PyPI", "unavailable")],
+      })).aggregate).toBe("partial");
+      expect(assessAggregateCoverage(scan({
+        engine_details: [...base.engine_details, osvNotRun],
+        dependency_coverage: [nativePub("ran")],
+      })).aggregate).toBe("partial");
+    });
+  });
+
   test("a legacy stored scan without the canonical marker is unknown", () => {
     const legacy = scan();
     delete legacy.canonical_findings;

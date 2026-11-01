@@ -141,7 +141,7 @@ const MAX_EVIDENCE_PER_TECHNOLOGY = 5;
 const MAX_LIMITATIONS = 20;
 const MAX_MANIFEST_BYTES = 256 * 1024;
 const MAX_XCODE_PROJECT_BYTES = 4 * 1024 * 1024;
-const DEFAULT_DETECTION_LIMITS: TechnologyDetectionLimits = {
+export const DEFAULT_DETECTION_LIMITS: TechnologyDetectionLimits = {
   maxEntries: 100_000,
   maxDepth: 64,
   maxManifestFiles: 4_096,
@@ -158,7 +158,7 @@ const EXPO_DYNAMIC_CONFIG_FILES = new Set([
 ]);
 
 /** Generated output, dependency, cache, and VCS trees never contribute signals. */
-const IGNORED_DIRECTORIES = new Set([
+export const IGNORED_DIRECTORIES: ReadonlySet<string> = new Set([
   ".git",
   ".cache",
   ".dart_tool",

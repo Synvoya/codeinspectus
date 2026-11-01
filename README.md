@@ -32,13 +32,16 @@ broad repository coverage.
 If CodeInspectus is useful, [star the repository](https://github.com/Synvoya/codeinspectus)
 so other AI-app builders can find it.
 
-CodeInspectus orchestrates three best-in-class OSS engines behind one normalized,
+CodeInspectus orchestrates four best-in-class OSS engines behind one normalized,
 CWE-keyed schema, and adds its own **AI-code-specific checks** that generic
 scanners miss:
 
 - **Opengrep** — SAST / OWASP Top 10 (SARIF)
 - **Gitleaks** — secrets
 - **Trivy** — dependency CVEs (SCA), IaC misconfig, secrets, license, SBOM
+- **osv-scanner** (Google) — offline dependency matching against OSV.dev data, including
+  OpenSSF malicious-package (`MAL-`) advisories. It runs only on the OSV databases you approved
+  for the ecosystems your repository uses
 - **CodeInspectus Pub** — first-party, exact-version Dart/Flutter dependency matching and
   CycloneDX/SPDX inventory from `pubspec.lock`, backed by a bundled offline OSV Pub snapshot
 - **CodeInspectus native checks** — client-side secret/bundle exposure, Supabase
@@ -72,7 +75,7 @@ IDs** (29 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Nativ
 3 Firebase configuration, 2 GitHub Actions workflow, and 2 JavaScript baseline SAST rules), 18 Opengrep-owned
 SAST rules, and 4 custom Gitleaks rules. All 20 Opengrep YAML rules remain physically active:
 the two native-owned rules reconcile exact results and fall back to Opengrep on mismatch or
-native unavailability. Opengrep, Gitleaks, and Trivy are optional, managed, additive engines.
+native unavailability. Opengrep, Gitleaks, Trivy, and osv-scanner are optional, managed, additive engines.
 
 > CodeInspectus explains each engine's coverage, license, platform-specific size, and required
 > action before asking permission. After approval it downloads the official, **SHA-pinned**
@@ -111,6 +114,11 @@ npx codeinspectus setup
 npx codeinspectus setup --status
 npx codeinspectus setup --all
 npx codeinspectus setup --select opengrep,gitleaks
+
+# osv-scanner: install it and download only the OSV databases this repository needs
+# (--path reads lockfile names to pick ecosystems; --osv-ecosystems names them explicitly).
+npx codeinspectus setup --select osv-scanner --path /absolute/path/to/repository
+npx codeinspectus setup --select osv-scanner --osv-ecosystems npm,PyPI
 ```
 
 On a terminal, a first bare `npx codeinspectus` run opens this guided setup. MCP clients continue
@@ -124,6 +132,19 @@ npm package, and atomically installs them under `~/.codeinspectus/`. It refreshe
 Trivy vulnerability DB only when it is missing, lacks rescan provenance, or is more than seven
 days old. Rule-only CodeInspectus upgrades therefore download nothing. After setup, **scans
 perform zero network I/O.**
+
+osv-scanner's vulnerability data is one OSV database per package ecosystem. Setup downloads a
+database only after you approve it, only for the ecosystems your repository's lockfiles name
+(`--path`, or the `path` the MCP setup tool takes) or the ones you list with `--osv-ecosystems`, and
+only from `osv-vulnerabilities.storage.googleapis.com`. The allow-list is language ecosystems: npm,
+PyPI, Packagist, Go, crates.io, RubyGems, Maven, NuGet, and Pub. Distribution ecosystems are never
+downloaded. The npm database is over 200 MB zipped, so setup shows each size before you approve.
+OSV publishes no signature for these files; integrity is TLS to that one host plus a SHA-256
+CodeInspectus records at install time. Setup (unless you declined osv-scanner) and a bare
+`repair-engines` (while osv-scanner is installed) also refresh an OSV database you already
+installed once it is more than seven days old or has lost its install record; neither adds an
+ecosystem you did not approve. To add a database later:
+`npx codeinspectus repair-engines osv-scanner --osv-ecosystems PyPI`.
 
 Every scan and `codeinspectus_list_rules` response includes structured `engine_setup` state:
 `ready`, `repair_required`, `db_refresh_recommended`, or `unsupported_platform`. MCP agents are
@@ -424,9 +445,10 @@ eligible packages it analyzed, what it deliberately skipped, and the bundled sna
 
 ## Honest claims (please read)
 
-- **"No egress" is precise: zero egress _at scan time_.** Engine binaries and the
-  Trivy DB are fetched only by explicit setup/repair commands from verified sources, with
-  SHA256 verification. Normal CodeInspectus installation does not install the optional C2PA peer;
+- **"No egress" is precise: zero egress _at scan time_.** Engine binaries, the
+  Trivy DB, and the OSV databases are fetched only by explicit setup/repair commands after your
+  approval, with SHA256 verification (OSV databases: TLS plus a recorded SHA-256, since OSV
+  publishes no signature). Normal CodeInspectus installation does not install the optional C2PA peer;
   users who explicitly install that upstream package allow its lifecycle download. Nothing is
   downloaded during a scan. The scanner functions with the network unplugged. There is **no
   telemetry, ever.**
@@ -436,6 +458,15 @@ eligible packages it analyzed, what it deliberately skipped, and the bundled sna
   mismatched binary.
 - **Secret values are redacted** in all output — type + location + a redacted
   preview only.
+- **osv-scanner coverage is only as complete as the OSV databases you installed.** It matches the
+  package versions that lockfiles and manifests record, offline, with no reachability or call
+  analysis. If a repository uses an ecosystem whose OSV database is not installed, the scan reports
+  that ecosystem as `unavailable` with a setup warning; it never reports it as clean. A
+  repository's own `osv-scanner.toml` cannot suppress results, because CodeInspectus passes a
+  managed config. A `MAL-` (malicious package) finding is reported as critical (CWE-506) with
+  advice to rotate credentials the package could have reached. Where osv-scanner, Trivy, or the
+  native Pub matcher report the same advisory for the same package, you see one finding that
+  lists every engine; the same advisory on two different packages stays two findings.
 - **Compliance = code-level control coverage, never certification.** CodeInspectus
   reports "X of N **code-visible** controls have findings", with the code-visible
   subset as the explicit denominator, plus a standing disclaimer. It never emits
@@ -668,6 +699,7 @@ coverage than the executed pack reports.
 |-------|----------------|----------------------------|
 | **Secrets** — Gitleaks + applicable native client-secret checks | hard-coded credentials, leaked keys | **Gitleaks: any language** because its detection is value/pattern-based. Native client-secret analysis remains pack-specific: JavaScript/TypeScript bundle and env exposure, plus Supabase privileged keys passed to Flutter client initialization. |
 | **Dependencies (CVEs/SCA), IaC misconfig, SBOM, license** — Trivy | vulnerable deps, infra misconfig, bill of materials | **Many language & package ecosystems and IaC formats** — see [Trivy's docs](https://trivy.dev). |
+| **Dependencies (known vulnerabilities and malicious packages)** — osv-scanner | vulnerable and known-malicious package versions recorded in lockfiles and manifests, matched offline against OSV.dev data | **Only the OSV ecosystems you approved and installed:** npm, PyPI, Packagist, Go, crates.io, RubyGems, Maven, NuGet, and Pub (language ecosystems; never distribution ones). An ecosystem without its database is reported `unavailable`, not clean. No reachability or call analysis, no dependency resolution, and no online lookups; coverage is the package versions osv-scanner can extract from the files in the repository. |
 | **Native Pub SCA/SBOM** — CodeInspectus Pub | exact locked-version matches against the bundled advisory snapshot; native Pub inventory and Trivy merge/fallback | **Dart/Flutter `pubspec.lock` only.** Official `pub.dev`/legacy official-host packages are matched by exact enumerated version. Custom registries, Git, path, SDK, malformed, oversized, and unreadable inputs are excluded and reported. No generic SemVer inference, reachability claim, license inference, or complete dependency-graph claim. |
 | **SAST** — Opengrep + CodeInspectus `security-baseline` | injection, XSS, SSRF, weak crypto, insecure deserialization, explicit CORS misconfiguration | **JavaScript, TypeScript, Python.** CodeInspectus ships its own Apache-2.0 ruleset and runs Opengrep with **no network registry packs**, so SAST coverage is exactly these languages — deliberately narrower than Opengrep's full engine. |
 | **Native JavaScript/TypeScript pack** | client-side secret/bundle exposure, Supabase RLS, prompt-injection sinks, model tool arguments reaching Node shell execution, client-writable `user_metadata` authz, unsanitized-output XSS, API response/error leaks, unsafe request writes, sensitive logging, explicit runtime-control misconfiguration | **JavaScript / TypeScript** (incl. `.jsx/.tsx/.mjs/.cjs`; client-secret checks also read `.vue/.svelte/.astro/.html`). Supabase RLS analyzes `.sql` plus `.ts/.js` Edge Functions; runtime-control evidence also reads recognized configuration formats. Model-tool command flow is intrafile and bounded to direct flow or one named wrapper; it does not resolve cross-module dispatch or runtime approval/sandbox state. |
@@ -708,8 +740,8 @@ coverage score, compliance claim, or certification.
 ## How it works
 
 ```
-agent → codeinspectus_scan → [Opengrep | Gitleaks | Trivy | native Pub] + applicable native packs
-      → normalize → dedup (incl. Trivy/native-Pub advisory aliases + secret overlap)
+agent → codeinspectus_scan → [Opengrep | Gitleaks | Trivy | osv-scanner | native Pub] + applicable native packs
+      → normalize → dedup (incl. Trivy/osv-scanner/native-Pub advisory aliases per package + secret overlap)
       → CWE-keyed findings + runtime-control evidence → compliance map → compact JSON + summary
 ALL LOCAL. NO NETWORK EGRESS AT SCAN TIME.
 ```
@@ -787,9 +819,19 @@ Per-version release notes live in [`CHANGELOG.md`](CHANGELOG.md).
 ## Licenses
 
 CodeInspectus is licensed under Apache-2.0. The separately downloaded engines retain their own
-licenses: Opengrep (LGPL-2.1), Gitleaks (MIT), and Trivy (Apache-2.0). Engine binaries are not
-included in the npm package. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for versions,
-copyright notices, upstream source, and license links.
-The transformed Pub advisory snapshot is derived from OSV.dev records sourced from the
-GitHub Advisory Database and remains CC BY 4.0; attribution and transformation details ship
-beside the snapshot in `detection-db/osv-pub/LICENSE-PROVENANCE.md`.
+licenses: Opengrep (LGPL-2.1), Gitleaks (MIT), Trivy (Apache-2.0), and osv-scanner (Apache-2.0).
+Engine binaries are not included in the npm package. See
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for versions, copyright notices, upstream source,
+and license links.
+
+The OSV databases osv-scanner reads are downloaded after your approval from OSV's bucket
+(`osv-vulnerabilities.storage.googleapis.com`) and are not re-hosted by CodeInspectus. Each record
+keeps its source's license: GitHub Advisory Database, PyPA, OSS-Fuzz, and Go Vulnerability
+Database records are CC BY 4.0, OpenSSF Malicious Packages is Apache-2.0, Drupal is MIT, and
+RustSec is CC0 1.0. Attribution and the full table are in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md); this is attribution, not a legal review.
+
+The one exception is the transformed Pub advisory snapshot that ships with CodeInspectus for the
+native Pub matcher. It is derived from OSV.dev records sourced from the GitHub Advisory Database
+and remains CC BY 4.0; attribution and transformation details ship beside the snapshot in
+`detection-db/osv-pub/LICENSE-PROVENANCE.md`.

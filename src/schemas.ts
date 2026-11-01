@@ -11,6 +11,7 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { repositoryTrustChangesSchema, repositoryTrustDocumentSchema } from "./repository-trust/schemas.js";
 import { cleanupPlanObjectSchema, cleanupResultSchema } from "./repository-trust/cleanup.js";
+import { OSV_ECOSYSTEMS } from "./osv/ecosystems.js";
 
 // ── Enumerations ────────────────────────────────────────────────────────────
 export const severityEnum = z.enum(["critical", "high", "medium", "low", "info"]);
@@ -19,10 +20,12 @@ export const engineEnum = z.enum([
   "opengrep",
   "gitleaks",
   "trivy",
+  "osv-scanner",
   "codeinspectus-ai",
   "codeinspectus-pub",
 ]);
 export const scannerEnum = z.enum(["sast", "secret", "vuln", "misconfig", "license", "ai"]);
+export const osvEcosystemEnum = z.enum(OSV_ECOSYSTEMS);
 
 // ── scan_id hardening (CG-75 / Claim 2) ─────────────────────────────────────
 // scan_ids are generated as `scan-${randomUUID()}` (UUIDv4, lowercase hex) — see
@@ -92,6 +95,7 @@ export const findingSchema = z.object({
   producer_components: z.array(z.string()).optional(),
   finding_kind: z.enum(["vulnerability", "license", "misconfiguration", "secret", "sast", "ai", "other"]).optional(),
   scope_role: z.enum(["primary", "supporting_context"]).optional(),
+  package: z.object({ ecosystem: z.string(), name: z.string(), version: z.string() }).optional(),
 });
 
 export const summarySchema = z.object({
@@ -141,8 +145,8 @@ export const detectorPackCoverageSchema = z.object({
 });
 
 export const dependencyCoverageSchema = z.object({
-  ecosystem: z.literal("Pub"),
-  engine: z.literal("codeinspectus-pub"),
+  ecosystem: z.string(),
+  engine: z.enum(["codeinspectus-pub", "osv-scanner"]),
   state: z.enum(["ran", "partial", "not_run", "not_applicable", "unavailable"]),
   lockfiles: z.object({
     discovered: z.number().int().nonnegative(),
@@ -155,7 +159,7 @@ export const dependencyCoverageSchema = z.object({
   }),
   database_version: z.string().optional(),
   database_checked_at: z.string().optional(),
-  matching: z.literal("exact-enumerated-versions"),
+  matching: z.enum(["exact-enumerated-versions", "osv-scanner-offline"]),
   limitations: z.array(z.string()),
   note: z.string().optional(),
 });
@@ -165,7 +169,7 @@ export const engineSetupSchema = z.object({
   platform: z.string(),
   engines: z.array(
     z.object({
-      engine: z.enum(["opengrep", "gitleaks", "trivy"]),
+      engine: z.enum(["opengrep", "gitleaks", "trivy", "osv-scanner"]),
       version: z.string(),
       state: z.enum([
         "ready",
@@ -182,6 +186,16 @@ export const engineSetupSchema = z.object({
     state: z.enum(["ready", "missing", "provenance_missing", "stale"]),
     downloaded_at: z.string().optional(),
   }),
+  // Optional so scan results stored before OSV support still validate.
+  osv_databases: z
+    .array(
+      z.object({
+        ecosystem: osvEcosystemEnum,
+        state: z.enum(["ready", "provenance_missing", "stale"]),
+        downloaded_at: z.string().optional(),
+      }),
+    )
+    .optional(),
   repair_command: z.string().optional(),
   network_required: z.boolean(),
 });
@@ -390,12 +404,17 @@ export const listRulesInput = z.object({
   engine: engineEnum.optional().describe("Filter to one engine's rules/detectors."),
 });
 
-export const setupComponentEnum = z.enum(["opengrep", "gitleaks", "trivy"]);
+export const setupComponentEnum = z.enum(["opengrep", "gitleaks", "trivy", "osv-scanner"]);
 export const setupInput = z.object({
   action: z.enum(["plan", "install", "decline"]).default("plan")
     .describe("Plan is offline/read-only. Install downloads only after confirm_downloads=true. Decline saves the choice."),
   components: z.array(setupComponentEnum).optional()
-    .describe("Components to install or decline. Default: all three external engines."),
+    .describe("Components to install or decline. Default: all four external engines."),
+  path: absolutePath(
+    "Absolute path to the repository the user wants to scan. Only the OSV vulnerability databases for ecosystems whose lockfiles are found there (read-only, by file name) are offered.",
+  ).optional(),
+  osv_ecosystems: z.array(osvEcosystemEnum).optional()
+    .describe("Exact OSV ecosystem databases the user approved, e.g. [\"npm\", \"PyPI\"]. Overrides the detection from path. Omitted or empty (an empty list is no list): the databases path needs (none without path), plus a refresh of any installed database that went stale. To download no OSV database, leave osv-scanner out of components."),
   confirm_downloads: z.boolean().optional()
     .describe("Must be true for an install that needs network downloads."),
 });
@@ -530,7 +549,7 @@ export const nativePackInfoSchema = z.object({
   rule_count: z.number().int().nonnegative(),
 });
 
-export const advisoryDatabaseInfoSchema = z.object({
+const pubAdvisoryDatabaseInfoSchema = z.object({
   engine: z.literal("codeinspectus-pub"),
   ecosystem: z.literal("Pub"),
   state: z.enum(["current", "stale", "missing", "invalid"]),
@@ -550,6 +569,27 @@ export const advisoryDatabaseInfoSchema = z.object({
   attribution: z.string(),
   note: z.string().optional(),
 });
+
+/** One installed per-ecosystem OSV database read by osv-scanner. */
+const osvAdvisoryDatabaseInfoSchema = z.object({
+  engine: z.literal("osv-scanner"),
+  ecosystem: osvEcosystemEnum,
+  state: z.enum(["current", "stale", "provenance_missing"]),
+  version: z.string(),
+  checked_at: z.string().optional(),
+  content_digest: z.string().optional(),
+  matching: z.literal("osv-scanner-offline"),
+  source_url: z.string().url(),
+  source_database: z.literal("OSV.dev"),
+  license: z.string(),
+  attribution: z.string(),
+  note: z.string().optional(),
+});
+
+export const advisoryDatabaseInfoSchema = z.discriminatedUnion("engine", [
+  pubAdvisoryDatabaseInfoSchema,
+  osvAdvisoryDatabaseInfoSchema,
+]);
 
 export const listRulesOutput = z.object({
   detection_db_version: z.string(),
@@ -598,6 +638,13 @@ export const setupPlanSchema = z.object({
   network_required: z.boolean(),
   confirmation_required: z.boolean(),
   exact_download_bytes: z.number().int().nonnegative(),
+  osv_databases: z.array(z.object({
+    ecosystem: osvEcosystemEnum,
+    state: z.enum(["installed", "missing", "stale"]),
+    selected: z.boolean(),
+    estimated_download_bytes: z.number().int().nonnegative(),
+  })),
+  estimated_osv_download_bytes: z.number().int().nonnegative(),
   estimated_database_disk_bytes: z.number().int().nonnegative(),
   warnings: z.array(z.string()),
 });

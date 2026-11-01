@@ -426,3 +426,83 @@ describe("diffRescan — content anchors never absorb exact matches", () => {
     expect(diffRescan(prior, fresh).summary).toMatchObject({ resolved: 1, remaining: 1 });
   });
 });
+
+describe("diffRescan — osv-scanner findings and their OSV database signature", () => {
+  // Findings always list osv-scanner:vulnerability-db:<Eco>. In the wrapper's `partial` state (archive
+  // present, install record absent) no signature is emitted for it; a refresh changes the signature.
+  const OSV_COMPONENTS = [
+    "codeinspectus:pipeline",
+    "osv-scanner:binary",
+    "osv-scanner:invocation",
+    "osv-scanner:config",
+    "osv-scanner:vulnerability-db:PyPI",
+  ];
+  const signatures = (database?: string): Record<string, string> => ({
+    "codeinspectus:pipeline": "pipeline-v1",
+    "osv-scanner:binary": "sha256:binary",
+    "osv-scanner:invocation": "sha256:invocation",
+    "osv-scanner:config": "sha256:config",
+    ...(database ? { "osv-scanner:vulnerability-db:PyPI": database } : {}),
+  });
+  const osv = () => mkFinding({
+    fingerprint: "osv-litellm",
+    engine: "osv-scanner",
+    rule_id: "MAL-2026-2144",
+    finding_kind: "vulnerability",
+    location: { file: "requirements.txt", start_line: 1, end_line: 1 },
+    producer_components: OSV_COMPONENTS,
+    package: { ecosystem: "PyPI", name: "litellm", version: "1.107.0" },
+  });
+
+  test.each([
+    ["neither scan recorded the database", undefined, undefined],
+    ["the database was installed with a record before the rescan", undefined, "sha256:pypi-db"],
+    ["the record disappeared before the rescan", "sha256:pypi-db", undefined],
+  ])("an absent osv finding is not_rechecked, never resolved, when %s", (_label, priorDb, freshDb) => {
+    const prior = mkScan({
+      engine_details: [engineInfo("osv-scanner", true)],
+      component_signatures: signatures(priorDb),
+      findings: [osv()],
+    });
+    const fresh = mkScan({
+      scan_id: "scan-11111111-1111-4111-8111-111111111111",
+      engine_details: [engineInfo("osv-scanner", true)],
+      component_signatures: signatures(freshDb),
+      findings: [],
+    });
+    const result = diffRescan(prior, fresh);
+    expect(result.resolved).toEqual([]);
+    expect(result.not_rechecked.map((finding) => finding.fingerprint)).toEqual(["osv-litellm"]);
+    expect(result.not_rechecked[0]!.package).toEqual({ ecosystem: "PyPI", name: "litellm", version: "1.107.0" });
+  });
+
+  test("an OSV DB refresh makes osv findings not_rechecked, never resolved", () => {
+    const prior = mkScan({
+      engine_details: [engineInfo("osv-scanner", true)],
+      component_signatures: signatures("sha256:pypi-db-2026-10-01"),
+      findings: [osv()],
+    });
+    const rescan = (database: string) => mkScan({
+      scan_id: "scan-22222222-2222-4222-8222-222222222222",
+      engine_details: [engineInfo("osv-scanner", true)],
+      component_signatures: signatures(database),
+      findings: [],
+    });
+
+    const refreshed = diffRescan(prior, rescan("sha256:pypi-db-2026-10-30"));
+    expect(refreshed.resolved).toEqual([]);
+    expect(refreshed.not_rechecked.map((finding) => finding.fingerprint)).toEqual(["osv-litellm"]);
+    expect(refreshed.not_rechecked_note).toMatch(/checks changed/);
+
+    // Control: with the same PyPI database the absence is provable, so the refresh alone made it unprovable.
+    expect(diffRescan(prior, rescan("sha256:pypi-db-2026-10-01")).resolved.map((finding) => finding.fingerprint)).toEqual(["osv-litellm"]);
+  });
+
+  test("a still-present osv finding stays remaining and keeps its package", () => {
+    const prior = mkScan({ engine_details: [engineInfo("osv-scanner", true)], component_signatures: signatures(), findings: [osv()] });
+    const fresh = mkScan({ engine_details: [engineInfo("osv-scanner", true)], component_signatures: signatures(), findings: [osv()] });
+    const result = diffRescan(prior, fresh);
+    expect(result.summary).toMatchObject({ remaining: 1, resolved: 0, not_rechecked: 0 });
+    expect(result.remaining[0]!.package?.name).toBe("litellm");
+  });
+});

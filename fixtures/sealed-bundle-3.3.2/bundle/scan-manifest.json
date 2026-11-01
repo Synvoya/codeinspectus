@@ -1,0 +1,137 @@
+{
+  "$schema": "https://codeinspectus.com/schemas/bundle/1.0.0/manifest.schema.json",
+  "schema_version": "1.0.0",
+  "bundle_id": "bundle-7c14674f-6748-43fa-8787-503b194233a1",
+  "created_by": {
+    "name": "codeinspectus",
+    "version": "3.3.2"
+  },
+  "schemas": {
+    "bundle": "1.0.0",
+    "export": "3.0.0",
+    "sarif": "2.1.0",
+    "stored_scan": "2.0.0"
+  },
+  "detection_database": {
+    "version": "1.19.0",
+    "date": "2026-08-13"
+  },
+  "native_engine": {
+    "name": "codeinspectus-ai",
+    "version": "5.20.0"
+  },
+  "engine_platform": "darwin-arm64",
+  "commodity_engines": [
+    {
+      "engine": "opengrep",
+      "version": "unknown",
+      "ran": false,
+      "integrity_state": "unavailable"
+    },
+    {
+      "engine": "gitleaks",
+      "version": "8.30.1",
+      "ran": true,
+      "integrity_state": "verified",
+      "verified_sha256": "ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f"
+    },
+    {
+      "engine": "trivy",
+      "version": "unknown",
+      "ran": false,
+      "integrity_state": "unavailable"
+    }
+  ],
+  "component_signatures": {
+    "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
+    "gitleaks:binary": "sha256:ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f",
+    "gitleaks:config": "sha256:dcf36444c9a33afc76d0bafe7c7093b7d7eefc4ac584fcc346150d2d77eef628",
+    "gitleaks:invocation": "sha256:f2a3ca7981f453ae8338298352fd8b6f071247dd453a0cae5e0d9bbb74312517",
+    "gitleaks:effective-ignore": "sha256:e9b316460d2fa0ab93f13fc4610a72a229a6525c3b8b75fd7c63ed0fdbb3a4f7",
+    "codeinspectus-ai:invocation": "sha256:e093d967e10b23e4991c9bdaaa0f47aa4e0711317952117992dd71b8b50bbde2",
+    "ai:client-secrets": "sha256:d0e260fe6cad85019287e73c901f8f676b87f3122b5a05cf3c50c41b3b436a2e",
+    "ai:supabase-rls-policy-state": "sha256:e72465d212773e6f14692b02dd29138325c43a84b89258bd0e369db0b3630dc1",
+    "pack:javascript-typescript:dispatch": "sha256:a36dc3417da482762ea553e1bd272522e2f9257e5c78c5c8a6e8d685fd815b0c",
+    "javascript:bounded-structural-parser": "sha256:19126721d10ba84605e343ba3155b93d65b3ddd072fcf8f7b8c7c6e7ee296e69",
+    "ai:supabase-edge-auth": "sha256:c0a6cf981c2fc9647fdbef21a85b68c9d5eb2b0c232a4a48a6c0761fe6d10f94",
+    "ai:prompt-injection": "sha256:b6f65f3cc27fd8764a00952f756464e01649886e95c5a82a0179e591269d6f55",
+    "ai:unsafe-tool-execution": "sha256:2455b2dd308c7953a34ab376d588d38c567ab58af5bb7070cc518f6f153aa040",
+    "ai:llm-dynamic-execution": "sha256:a0b34eafe11f8d624dd324a1397d18c2497d18232add99851fbf226146aef4d4",
+    "ai:nextjs-admin-route": "sha256:7c141685ca5cd9745ca3452d0ed63006d65471704a7c2c29c0653a7d182046e5",
+    "ai:express-admin-route": "sha256:8e406a1cbe40c3bd2533d901ffebc7ad3176708e888174fbf9ca6bce7c4cdf07",
+    "ai:client-metadata-authz": "sha256:55ce9c28e236ff15cfb0413353dd6f38a4988991112eaac4a6e6d9d86b4dd0b3",
+    "ai:llm-dangerous-html": "sha256:4367893832be050c589d874b3c0f7bf65fc4ad32f555c22e441a3803a6e448e5",
+    "ai:client-error-leak": "sha256:6feedb1ce516f86275c1b19a7f7a7baad83f59979095765f2b89b04c8429a890",
+    "ai:sensitive-api-response": "sha256:e972d2ab6c4af75148374e418f740ad1fe9219e44943ea4bc6ffed88afcdb8eb",
+    "ai:unvalidated-request-write": "sha256:3f0f9b2de804c045f7c391fe99287ca4cb6edec2494a67a118b866f73ba417dc",
+    "ai:sensitive-log": "sha256:642191fa9c18ef3639d44c2e8b8317ed884c2453e0c02e6e083b3fa85b081034",
+    "ai:security-header-config": "sha256:c0fb641ebc7d408802c8a644f99e8f4c29d04f5d8518e652097cd0da5aeb144b",
+    "ai:csp-config": "sha256:65e584c79d4cfbba3383061b97b2cd039e9595155b6a6fbb3f439006d34dfa75",
+    "ai:referrer-policy-config": "sha256:02f30f0030f8e200ee51c38c8203757426823bb6fd738835f6a752de83f10fd8",
+    "ai:permissions-policy-config": "sha256:3878a7c1888af45235a481cd04645fdf7e6e77b7e5b65432d5cb48174c5e08dc",
+    "ai:session-cookie-config": "sha256:c1358d652f49f0b6b0dbf22eb34747220333da4d27f08f31187b7da440ec52af",
+    "ai:supabase-captcha-integration": "sha256:cc8bf3893957bbd5186bfc320537bff1e82b920999e4a6236463b01140d5f0fc",
+    "pack:javascript-baseline:dispatch": "sha256:01c2ed8d29e914ba0170b4d625ae6d82732c45310904b1f3c3ec3172d7fae3dd",
+    "native-sast:opengrep-reconciliation": "sha256:e3ccf2269f1d732403d8f4d4612ec9c98b8378ff467087961c6506f159fe57f2",
+    "sast:javascript-weak-hash": "sha256:f66c73218c0ca98a902b2352b60f334222e077105b853215c67b343948504c01",
+    "sast:javascript-weak-cipher": "sha256:f122f7a0640986927ea3488146a7efe798b67a46e46e4e6e5031367f279ccbe4"
+  },
+  "target": {
+    "path": "/fixture/repo"
+  },
+  "scan_id": "scan-673fdc74-716f-47bf-9bf2-c03acdafc0f7",
+  "scan_configuration": {
+    "max_findings": 200
+  },
+  "scan_scope": {
+    "mode": "whole_target",
+    "target": "/fixture/repo"
+  },
+  "timestamps": {
+    "started_at": "2026-10-30T13:33:36.219Z",
+    "completed_at": "2026-10-30T13:33:36.890Z",
+    "sealed_at": "2026-10-30T13:33:53.831Z"
+  },
+  "artifacts": [
+    {
+      "path": "findings.json",
+      "media_type": "application/json",
+      "bytes": 15885,
+      "sha256": "4d02f700bd30914478b9dc635be859ed127cc05da451556d386dbf12dcfc81a2"
+    },
+    {
+      "path": "coverage.json",
+      "media_type": "application/json",
+      "bytes": 37884,
+      "sha256": "748bc565ae13a24e911b35c8a99211317da049c316035e4b6e251a537dad752e"
+    },
+    {
+      "path": "report.md",
+      "media_type": "text/markdown",
+      "bytes": 5917,
+      "sha256": "cd1ba17dbfecce9ecd3321c8e4d52427083df9d42c16b6db0500c9e30d9165be"
+    },
+    {
+      "path": "results.sarif",
+      "media_type": "application/sarif+json",
+      "bytes": 111700,
+      "sha256": "8aa1a22f5c47e6621ad0ee545c4a15fb8042a65e18b8642d94a6860d2d71dd97"
+    },
+    {
+      "path": "artifacts/scan-record.json",
+      "media_type": "application/vnd.codeinspectus.scan+json",
+      "bytes": 56835,
+      "sha256": "fd12bb1765700f9735520ab58a2c803f03303df14f0fd5146fde4bb470d7ca53"
+    },
+    {
+      "path": "artifacts/export.json",
+      "media_type": "application/vnd.codeinspectus.export+json",
+      "bytes": 56458,
+      "sha256": "030d9a90eb719bcb40286943cabd5657db644963bec5e5f388591989091a5aea"
+    }
+  ],
+  "seal": {
+    "algorithm": "sha256",
+    "manifest_payload_sha256": "fa4bcd4e0336fd44e3ad713a562c34a395f40fc1048dd3b1746dbb621bd43acb"
+  }
+}

@@ -1,0 +1,2 @@
+# The root .gitignore drops *.sarif as scan scratch; this one is sealed evidence and must stay tracked.
+!/bundle/results.sarif

@@ -487,6 +487,22 @@ export function pubFindingComponents(): string[] {
   ];
 }
 
+/** Component id of one ecosystem's installed OSV database; the id `readOsvDbRecord` records. */
+export function osvDatabaseComponent(ecosystem: string): string {
+  return `osv-scanner:vulnerability-db:${ecosystem}`;
+}
+
+/** What must be unchanged to reproduce an osv-scanner finding: binary, flags, managed config, and that ecosystem's database. */
+export function osvScannerFindingComponents(ecosystem: string): string[] {
+  return [
+    PIPELINE_COMPONENT,
+    "osv-scanner:binary",
+    "osv-scanner:invocation",
+    "osv-scanner:config",
+    osvDatabaseComponent(ecosystem),
+  ];
+}
+
 export function pubStaticComponentSignatures(snapshotSignature: string): Record<string, string> {
   if (!/^sha256:[a-f0-9]{64}$/.test(snapshotSignature)) {
     throw new Error("Invalid bundled OSV Pub snapshot signature.");

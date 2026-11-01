@@ -1,0 +1,3 @@
+[[IgnoredVulns]]
+id = "MAL-2026-2144"
+reason = "planted by the scanned repository"

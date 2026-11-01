@@ -3,6 +3,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { CodeInspectusClient, CodeInspectusSdkError, SDK_COMPATIBILITY } from "./index.js";
+import { runBundleCli } from "../bundle/cli.js";
+import { createSealedBundle, verifySealedBundle } from "../bundle/index.js";
+import { BUNDLE_SCHEMA_VERSION } from "../bundle/schemas.js";
 
 const cleanup: string[] = [];
 // This case launches six short-lived Node processes in sequence. Bound only that integration-style
@@ -102,6 +105,56 @@ describe("public SDK process wrapper", () => {
     const client = new CodeInspectusClient();
     await expect(client.run(["--version"], { signal: controller.signal })).rejects.toBeInstanceOf(CodeInspectusSdkError);
     await expect(client.run(["--version"], { signal: controller.signal })).rejects.toMatchObject({ code: "ABORTED" });
-    expect(SDK_COMPATIBILITY).toMatchObject({ export_schema: "3.0.0", repository_trust_schema: "1.0.0", cleanup_schema: "1.0.0", bundle_schema: "1.0.0", repository_history_schema: "1.0.0", issue_payload_schema: "1.0.0", cli_major: 3 });
+    expect(SDK_COMPATIBILITY).toMatchObject({ export_schema: "3.0.0", repository_trust_schema: "1.0.0", cleanup_schema: "1.0.0", bundle_schema: "1.1.0", bundle_schemas_verified: ["1.0.0", "1.1.0"], repository_history_schema: "1.0.0", issue_payload_schema: "1.0.0", cli_major: 3 });
+    // The SDK keeps literals (no runtime import of the bundle schemas); they must match what this release seals.
+    expect(SDK_COMPATIBILITY.bundle_schema).toBe(BUNDLE_SCHEMA_VERSION);
+    expect(Object.isFrozen(SDK_COMPATIBILITY.bundle_schemas_verified)).toBe(true);
+  });
+});
+
+describe("SDK bundle verification against real sealed bundles", () => {
+  const BUNDLE_SEALED_BY_3_3_2 = "fixtures/sealed-bundle-3.3.2/bundle";
+
+  /**
+   * Runs the real `bundle verify --format json` in-process (full seal and artifact verification), then
+   * hands its exact stdout to the SDK through a process that replays it only for the expected argv.
+   */
+  async function verifyThroughSdk(directory: string) {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const exit = await runBundleCli(["verify", directory, "--format", "json"], { stdout: (text) => stdout.push(text), stderr: (text) => stderr.push(text) });
+    expect(exit, stderr.join("")).toBe(0);
+    const expectedArgs = ["bundle", "verify", resolve(directory), "--format", "json"];
+    const replay = await fakeCli(`
+      if (JSON.stringify(process.argv.slice(2)) !== ${JSON.stringify(JSON.stringify(expectedArgs))}) { process.stderr.write("unexpected argv\\n"); process.exitCode = 9; }
+      else process.stdout.write(${JSON.stringify(stdout.join(""))});
+    `);
+    const result = await new CodeInspectusClient({ command: process.execPath, commandArgs: [replay] }).verifyBundle(directory);
+    return { result, manifest: JSON.parse(stdout.join("")) as unknown };
+  }
+
+  test("verifyBundle accepts a 1.0.0 bundle sealed by 3.3.2 and a 1.1.0 bundle sealed by this release", async () => {
+    const legacy = await verifyThroughSdk(BUNDLE_SEALED_BY_3_3_2);
+    expect(legacy.result.data).toEqual(legacy.manifest);
+    expect(legacy.result.data).toMatchObject({ schema_version: "1.0.0", created_by: { version: "3.3.2" } });
+
+    const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-sdk-bundle-"));
+    cleanup.push(root);
+    const resealed = join(root, "bundle");
+    await createSealedBundle((await verifySealedBundle(BUNDLE_SEALED_BY_3_3_2)).scan, resealed);
+    const current = await verifyThroughSdk(resealed);
+    expect(current.result.data).toEqual(current.manifest);
+    expect(current.result.data).toMatchObject({ schema_version: "1.1.0", schemas: { bundle: "1.1.0" } });
+    expect(current.result.data.commodity_engines.map((engine) => engine.engine)).toEqual(["opengrep", "gitleaks", "trivy", "osv-scanner"]);
+  }, SDK_MULTI_PROCESS_TEST_TIMEOUT_MS);
+
+  test("verifyBundle fails closed on an unknown bundle schema version", async () => {
+    const script = await fakeCli(`process.stdout.write(JSON.stringify({ schema_version: "2.0.0", bundle_id: "bundle-test" }));`);
+    const client = new CodeInspectusClient({ command: process.execPath, commandArgs: [script] });
+    await expect(client.verifyBundle("/evidence/bundle")).rejects.toMatchObject({
+      code: "INCOMPATIBLE_CONTRACT",
+      message: expect.stringMatching(/1\.0\.0.*1\.1\.0/),
+      result: { exitCode: 0 },
+    });
   });
 });

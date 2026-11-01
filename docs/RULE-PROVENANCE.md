@@ -238,7 +238,7 @@ bundle them.
 
 ## Managed engines + the engine-authored rulesets in use
 
-The three scan engines are **external SHA-pinned binaries**, **not** npm dependencies. They
+The four scan engines are **external SHA-pinned binaries**, **not** npm dependencies. They
 are downloaded and verified by `codeinspectus repair-engines` into a per-machine managed
 dir (`~/.codeinspectus/`); they are **not** redistributed inside the npm tarball. `npm pack`
 ships runtime assets only (`dist/`, `data/`, `detection-db/`, `engines.lock.json`,
@@ -254,14 +254,18 @@ Versions are cited from **`engines.lock.json` (ground truth)** — *not* the PRD
 | Opengrep | **1.33.1** | LGPL-2.1 (PRD §4.1 / §11) | **None.** Runs only CI's `security-baseline`; explicitly **not** `--config auto` (`src/engines/opengrep.ts`) | — | Binary: **No**. CI rules: yes (`detection-db/`) |
 | Gitleaks | **8.30.1** | MIT (CLI; PRD §4.2) | Gitleaks' **built-in default** secret rules (`[extend] useDefault = true` in `codeinspectus.toml`) | MIT (gitleaks-authored) | Binary: **No**. CI `.toml`: yes |
 | Trivy | **0.76.1** | Apache-2.0 (PRD §4.3) | Trivy built-in **vuln / misconfig / secret / license** scanners + the Trivy **vuln DB** | Apache-2.0 (engine); **DB = aggregated third-party advisory data, heterogeneous licenses** | Binary + DB: **No** (downloaded) |
+| osv-scanner | **2.7.0** | Apache-2.0 (PRD §4.5) | **None.** Runs `scan source --offline` over per-ecosystem **OSV.dev databases** the user approved and downloaded; `--config` is a managed empty file, so no repository or vendor ruleset applies (`src/engines/osv-scanner.ts`) | Apache-2.0 (engine); **DB = per-source licenses, no single OSV license** (CC-BY-4.0 GHSA/PYSEC/OSS-Fuzz/Go, Apache-2.0 MAL, MIT Drupal, CC0-1.0 RustSec) | Binary + DB: **No** (downloaded) |
 
 The engine licenses were reconciled against the exact pinned releases for 2.5.0. Opengrep's
 LGPL-2.1 obligations must not be described as permissive; the executable stays separate and is
-downloaded from upstream rather than redistributed in the npm package.
+downloaded from upstream rather than redistributed in the npm package. osv-scanner 2.7.0's
+Apache-2.0 `LICENSE` was checked at its `v2.7.0` tag when the engine was added (the tag has no
+`NOTICE` file).
 
 **What this means at scan time:** findings can carry engine-authored rule ids that are *not*
-`codeinspectus-*` (e.g. Gitleaks default ids like `generic-api-key`, Trivy CVE ids). Those
-come from the separately licensed engines, not from CodeInspectus's corpus.
+`codeinspectus-*` (e.g. Gitleaks default ids like `generic-api-key`, Trivy CVE ids, OSV advisory
+ids such as `GHSA-`, `PYSEC-` and `MAL-`). Those come from the separately licensed engines and
+data sources, not from CodeInspectus's corpus.
 
 ---
 
@@ -635,12 +639,24 @@ items for the reviewer, ranked by where attention is best spent:
    (NVD, GitHub Security Advisories, vendor feeds). CodeInspectus **does not redistribute**
    the DB (downloaded by the user at install), so this is the user's local use, not CI's
    distribution — but confirm no DB content is ever copied into the repo or tarball.
-3. **Gitleaks default ruleset (low risk).** `useDefault = true` means Gitleaks' own MIT
+3. **OSV data licensing (low risk, worth a note; not a legal review).** osv-scanner's engine is
+   Apache-2.0, but the OSV databases it reads carry **each source's own license** (CC-BY-4.0 for
+   GHSA, PYSEC, OSS-Fuzz and Go; Apache-2.0 for OpenSSF Malicious Packages; MIT for Drupal; CC0-1.0
+   for RustSec). CodeInspectus **does not re-host** the data: the user downloads each
+   `<Ecosystem>/all.zip` from OSV's own bucket after consent. The control is the download
+   **allow-list of language ecosystems only (never distribution ecosystems)**, because some
+   distribution sources publish under non-commercial, no-derivatives or share-alike terms. No
+   per-record license filter exists, so re-check the sources inside an ecosystem whenever one is
+   added to the allow-list or OSV adds a source. Attribution ships in `THIRD-PARTY-NOTICES.md`,
+   `NOTICE` and `codeinspectus_list_rules`. The one OSV derivative that **does** ship in the npm
+   package is the Pub snapshot (`detection-db/osv-pub/`, CC-BY-4.0, attributed).
+4. **Gitleaks default ruleset (low risk).** `useDefault = true` means Gitleaks' own MIT
    rules run. MIT is permissive; no action beyond noting the dependency.
-4. **Engine-license re-confirmation (mechanical).** Re-confirm Opengrep LGPL-2.1 / Gitleaks
-   MIT / Trivy Apache-2.0 against each pinned release's `LICENSE` whenever a pin changes;
-   watch for any AGPL transitive pull-in if a hosted version is built (PRD §11).
-5. **No rule is currently flagged as unclear or risky on provenance** beyond item 1's
+5. **Engine-license re-confirmation (mechanical).** Re-confirm Opengrep LGPL-2.1 / Gitleaks
+   MIT / Trivy Apache-2.0 / osv-scanner Apache-2.0 against each pinned release's `LICENSE`
+   whenever a pin changes; watch for any AGPL transitive pull-in if a hosted version is built
+   (PRD §11).
+6. **No rule is currently flagged as unclear or risky on provenance** beyond item 1's
    standing originality review. If any single rule's originality is ever in doubt, **remove
    it pending review** rather than ship it (the engine still runs; coverage just narrows).
 

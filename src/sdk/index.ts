@@ -29,7 +29,10 @@ export const SDK_COMPATIBILITY = Object.freeze({
   history_schema: "1.0.0",
   baseline_schema: "1.0.0",
   triage_schema: "1.0.0",
-  bundle_schema: "1.0.0",
+  /** The bundle manifest version this release seals. */
+  bundle_schema: "1.1.0",
+  /** Every bundle manifest version `verifyBundle` accepts: bundles sealed up to 3.3.2 are 1.0.0. */
+  bundle_schemas_verified: Object.freeze(["1.0.0", "1.1.0"]),
   bulk_schema: "1.0.0",
   repository_history_schema: "1.0.0",
   issue_payload_schema: "1.0.0",
@@ -201,7 +204,7 @@ function idOperand(value: string): string {
   return value;
 }
 
-function parseJsonResult<T>(result: CodeInspectusCommandResult, expectedSchema: string): CodeInspectusJsonCommandResult<T> {
+function parseJsonResult<T>(result: CodeInspectusCommandResult, expectedSchema: string | readonly string[]): CodeInspectusJsonCommandResult<T> {
   let data: unknown;
   try { data = JSON.parse(result.stdout); }
   catch {
@@ -210,8 +213,10 @@ function parseJsonResult<T>(result: CodeInspectusCommandResult, expectedSchema: 
     throw new CodeInspectusSdkError("INVALID_JSON", `CodeInspectus did not return valid JSON for the typed SDK operation (exit ${result.exitCode})${reason ? `: ${reason.slice(0, 300)}` : "."}`, result);
   }
   if (!data || typeof data !== "object") throw new CodeInspectusSdkError("INVALID_JSON", "CodeInspectus returned a non-object JSON document.", result);
-  if ((data as { schema_version?: unknown }).schema_version !== expectedSchema) {
-    throw new CodeInspectusSdkError("INCOMPATIBLE_CONTRACT", `Expected CodeInspectus schema ${expectedSchema}.`, result);
+  const accepted: readonly string[] = typeof expectedSchema === "string" ? [expectedSchema] : expectedSchema;
+  const version = (data as { schema_version?: unknown }).schema_version;
+  if (typeof version !== "string" || !accepted.includes(version)) {
+    throw new CodeInspectusSdkError("INCOMPATIBLE_CONTRACT", `Expected CodeInspectus schema ${accepted.join(" or ")}.`, result);
   }
   return { ...result, data: data as T };
 }
@@ -352,6 +357,6 @@ export class CodeInspectusClient {
   }
 
   async verifyBundle(path: string, options: CommandRunOptions = {}): Promise<CodeInspectusJsonCommandResult<BundleManifestV1>> {
-    return parseJsonResult<BundleManifestV1>(await this.run(["bundle", "verify", pathOperand(path, this.options.cwd), "--format", "json"], options), SDK_COMPATIBILITY.bundle_schema);
+    return parseJsonResult<BundleManifestV1>(await this.run(["bundle", "verify", pathOperand(path, this.options.cwd), "--format", "json"], options), SDK_COMPATIBILITY.bundle_schemas_verified);
   }
 }

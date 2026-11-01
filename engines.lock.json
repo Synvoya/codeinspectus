@@ -1,12 +1,17 @@
 {
-  "_comment": "SHA256 pins for engine binaries. MANDATORY (PRD §0.2): every binary's SHA256 is verified before execution. Trivy was supply-chain-compromised twice in early 2026 — never trust a mutable tag. Maintainers populate sha256 via `codeinspectus pin-engines` (`--all-platforms`, `--platform <key>`, or `--pin-only`) and commit the reviewed lockfile. User-facing `repair-engines` verifies downloads against these immutable shipped pins and never rewrites this file. The flow downloads from the verified release URL, checks the publisher signature (cosign for opengrep, checksums for gitleaks, checksums+sigstore for trivy), then verifies the EXTRACTED binary's SHA256. A null sha256 means the binary is NOT pinned and CodeInspectus will REFUSE to execute it on that platform.",
+  "_comment": "SHA256 pins for engine binaries. MANDATORY (PRD §0.2): every binary's SHA256 is verified before execution. Trivy was supply-chain-compromised twice in early 2026 — never trust a mutable tag. Maintainers populate sha256 via `codeinspectus pin-engines` (`--all-platforms`, `--platform <key>`, or `--pin-only`) and commit the reviewed lockfile. User-facing `repair-engines` verifies downloads against these immutable shipped pins and never rewrites this file. The flow downloads from the verified release URL, checks the publisher signature (cosign for opengrep, checksums for gitleaks, checksums+sigstore for trivy, checksums+slsa for osv-scanner: a cosign-verified SLSA provenance attestation over the raw binary plus a SHA256SUMS match), then verifies the EXTRACTED binary's SHA256. A null sha256 means the binary is NOT pinned and CodeInspectus will REFUSE to execute it on that platform.",
   "schema_version": 1,
-  "generated_at": "2026-10-30T10:56:48.755Z",
+  "generated_at": "2026-10-30T11:43:10.076Z",
   "sigstore_identities": {
-    "_comment": "Cosign keyless signer identities, resolved from the actual release certificates 2026-06-21 and confirmed with `cosign verify-blob` (Verified OK). Signature verification is MANDATORY and fail-closed for opengrep + trivy. Opengrep signs from per-release branches since v1.31.0 (was refs/heads/main through v1.30.x); identity re-resolved from the v1.33.1 release certificate on 2026-10-30.",
+    "_comment": "Cosign keyless signer identities, resolved from the actual release certificates 2026-06-21 and confirmed with `cosign verify-blob` (Verified OK). Signature verification is MANDATORY and fail-closed for opengrep + trivy. Opengrep signs from per-release branches since v1.31.0 (was refs/heads/main through v1.30.x); identity re-resolved from the v1.33.1 release certificate on 2026-10-30. osv-scanner is not signed by its own workflow: its release provenance comes from the shared SLSA generator identity below, further bound to the google/osv-scanner repository through slsa_workflow_repositories.",
     "issuer": "https://token.actions.githubusercontent.com",
     "trivy": "https://github.com/aquasecurity/trivy/.github/workflows/reusable-release.yaml@refs/tags/v0.76.1",
-    "opengrep": "https://github.com/opengrep/opengrep/.github/workflows/rolling-release.yml@refs/heads/release-v1.33.1"
+    "opengrep": "https://github.com/opengrep/opengrep/.github/workflows/rolling-release.yml@refs/heads/release-v1.33.1",
+    "osv-scanner": "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0"
+  },
+  "slsa_workflow_repositories": {
+    "_comment": "Source repository each checksums+slsa engine's SLSA provenance attestation must come from (cosign --certificate-github-workflow-repository). The generator identity alone is shared by every project using slsa-github-generator; this binds the attestation to the upstream project.",
+    "osv-scanner": "google/osv-scanner"
   },
   "verifiers": {
     "cosign": {
@@ -321,6 +326,87 @@
             "verified": true,
             "at": "2026-10-30T10:55:40.277Z",
             "identity": "https://github.com/aquasecurity/trivy/.github/workflows/reusable-release.yaml@refs/tags/v0.76.1",
+            "issuer": "https://token.actions.githubusercontent.com"
+          }
+        }
+      }
+    },
+    "osv-scanner": {
+      "version": "2.7.0",
+      "repo": "google/osv-scanner",
+      "release_base": "https://github.com/google/osv-scanner/releases/download/v2.7.0",
+      "signature": "checksums+slsa",
+      "checksums_asset": "osv-scanner_SHA256SUMS",
+      "attestation_asset": "multiple.intoto.jsonl",
+      "_security_note": "osv-scanner_SHA256SUMS is not signed. Authenticity comes from the SLSA3 provenance attestation multiple.intoto.jsonl, verified with `cosign verify-blob-attestation --type slsaprovenance02` against the pinned slsa-github-generator identity, the GitHub Actions OIDC issuer and the google/osv-scanner workflow repository (verified working with cosign 3.x on 2026-10-30; a tampered binary fails). The binary's SHA256 is then pinned here.",
+      "platforms": {
+        "darwin-arm64": {
+          "asset": "osv-scanner_darwin_arm64",
+          "archive": "raw",
+          "binary": "osv-scanner",
+          "sha256": "d4926ef8da134332543be276dff157e4c170f99ad91fc48e89448a8816bdf70b",
+          "download_size_bytes": 55336530,
+          "provenance": {
+            "method": "slsa",
+            "verified": true,
+            "at": "2026-10-30T11:40:21.699Z",
+            "identity": "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0",
+            "issuer": "https://token.actions.githubusercontent.com"
+          }
+        },
+        "darwin-x64": {
+          "asset": "osv-scanner_darwin_amd64",
+          "archive": "raw",
+          "binary": "osv-scanner",
+          "sha256": "e82c5df7ab0a42dff29a1cd0660711447b56b4c0483ff66ad8634df10fd81a45",
+          "download_size_bytes": 58881680,
+          "provenance": {
+            "method": "slsa",
+            "verified": true,
+            "at": "2026-10-30T11:41:49.300Z",
+            "identity": "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0",
+            "issuer": "https://token.actions.githubusercontent.com"
+          }
+        },
+        "linux-x64": {
+          "asset": "osv-scanner_linux_amd64",
+          "archive": "raw",
+          "binary": "osv-scanner",
+          "sha256": "160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b",
+          "download_size_bytes": 57725088,
+          "provenance": {
+            "method": "slsa",
+            "verified": true,
+            "at": "2026-10-30T11:40:26.849Z",
+            "identity": "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0",
+            "issuer": "https://token.actions.githubusercontent.com"
+          }
+        },
+        "linux-arm64": {
+          "asset": "osv-scanner_linux_arm64",
+          "archive": "raw",
+          "binary": "osv-scanner",
+          "sha256": "4061ef4c021ed3c47f203b818f337e351336cc5cd67c0274fc36bd1dfc728dd7",
+          "download_size_bytes": 53870752,
+          "provenance": {
+            "method": "slsa",
+            "verified": true,
+            "at": "2026-10-30T11:40:29.661Z",
+            "identity": "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0",
+            "issuer": "https://token.actions.githubusercontent.com"
+          }
+        },
+        "win32-x64": {
+          "asset": "osv-scanner_windows_amd64.exe",
+          "archive": "raw",
+          "binary": "osv-scanner",
+          "sha256": "9964ed64ec9a387391eb4cc006ad5c531154821aef29b793e02c448de4686438",
+          "download_size_bytes": 58999296,
+          "provenance": {
+            "method": "slsa",
+            "verified": true,
+            "at": "2026-10-30T11:41:36.705Z",
+            "identity": "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0",
             "issuer": "https://token.actions.githubusercontent.com"
           }
         }

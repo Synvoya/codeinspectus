@@ -162,8 +162,11 @@ export function createServer(): McpServer {
       title: "Plan or install external security engines",
       description:
         "Inspect external-engine health and exact platform download sizes, save declined choices, or install selected " +
-        "Opengrep/Gitleaks/Trivy components after explicit confirmation. Plan is offline. Install writes only to " +
-        "~/.codeinspectus, verifies immutable pins/publisher provenance, and never modifies the target repository.",
+        "Opengrep/Gitleaks/Trivy/OSV-Scanner components after explicit confirmation. Pass path (the repository to scan) to " +
+        "plan or install only the OSV vulnerability databases for the ecosystems its lockfiles use; each is listed with an " +
+        "estimated size (integrity: TLS + recorded SHA-256, OSV publishes no signature), and osv_ecosystems pins the exact " +
+        "list the user approved. Plan is offline. Install writes only to ~/.codeinspectus, verifies immutable " +
+        "pins/publisher provenance for engines, and never modifies the target repository.",
       inputSchema: setupInput.shape,
       outputSchema: setupOutput.shape,
       annotations: { title: "CodeInspectus Setup", ...NETWORKED_MANAGED_WRITE },
@@ -171,13 +174,18 @@ export function createServer(): McpServer {
     async (args: SetupInput): Promise<ToolResult> => {
       try {
         const selection = args.components?.length ? args.components : [...SETUP_COMPONENTS];
+        const osv = {
+          ...(args.path ? { target: args.path } : {}),
+          ...(args.osv_ecosystems ? { osvEcosystems: args.osv_ecosystems } : {}),
+        };
         const result = args.action === "install"
           ? await installSetupComponents(selection, args.confirm_downloads === true, {
               io: { stdout: (text) => log.info(text), stderr: (text) => log.warn(text) },
+              ...osv,
             })
           : args.action === "decline"
             ? await declineSetupComponents(selection)
-            : { outcome: "planned" as const, message: "Review the plan and ask for approval before installing.", plan: await buildSetupPlan({ selection }) };
+            : { outcome: "planned" as const, message: "Review the plan and ask for approval before installing.", plan: await buildSetupPlan({ selection, ...osv }) };
         return ok(`${result.message}\n\n${formatSetupPlan(result.plan)}`, result as unknown as Record<string, unknown>);
       } catch (err) {
         log.error("setup failed", err);

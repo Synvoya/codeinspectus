@@ -21,8 +21,10 @@ npm run eval         # drives the built server over MCP stdio
 Expected: all non-skipped evals PASS. Engine-dependent evals (E16 Opengrep SQLi,
 E17 Trivy SCA, E18 Opengrep CORS precision, and E34-E36 Opengrep/native parity)
 auto-SKIP when the binary/DB cannot run — that is acceptable, a FAIL is not. The
-suite currently has 59 evals; with Trivy active but Opengrep unavailable the expected
-result is 54 passed, 0 failed, 5 skipped. E17 skips only without the Trivy DB. E22,
+suite currently has 62 evals; with Trivy active but Opengrep unavailable the expected
+result is 54 passed, 0 failed, 8 skipped (57 passed, 5 skipped once osv-scanner and its
+PyPI OSV database are installed: E59/E60 skip without them, and E61 skips without
+osv-scanner or when the OSV crates.io database is installed). E17 skips only without the Trivy DB. E22,
 E53, and E54 cover Supabase Edge, Next.js admin, and Express admin auth/authz. E55/E56
 cover exact source-integrity evidence, vendor-neutral classification, read-only behavior,
 and bidirectional same-path trust-artifact rescans; both must not skip.

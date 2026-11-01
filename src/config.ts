@@ -31,9 +31,10 @@ export const ENGINE_VERSIONS = {
   opengrep: "1.33.1", // Latest stable as of 2026-10-30.
   gitleaks: "8.30.1", // matches PRD.
   trivy: "0.76.1", // Latest stable as of 2026-10-30. NEVER 0.69.4–0.69.6 (compromised).
+  "osv-scanner": "2.7.0", // Google OSV-Scanner; SLSA-attested release assets (checksums+slsa).
 } as const;
 
-export type EngineName = "opengrep" | "gitleaks" | "trivy";
+export type EngineName = "opengrep" | "gitleaks" | "trivy" | "osv-scanner";
 
 // Aggregate CodeInspectus native-analyzer engine version. Individual detector packs
 // retain their own semantic versions so adding a pack does not imply unrelated rule changes.
@@ -56,6 +57,8 @@ export const MANAGED_TRIVY_DB_META = join(MANAGED_TRIVY_CACHE, "db", "metadata.j
 export const MANAGED_TRIVY_DB = join(MANAGED_TRIVY_CACHE, "db", "trivy.db");
 export const MANAGED_TRIVY_DB_PROVENANCE = join(MANAGED_PROVENANCE, "trivy", "vulnerability-db.json");
 export const MANAGED_SETUP_PREFERENCES = join(MANAGED_ROOT, "setup-preferences.json");
+export const MANAGED_OSV_DB = join(MANAGED_ROOT, "osv-db");
+export const MANAGED_OSV_CONFIG = join(MANAGED_ROOT, "osv-scanner.toml");
 
 // ── Package-root-relative asset resolution ──────────────────────────────────
 // At runtime the bundle lives at <pkg>/dist/index.js; data/ and detection-db/

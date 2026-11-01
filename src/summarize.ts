@@ -36,16 +36,20 @@ function technologyAndPackSummary(
 function dependencyCoverageSummary(coverage: DependencyCoverage[] | undefined): string {
   if (!coverage?.length) return "";
   const lines = coverage.map((entry) => {
-    const snapshot = entry.database_version ? `, snapshot ${entry.database_version}` : "";
+    // Native Pub skips only git/custom-hosted packages it cannot verify and matches a bundled snapshot;
+    // osv-scanner skips the packages of an ecosystem it could not check and reads an installed database.
+    const pub = entry.engine === "codeinspectus-pub";
+    const skipped = pub ? "unverifiable git/custom-hosted" : "not checked";
+    const database = entry.database_version ? `, ${pub ? "snapshot" : "database"} ${entry.database_version}` : "";
     const limitation = entry.note ? ` — ${inlineField(entry.note)}` : "";
     return (
       `${entry.ecosystem}/${entry.engine}=${entry.state} ` +
       `(${entry.lockfiles.analyzed}/${entry.lockfiles.discovered} lockfiles, ` +
       `${entry.packages.eligible}/${entry.packages.resolved} eligible packages, ` +
-      `${entry.packages.skipped} unverifiable git/custom-hosted${snapshot})${limitation}`
+      `${entry.packages.skipped} ${skipped}${database})${limitation}`
     );
   });
-  return `\n\nNative dependency coverage (exact locked-version matching only):\n  ${lines.join("\n  ")}`;
+  return `\n\nDependency coverage (exact locked-version matching only):\n  ${lines.join("\n  ")}`;
 }
 
 function topLines(findings: Finding[], n: number): string {

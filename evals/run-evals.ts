@@ -73,6 +73,11 @@ const GITHUB_ACTIONS_FIXTURE = resolve(process.cwd(), "fixtures/github-actions-c
 const GITHUB_ACTIONS_TP_FIXTURE = resolve(GITHUB_ACTIONS_FIXTURE, "tp");
 const GITHUB_ACTIONS_FP_FIXTURE = resolve(GITHUB_ACTIONS_FIXTURE, "fp");
 const GITHUB_ACTIONS_FIXED_FIXTURE = resolve(GITHUB_ACTIONS_FIXTURE, "fixed");
+const OSV_PYPI_FIXTURE = resolve(process.cwd(), "fixtures/osv-pypi");
+const OSV_PYPI_VULNERABLE_FIXTURE = resolve(OSV_PYPI_FIXTURE, "vulnerable");
+const OSV_PYPI_FIXED_FIXTURE = resolve(OSV_PYPI_FIXTURE, "fixed");
+const OSV_PYPI_SUPPRESSED_FIXTURE = resolve(OSV_PYPI_FIXTURE, "suppressed");
+const OSV_CARGO_NO_DB_FIXTURE = resolve(process.cwd(), "fixtures/osv-cargo-no-db");
 const OPENGREP_SHADOW_FIXTURE = resolve(process.cwd(), "fixtures/opengrep-shadow-corpus");
 // INTENTIONAL FAKE TEST DATA (planted fixture value; the evals below assert it is
 // detected and redacted) -- not a real credential; allowlisted in /.gitleaks.toml.
@@ -1892,6 +1897,52 @@ async function replaceFixtureDirectory(source: string, target: string): Promise<
   await cp(source, target, { recursive: true });
 }
 
+// The OSV evals run against the live OSV PyPI database, which changes daily. They pin the targeted
+// advisories (identity, package and shape), never a total, so unrelated new advisories cannot break them.
+const OSV_MALWARE_ID = "MAL-2026-2144";
+const OSV_BROTLI_ID = "CVE-2026-111497";
+const OSV_BROTLI_ALIAS = "GHSA-9v8h-qqgm-4m35";
+
+function osvAdvisoryMatches(finding: any, id: string): boolean {
+  return finding.rule_id === id || (finding.vulnerability_aliases ?? []).includes(id);
+}
+
+function osvTargetedFindings(findings: any[], ids: readonly string[]): any[] {
+  return findings.filter((finding) => ids.some((id) => osvAdvisoryMatches(finding, id)));
+}
+
+function assertOsvPypiTargetedFindings(findings: any[], label: string): void {
+  const malware = findings.filter((finding) => osvAdvisoryMatches(finding, OSV_MALWARE_ID));
+  assert(malware.length === 1, `${label}: expected exactly one ${OSV_MALWARE_ID} finding, got ${malware.length}`);
+  const [litellm] = malware;
+  assert(
+    litellm.package?.ecosystem === "PyPI" && litellm.package.name === "litellm" && litellm.package.version === "1.107.0",
+    `${label}: ${OSV_MALWARE_ID} was not reported on PyPI litellm 1.107.0: ${JSON.stringify(litellm.package)}`,
+  );
+  assert(litellm.engines?.includes("osv-scanner"), `${label}: ${OSV_MALWARE_ID} did not come from osv-scanner`);
+
+  // The same advisory on two different packages must stay two findings (package-aware dedup).
+  const brotli = findings.filter((finding) => osvAdvisoryMatches(finding, OSV_BROTLI_ID));
+  assertExactJson(
+    brotli.map((finding) => `${finding.package?.ecosystem}:${String(finding.package?.name).toLowerCase()}@${finding.package?.version}`).sort(),
+    ["PyPI:brotli@1.2.0", "PyPI:brotlicffi@1.2.0.2"],
+    `${label}: ${OSV_BROTLI_ID} must be two separate package findings`,
+  );
+  assert(new Set(brotli.map((finding) => finding.fingerprint)).size === 2, `${label}: ${OSV_BROTLI_ID} findings share a fingerprint`);
+  assert(
+    brotli.every((finding) => finding.engines?.includes("osv-scanner")),
+    `${label}: every ${OSV_BROTLI_ID} finding must carry osv-scanner in engines`,
+  );
+}
+
+function assertNoOsvPypiTargetedFindings(findings: any[], label: string): void {
+  const stale = osvTargetedFindings(findings, [OSV_MALWARE_ID, OSV_BROTLI_ID, OSV_BROTLI_ALIAS]);
+  assert(stale.length === 0, `${label}: targeted advisories still reported: ${stale.map((finding) => finding.rule_id).join(", ")}`);
+}
+
+/** A check that cannot exercise its scenario in this environment (recorded as a skip, never a pass). */
+class EvalSkip extends Error {}
+
 async function replaceMobileFixture(target: string, state: "tp" | "fixed"): Promise<void> {
   await rm(target, { recursive: true, force: true });
   // Model a normal Flutter mobile repository so one MCP scan proves that the
@@ -1969,6 +2020,35 @@ async function main() {
   const engineRan = (e: string) => scan.engine_details.some((d: any) => d.engine === e && d.ran);
   const has = (pred: (f: any) => boolean) => findings.some(pred);
   const find = (pred: (f: any) => boolean) => findings.find(pred);
+
+  // The OSV evals need osv-scanner, and E59/E60 the PyPI OSV database too. The shared scan above cannot say so
+  // (its npm lockfile needs the npm database), so one probe scan of the clean PyPI fixture reports readiness.
+  let osvProbe: Promise<any> | undefined;
+  const osvProbeScan = (): Promise<any> => {
+    osvProbe ??= client.callTool("codeinspectus_scan", { path: OSV_PYPI_FIXED_FIXTURE, scanners: ["vuln"] })
+      .then((response: any) => response.structuredContent);
+    return osvProbe;
+  };
+  const osvNotInstalled = async (): Promise<string | undefined> =>
+    (await osvProbeScan()).engine_details.some((d: any) => d.engine === "osv-scanner" && d.available)
+      ? undefined
+      : "osv-scanner not installed (repair-engines)";
+  let osvPypiBlocker: Promise<string | undefined> | undefined;
+  const osvPypiNotReady = (): Promise<string | undefined> => {
+    osvPypiBlocker ??= (async () => {
+      const notInstalled = await osvNotInstalled();
+      if (notInstalled) return notInstalled;
+      const probe = await osvProbeScan();
+      // Skip only when the database is missing. Any other state (a failed run, no PyPI entry) must reach the
+      // eval and fail it, not be reported as a missing database.
+      const pypi = probe.dependency_coverage?.find((c: any) => c.engine === "osv-scanner" && c.ecosystem === "PyPI");
+      if (pypi?.state === "unavailable") {
+        return "OSV PyPI database not installed (repair-engines osv-scanner --osv-ecosystems PyPI)";
+      }
+      return undefined;
+    })();
+    return osvPypiBlocker;
+  };
 
   type Check = { id: string; engineDep?: string; fn: () => Promise<void> | void };
   const checks: Check[] = [
@@ -4015,6 +4095,132 @@ async function main() {
         }
       },
     },
+    {
+      id: "E59 OSV PyPI corpus is exact through the built MCP server",
+      engineDep: "osv-pypi",
+      fn: async () => {
+        const [vulnerable, fixed] = await Promise.all([
+          client.callTool("codeinspectus_scan", { path: OSV_PYPI_VULNERABLE_FIXTURE, scanners: ["vuln"] }),
+          client.callTool("codeinspectus_scan", { path: OSV_PYPI_FIXED_FIXTURE, scanners: ["vuln"] }),
+        ]);
+        for (const [label, response] of [["vulnerable", vulnerable], ["fixed", fixed]] as const) {
+          const result = response.structuredContent;
+          assert(
+            result.engines_run.some((engine: string) => engine.startsWith("osv-scanner@")),
+            `OSV ${label}: osv-scanner did not run`,
+          );
+          const pypi = result.dependency_coverage.find((c: any) => c.engine === "osv-scanner" && c.ecosystem === "PyPI");
+          assert(
+            pypi?.state === "ran" && pypi.packages.resolved === 3 && pypi.packages.eligible === 3 && pypi.packages.skipped === 0,
+            `OSV ${label}: PyPI coverage was not 3/3: ${JSON.stringify(pypi)}`,
+          );
+        }
+        assertOsvPypiTargetedFindings(vulnerable.structuredContent.findings, "OSV vulnerable corpus");
+        assertNoOsvPypiTargetedFindings(fixed.structuredContent.findings, "OSV fixed corpus");
+
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-osv-rescan-"));
+        const target = join(temporaryRoot, "project");
+        try {
+          await replaceFixtureDirectory(OSV_PYPI_VULNERABLE_FIXTURE, target);
+          const baseline = (await client.callTool("codeinspectus_scan", { path: target, scanners: ["vuln"] })).structuredContent;
+          assertOsvPypiTargetedFindings(baseline.findings, "OSV rescan baseline");
+
+          await replaceFixtureDirectory(OSV_PYPI_FIXED_FIXTURE, target);
+          const resolved = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: baseline.scan_id,
+            scanners: ["vuln"],
+          })).structuredContent;
+          assert(
+            resolved.summary.resolved >= 3 &&
+              resolved.summary.not_rechecked === 0 && resolved.partial === false,
+            `OSV fixed rescan diff was wrong: ${JSON.stringify(resolved.summary)}`,
+          );
+          assertOsvPypiTargetedFindings(resolved.resolved, "OSV fixed rescan resolved bucket");
+          assertNoOsvPypiTargetedFindings([...resolved.remaining, ...resolved.introduced], "OSV fixed rescan remaining/introduced");
+
+          await replaceFixtureDirectory(OSV_PYPI_VULNERABLE_FIXTURE, target);
+          const introduced = (await client.callTool("codeinspectus_rescan", {
+            path: target,
+            prior_scan_id: resolved.scan_id,
+            scanners: ["vuln"],
+          })).structuredContent;
+          assert(
+            introduced.summary.introduced >= 3 &&
+              introduced.summary.not_rechecked === 0 && introduced.partial === false,
+            `OSV reintroduced rescan diff was wrong: ${JSON.stringify(introduced.summary)}`,
+          );
+          assertOsvPypiTargetedFindings(introduced.introduced, "OSV reintroduced rescan introduced bucket");
+          assertNoOsvPypiTargetedFindings([...introduced.resolved, ...introduced.remaining], "OSV reintroduced rescan resolved/remaining");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E60 OSV cannot be silenced by the scanned repo",
+      engineDep: "osv-pypi",
+      fn: async () => {
+        // The fixture's root and nested osv-scanner.toml both ignore the advisory. The .gitignore that hides
+        // both lockfiles is written into a temp copy at run time (a committed one would make git skip the
+        // fixture's own requirements files); osv-scanner must still read them and report the advisory.
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-osv-suppressed-"));
+        const target = join(temporaryRoot, "project");
+        let suppressed: any;
+        try {
+          await replaceFixtureDirectory(OSV_PYPI_SUPPRESSED_FIXTURE, target);
+          await writeFile(join(target, ".gitignore"), "requirements.txt\n", "utf8");
+          suppressed = (await client.callTool("codeinspectus_scan", {
+            path: target,
+            scanners: ["vuln"],
+          })).structuredContent;
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+        const malware = suppressed.findings.filter((f: any) => osvAdvisoryMatches(f, OSV_MALWARE_ID));
+        assertExactJson(
+          malware.map((f: any) => f.location.file).sort(),
+          ["nested/requirements.txt", "requirements.txt"],
+          `a repo-planted osv-scanner.toml or .gitignore hid ${OSV_MALWARE_ID}`,
+        );
+        assert(
+          malware.every((f: any) =>
+            f.package?.ecosystem === "PyPI" && f.package.name === "litellm" && f.package.version === "1.107.0" &&
+            f.engines?.includes("osv-scanner")),
+          `suppressed fixture findings were not osv-scanner litellm 1.107.0: ${JSON.stringify(malware.map((f: any) => f.package))}`,
+        );
+      },
+    },
+    {
+      id: "E61 OSV never reports a missing ecosystem database as clean",
+      engineDep: "osv-scanner",
+      fn: async () => {
+        // A lockfile whose ecosystem database is absent is "not checked", never an empty (clean) result.
+        const noDb = (await client.callTool("codeinspectus_scan", {
+          path: OSV_CARGO_NO_DB_FIXTURE,
+          scanners: ["vuln"],
+        })).structuredContent;
+        const crates = noDb.dependency_coverage.find((c: any) => c.engine === "osv-scanner" && c.ecosystem === "crates.io");
+        if (crates && crates.state !== "unavailable") {
+          // CI installs only the PyPI database; a maintainer machine with crates.io installed cannot show this case.
+          throw new EvalSkip(`OSV crates.io database is installed here (coverage ${crates.state}), so the missing-database case cannot run`);
+        }
+        assert(
+          crates?.state === "unavailable" && crates.lockfiles.analyzed === 0 && crates.packages.eligible === 0 &&
+            crates.packages.resolved > 0 && crates.packages.skipped === crates.packages.resolved,
+          `a missing OSV crates.io database was not reported as unavailable coverage: ${JSON.stringify(crates)}`,
+        );
+        assert(
+          noDb.warnings.some((w: string) => w.includes("crates.io") && w.includes("codeinspectus setup")),
+          `missing OSV crates.io database produced no \`codeinspectus setup\` warning: ${JSON.stringify(noDb.warnings)}`,
+        );
+        assert(
+          !noDb.engines_run.some((engine: string) => engine.startsWith("osv-scanner@")) &&
+            !noDb.findings.some((f: any) => f.engines?.includes("osv-scanner")),
+          "osv-scanner was reported as having checked crates.io packages without their database",
+        );
+      },
+    },
   ];
 
   for (const c of checks) {
@@ -4034,9 +4240,20 @@ async function main() {
           continue;
         }
       }
+      if (c.engineDep === "osv-scanner" || c.engineDep === "osv-pypi") {
+        const blocker = c.engineDep === "osv-scanner" ? await osvNotInstalled() : await osvPypiNotReady();
+        if (blocker) {
+          record(c.id, "skip", blocker);
+          continue;
+        }
+      }
       await c.fn();
       record(c.id, "pass", "ok");
     } catch (err) {
+      if (err instanceof EvalSkip) {
+        record(c.id, "skip", err.message);
+        continue;
+      }
       record(c.id, "fail", err instanceof Error ? err.message : String(err));
     }
   }

@@ -127,6 +127,7 @@ function findingFor(
     confidence: "high",
     producer_components: pubFindingComponents(),
     finding_kind: "vulnerability",
+    package: { ecosystem: "Pub", name: pkg.name, version: pkg.version },
   };
 }
 

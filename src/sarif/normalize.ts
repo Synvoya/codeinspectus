@@ -7,7 +7,7 @@
  * and OWASP crosswalks are added later by the compliance mapper.
  */
 
-import type { Engine, Finding, Confidence, FindingKind } from "../types.js";
+import type { Engine, Finding, Confidence, FindingKind, FindingPackage } from "../types.js";
 import type { EngineOutput } from "../engines/types.js";
 import type { SarifLog, SarifRule, SarifResult, SarifProps } from "./types.js";
 import { normalizeSeverity } from "../severity.js";
@@ -15,6 +15,7 @@ import { findSecret, hashSecret, redactSecretText } from "../redact.js";
 import { remediationForCwe } from "../remediation.js";
 import { fingerprint as fp } from "../util/hash.js";
 import { externalFindingComponents } from "../provenance.js";
+import { osvEcosystemForFile } from "../osv/ecosystems.js";
 
 const CWE_RE = /CWE[-_ ]?(\d{1,5})/gi;
 const OWASP_WEB_RE = /OWASP[-_ ]?(A\d{2}:\d{4})/gi;
@@ -165,6 +166,21 @@ export function findingKindForSarif(
   return "other";
 }
 
+/**
+ * Trivy's vulnerability message starts with `Package: <name>` and `Installed Version: <version>` lines
+ * (the Pub name-collision exclusion has always read the first). The ecosystem is derived from the
+ * lockfile name where that is unambiguous; dedup keys on the normalized name only, never on it.
+ */
+function trivyPackage(message: string, file: string): FindingPackage | undefined {
+  const name = /^Package: (\S+)/.exec(message)?.[1];
+  if (!name) return undefined;
+  return {
+    ecosystem: osvEcosystemForFile(file) ?? "unknown",
+    name,
+    version: /^Installed Version: (\S+)/m.exec(message)?.[1] ?? "",
+  };
+}
+
 export function normalizeEngineOutput(output: EngineOutput, target: string): Finding[] {
   if (!output.sarif) return [];
   return normalizeSarif(output.sarif, output.engine, target);
@@ -287,6 +303,10 @@ function normalizeResult(
   if (isSecret) {
     finding.is_secret = true;
     if (secretValueHash) finding.secret_value_hash = secretValueHash;
+  }
+  if (engine === "trivy" && findingKind === "vulnerability") {
+    const pkg = trivyPackage(message, file);
+    if (pkg) finding.package = pkg;
   }
   return finding;
 }

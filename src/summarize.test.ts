@@ -85,9 +85,42 @@ describe("summarizeScan — git-safety advisory placement (CG-42)", () => {
       }),
     );
 
-    expect(out).toContain("Native dependency coverage (exact locked-version matching only):");
+    expect(out).toContain("Dependency coverage (exact locked-version matching only):");
     expect(out).toContain("Pub/codeinspectus-pub=partial (1/2 lockfiles, 10/12 eligible packages, 2 unverifiable git/custom-hosted, snapshot 2026-07-26)");
     expect(out).toContain("One lockfile was malformed.");
+  });
+
+  test("renders osv-scanner dependency coverage without native Pub wording", () => {
+    const out = summarizeScan(
+      mkResult({
+        dependency_coverage: [
+          {
+            ecosystem: "PyPI",
+            engine: "osv-scanner",
+            state: "ran",
+            lockfiles: { discovered: 1, analyzed: 1 },
+            packages: { resolved: 3, eligible: 3, skipped: 0 },
+            database_version: "2026-10-30T08:00:00.000Z",
+            matching: "osv-scanner-offline",
+            limitations: [],
+          },
+          {
+            ecosystem: "npm",
+            engine: "osv-scanner",
+            state: "unavailable",
+            lockfiles: { discovered: 1, analyzed: 0 },
+            packages: { resolved: 12, eligible: 0, skipped: 12 },
+            matching: "osv-scanner-offline",
+            limitations: ["npm database not installed."],
+            note: "npm database not installed.",
+          },
+        ],
+      }),
+    );
+
+    expect(out).toContain("PyPI/osv-scanner=ran (1/1 lockfiles, 3/3 eligible packages, 0 not checked, database 2026-10-30T08:00:00.000Z)");
+    expect(out).toContain("npm/osv-scanner=unavailable (0/1 lockfiles, 0/12 eligible packages, 12 not checked) — npm database not installed.");
+    expect(out).not.toMatch(/osv-scanner=[^\n]*unverifiable git\/custom-hosted/);
   });
 
   // `summary` counts the displayed set; under `--severity high` the headline used to print "0 medium"

@@ -41,9 +41,16 @@ The SDK exports explicit contract names:
 - `IssuePayloadV1`, `IssueAdapter`, `DestinationVisibility`
 
 `SDK_API_VERSION` is `3.3.2`. `SDK_COMPATIBILITY` records export schema `3.0.0`,
-repository-trust schema `1.0.0`, and cleanup schema `1.0.0`. The V3 SDK accepts those schema versions and fails closed on another version;
-additive optional fields within a compatible schema do not break consumers. Removing or changing a
-required field, exit meaning or command semantic requires a new contract version and SDK major.
+repository-trust schema `1.0.0`, and cleanup schema `1.0.0`. The V3 SDK accepts those schema
+versions and fails closed on another version; additive optional fields within a compatible schema
+do not break consumers. Removing or changing a required field, exit meaning or command semantic
+requires a new contract version and SDK major.
+
+Sealed bundles have more than one verifiable manifest version. `SDK_COMPATIBILITY.bundle_schema` is
+`1.1.0`, the version this release seals (it adds osv-scanner to the commodity engines), and
+`SDK_COMPATIBILITY.bundle_schemas_verified` lists every version `verifyBundle` accepts: `1.0.0`
+(bundles sealed by 3.3.2 and earlier) and `1.1.0`. `BundleManifestV1` covers both; read
+`schema_version` before relying on the commodity-engine list. Any other bundle version fails closed.
 
 Deprecated `FindingV2`, `CoverageV2`, `JsonExportV2`, and `SarifExportV2` aliases remain exported
 to reduce source churn, but V3 typed commands return V3 documents. Migrate annotations to the V3

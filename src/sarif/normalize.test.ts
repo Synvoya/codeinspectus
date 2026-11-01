@@ -213,3 +213,49 @@ describe("Trivy finding_kind and provenance attribution are structural", () => {
     expect(finding?.producer_components?.includes("trivy:vulnerability-db")).toBe(needsDb);
   });
 });
+
+describe("Trivy vulnerability findings carry the structured package", () => {
+  function trivyVulnerability(uri: string, message: string, kind = "LanguageSpecificPackageVulnerability"): SarifLog {
+    return {
+      runs: [{
+        tool: { driver: { name: "trivy", rules: [{ id: "CVE-2026-111497", name: kind, properties: { tags: ["vulnerability", "security"] } }] } },
+        results: [{
+          ruleId: "CVE-2026-111497",
+          message: { text: message },
+          locations: [{ physicalLocation: { artifactLocation: { uri }, region: { startLine: 2 } } }],
+        }],
+      }],
+    };
+  }
+  const message = (name: string, version: string) =>
+    `Package: ${name}\nInstalled Version: ${version}\nVulnerability CVE-2026-111497\nSeverity: CRITICAL\nFixed Version: 1.2.1\nLink: [CVE-2026-111497](https://avd.aquasec.com/nvd/cve-2026-111497)`;
+
+  test.each([
+    ["/repo/requirements.txt", "PyPI"],
+    ["/repo/svc/requirements-dev.txt", "PyPI"],
+    ["/repo/package-lock.json", "npm"],
+    ["/repo/app/pubspec.lock", "Pub"],
+    ["/repo/composer.lock", "Packagist"],
+    ["/repo/usr/lib/python3/site-packages/thing.dist-info/METADATA", "unknown"],
+  ])("parses Package / Installed Version and derives the ecosystem from %s", (uri, ecosystem) => {
+    const [finding] = normalizeSarif(trivyVulnerability(uri, message("Brotli", "1.2.0")), "trivy", TARGET);
+    expect(finding?.finding_kind).toBe("vulnerability");
+    expect(finding?.package).toEqual({ ecosystem, name: "Brotli", version: "1.2.0" });
+  });
+
+  test("a vulnerability message without a Package line gets no package, and non-vulnerability results never do", () => {
+    const [opaque] = normalizeSarif(trivyVulnerability("/repo/requirements.txt", "opaque finding text"), "trivy", TARGET);
+    expect(opaque?.package).toBeUndefined();
+    const [misconfiguration] = normalizeSarif({
+      runs: [{
+        tool: { driver: { name: "trivy", rules: [{ id: "DS002", name: "Misconfiguration", properties: { tags: ["misconfiguration"] } }] } },
+        results: [{
+          ruleId: "DS002",
+          message: { text: message("Brotli", "1.2.0") },
+          locations: [{ physicalLocation: { artifactLocation: { uri: "/repo/Dockerfile" }, region: { startLine: 1 } } }],
+        }],
+      }],
+    }, "trivy", TARGET);
+    expect(misconfiguration?.package).toBeUndefined();
+  });
+});

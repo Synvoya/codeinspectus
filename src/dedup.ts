@@ -14,10 +14,17 @@
  * with the same fallback CWE, so the location+CWE key would collapse ~180 real
  * CVEs into a handful — a dangerous under-report for a security tool. Those dedup
  * on the vulnerability IDENTITY (rule_id = CVE/GHSA/advisory/check id) + path.
+ *
+ * Package-aware: when a vulnerability finding names its package (osv-scanner, Trivy, native Pub),
+ * the normalized package name is part of the key. One advisory can affect two packages locked in the
+ * same file (Brotli and brotlicffi share CVE-2026-111497 in one requirements.txt); those are two
+ * findings. The ecosystem is never part of the key, so Trivy's best-effort ecosystem cannot keep it
+ * from merging with osv-scanner's.
  */
 
 import type { Finding, Engine } from "./types.js";
 import { SEVERITY_RANK } from "./types.js";
+import { normalizePackageName } from "./osv/ecosystems.js";
 
 const CONFIDENCE_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
 const SECRET_ENGINE_PREFERENCE: Record<string, number> = {
@@ -26,6 +33,15 @@ const SECRET_ENGINE_PREFERENCE: Record<string, number> = {
   trivy: 1,
   opengrep: 0,
 };
+
+/**
+ * The file, plus the normalized package name when the finding names one (and `packageAware`). NUL-separated,
+ * because a file path may itself contain `|`.
+ */
+function vulnerabilityScope(f: Finding, packageAware = true): string {
+  const name = packageAware && f.package?.name ? normalizePackageName(f.package.name) : undefined;
+  return name === undefined ? f.location.file : `${f.location.file}\0${name}`;
+}
 
 export function dedupKey(f: Finding): string {
   const range = `${f.location.file}:${f.location.start_line}-${f.location.end_line}`;
@@ -52,7 +68,7 @@ export function dedupKey(f: Finding): string {
             : 2;
         return rank(left) - rank(right) || left.localeCompare(right);
       });
-    return `vuln|${f.location.file}|${identities[0] ?? f.rule_id}`;
+    return `vuln|${vulnerabilityScope(f)}|${identities[0] ?? f.rule_id}`;
   }
   const cweKey = [...f.cwe].sort().join(",");
   return `general|${range}|${cweKey}`;
@@ -107,14 +123,17 @@ export function pairMovedFindings(priorUnmatched: readonly Finding[], freshUnmat
   return pairs;
 }
 
-/** All stable cross-scan identities for one finding, including every vulnerability alias. */
-export function dedupIdentityKeys(f: Finding): string[] {
+/**
+ * All stable cross-scan identities for one finding, including every vulnerability alias. A
+ * vulnerability's keys include its normalized package name unless `packageAware` is false.
+ */
+export function dedupIdentityKeys(f: Finding, packageAware = true): string[] {
   if (
     !f.is_secret &&
     (f.finding_kind === "vulnerability" || f.engine === "trivy" || f.engine === "codeinspectus-pub")
   ) {
     return vulnerabilityIdentities(f).map(
-      (identity) => `vuln|${f.location.file}|${identity}`,
+      (identity) => `vuln|${vulnerabilityScope(f, packageAware)}|${identity}`,
     );
   }
   return [dedupKey(f)];
@@ -155,9 +174,8 @@ function vulnerabilityGroupKeys(findings: readonly Finding[]): Map<number, strin
   const tokensByFinding = new Map<number, string[]>();
   findings.forEach((finding, index) => {
     if (finding.finding_kind !== "vulnerability") return;
-    const tokens = vulnerabilityIdentities(finding).map(
-      (identity) => `${finding.location.file}\0${identity}`,
-    );
+    // `<vulnerabilityScope> \0 identity`: the same scope the dedup key uses.
+    const tokens = vulnerabilityIdentities(finding).map((identity) => `${vulnerabilityScope(finding)}\0${identity}`);
     if (!tokens.length) return;
     tokensByFinding.set(index, tokens);
     for (const token of tokens) find(token);
@@ -169,7 +187,7 @@ function vulnerabilityGroupKeys(findings: readonly Finding[]): Map<number, strin
     for (const token of tokens) {
       const root = find(token);
       const identities = identitiesByRoot.get(root) ?? new Set<string>();
-      identities.add(token.slice(token.indexOf("\0") + 1));
+      identities.add(token.slice(token.lastIndexOf("\0") + 1));
       identitiesByRoot.set(root, identities);
     }
   }
@@ -180,7 +198,7 @@ function vulnerabilityGroupKeys(findings: readonly Finding[]): Map<number, strin
     const identities = [...(identitiesByRoot.get(root) ?? [])].sort(
       (left, right) => identityRank(left) - identityRank(right) || left.localeCompare(right),
     );
-    keys.set(index, `vuln|${findings[index]!.location.file}|${identities[0]}`);
+    keys.set(index, `vuln|${vulnerabilityScope(findings[index]!)}|${identities[0]}`);
   }
   return keys;
 }
@@ -255,12 +273,14 @@ export function dedupFindings(findings: Finding[]): { findings: Finding[]; stats
     const mergedCwe = unionCwes(keep, other);
     const producerComponents = unionProducerComponents(existing, f);
     const vulnerabilityAliases = unionVulnerabilityAliases(existing, f);
+    const pkg = keep.package ?? other.package;
     const merged: Finding = {
       ...keep,
       engines: mergeEngines(existing, f),
       cwe: mergedCwe.length ? mergedCwe : keep.cwe,
       ...(producerComponents ? { producer_components: producerComponents } : {}),
       ...(vulnerabilityAliases ? { vulnerability_aliases: vulnerabilityAliases } : {}),
+      ...(pkg ? { package: pkg } : {}),
     };
     map.set(key, merged);
   }
@@ -280,8 +300,11 @@ export function dedupFindings(findings: Finding[]): { findings: Finding[]; stats
 export function findingsMatch(left: Finding, right: Finding): boolean {
   if (left.fingerprint === right.fingerprint) return true;
   if (left.secret_value_hash && right.secret_value_hash && left.secret_value_hash !== right.secret_value_hash) return false;
-  const keys = new Set(dedupIdentityKeys(left));
-  const shared = dedupIdentityKeys(right).filter((key) => keys.has(key));
+  // A scan stored before vulnerability findings named their package keys on path + identity only;
+  // comparing that with a package-aware key would read every such finding as resolved + introduced.
+  const packageAware = Boolean(left.package?.name) === Boolean(right.package?.name);
+  const keys = new Set(dedupIdentityKeys(left, packageAware));
+  const shared = dedupIdentityKeys(right, packageAware).filter((key) => keys.has(key));
   if (!shared.length) return false;
   if (shared.some((key) => key.startsWith("vuln|"))) return true;
   return left.engines.some((engine) => right.engines.includes(engine));

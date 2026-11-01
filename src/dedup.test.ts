@@ -10,7 +10,7 @@
  */
 
 import { describe, test, expect } from "vitest";
-import { dedupFindings } from "./dedup.js";
+import { dedupFindings, dedupKey, findingsMatch } from "./dedup.js";
 import type { Finding, Engine, Severity } from "./types.js";
 
 function secretFinding(engine: Engine, severity: Severity): Finding {
@@ -157,5 +157,101 @@ describe("first-party Pub vulnerability dedup", () => {
       vulnerability("codeinspectus-pub", "GHSA-test-0000-0002", 12),
     ]).findings;
     expect(findings).toHaveLength(2);
+  });
+});
+
+describe("package-aware vulnerability dedup (osv-scanner, Trivy, Pub)", () => {
+  function packaged(
+    engine: Engine,
+    ruleId: string,
+    pkg: { ecosystem: string; name: string; version: string },
+    options: { file?: string; aliases?: string[]; severity?: Severity } = {},
+  ): Finding {
+    return {
+      id: `${engine}-${pkg.name}-${ruleId}`,
+      fingerprint: `${engine}-${pkg.name}-${ruleId}`,
+      title: `${ruleId} (${pkg.name}@${pkg.version})`,
+      severity: options.severity ?? "high",
+      engine,
+      engines: [engine],
+      rule_id: ruleId,
+      ...(options.aliases ? { vulnerability_aliases: options.aliases } : {}),
+      cwe: ["CWE-1395"],
+      location: { file: options.file ?? "requirements.txt", start_line: 1, end_line: 1 },
+      message: `Package: ${pkg.name}\nInstalled Version: ${pkg.version}`,
+      remediation: { summary: "upgrade", steps: [], references: [] },
+      frameworks: [],
+      confidence: "high",
+      finding_kind: "vulnerability",
+      producer_components: [`${engine}:component`],
+      package: pkg,
+    };
+  }
+
+  test("osv-scanner, Trivy and Pub findings for one package and alias merge into one", () => {
+    const pkg = { ecosystem: "Pub", name: "archive", version: "3.3.7" };
+    const findings = dedupFindings([
+      packaged("codeinspectus-pub", "GHSA-test-0000-0003", pkg, { file: "pubspec.lock", aliases: ["CVE-2026-0003"] }),
+      packaged("osv-scanner", "CVE-2026-0003", pkg, { file: "pubspec.lock", aliases: ["GHSA-test-0000-0003"] }),
+      packaged("trivy", "CVE-2026-0003", pkg, { file: "pubspec.lock" }),
+    ]).findings;
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.engines).toEqual(["codeinspectus-pub", "osv-scanner", "trivy"]);
+    expect(findings[0]!.vulnerability_aliases).toEqual(["CVE-2026-0003", "GHSA-test-0000-0003"]);
+    expect(findings[0]!.package).toEqual(pkg);
+  });
+
+  test("same advisory on two packages stays two findings", () => {
+    const findings = dedupFindings([
+      packaged("osv-scanner", "CVE-2026-111497", { ecosystem: "PyPI", name: "Brotli", version: "1.2.0" }),
+      packaged("osv-scanner", "CVE-2026-111497", { ecosystem: "PyPI", name: "brotlicffi", version: "1.2.0.2" }),
+      packaged("trivy", "CVE-2026-111497", { ecosystem: "PyPI", name: "Brotli", version: "1.2.0" }),
+      packaged("trivy", "CVE-2026-111497", { ecosystem: "PyPI", name: "brotlicffi", version: "1.2.0.2" }),
+    ]).findings;
+    expect(findings).toHaveLength(2);
+    expect(findings.map((finding) => finding.package?.name).sort()).toEqual(["Brotli", "brotlicffi"]);
+    for (const finding of findings) expect(finding.engines).toEqual(["osv-scanner", "trivy"]);
+  });
+
+  test("Trivy Brotli (case) and osv brotli merge", () => {
+    const findings = dedupFindings([
+      packaged("trivy", "CVE-2026-111497", { ecosystem: "PyPI", name: "Brotli", version: "1.2.0" }),
+      packaged("osv-scanner", "CVE-2026-111497", { ecosystem: "PyPI", name: "brotli", version: "1.2.0" }, { severity: "critical" }),
+    ]).findings;
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.engines).toEqual(["trivy", "osv-scanner"]);
+    expect(findings[0]!.severity).toBe("critical");
+    expect(findings[0]!.package?.name).toBe("brotli");
+  });
+
+  test("dedup ignores the package ecosystem, so a best-effort Trivy ecosystem still merges", () => {
+    const findings = dedupFindings([
+      packaged("trivy", "CVE-2026-0004", { ecosystem: "unknown", name: "left_pad", version: "1.0.0" }),
+      packaged("osv-scanner", "CVE-2026-0004", { ecosystem: "PyPI", name: "left-pad", version: "1.0.0" }),
+    ]).findings;
+    expect(findings).toHaveLength(1);
+  });
+
+  test("a `|` in a file name never makes a package-less finding collide with a packaged one", () => {
+    const packagedOne = packaged("osv-scanner", "CVE-2026-0007", { ecosystem: "npm", name: "lodash", version: "4.17.4" }, { file: "a" });
+    const { package: _omit, ...unpackaged } = packaged("trivy", "CVE-2026-0007", { ecosystem: "npm", name: "x", version: "1" }, { file: "a|lodash" });
+    const findings = dedupFindings([packagedOne, unpackaged as Finding]).findings;
+    expect(findings).toHaveLength(2);
+    expect(dedupKey(packagedOne)).not.toBe(dedupKey(unpackaged as Finding));
+  });
+
+  test("cross-scan identity keys are package-aware: one advisory on two packages never matches across scans", () => {
+    const brotli = packaged("osv-scanner", "CVE-2026-111497", { ecosystem: "PyPI", name: "Brotli", version: "1.2.0" });
+    const cffi = packaged("osv-scanner", "CVE-2026-111497", { ecosystem: "PyPI", name: "brotlicffi", version: "1.2.0.2" });
+    expect(findingsMatch(brotli, cffi)).toBe(false);
+    expect(findingsMatch(brotli, { ...brotli, fingerprint: "other", package: { ...brotli.package!, name: "brotli" } })).toBe(true);
+    expect(dedupKey(brotli)).not.toBe(dedupKey(cffi));
+  });
+
+  test("a stored finding without a package still matches its packaged successor (scans before package support)", () => {
+    const fresh = packaged("trivy", "CVE-2026-111497", { ecosystem: "PyPI", name: "Brotli", version: "1.2.0" });
+    const { package: _omitted, ...stored } = { ...fresh, fingerprint: "stored-before-package-support" };
+    expect(findingsMatch(stored, fresh)).toBe(true);
+    expect(findingsMatch(fresh, stored)).toBe(true);
   });
 });

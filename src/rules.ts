@@ -15,12 +15,49 @@ import {
 import { readTrivyDbDate } from "./engines/trivy.js";
 import { inspectEngineSetup } from "./engine-health.js";
 import { nativePackInventory, registeredNativeAnalyzers } from "./packs/registry.js";
-import type { listRulesOutput, ruleInfoSchema } from "./schemas.js";
+import type { advisoryDatabaseInfoSchema, listRulesOutput, ruleInfoSchema } from "./schemas.js";
 import type { ListRulesInput } from "./schemas.js";
 import { inspectPubDatabase } from "./pub/database.js";
+import { inspectOsvDatabases, osvDbSourceUrl, readOsvDbRecord } from "./osv/database.js";
 
 type ListRulesResult = z.infer<typeof listRulesOutput>;
 type RuleInfo = z.infer<typeof ruleInfoSchema>;
+type AdvisoryDatabaseInfo = z.infer<typeof advisoryDatabaseInfoSchema>;
+
+/** OSV aggregates sources under their own licenses (attribution only; not a legal review). */
+const OSV_DATA_LICENSE =
+  "Per source: CC-BY-4.0 (GitHub Advisory Database GHSA-, PyPA PYSEC-, OSS-Fuzz OSV-, Go GO-), " +
+  "Apache-2.0 (OpenSSF Malicious Packages MAL-), MIT (Drupal), CC0-1.0 (RustSec RUSTSEC-)";
+const OSV_DATA_ATTRIBUTION =
+  "OSV.dev and its sources: GitHub Advisory Database, PyPA Advisory Database, OSS-Fuzz, Go Vulnerability Database, " +
+  "OpenSSF Malicious Packages, Drupal and RustSec contributors";
+
+/** One entry per OSV database installed for osv-scanner; offline (a stat and a small record read each). */
+async function osvAdvisoryDatabases(): Promise<AdvisoryDatabaseInfo[]> {
+  const installed = await inspectOsvDatabases();
+  return Promise.all(installed.map(async ({ ecosystem, state, downloaded_at }): Promise<AdvisoryDatabaseInfo> => {
+    // A record that does not describe the archive on disk proves nothing about it: report no digest.
+    const record = state === "provenance_missing" ? undefined : await readOsvDbRecord(ecosystem);
+    return {
+      engine: "osv-scanner",
+      ecosystem,
+      state: state === "ready" ? "current" : state,
+      version: record?.last_modified ?? downloaded_at ?? "unknown",
+      ...(downloaded_at ? { checked_at: downloaded_at } : {}),
+      ...(record ? { content_digest: record.signature } : {}),
+      matching: "osv-scanner-offline",
+      source_url: osvDbSourceUrl(ecosystem),
+      source_database: "OSV.dev",
+      license: OSV_DATA_LICENSE,
+      attribution: OSV_DATA_ATTRIBUTION,
+      ...(state === "provenance_missing"
+        ? { note: "No install record matches this database archive, so results from it cannot be proven reproducible on rescan. Run `codeinspectus setup` to reinstall it." }
+        : state === "stale"
+          ? { note: "This database is older than the refresh window; run `codeinspectus setup` to refresh it." }
+          : {}),
+    };
+  }));
+}
 
 interface Manifest {
   version: string;
@@ -137,19 +174,26 @@ export async function listRules(input: ListRulesInput): Promise<ListRulesResult>
     rule_count: pack.rules.registered,
   }));
 
-  const engineNames: EngineName[] = ["opengrep", "gitleaks", "trivy"];
-  const [engineSetup, trivyDbDate, pubDatabase] = await Promise.all([
+  const engineNames: EngineName[] = ["opengrep", "gitleaks", "trivy", "osv-scanner"];
+  const [engineSetup, trivyDbDate, pubDatabase, osvDatabases] = await Promise.all([
     inspectEngineSetup(),
     readTrivyDbDate(),
     inspectPubDatabase(),
+    osvAdvisoryDatabases(),
   ]);
+  const rulesets: Record<EngineName, string> = {
+    opengrep: "security-baseline",
+    gitleaks: "codeinspectus.toml + defaults",
+    trivy: "embedded + vuln DB",
+    "osv-scanner": "offline OSV databases (installed ecosystems only)",
+  };
 
   const engines = [
     ...engineNames.map((engine) => ({
       engine,
       version: engineSetup.engines.find((item) => item.engine === engine)?.version ?? "unknown",
       available: engineSetup.engines.find((item) => item.engine === engine)?.state === "ready",
-      ruleset: engine === "opengrep" ? "security-baseline" : engine === "gitleaks" ? "codeinspectus.toml + defaults" : "embedded + vuln DB",
+      ruleset: rulesets[engine],
     })),
     {
       engine: "codeinspectus-ai" as const,
@@ -175,7 +219,7 @@ export async function listRules(input: ListRulesInput): Promise<ListRulesResult>
     ...(trivyDbDate ? { trivy_db_date: trivyDbDate } : {}),
     engine_setup: engineSetup,
     native_packs: nativePacks,
-    advisory_databases: [pubDatabase.info],
+    advisory_databases: [pubDatabase.info, ...osvDatabases],
     custom_rules: custom,
     custom_rule_count: custom.length,
     note: "Generic SAST remains available through managed engines. Selected JavaScript rules are first-party native with an explicit Opengrep fallback; other native packs target bounded AI-code and framework-specific issues.",

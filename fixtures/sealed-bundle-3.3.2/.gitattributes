@@ -1,0 +1,2 @@
+# Sealed evidence: every byte is covered by the bundle seal, so git must never convert line endings.
+* -text

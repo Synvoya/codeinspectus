@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("./engine-health.js", () => ({
   inspectEngineSetup: vi.fn(async () => ({
@@ -20,9 +20,23 @@ vi.mock("./engines/trivy.js", () => ({
   readTrivyDbDate: vi.fn(async () => "2026-07-26T00:00:00.000Z"),
 }));
 
+// No OSV database is installed unless a test says so; the real store under ~/.codeinspectus is never read.
+vi.mock("./osv/database.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./osv/database.js")>()),
+  inspectOsvDatabases: vi.fn(async () => []),
+  readOsvDbRecord: vi.fn(async () => undefined),
+}));
+
 const { listRules } = await import("./rules.js");
+const { inspectOsvDatabases, readOsvDbRecord } = await import("./osv/database.js");
 const { listRulesOutput } = await import("./schemas.js");
 const { nativePackInventory, registeredNativeAnalyzers } = await import("./packs/registry.js");
+
+// A failing assertion must not leave a test's OSV records behind for the next test.
+afterEach(() => {
+  vi.mocked(readOsvDbRecord).mockReset();
+  vi.mocked(readOsvDbRecord).mockResolvedValue(undefined);
+});
 
 describe("listRules native pack inventory", () => {
   test("publishes all static native packs and exact rule ownership", async () => {
@@ -171,6 +185,47 @@ describe("listRules native pack inventory", () => {
     expect(nativeRules.filter((rule) => rule.pack_id === "github-actions")).toHaveLength(2);
     expect(externalRules).toHaveLength(22);
     expect(externalRules.every((rule) => !("pack_id" in rule))).toBe(true);
+  });
+
+  test("lists osv-scanner and one advisory database entry per installed OSV database, with data attribution", async () => {
+    vi.mocked(inspectOsvDatabases).mockResolvedValueOnce([
+      { ecosystem: "npm", state: "ready", downloaded_at: "2026-10-30T08:00:00.000Z" },
+      { ecosystem: "PyPI", state: "stale", downloaded_at: "2026-09-01T08:00:00.000Z" },
+      { ecosystem: "Pub", state: "provenance_missing" },
+    ]);
+    vi.mocked(readOsvDbRecord).mockImplementation(async (ecosystem) => ecosystem === "Pub" ? undefined : {
+      component: `osv-scanner:vulnerability-db:${ecosystem}`,
+      ecosystem,
+      signature: `sha256:${"a".repeat(64)}`,
+      source_url: `https://osv-vulnerabilities.storage.googleapis.com/${ecosystem}/all.zip`,
+      bytes: 1,
+      ...(ecosystem === "npm" ? { last_modified: "2026-10-30T07:00:00.000Z" } : {}),
+      recorded_at: ecosystem === "npm" ? "2026-10-30T08:00:00.000Z" : "2026-09-01T08:00:00.000Z",
+    });
+
+    const result = await listRules({});
+
+    expect(listRulesOutput.parse(result)).toEqual(result);
+    expect(result.engines).toContainEqual(expect.objectContaining({ engine: "osv-scanner", ruleset: expect.stringMatching(/OSV/) }));
+    const osv = result.advisory_databases.filter((database) => database.engine === "osv-scanner");
+    expect(osv.map((database) => `${database.ecosystem}=${database.state}`)).toEqual([
+      "npm=current",
+      "PyPI=stale",
+      "Pub=provenance_missing",
+    ]);
+    expect(osv[0]).toMatchObject({
+      version: "2026-10-30T07:00:00.000Z",
+      checked_at: "2026-10-30T08:00:00.000Z",
+      content_digest: `sha256:${"a".repeat(64)}`,
+      matching: "osv-scanner-offline",
+      source_url: "https://osv-vulnerabilities.storage.googleapis.com/npm/all.zip",
+    });
+    expect(osv[2]).not.toHaveProperty("content_digest");
+    for (const database of osv) {
+      expect(database.license).toMatch(/CC-BY-4\.0/);
+      expect(database.license).toMatch(/Apache-2\.0/);
+      expect(database.attribution).toMatch(/GitHub Advisory Database.*PyPA.*OSS-Fuzz.*Go.*OpenSSF Malicious Packages.*Drupal.*RustSec/s);
+    }
   });
 
   test("keeps exact filtered custom rule counts", async () => {

@@ -295,7 +295,10 @@ export function cliHelp(command?: "scan" | "preflight" | "export"): string {
     ...common,
     "",
     "Scans are offline. Preflight never downloads, repairs, authenticates, scans, or writes.",
-    "Setup options: --status, --all, --select opengrep,gitleaks,trivy, --reset.",
+    "Setup options: --status, --all, --select opengrep,gitleaks,trivy,osv-scanner, --path <repo>, --osv-ecosystems npm,PyPI, --reset.",
+    "repair-engines option: --osv-ecosystems npm,PyPI downloads those OSV databases (explicit consent; scans never download).",
+    "  With no engine named, repair-engines also repairs every other engine and may refresh the ~1 GB Trivy DB;",
+    "  `repair-engines osv-scanner --osv-ecosystems npm,PyPI` touches only osv-scanner and those databases.",
     "No account. No telemetry.",
     "",
   ].join("\n");

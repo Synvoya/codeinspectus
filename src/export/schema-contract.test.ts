@@ -41,6 +41,29 @@ describe("packaged V3 schemas", () => {
     expect(validate(document()), JSON.stringify(validate.errors)).toBe(true);
   });
 
+  test("an osv-scanner finding exports in the unchanged 3.0.0 shape: the structured package stays in the stored scan only", async () => {
+    const pkg = { ecosystem: "PyPI", name: "litellm", version: "1.107.0" };
+    const withPackage: StoredScanResult = { ...scan, findings: [{
+      ...scan.findings[0]!, engine: "osv-scanner", engines: ["osv-scanner"], rule_id: "MAL-2026-2144", cwe: ["CWE-506"],
+      location: { file: "requirements.txt", start_line: 1, end_line: 1 }, finding_kind: "vulnerability", package: pkg,
+      producer_components: ["codeinspectus:pipeline", "osv-scanner:binary", "osv-scanner:vulnerability-db:PyPI"],
+    }] };
+    const document = createJsonExport(withPackage);
+    expect(document.findings[0]).not.toHaveProperty("package");
+    expect(JSON.stringify(document)).not.toContain('"package"');
+    expect(withPackage.findings[0]!.package).toEqual(pkg);
+    for (const [path, value] of [
+      ["schemas/codeinspectus-export-3.0.0.schema.json", document],
+      ["schemas/codeinspectus-sarif-3.0.0.schema.json", createSarifExport(document)],
+    ] as const) {
+      const validate = await compilePackagedSchema(path);
+      expect(validate(value), JSON.stringify(validate.errors)).toBe(true);
+    }
+    // Same document as before package support: only the field the stored finding gained is absent.
+    const { package: _omitted, ...withoutPackage } = withPackage.findings[0]!;
+    expect(createJsonExport({ ...withPackage, findings: [withoutPackage] })).toEqual(document);
+  });
+
   test("packaged JSON and SARIF schemas accept typed Git scope and reject malformed commits", async () => {
     const scoped: StoredScanResult = { ...scan, git_scope: {
       schema_version: "1.0.0", mode: "working_tree", repository: "/repo",

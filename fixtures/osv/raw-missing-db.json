@@ -1,0 +1,26 @@
+{
+  "results": [
+    {
+      "source": {
+        "path": "<target>/package-lock.json",
+        "type": "lockfile"
+      },
+      "packages": [
+        {
+          "package": {
+            "name": "lodash",
+            "version": "4.17.4",
+            "ecosystem": "npm",
+            "purl": "pkg:npm/lodash@4.17.4?source=LOCAL"
+          }
+        }
+      ]
+    }
+  ],
+  "experimental_config": {
+    "licenses": {
+      "summary": false,
+      "allowlist": null
+    }
+  }
+}
