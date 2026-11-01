@@ -64,12 +64,12 @@ describe("consent-driven engine setup", () => {
     expect(plan.native.rule_count).toBe(72);
     expect(plan.native.download_required).toBe(false);
     expect(plan.components.map((item) => [item.id, item.action, item.download_size_bytes])).toEqual([
-      ["opengrep", "download", 43_236_128],
+      ["opengrep", "download", 47_298_224],
       ["gitleaks", "download", 7_897_593],
-      ["trivy", "download", 47_498_236],
+      ["trivy", "download", 49_857_297],
     ]);
     expect(plan.verifier).toMatchObject({ required: true, available: false, download_size_bytes: 139_584_002 });
-    expect(plan.exact_download_bytes).toBe(238_215_959);
+    expect(plan.exact_download_bytes).toBe(244_637_116);
     expect(plan.estimated_database_disk_bytes).toBeGreaterThan(1_000_000_000);
     const rendered = formatSetupPlan(plan);
     expect(rendered).toContain("72 rules, ready immediately");
@@ -184,7 +184,7 @@ describe("consent-driven engine setup", () => {
     blocked.state = "unsupported_platform";
     blocked.engines[0] = {
       engine: "opengrep",
-      version: "1.23.0",
+      version: "1.33.1",
       state: "unsupported_platform",
       detail: "This asset requires glibc.",
     };

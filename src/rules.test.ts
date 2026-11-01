@@ -7,9 +7,9 @@ vi.mock("./engine-health.js", () => ({
     state: "ready",
     platform: "test-x64",
     engines: [
-      { engine: "opengrep", version: "1.23.0", state: "ready" },
+      { engine: "opengrep", version: "1.33.1", state: "ready" },
       { engine: "gitleaks", version: "8.30.1", state: "ready" },
-      { engine: "trivy", version: "0.71.2", state: "ready" },
+      { engine: "trivy", version: "0.76.1", state: "ready" },
     ],
     trivy_db: { state: "ready", downloaded_at: "2026-07-26T00:00:00.000Z" },
     network_required: false,

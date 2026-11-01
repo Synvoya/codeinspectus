@@ -8,9 +8,9 @@ function status(overrides: Partial<EngineSetupStatus> = {}): EngineSetupStatus {
     state: "ready",
     platform: "linux-x64",
     engines: [
-      { engine: "opengrep", version: "1.23.0", state: "ready" },
+      { engine: "opengrep", version: "1.33.1", state: "ready" },
       { engine: "gitleaks", version: "8.30.1", state: "ready" },
-      { engine: "trivy", version: "0.71.2", state: "ready" },
+      { engine: "trivy", version: "0.76.1", state: "ready" },
     ],
     trivy_db: { state: "ready", downloaded_at: "2026-07-25T00:00:00.000Z" },
     network_required: false,
@@ -33,7 +33,7 @@ describe("incremental engine repair planning", () => {
       engines: [
         { engine: "opengrep", version: "1.24.0", state: "hash_mismatch" },
         { engine: "gitleaks", version: "8.30.1", state: "ready" },
-        { engine: "trivy", version: "0.71.2", state: "ready" },
+        { engine: "trivy", version: "0.76.1", state: "ready" },
       ],
       network_required: true,
     });
@@ -60,9 +60,9 @@ describe("incremental engine repair planning", () => {
     const current = status({
       state: "unsupported_platform",
       engines: [
-        { engine: "opengrep", version: "1.23.0", state: "unsupported_platform" },
+        { engine: "opengrep", version: "1.33.1", state: "unsupported_platform" },
         { engine: "gitleaks", version: "8.30.1", state: "ready" },
-        { engine: "trivy", version: "0.71.2", state: "unsupported_platform" },
+        { engine: "trivy", version: "0.76.1", state: "unsupported_platform" },
       ],
     });
     expect(planEngineRepair(current)).toEqual({
@@ -76,9 +76,9 @@ describe("incremental engine repair planning", () => {
     const current = status({
       state: "repair_required",
       engines: [
-        { engine: "opengrep", version: "1.23.0", state: "unpinned" },
+        { engine: "opengrep", version: "1.33.1", state: "unpinned" },
         { engine: "gitleaks", version: "8.30.1", state: "ready" },
-        { engine: "trivy", version: "0.71.2", state: "ready" },
+        { engine: "trivy", version: "0.76.1", state: "ready" },
       ],
     });
     expect(planEngineRepair(current, ["opengrep"])).toEqual({

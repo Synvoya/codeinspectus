@@ -65,9 +65,9 @@ function setup(state: EngineSetupStatus["state"], opengrep: "ready" | "missing")
     state,
     platform: "test-x64",
     engines: [
-      { engine: "opengrep", version: "1.23.0", state: opengrep },
+      { engine: "opengrep", version: "1.33.1", state: opengrep },
       { engine: "gitleaks", version: "8.30.1", state: "ready" },
-      { engine: "trivy", version: "0.71.2", state: "ready" },
+      { engine: "trivy", version: "0.76.1", state: "ready" },
     ],
     trivy_db: { state: "ready", downloaded_at: "2026-07-25T00:00:00.000Z" },
     ...(state === "ready" ? {} : { repair_command: "npx codeinspectus repair-engines" }),
@@ -95,7 +95,7 @@ beforeEach(async () => {
     },
     engines: {
       opengrep: {
-        version: "1.23.0",
+        version: "1.33.1",
         repo: "example/opengrep",
         release_base: "https://downloads.example/opengrep",
         signature: "cosign",
@@ -119,7 +119,7 @@ beforeEach(async () => {
         platforms: {},
       },
       trivy: {
-        version: "0.71.2",
+        version: "0.76.1",
         repo: "example/trivy",
         release_base: "https://downloads.example/trivy",
         signature: "checksums+sigstore",

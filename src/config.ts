@@ -28,9 +28,9 @@ export const SERVER_VERSION = "3.3.2";
 // ── Bundled engine versions (SHA-pinned in engines.lock.json) ───────────────
 export const ENGINE_VERSIONS = {
   // Verified against upstream GitHub Releases API on 2026-06-21.
-  opengrep: "1.23.0", // PRD said 1.21.0 (stale); 1.23.0 is latest stable.
+  opengrep: "1.33.1", // Latest stable as of 2026-10-30.
   gitleaks: "8.30.1", // matches PRD.
-  trivy: "0.71.2", // PRD said 0.71.1; 0.71.2 is latest. NEVER 0.69.4–0.69.6 (compromised).
+  trivy: "0.76.1", // Latest stable as of 2026-10-30. NEVER 0.69.4–0.69.6 (compromised).
 } as const;
 
 export type EngineName = "opengrep" | "gitleaks" | "trivy";

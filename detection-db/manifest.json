@@ -4,9 +4,9 @@
   "date": "2026-08-13",
   "description": "CodeInspectus's curated first-party detections. Native packs cover bounded AI/framework checks plus selected reconciled SAST rules; separately downloaded external engines remain additive fallbacks and broader scanners.",
   "engine_versions": {
-    "opengrep": "1.23.0",
+    "opengrep": "1.33.1",
     "gitleaks": "8.30.1",
-    "trivy": "0.71.2",
+    "trivy": "0.76.1",
     "codeinspectus-pub": "1.0.0"
   },
   "opengrep_rulesets": [

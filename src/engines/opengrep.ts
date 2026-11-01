@@ -36,7 +36,7 @@ export async function runOpengrep(target: string, tmpDir: string): Promise<Engin
               : arg)),
     };
 
-    // VERIFY: confirm flag spelling against opengrep v1.23.0 (`--sarif-output=`
+    // VERIFY: confirm flag spelling against opengrep v1.33.1 (`--sarif-output=`
     // per PRD §4.1; some builds use `--sarif --output`). Isolated here for easy fix.
     await mkdir(MANAGED_OPENGREP_CACHE, { recursive: true });
     const res = await execBinary(bin.path, args, {

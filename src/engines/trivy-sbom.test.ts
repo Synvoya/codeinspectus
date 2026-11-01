@@ -15,7 +15,7 @@ vi.mock("../config.js", () => ({
 
 vi.mock("./resolve.js", () => ({
   EngineUnavailableError: class EngineUnavailableError extends Error {},
-  resolveEngine: vi.fn(async () => ({ path: "/test/trivy", version: "0.71.2", sha256: "a".repeat(64) })),
+  resolveEngine: vi.fn(async () => ({ path: "/test/trivy", version: "0.76.1", sha256: "a".repeat(64) })),
 }));
 
 vi.mock("./exec.js", () => ({
@@ -61,7 +61,7 @@ describe("Trivy SBOM staging", () => {
 
       const result = await runTrivySbom(root, "cyclonedx", output);
 
-      expect(result).toMatchObject({ ran: false, version: "0.71.2" });
+      expect(result).toMatchObject({ ran: false, version: "0.76.1" });
       expect(result.note).toMatch(/failed.*synthetic failure/i);
       expect(await readFile(output, "utf8")).toBe("{\"stale\":true}\n");
       expect(await readdir(root)).toEqual(["sbom.json"]);
@@ -74,7 +74,7 @@ describe("Trivy SBOM staging", () => {
 
     const result = await runTrivySbom(root, "spdx", output);
 
-    expect(result).toEqual({ ran: true, version: "0.71.2", content: "{\"fresh\":true}\n" });
+    expect(result).toEqual({ ran: true, version: "0.76.1", content: "{\"fresh\":true}\n" });
     expect(state.stagedPath).not.toBe(output);
     expect(await readFile(output, "utf8")).toBe("{\"stale\":true}\n");
     expect(await readdir(root)).toEqual(["sbom.json"]);

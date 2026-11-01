@@ -48,7 +48,7 @@ beforeEach(async () => {
     generated_at: null,
     engines: {
       opengrep: {
-        version: "1.23.0",
+        version: "1.33.1",
         repo: "example/opengrep",
         release_base: "https://example.invalid",
         signature: "cosign",
@@ -71,7 +71,7 @@ beforeEach(async () => {
         platforms: {},
       },
       trivy: {
-        version: "0.71.2",
+        version: "0.76.1",
         repo: "example/trivy",
         release_base: "https://example.invalid",
         signature: "checksums+sigstore",

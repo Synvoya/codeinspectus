@@ -23,12 +23,12 @@ and no usable system copy exists. Its platform binary SHA-256 is pinned from the
 manifest after that manifest's Sigstore bundle verified successfully. Cosign is stored separately
 under `~/.codeinspectus/bin`; it is not included in the npm package.
 
-### Opengrep 1.23.0
+### Opengrep 1.33.1
 
 - Project: <https://github.com/opengrep/opengrep>
-- Exact source: <https://github.com/opengrep/opengrep/tree/v1.23.0>
+- Exact source: <https://github.com/opengrep/opengrep/tree/v1.33.1>
 - License: GNU Lesser General Public License 2.1
-- License text: <https://github.com/opengrep/opengrep/blob/v1.23.0/LICENSE>
+- License text: <https://github.com/opengrep/opengrep/blob/v1.33.1/LICENSE>
 - Copyright notice: Semgrep, Copyright (C) 2019-2024 Semgrep Inc., as preserved in the
   upstream `COPYRIGHT` file.
 
@@ -48,12 +48,12 @@ authored and licensed under Apache-2.0.
 CodeInspectus supplies its own configuration while enabling Gitleaks' upstream MIT-licensed default
 rules. The separately downloaded executable and its upstream rules remain Gitleaks work.
 
-### Trivy 0.71.2
+### Trivy 0.76.1
 
 - Project: <https://github.com/aquasecurity/trivy>
-- Exact source: <https://github.com/aquasecurity/trivy/tree/v0.71.2>
+- Exact source: <https://github.com/aquasecurity/trivy/tree/v0.76.1>
 - License: Apache License 2.0
-- License text: <https://github.com/aquasecurity/trivy/blob/v0.71.2/LICENSE>
+- License text: <https://github.com/aquasecurity/trivy/blob/v0.76.1/LICENSE>
 - Upstream notice: Trivy, Copyright 2019-2020 Aqua Security Software Ltd. This product includes
   software developed by Aqua Security (<https://aquasec.com>).
 

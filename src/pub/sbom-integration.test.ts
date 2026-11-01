@@ -32,7 +32,7 @@ vi.mock("../engines/trivy.js", () => ({
           creationInfo: { created: "2026-07-26T00:00:00Z", creators: ["Tool: Trivy"] },
           packages: [],
         };
-    return { ran: true, version: "0.71.2", content: JSON.stringify(document) };
+    return { ran: true, version: "0.76.1", content: JSON.stringify(document) };
   }),
 }));
 

@@ -251,9 +251,9 @@ Versions are cited from **`engines.lock.json` (ground truth)** — *not* the PRD
 
 | Engine | Version (`engines.lock.json`) | Engine license | Engine-authored ruleset in use | Ruleset license | In npm tarball? |
 |---|---|---|---|---|---|
-| Opengrep | **1.23.0** | LGPL-2.1 (PRD §4.1 / §11) | **None.** Runs only CI's `security-baseline`; explicitly **not** `--config auto` (`src/engines/opengrep.ts`) | — | Binary: **No**. CI rules: yes (`detection-db/`) |
+| Opengrep | **1.33.1** | LGPL-2.1 (PRD §4.1 / §11) | **None.** Runs only CI's `security-baseline`; explicitly **not** `--config auto` (`src/engines/opengrep.ts`) | — | Binary: **No**. CI rules: yes (`detection-db/`) |
 | Gitleaks | **8.30.1** | MIT (CLI; PRD §4.2) | Gitleaks' **built-in default** secret rules (`[extend] useDefault = true` in `codeinspectus.toml`) | MIT (gitleaks-authored) | Binary: **No**. CI `.toml`: yes |
-| Trivy | **0.71.2** | Apache-2.0 (PRD §4.3) | Trivy built-in **vuln / misconfig / secret / license** scanners + the Trivy **vuln DB** | Apache-2.0 (engine); **DB = aggregated third-party advisory data, heterogeneous licenses** | Binary + DB: **No** (downloaded) |
+| Trivy | **0.76.1** | Apache-2.0 (PRD §4.3) | Trivy built-in **vuln / misconfig / secret / license** scanners + the Trivy **vuln DB** | Apache-2.0 (engine); **DB = aggregated third-party advisory data, heterogeneous licenses** | Binary + DB: **No** (downloaded) |
 
 The engine licenses were reconciled against the exact pinned releases for 2.5.0. Opengrep's
 LGPL-2.1 obligations must not be described as permissive; the executable stays separate and is

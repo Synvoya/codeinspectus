@@ -13,7 +13,7 @@ const NOW = Date.parse("2026-07-26T00:00:00.000Z");
 function probes(overrides: Partial<Record<EngineHealthProbe["engine"], Partial<EngineHealthProbe>>> = {}): EngineHealthProbe[] {
   return (["opengrep", "gitleaks", "trivy"] as const).map((engine) => ({
     engine,
-    version: engine === "opengrep" ? "1.23.0" : engine === "gitleaks" ? "8.30.1" : "0.71.2",
+    version: engine === "opengrep" ? "1.33.1" : engine === "gitleaks" ? "8.30.1" : "0.76.1",
     available: true,
     ...overrides[engine],
   }));

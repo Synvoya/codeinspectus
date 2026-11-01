@@ -23,17 +23,17 @@ afterEach(async () => {
 function scan(id = "00000000-0000-4000-8000-000000000001", startedAt = "2026-07-30T00:00:00.000Z"): StoredScanResult {
   return {
     scan_id: `scan-${id}`, target: "/fixture/repo", repository_root: "/fixture/repo", started_at: startedAt, duration_ms: 10,
-    engines_run: ["opengrep@1.23.0", "gitleaks@8.30.1", "trivy@0.71.2", "codeinspectus-ai@5.13.0"],
-    engine_details: ["opengrep", "gitleaks", "trivy"].map((engine) => ({ engine: engine as "opengrep" | "gitleaks" | "trivy", version: engine === "opengrep" ? "1.23.0" : engine === "gitleaks" ? "8.30.1" : "0.71.2", available: true, ran: true, finding_count: engine === "gitleaks" ? 1 : 0, duration_ms: 1 })),
+    engines_run: ["opengrep@1.33.1", "gitleaks@8.30.1", "trivy@0.76.1", "codeinspectus-ai@5.13.0"],
+    engine_details: ["opengrep", "gitleaks", "trivy"].map((engine) => ({ engine: engine as "opengrep" | "gitleaks" | "trivy", version: engine === "opengrep" ? "1.33.1" : engine === "gitleaks" ? "8.30.1" : "0.76.1", available: true, ran: true, finding_count: engine === "gitleaks" ? 1 : 0, duration_ms: 1 })),
     offline: true, detected_technologies: [], pack_coverage: [],
     summary: { critical: 0, high: 1, medium: 0, low: 0, info: 0, total: 1 },
     findings: [{ id: "CI-0001", fingerprint: "fp-1", title: "Secret", severity: "high", engine: "gitleaks", engines: ["gitleaks"], rule_id: "generic-secret", cwe: ["CWE-798"], location: { file: "src/config.ts", start_line: 1, end_line: 1, snippet: "RAW-BUNDLE-SECRET-9081726354" }, message: "RAW-BUNDLE-SECRET-9081726354", remediation: { summary: "Remove secret", steps: [], references: [] }, frameworks: [], confidence: "high", is_secret: true, producer_components: ["engine:gitleaks"] }],
     truncated: false, total_findings_before_limit: 1, disclaimer: "test", warnings: [], secret_coverage: "verified",
     component_signatures: { "engine:gitleaks": "sha256:test" },
     engine_setup: { state: "ready", platform: "darwin-arm64", engines: [
-      { engine: "opengrep", version: "1.23.0", state: "ready" },
+      { engine: "opengrep", version: "1.33.1", state: "ready" },
       { engine: "gitleaks", version: "8.30.1", state: "ready" },
-      { engine: "trivy", version: "0.71.2", state: "ready" },
+      { engine: "trivy", version: "0.76.1", state: "ready" },
     ], trivy_db: { state: "ready" }, network_required: false },
     git_safety: { state: "clean" }, scan_config: { scanners: ["sast", "secret", "vuln", "misconfig", "license", "ai"], max_findings: 200 },
     storage_schema_version: "2.0.0", canonical_findings: true,

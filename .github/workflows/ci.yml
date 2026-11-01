@@ -48,10 +48,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# CI runs only in the public repo (free Actions); the private dev repo never runs it (Hibi, 2026-11-02).
 jobs:
   dco:
     name: contributor sign-off (DCO)
-    if: github.event_name == 'pull_request'
+    if: github.repository == 'Synvoya/codeinspectus' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
@@ -76,6 +77,7 @@ jobs:
 
   always:
     name: always-run (no engines)
+    if: github.repository == 'Synvoya/codeinspectus'
     runs-on: ubuntu-latest
     steps:
       # audit mode — logs egress for a future block-mode allowlist (CG-78); does not restrict.
@@ -112,6 +114,7 @@ jobs:
 
   node22-compatibility:
     name: minimum runtime (Node 22)
+    if: github.repository == 'Synvoya/codeinspectus'
     runs-on: ubuntu-latest
     steps:
       - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
@@ -134,6 +137,7 @@ jobs:
 
   engine:
     name: engine (linux/amd64)
+    if: github.repository == 'Synvoya/codeinspectus'
     runs-on: ubuntu-latest
     steps:
       # audit mode — logs egress for a future block-mode allowlist (CG-78); does not restrict.
@@ -182,6 +186,7 @@ jobs:
 
   runtime-portability:
     name: runtime (${{ matrix.platform }})
+    if: github.repository == 'Synvoya/codeinspectus'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

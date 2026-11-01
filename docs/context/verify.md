@@ -226,7 +226,7 @@ npm run shadow:opengrep -- --require-hit \
   fixtures/opengrep-shadow-corpus/fixed
 ```
 
-Expected: Opengrep `1.23.0` is available; TP is exact 6/6, FP/fixed are 0/0, direct-file and
+Expected: Opengrep `1.33.1` is available; TP is exact 6/6, FP/fixed are 0/0, direct-file and
 project-root identities agree, metadata mismatches are empty, and no candidate loader limitation is
 present. E34 repeats the engine-backed parity contract. E35/E36 prove native-only surfaced
 provenance, SAST/AI scanner filtering, and same-path fixed/reintroduced rescan behavior while the

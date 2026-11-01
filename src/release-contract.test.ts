@@ -39,7 +39,7 @@ describe("V3 release source synchronization", () => {
     expect(packageJson.files).toContain("THIRD-PARTY-NOTICES.md");
     expect(await readFile("LICENSE", "utf8")).toContain("Apache License");
     expect(await readFile("NOTICE", "utf8")).toContain("Copyright 2026 Synvoya");
-    expect(await readFile("THIRD-PARTY-NOTICES.md", "utf8")).toContain("Opengrep 1.23.0");
+    expect(await readFile("THIRD-PARTY-NOTICES.md", "utf8")).toContain("Opengrep 1.33.1");
   });
 
   test("detection breadth stays independently reconciled", async () => {

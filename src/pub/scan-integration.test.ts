@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../engines/trivy.js", () => ({
   runTrivy: vi.fn(async () => ({
     engine: "trivy",
-    version: "0.71.2",
+    version: "0.76.1",
     available: false,
     ran: false,
     durationMs: 1,

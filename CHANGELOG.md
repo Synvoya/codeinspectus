@@ -4,6 +4,21 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [Unreleased]
+
+### Changed
+- Engine pins: Opengrep 1.23.0 → 1.33.1 and Trivy 0.71.2 → 0.76.1. Gitleaks 8.30.1 is already the
+  latest release. Trivy 0.76.1 is built with Go 1.27.3, which distrusts the compromised eMudhra
+  intermediate CA. Opengrep 1.24–1.33 change taint analysis (switch and `case` handling, Kotlin and
+  Ruby branches, Python match arms); the exact Opengrep eval corpora are unchanged.
+- Opengrep releases since v1.31.0 are signed by `rolling-release.yml` on per-release
+  `release-vX.Y.Z` branches instead of `main`. The lockfile pins the exact `release-v1.33.1`
+  identity, and verification stays fail-closed.
+
+### Upgrade note
+- Existing installs report the old Opengrep and Trivy binaries as a SHA256 mismatch and do not run
+  them. Run `npx codeinspectus repair-engines` to install the pinned versions.
+
 ## [3.3.2] — 2026-10-24
 
 ### Security
