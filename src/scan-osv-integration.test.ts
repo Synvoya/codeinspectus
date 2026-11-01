@@ -322,8 +322,9 @@ describe("scan orchestrator osv-scanner integration", () => {
 
   it("Ruling 31: the note names each detected lockfile osv-scanner listed nothing from, without control characters", async () => {
     const root = await project({ "package-lock.json": "{}\n", "yarn.lock": "# yarn lockfile v1\n" });
-    // C0, newline, C1 NEL, line separator, a bidirectional override and a zero-width space.
-    const directory = "app\u0007\n\u0085\u2028\u202e\u200bweb";
+    // C0, newline, C1 NEL, line separator, a bidirectional override and a zero-width space. Windows
+    // forbids C0 characters in names (public CI, win32-x64: EINVAL), so there the folder holds the rest.
+    const directory = process.platform === "win32" ? "app\u0085\u2028\u202e\u200bweb" : "app\u0007\n\u0085\u2028\u202e\u200bweb";
     await mkdir(join(root, directory));
     await writeFile(join(root, directory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf8");
     vi.mocked(runOsvScanner).mockResolvedValueOnce(osvResult({ componentSignatures: SIGNATURES }));

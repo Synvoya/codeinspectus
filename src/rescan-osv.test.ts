@@ -57,11 +57,20 @@ afterEach(async () => {
   await rm(join(MANAGED_OSV_CONFIG, ".."), { recursive: true, force: true });
 });
 
+/**
+ * The fixture's `<target>` placeholder sits inside JSON strings: a Windows path's backslashes must be
+ * escaped there, as the real osv-scanner writes them (public CI, win32-x64: the raw path made the
+ * stubbed output invalid JSON, so no finding was read).
+ */
+function withTarget(raw: string, root: string): string {
+  return raw.replaceAll("<target>", JSON.stringify(root).slice(1, -1));
+}
+
 /** osv-scanner's answer for the tree as it is now: the real 2.7.0 result while requirements.txt exists. */
 function answerFromTree(root: string, vulnerable: string): void {
   execBinary.mockImplementation(async (_binary: string, args: string[]) => {
     const present = await readFile(join(root, "requirements.txt"), "utf8").then(() => true, () => false);
-    const output = present ? vulnerable.replaceAll("<target>", root) : JSON.stringify({ results: [], experimental_config: {} });
+    const output = present ? withTarget(vulnerable, root) : JSON.stringify({ results: [], experimental_config: {} });
     await writeFile(args[args.indexOf("--output-file") + 1]!, output, "utf8");
     return { code: present ? 1 : 0, stdout: "", stderr: present ? "" : "No package sources found", timedOut: false };
   });
@@ -102,7 +111,7 @@ describe("rescan with osv-scanner", () => {
 
     // Real 2.7.0 behaviour: it stopped at a database it could not load after matching other packages, exited 1,
     // and listed litellm with nothing matched. The file did not change.
-    const partial = JSON.parse(vulnerable.replaceAll("<target>", root)) as {
+    const partial = JSON.parse(withTarget(vulnerable, root)) as {
       results: Array<{ packages: Array<{ package: { name: string }; groups?: unknown[]; vulnerabilities?: unknown[] }> }>;
     };
     for (const pkg of partial.results.flatMap((result) => result.packages)) {
