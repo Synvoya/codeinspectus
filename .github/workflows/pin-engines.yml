@@ -28,7 +28,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14            # Apple Silicon
+          - os: macos-15            # Apple Silicon
             platform: darwin-arm64
           - os: macos-15-intel      # Intel
             platform: darwin-x64
