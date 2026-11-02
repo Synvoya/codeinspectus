@@ -4135,7 +4135,8 @@ async function main() {
           assert(nel.secret_coverage === "unverified", "a NEL-prefixed .gitleaksignore entry hid a finding but coverage read verified");
           // Review C2: Gitleaks looks up the whole absolute "<file>:<rule>:<line>", so ':' in the path
           // (a `colon:target` checkout or a `sub:dir/` folder) does not stop an absolute entry.
-          for (const [folder, sub] of [["colon:target", ""], ["plain", "sub:dir"]] as const) {
+          // Windows forbids ':' in file names, so these folders cannot exist there.
+          for (const [folder, sub] of process.platform === "win32" ? [] : [["colon:target", ""], ["plain", "sub:dir"]] as const) {
             const colonTarget = join(target, folder);
             await mkdir(join(colonTarget, sub), { recursive: true });
             const secretFile = join(colonTarget, sub, "config.yml");
@@ -4411,6 +4412,13 @@ async function main() {
             await mkdir(target, { recursive: true });
             await cp(join(COVERAGE_HONESTY_FIXTURE, "gitleaksignore-relative", "config.yml"), join(target, "config.yml"));
             const result = (await client.callTool("codeinspectus_scan", { path: target, scanners: ["secret"] })).structuredContent;
+            if (process.platform === "win32") {
+              // Windows scans the real path (no link), so the allowlist applies and must be disclosed.
+              assert(result.secret_coverage === "unverified", `secret coverage under ${parent} read ${result.secret_coverage} on Windows`);
+              assert(result.warnings.some((warning: string) => warning.startsWith("Secret coverage unverified: Gitleaks' default allowlist")),
+                `the allowlisted target under ${parent} was not disclosed on Windows`);
+              continue;
+            }
             assert(
               result.findings.some((x: any) => x.engines.includes("gitleaks") && x.location.file === "config.yml" && x.location.start_line === 3),
               `Gitleaks reported nothing for a target under ${parent}`,
