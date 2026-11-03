@@ -40,7 +40,7 @@ try {
       type CleanupPlanV1, type CleanupResultV1,
     } from "codeinspectus/sdk";
     const client = new CodeInspectusClient();
-    const operation: Promise<{ data: JsonExportV2 }> = client.scan("/tmp/repository");
+    const operation: Promise<{ data: JsonExportV2 }> = client.scan("/tmp/repository", { acceptGaps: ["php-sast"] });
     function consume(
       finding: FindingV2, coverage: AggregateCoverageV2, history: HistoryListResultV1,
       comparison: HistoryComparisonV1, baseline: BaselineComparisonV1,

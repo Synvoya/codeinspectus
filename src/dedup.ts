@@ -25,6 +25,7 @@
 import type { Finding, Engine } from "./types.js";
 import { SEVERITY_RANK } from "./types.js";
 import { normalizePackageName } from "./osv/ecosystems.js";
+import { devScopeCarriedInto } from "./engines/trivy-dev-scope.js";
 
 const CONFIDENCE_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
 const SECRET_ENGINE_PREFERENCE: Record<string, number> = {
@@ -39,6 +40,10 @@ const SECRET_ENGINE_PREFERENCE: Record<string, number> = {
  * because a file path may itself contain `|`.
  */
 function vulnerabilityScope(f: Finding, packageAware = true): string {
+  // A Synvoya runtime, image or product finding names no package, and the evaluator already emits one finding
+  // per (advisory, file, subject), which its fingerprint encodes. Advisories share aliases across subjects
+  // (Node.js and .NET both list the Brotli CVE), so the file alone would merge two different exposures.
+  if (f.engine === "synvoya" && !f.package?.name) return `${f.location.file}\0${f.rule_id}\0${f.fingerprint}`;
   const name = packageAware && f.package?.name ? normalizePackageName(f.package.name) : undefined;
   return name === undefined ? f.location.file : `${f.location.file}\0${name}`;
 }
@@ -281,6 +286,8 @@ export function dedupFindings(findings: Finding[]): { findings: Finding[]; stats
       ...(producerComponents ? { producer_components: producerComponents } : {}),
       ...(vulnerabilityAliases ? { vulnerability_aliases: vulnerabilityAliases } : {}),
       ...(pkg ? { package: pkg } : {}),
+      // Title and message are not fingerprint inputs; only the scope text Trivy alone knows is carried.
+      ...devScopeCarriedInto(keep, other),
     };
     map.set(key, merged);
   }

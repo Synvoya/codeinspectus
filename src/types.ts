@@ -7,6 +7,7 @@
 import type { EngineName } from "./config.js";
 import type { OsvEcosystem } from "./osv/ecosystems.js";
 import type { RepositoryTrustChanges, RepositoryTrustDocument } from "./repository-trust/schemas.js";
+import type { CoverageGap, CoverageGapId, CoverageNote } from "./coverage-gaps.js";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -26,7 +27,11 @@ export type Engine =
   | "trivy"
   | "osv-scanner"
   | "codeinspectus-ai"
-  | "codeinspectus-pub";
+  | "codeinspectus-pub"
+  | "synvoya";
+
+/** Display-only grouping of CodeInspectus-owned detection ("Synvoya (CodeInspectus)"). Never an identity input. */
+export type EngineFamily = "synvoya";
 
 export type ScannerKind = "sast" | "secret" | "vuln" | "misconfig" | "license" | "ai";
 
@@ -62,6 +67,11 @@ export interface Finding {
   engine: Engine;
   /** Every engine that reported this finding (after dedup merge). */
   engines: Engine[];
+  /**
+   * Display family, set once after dedup (src/synvoya/family.ts). Additive and optional: `engine`,
+   * `rule_id`, the id and the fingerprint never depend on it, so baselines and rescans match without it.
+   */
+  engine_family?: EngineFamily;
   rule_id: string;
   /** Equivalent advisory identifiers used to deduplicate the same vulnerability across scanners. */
   vulnerability_aliases?: string[];
@@ -357,12 +367,27 @@ export interface ScanResult {
   compliance_overview?: ComplianceOverview;
   disclaimer: string;
   warnings: string[];
-  /** Secret-scanner coverage status. Unverified when Gitleaks did not run or .gitleaksignore exists. */
+  /** Secret-scanner coverage status. Unverified when Gitleaks did not run or a .gitleaksignore entry can match. */
   secret_coverage?: "verified" | "unverified";
   /** Redacted metadata only: channel names, counts, and relative file paths. */
   secret_suppression?: SecretSuppressionMetadata;
+  /** Inputs no bundled engine analyzes (stable ids); each makes aggregate coverage partial. */
+  coverage_gaps?: CoverageGap[];
+  /** Gap ids the caller accepted for CI (`accept_gaps`); accepted gaps stay listed in coverage_gaps. */
+  accepted_gaps?: CoverageGapId[];
+  /** Informational scope disclosures that are not gaps and never lower coverage. */
+  coverage_notes?: CoverageNote[];
   /** Component id -> content/semantic signature. Optional only for legacy stored scans. */
   component_signatures?: Record<string, string>;
+  /**
+   * Per Synvoya producer (`runtime`, `images`, `products` readers; `inventory:osv-scanner`,
+   * `inventory:trivy`), the target-relative files it fully checked in this scan. Rescan proof only: a prior
+   * Synvoya finding resolves only when every producer it records (`synvoya:<producer>` producer
+   * components) lists its file here; otherwise (skipped, read in part, unresolvable, removed, moved, or the
+   * set omitted) it is not re-checked. Kept in the canonical (stored) scan; not in the display projection
+   * or the export.
+   */
+  synvoya_checked?: Partial<Record<"runtime" | "images" | "products" | "inventory:osv-scanner" | "inventory:trivy", string[]>>;
   /** Code-visible runtime-control evidence. Metadata only; never affects posture scores. */
   security_control_evidence?: SecurityControlEvidence[];
   /** Actionable advisory when a completed Trivy vuln scan lacks install-time DB provenance. */

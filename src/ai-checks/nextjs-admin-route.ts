@@ -4,10 +4,11 @@
  * The detector is deliberately handler-scoped. It parses each App Router verb independently and
  * resolves Pages Router default exports to a local function/arrow. Comments, strings, unrelated
  * handlers, and dead helpers cannot supply guard evidence. A handler may use one directly-invoked
- * local guard helper; cross-file custom wrapper semantics remain unknown and are reported as a
- * coverage note rather than guessed.
+ * local guard helper; cross-file custom wrapper semantics remain unknown and are reported as the
+ * declared gap `nextjs-routes-unresolved` rather than guessed.
  */
 import type { Finding } from "../types.js";
+import type { NativeGapRecord } from "../native-gaps.js";
 import {
   isConditionallyExecuted,
   jsCalls,
@@ -31,7 +32,6 @@ const RULE_ID = "ci-ai-nextjs-admin-route-no-authz";
 const APP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const PAGES_ADMIN_RE = /(?:^|\/)(?:src\/)?pages\/api\/admin(?:\/[^/]+)*\.(?:[cm]?[jt]sx?)$/;
 const APP_ADMIN_RE = /(?:^|\/)(?:src\/)?app\/api\/admin(?:\/[^/]+)*\/route\.(?:[cm]?[jt]sx?)$/;
-const MAX_NOTES = 50;
 const MAX_ROUTE_FUNCTIONS = 2_048;
 const MAX_ROUTE_CALLS = 10_000;
 const MAX_AUTHZ_ALIAS_PATTERN_TOKENS = 2_048;
@@ -109,7 +109,8 @@ interface ProviderContext {
 
 export interface NextjsAdminRouteAnalysis {
   findings: Finding[];
-  notes: string[];
+  /** Declared gaps (native-gaps.ts): unreadable or over-bound route files and unresolved verdicts. */
+  gaps: NativeGapRecord[];
 }
 
 function isAdminRoute(path: string): "pages" | "app" | undefined {
@@ -1958,34 +1959,25 @@ function missingBoundary(evidence: GuardEvidence, boundary: number): string | un
   return authenticated ? "authorization" : "authentication";
 }
 
-function boundedNotes(notes: readonly string[]): string[] {
-  const unique = [...new Set(notes)];
-  if (unique.length <= MAX_NOTES) return unique;
-  return [...unique.slice(0, MAX_NOTES), `${unique.length - MAX_NOTES} additional Next.js admin-route coverage notes omitted.`];
-}
-
 export async function runNextjsAdminRouteAnalysis(target: string): Promise<NextjsAdminRouteAnalysis> {
   const findings: Finding[] = [];
-  const notes: string[] = [];
+  const gaps: NativeGapRecord[] = [];
   for (const file of await collectFiles(target, { exts: CODE_EXTS, includeBuilt: false })) {
     const kind = isAdminRoute(file.rel);
     if (!kind) continue;
     const document = parseJavaScriptSource(file.rel, file.content);
     if (!document.balanced) {
-      const reason = document.lexicalIssues[0] ?? "unbalanced JavaScript/TypeScript structure";
-      notes.push(`${file.rel}: Next.js admin-route analysis skipped: ${reason}`);
+      gaps.push({ id: document.oversized ? "oversized-files" : "native-parse-errors", path: file.rel });
       continue;
     }
     const functions = parseFunctions(document);
     const callCount = jsCalls(document).length;
     if (functions.length > MAX_ROUTE_FUNCTIONS || callCount > MAX_ROUTE_CALLS) {
-      const reason = functions.length > MAX_ROUTE_FUNCTIONS
-        ? `function bound exceeded (${MAX_ROUTE_FUNCTIONS})`
-        : `call bound exceeded (${MAX_ROUTE_CALLS})`;
-      notes.push(`${file.rel}: Next.js admin-route analysis skipped: ${reason}`);
+      gaps.push({ id: "oversized-files", path: file.rel });
       continue;
     }
-    const fileNote = (message: string) => notes.push(`${file.rel}: ${message}`);
+    // Every verdict this callback receives is "semantics were not verified": no finding, no clearance.
+    const fileNote = (_message: string) => gaps.push({ id: "nextjs-routes-unresolved", path: file.rel });
     const handlers = kind === "app"
       ? appHandlers(document, functions, fileNote)
       : pagesHandlers(document, functions, fileNote);
@@ -2044,7 +2036,7 @@ export async function runNextjsAdminRouteAnalysis(target: string): Promise<Nextj
       );
     }
   }
-  return { findings, notes: boundedNotes(notes) };
+  return { findings, gaps };
 }
 
 /** Compatibility wrapper for existing pack registration. */

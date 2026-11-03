@@ -1,0 +1,20 @@
+{
+    "_readme": ["This file locks the dependencies of the fixture."],
+    "content-hash": "00000000000000000000000000000000",
+    "packages": [
+        {
+            "name": "guzzlehttp/guzzle",
+            "version": "7.9.3",
+            "type": "library"
+        }
+    ],
+    "packages-dev": [
+        {
+            "name": "phpunit/phpunit",
+            "version": "10.5.26",
+            "type": "library"
+        }
+    ],
+    "aliases": [],
+    "minimum-stability": "stable"
+}

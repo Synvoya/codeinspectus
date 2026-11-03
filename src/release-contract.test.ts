@@ -50,7 +50,7 @@ describe("V3 release source synchronization", () => {
       custom_rules: Array<{ engine: string; pack_id?: string }>;
     };
     const native = manifest.custom_rules.filter((rule) => rule.engine === "codeinspectus-ai");
-    expect(manifest.version).toBe("1.19.0");
+    expect(manifest.version).toBe("1.19.1");
     expect(manifest.custom_rules).toHaveLength(94);
     expect(native).toHaveLength(72);
     expect(new Set(native.map((rule) => rule.pack_id)).size).toBe(16);

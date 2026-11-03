@@ -30,6 +30,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { MANAGED_OSV_CONFIG, MANAGED_OSV_DB } from "../config.js";
 import { log } from "../logger.js";
 import { osvDbZipPath, readOsvDbRecord, type OsvDbRecord } from "../osv/database.js";
+import { packageLine, readLockfileLines as readLines, type LockfileLines } from "../osv/package-line.js";
 import {
   isOsvEcosystem,
   isOverlaySegment,
@@ -59,6 +60,18 @@ export interface OsvScanResult {
   coverage: DependencyCoverage[];
   /** Files osv-scanner's JSON listed packages from, relative to the target and `/`-separated, sorted. */
   lockfiles: string[];
+  /**
+   * Every package osv-scanner listed (`--all-packages`), vulnerable or not, in output order, with the
+   * target-relative file it came from: the package inventory the Synvoya gap layer evaluates.
+   */
+  packages?: Array<{
+    ecosystem: string;
+    name: string;
+    version: string;
+    file: string;
+    /** The source was outside the target: `file` is only its name, so no line may be looked up from it. */
+    outside?: true;
+  }>;
   componentSignatures: Record<string, string>;
   /** Everything the user should be told; the caller forwards these and need not warn from `info.note` as well. */
   warnings: string[];
@@ -70,7 +83,6 @@ const MANAGED_CONFIG_CONTENT =
   "# (IgnoredVulns, PackageOverrides, ...) from silencing or rewriting results. Do not add rules here.\n";
 
 const MAX_OUTPUT_BYTES = 128 * 1024 * 1024;
-const MAX_LOCKFILE_BYTES = 16 * 1024 * 1024;
 const MAX_FIXED_VERSIONS = 6;
 const MAX_TEXT = 240;
 const MAX_NAME = 214; // the npm package-name limit, the longest of the ecosystems
@@ -274,36 +286,6 @@ function locate(target: TargetInfo, sourcePath: string): { file: string; absolut
   return { file: inside.split("\\").join("/"), absolute };
 }
 
-/** One lockfile's lines, lowercased once per file; the separator-normalised form is built on first need. */
-interface LockfileLines {
-  lower: string[];
-  loose?: string[];
-}
-
-async function readLines(path: string | undefined): Promise<LockfileLines | undefined> {
-  if (!path) return undefined;
-  try {
-    const metadata = await lstat(path);
-    // A symlink or special file is never read just to find a line number.
-    if (!metadata.isFile() || metadata.size > MAX_LOCKFILE_BYTES) return undefined;
-    return { lower: (await readFile(path, "utf8")).toLowerCase().split(/\r?\n/) };
-  } catch {
-    return undefined;
-  }
-}
-
-/** 1-based first line naming the package (case-insensitive; then ignoring `-`/`_`/`.` differences), else 1. */
-function packageLine(lines: LockfileLines | undefined, name: string): number {
-  if (!lines) return 1;
-  const needle = name.toLowerCase();
-  const direct = lines.lower.findIndex((line) => line.includes(needle));
-  if (direct >= 0) return direct + 1;
-  const normalized = normalizePackageName(name);
-  lines.loose ??= lines.lower.map(normalizePackageName);
-  const loose = lines.loose.findIndex((line) => line.includes(normalized));
-  return loose >= 0 ? loose + 1 : 1;
-}
-
 // ── findings ────────────────────────────────────────────────────────────────
 
 const SEVERITY_BY_LABEL: Record<string, Severity> = {
@@ -337,12 +319,20 @@ function chooseRuleId(group: ParsedGroup): string | undefined {
   return all.find((id) => /^CVE-\d{4}-\d+$/i.test(id)) ?? all.find((id) => /^GHSA-/i.test(id)) ?? group.ids[0] ?? group.aliases[0];
 }
 
+/**
+ * OSV keys Drupal contrib packages as `https://packages.drupal.org/8:drupal/<module>`. Packagist values
+ * lose a leading repository URL ending in `:` before comparing; comparison only, never a fingerprint input.
+ */
+function packagistValue(ecosystem: string, value: string): string {
+  return ecosystem === "Packagist" ? value.replace(/^https?:\/\/[^\s/]+(?:\/[^\s:]*)?:/, "") : value;
+}
+
 function fixedVersions(records: ParsedAdvisory[], pkg: ParsedPackage): string[] {
-  const name = normalizePackageName(pkg.name);
+  const name = normalizePackageName(packagistValue(pkg.ecosystem, pkg.name));
   return unique(
     records.flatMap((record) => record.affected
-      .filter((entry) => entry.ecosystem === pkg.ecosystem && normalizePackageName(entry.name) === name)
-      .flatMap((entry) => entry.fixed)),
+      .filter((entry) => entry.ecosystem === pkg.ecosystem && normalizePackageName(packagistValue(entry.ecosystem, entry.name)) === name)
+      .flatMap((entry) => entry.fixed.map((version) => packagistValue(entry.ecosystem, version)))),
   ).slice(0, MAX_FIXED_VERSIONS);
 }
 
@@ -836,11 +826,15 @@ export async function runOsvScanner(target: string, tmpDir: string): Promise<Osv
     const tallies = new Map<string, EcosystemTally>();
     const lineCache = new Map<string, Promise<LockfileLines | undefined>>();
     const extracted = new Set<string>();
+    const packages: NonNullable<OsvScanResult["packages"]> = [];
     for (const source of sources) {
       const { file, absolute } = locate(targetInfo, source.path);
       extracted.add(file);
       for (const pkg of source.packages) {
         const ecosystem = pkg.ecosystem || "unknown";
+        if (pkg.ecosystem && pkg.version) {
+          packages.push({ ecosystem: pkg.ecosystem, name: pkg.name, version: pkg.version, file, ...(absolute ? {} : { outside: true as const }) });
+        }
         const tally = tallies.get(ecosystem) ?? { packages: 0, lockfiles: new Set<string>() };
         tally.packages += 1;
         tally.lockfiles.add(file);
@@ -896,7 +890,7 @@ export async function runOsvScanner(target: string, tmpDir: string): Promise<Osv
         finding_count: findings.length,
         ...(checkedAny ? {} : { note: warnings.join(" ") }),
       },
-      { applicable: true, findings, coverage, lockfiles: [...extracted].sort(), componentSignatures, warnings },
+      { applicable: true, findings, coverage, lockfiles: [...extracted].sort(), packages, componentSignatures, warnings },
     );
   } catch (err) {
     if (err instanceof EngineUnavailableError) {

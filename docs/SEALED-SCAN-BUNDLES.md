@@ -35,12 +35,12 @@ start/completion/seal timestamps; and byte length plus SHA-256 for every retaine
 ## Manifest versions
 
 New bundles are sealed with manifest `1.1.0`. It records four commodity engines, each exactly once:
-Opengrep, Gitleaks, Trivy and osv-scanner. Bundles sealed by CodeInspectus 3.3.2 and earlier use
+Opengrep, Gitleaks, Trivy and osv-scanner. Bundles sealed by CodeInspectus 3.4.0 and earlier use
 manifest `1.0.0`, which records the first three, and they still verify, export and compare
 unchanged. Both versions share the same artifacts, redaction boundary and seal algorithm, and the
 sealed canonical export stays on export schema `3.0.0`.
 
-Builds up to 3.3.2 cannot verify a `1.1.0` bundle: they reject the manifest version, and
+Builds up to 3.4.0 cannot verify a `1.1.0` bundle: they reject the manifest version, and
 `bundle verify` exits 2. Verify a `1.1.0` bundle with the build that sealed it or a newer one.
 The TypeScript SDK exposes both versions in `SDK_COMPATIBILITY`; see
 [TYPESCRIPT-SDK.md](TYPESCRIPT-SDK.md).

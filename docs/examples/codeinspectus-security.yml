@@ -57,6 +57,10 @@ jobs:
         shell: bash
         run: |
           set +e
+          # Declared coverage gaps (for example PHP with no bundled SAST rules) exit 2. To accept named
+          # gaps, which stay listed as partial coverage, add this option to the scan below once you
+          # install a release that has it (after 3.3.2); ids are in docs/CI-POLICY.md:
+          #   --accept-gaps php-sast,no-lockfile-npm \
           node "$RUNNER_TEMP/codeinspectus-cli/node_modules/codeinspectus/dist/index.js" scan "$GITHUB_WORKSPACE" \
             --format sarif \
             --output "$RUNNER_TEMP/codeinspectus.sarif" \

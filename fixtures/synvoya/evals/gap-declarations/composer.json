@@ -1,0 +1,6 @@
+{
+    "name": "example/gap-declarations",
+    "require": {
+        "php": "8.1.*"
+    }
+}

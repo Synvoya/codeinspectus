@@ -63,6 +63,7 @@ function analyzerRun(
     return {
       findings: await runner(project),
       ...(project.limitations?.length ? { notes: project.limitations } : {}),
+      ...(project.gaps?.length ? { gaps: project.gaps } : {}),
     };
   };
 }

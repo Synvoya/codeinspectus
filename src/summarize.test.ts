@@ -319,3 +319,37 @@ describe("summarizeRescan — not_rechecked surfaced in human text (CG-75 Claim 
     expect(out).not.toMatch(/NOT confirmed resolved/i);
   });
 });
+
+describe("summarizeScan - Synvoya (CodeInspectus) family wording", () => {
+  const finding = (over: Partial<Finding>): Finding => ({
+    id: "CI-0001", fingerprint: "fp", title: "Hardcoded key", severity: "high", engine: "codeinspectus-ai", engines: ["codeinspectus-ai"],
+    rule_id: "ci-ai-client-hardcoded-secret", cwe: ["CWE-798"], location: { file: "a.ts", start_line: 3, end_line: 3 }, message: "m",
+    remediation: { summary: "s", steps: [], references: [] }, frameworks: [], confidence: "high", ...over,
+  });
+
+  test("family members read Synvoya (CodeInspectus) with the raw engine kept; upstream engines are unchanged", () => {
+    const out = summarizeScan(mkResult({
+      engines_run: ["opengrep@1.33.1", "codeinspectus-ai@1", "codeinspectus-pub@2"],
+      findings: [
+        finding({ engine_family: "synvoya" }),
+        finding({ id: "CI-0002", title: "Upstream", engine: "trivy", engines: ["trivy"], rule_id: "CVE-2024-1" }),
+      ],
+      summary: { critical: 0, high: 2, medium: 0, low: 0, info: 0, total: 2 },
+    }));
+    expect(out).toContain("Engines: opengrep@1.33.1, Synvoya (CodeInspectus) [codeinspectus-ai@1, codeinspectus-pub@2]");
+    expect(out).toContain("(CWE-798, Synvoya (CodeInspectus): codeinspectus-ai)");
+    expect(out).toContain("(CWE-798, trivy)");
+  });
+
+  test("a family member without the display field (an export-shaped scan, as in a bundle report) still reads the family", () => {
+    const out = summarizeScan(mkResult({
+      findings: [finding({ engine: "synvoya", engines: ["synvoya"], rule_id: "SYN-2026-001", cwe: ["CWE-1104"] })],
+      summary: { critical: 0, high: 1, medium: 0, low: 0, info: 0, total: 1 },
+    }));
+    expect(out).toContain("(CWE-1104, Synvoya (CodeInspectus): synvoya)");
+  });
+
+  test("a scan with no family member prints the engine list exactly as before", () => {
+    expect(summarizeScan(mkResult({ engines_run: ["opengrep@1", "trivy@2"] }))).toContain("Engines: opengrep@1, trivy@2 |");
+  });
+});

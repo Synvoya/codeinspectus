@@ -111,7 +111,10 @@ describe("scan orchestrator native Pub integration", () => {
       lockfiles: { discovered: 0, analyzed: 0 },
     });
     expect(result.dependency_coverage?.[0]?.limitations.join(" ")).toMatch(/symbolic-link path mobile/i);
-    expect(result.warnings.join(" ")).toMatch(/Technology detection was partial.*mobile.*symlink_skipped/i);
+    // Ruling 30 (review I-3): the link resolves outside the scan root, so it is not the acceptable gap
+    // symlinked-paths; technology detection reports it as a partial limit.
+    expect(result.coverage_gaps?.some((gap) => gap.id === "symlinked-paths") ?? false).toBe(false);
+    expect(result.warnings.join(" ")).toMatch(/mobile \(symlink_skipped\)/);
   });
 
   it("maps a complete no-lockfile probe back to not_applicable", async () => {

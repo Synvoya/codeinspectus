@@ -1,0 +1,14 @@
+{
+    "_readme": ["This file locks the dependencies of your project to a known state"],
+    "packages": [
+        {
+            "name": "johnpbloch/wordpress-core",
+            "version": "6.4.3",
+            "type": "metapackage"
+        }
+    ],
+    "packages-dev": [
+
+    ],
+    "platform": {}
+}

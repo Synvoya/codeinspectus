@@ -1,3 +1,4 @@
+import { defaultScopeNotes, describeCoverageGap } from "../coverage-gaps.js";
 import { SERVER_VERSION } from "../config.js";
 import { redactSecretText, redactSnippet } from "../redact.js";
 import type { StoredScanResult } from "../store.js";
@@ -227,6 +228,30 @@ export function assessAggregateCoverage(scan: StoredScanResult): {
       });
     }
   }
+  // Declared gaps (stable ids) stay partial even when accepted; CI policy decides whether they block.
+  const accepted = new Set<string>(scan.accepted_gaps ?? []);
+  // Field validation item 4: export 3.0.0 has no configuration field for the accepted ids, so each is
+  // recorded as an informational evidence item with the machine-readable component `accepted-gap:<id>`.
+  for (const id of accepted) {
+    evidence.push({
+      category: "declared_scope",
+      component: `accepted-gap:${id}`,
+      state: "informational",
+      detail: `The gap id ${id} was accepted with accept_gaps for this run; accepted gaps stay partial and their inputs unanalysed.`,
+    });
+  }
+  for (const gap of scan.coverage_gaps ?? []) {
+    evidence.push({
+      category: "declared_scope",
+      component: `gap:${gap.id}`,
+      state: "partial",
+      detail: describeCoverageGap(gap, accepted.has(gap.id)),
+    });
+  }
+  // Scans stored before coverage_notes existed get the default scope notes derived here.
+  for (const note of [...(scan.coverage_notes ?? []), ...defaultScopeNotes(scan)]) {
+    pushUnique(evidence, { category: "declared_scope", component: note.component, state: "informational", detail: note.detail });
+  }
   if (requested.includes("secret") && scan.secret_coverage !== "verified") {
     evidence.push({
       category: "secret_uncertainty",
@@ -258,8 +283,9 @@ export function assessAggregateCoverage(scan: StoredScanResult): {
 
 /** Shared public-output projection for commands that expose stored findings. */
 export function redactFindingForOutput(finding: Finding, aggregate: AggregateCoverage): JsonExport["findings"][number] {
-  // Published export 3.0.0 is immutable and has no `package`: it stays in the stored scan and in-process findings only.
-  const { package: _package, ...exported } = finding;
+  // Published export 3.0.0 is immutable and has neither `package` nor `engine_family`: both stay in the stored
+  // scan and in-process findings only. `engine` and `rule_id` keep the raw ids.
+  const { package: _package, engine_family: _engineFamily, ...exported } = finding;
   const producerComponents = finding.producer_components?.length
     ? [...finding.producer_components]
     : (finding.engines.length ? finding.engines : [finding.engine]).map((engine) => `engine:${engine}`);

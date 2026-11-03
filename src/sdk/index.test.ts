@@ -2,7 +2,7 @@ import { access, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { CodeInspectusClient, CodeInspectusSdkError, SDK_COMPATIBILITY } from "./index.js";
+import { CodeInspectusClient, CodeInspectusSdkError, SDK_COMPATIBILITY, type Finding } from "./index.js";
 import { runBundleCli } from "../bundle/cli.js";
 import { createSealedBundle, verifySealedBundle } from "../bundle/index.js";
 import { BUNDLE_SCHEMA_VERSION } from "../bundle/schemas.js";
@@ -54,6 +54,9 @@ describe("public SDK process wrapper", () => {
     expect(result.data).toMatchObject({ schema_version: "3.0.0", scan: { target: resolve(target) }, coverage: { aggregate: "partial" }, repository_trust: { schema_version: "1.0.0" } });
     expect(result.args).toEqual(["scan", resolve(target), "--format", "json", "--scanner", "ai", "--no-compliance"]);
     await expect(access("/tmp/sdk-shell-injection-must-not-exist")).rejects.toThrow();
+    // Final review I-2: the typed scan can opt in to accepting declared coverage gaps.
+    const accepted = await client.scan(target, { acceptGaps: ["php-sast", "deno-lock"] });
+    expect(accepted.args).toEqual(["scan", resolve(target), "--format", "json", "--accept-gaps", "php-sast,deno-lock"]);
   });
 
   test("rejects incompatible typed contracts with the bounded process result attached", async () => {
@@ -109,6 +112,20 @@ describe("public SDK process wrapper", () => {
     // The SDK keeps literals (no runtime import of the bundle schemas); they must match what this release seals.
     expect(SDK_COMPATIBILITY.bundle_schema).toBe(BUNDLE_SCHEMA_VERSION);
     expect(Object.isFrozen(SDK_COMPATIBILITY.bundle_schemas_verified)).toBe(true);
+  });
+});
+
+describe("SDK finding type", () => {
+  test("accepts the synvoya engine id and the optional engine_family display field", () => {
+    // Compile-time contract (checked by tsc): both fields are part of the public Finding type.
+    const finding: Finding = {
+      id: "CI-0001", fingerprint: "fp", title: "t", severity: "high", engine: "synvoya", engines: ["synvoya", "trivy"],
+      engine_family: "synvoya", rule_id: "GHSA-aaaa-bbbb-cccc", cwe: ["CWE-1395"],
+      location: { file: "package.json", start_line: 1, end_line: 1 }, message: "m",
+      remediation: { summary: "s", steps: [], references: [] }, frameworks: [], confidence: "high",
+    };
+    const upstream: Finding = { ...finding, engine: "trivy", engines: ["trivy"], engine_family: undefined };
+    expect([finding.engine, finding.engine_family, upstream.engine_family]).toEqual(["synvoya", "synvoya", undefined]);
   });
 });
 

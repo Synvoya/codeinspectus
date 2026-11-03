@@ -148,6 +148,12 @@ export interface ScanOptions extends CommandRunOptions {
   failOnNewSeverity?: Severity;
   gitScope?: { mode: "commit_diff"; base: string; head: string } | { mode: "working_tree"; base: string };
   includeCompliance?: boolean;
+  /**
+   * Declared coverage gap ids to accept for CI (`--accept-gaps`), e.g. `["php-sast"]`. Coverage still
+   * reads `partial` and the gaps stay listed; the policy passes only if every other cause is complete.
+   * An unknown id is rejected by the CLI, and the SDK throws `CodeInspectusSdkError`.
+   */
+  acceptGaps?: readonly string[];
 }
 
 export interface HistoryListOptions extends CommandRunOptions {
@@ -312,6 +318,7 @@ export class CodeInspectusClient {
     if (options.gitScope?.mode === "commit_diff") args.push("--diff", options.gitScope.base, "--head", options.gitScope.head);
     else if (options.gitScope?.mode === "working_tree") args.push("--working-tree", "--base", options.gitScope.base);
     if (options.includeCompliance === false) args.push("--no-compliance");
+    if (options.acceptGaps?.length) args.push("--accept-gaps", options.acceptGaps.join(","));
     return parseJsonResult<JsonExportV3>(await this.run(args, options), SDK_COMPATIBILITY.export_schema);
   }
 

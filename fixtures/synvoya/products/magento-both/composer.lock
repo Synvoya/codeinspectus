@@ -1,0 +1,24 @@
+{
+    "_readme": ["This file locks the dependencies of your project to a known state"],
+    "packages": [
+        {
+            "name": "magento/product-community-edition",
+            "version": "2.4.6-p3",
+            "type": "metapackage"
+        },
+        {
+            "name": "magento/product-enterprise-edition",
+            "version": "2.4.6-p3",
+            "type": "metapackage"
+        },
+        {
+            "name": "magento/magento2-base",
+            "version": "2.4.6-p3",
+            "type": "metapackage"
+        }
+    ],
+    "packages-dev": [
+
+    ],
+    "platform": {}
+}

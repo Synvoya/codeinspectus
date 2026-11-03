@@ -1,0 +1,8 @@
+image:
+  registry: docker.io
+  repository: bitnami/redis
+  tag: 7.2.4
+sidecar:
+  image:
+    repository: n8nio/n8n
+    tag: "1.45.0"

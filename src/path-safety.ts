@@ -456,6 +456,46 @@ export async function symlinkEntryIsGap(
 }
 
 /**
+ * Ruling 30 (review I-3): for a symbolic link whose real target (file or directory) lies inside
+ * `root`, the target's path segments relative to the real root; otherwise undefined. A walker may
+ * declare such a link the acceptable gap symlinked-paths only if it visits those segments itself.
+ */
+export async function symlinkTargetInside(
+  link: string,
+  root: string,
+): Promise<{ segments: string[]; isDirectory: boolean } | undefined> {
+  try {
+    const isDirectory = (await stat(link)).isDirectory();
+    const realRoot = await realpath(root);
+    const realTarget = await realpath(link);
+    if (!pathIsWithin(realRoot, realTarget)) return undefined;
+    const rel = relative(realRoot, realTarget);
+    return { segments: rel ? rel.split(sep) : [], isDirectory };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * For a symbolic link to a directory whose real path lies inside `root`, the path segments of that
+ * real path relative to the real root (`[]` for the root itself); otherwise undefined. A
+ * path-independent walker may skip the link only if it visits those segments itself (not ignored,
+ * within its depth bound); the caller decides.
+ */
+export async function symlinkDirectoryInside(link: string, root: string): Promise<string[] | undefined> {
+  try {
+    if (!(await stat(link)).isDirectory()) return undefined;
+    const realRoot = await realpath(root);
+    const realTarget = await realpath(link);
+    if (!pathIsWithin(realRoot, realTarget)) return undefined;
+    const rel = relative(realRoot, realTarget);
+    return rel ? rel.split(sep) : [];
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Documentation and legal files that no technology detector or source analyzer interprets. This is
  * an allow-list of suffixes: a documentation extension, or a legal name with no extension, a
  * `-MIT`/`-APACHE-2.0` style variant, or a documentation/text extension. Anything else (`Changelog.vue`,

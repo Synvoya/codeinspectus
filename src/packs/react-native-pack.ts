@@ -7,6 +7,7 @@ export const REACT_NATIVE_PACK_LIMITATIONS = [
   "Generated, dependency, build, test, fixture, demo, sample, and example trees are excluded from project-root scans unless a supported source file is scanned directly.",
   "Unreadable, malformed, symbolic-link, over-2 MiB, over-200,000-token, or over-64-level structurally nested files and source beyond the 50,000-entry/10,000-file/64 MiB/1,000,000-token/32-level project bounds are skipped and reported in pack coverage.",
   "The pack analyzes repository evidence only, never executes target code, and does not replace runtime mobile security testing.",
+  "Its lexer is lightweight, not a full parser: these are pattern checks for ordinary code and can be evaded by deliberately crafted code while a file reads as parsed. A full parser replacement is planned for 4.0.",
 ] as const;
 
 /** First-party React Native source-security pack; no target code or external scanner executes. */

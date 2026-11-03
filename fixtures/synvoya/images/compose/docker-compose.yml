@@ -1,0 +1,14 @@
+services:
+  web:
+    image: node:22-alpine
+  db:
+    image: mysql:5.7
+  cache:
+    image: "redis:${REDIS_TAG:-7.2.4}"
+  wiki:
+    image: atlassian/confluence:8.5.4
+  app:
+    build: .
+    image: ghcr.io/acme/app:1.0
+  proxy:
+    image: httpd

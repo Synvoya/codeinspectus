@@ -52,7 +52,7 @@ import { runRescan } from "./rescan.js";
 import { buildComplianceReport } from "./compliance/report.js";
 import { explainFinding } from "./explain.js";
 import { generateSbom } from "./sbom.js";
-import { listRules } from "./rules.js";
+import { listRules, synvoyaDatasetLine } from "./rules.js";
 import { summarizeScan, summarizeRescan } from "./summarize.js";
 import { buildSetupPlan, declineSetupComponents, formatSetupPlan, installSetupComponents, SETUP_COMPONENTS } from "./setup.js";
 import { applyRepositoryCleanup, planRepositoryCleanup, rollbackRepositoryCleanup } from "./repository-trust/cleanup.js";
@@ -97,6 +97,9 @@ const SERVER_INSTRUCTIONS =
   "without granular user approval. If git_safety recommends a checkpoint, ask before running git. " +
   "Inspect pack_coverage and disclose partial, unavailable, not_run, or not_applicable native packs; " +
   "a ran pack means its listed rules executed, not complete security coverage for that language. " +
+  "Disclose coverage_gaps: inputs no bundled engine analyzes (stable ids such as php-sast, vue-sast, deno-lock, " +
+  "sast-parse-errors) make coverage partial; also mention coverage_notes. Pass accept_gaps only with ids the user " +
+  "explicitly chose; accepted gaps stay listed and those inputs remain unanalyzed. " +
   "Inspect repository_trust coverage separately from vulnerability findings. V3.1 deterministically audits source integrity. " +
   "V3.2 audits explicit AI attribution, media metadata, git co-author trailers, and supported C2PA Content Credentials. " +
   "Treat declarative attribution as an observed claim, not proof of authorship. Never label hidden Unicode as AI-generated or a vendor watermark. " +
@@ -139,6 +142,8 @@ export function createServer(): McpServer {
         "V3.2 additionally audits explicit AI attribution in source/git/media metadata and validates supported local C2PA assets " +
         "with the official optional Content Authenticity Initiative library. Remote manifests and revocation endpoints are never fetched. " +
         "Statistical-watermark detection remains explicitly unavailable. " +
+        "Lists declared coverage gaps (coverage_gaps, stable ids) that make coverage partial and informational " +
+        "coverage_notes; accept_gaps accepts named gap ids for CI while they stay listed. " +
         "Fully offline — zero network egress at scan time. Never writes to your code or repo.",
       inputSchema: scanInput.shape,
       outputSchema: scanResultSchema.shape,
@@ -406,8 +411,10 @@ export function createServer(): McpServer {
         const result = await listRules(args);
         const text =
           `Detection DB ${result.detection_db_version} (${result.detection_db_date}). ` +
-          `Engines: ${result.engines.map((e) => `${e.engine}@${e.version}${e.available ? "" : " (unavailable)"}`).join(", ")}. ` +
+          `Engines: ${result.engines.map((e) => `${e.display_name ? `${e.display_name} [${e.engine}]` : e.engine}@${e.version}${e.available ? "" : " (unavailable)"}`).join(", ")}. ` +
           `${result.custom_rule_count} CodeInspectus custom rules. ` +
+          `${result.rule_groups.map((g) => `${g.group}: ${g.rule_count}`).join("; ")}. ` +
+          `${synvoyaDatasetLine(result.synvoya_dataset)}. ` +
           engineSetupMessage(result.engine_setup);
         return ok(text, result as unknown as Record<string, unknown>);
       } catch (err) {

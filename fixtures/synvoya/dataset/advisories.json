@@ -1,0 +1,70 @@
+{
+  "advisories": [
+    {
+      "id": "SYN-2026-001",
+      "slug": "nodejs-20-unpatched-security-releases",
+      "title": "Node.js 20 runtime older than 20.18.1 misses published security releases (fixture)",
+      "kind": "runtime",
+      "aliases": [],
+      "target": { "type": "runtime", "runtime": "node" },
+      "affected": [
+        { "line": "20", "events": [{ "introduced": "20.0.0" }, { "fixed": "20.18.1" }] }
+      ],
+      "fixed": ["20.18.1"],
+      "severity": "high",
+      "exploited": false,
+      "remediation_steps": [
+        "Upgrade the declared Node.js runtime to a patched release on a supported line.",
+        "Rebuild and redeploy the application and its container image after the upgrade."
+      ],
+      "sources": ["https://nodejs.org/en/blog/vulnerability"],
+      "status": "active",
+      "provisional": true
+    },
+    {
+      "id": "SYN-2026-002",
+      "slug": "adobe-commerce-sessionreaper",
+      "title": "Adobe Commerce versions before the 2.4.8-p3 hotfix are exposed to a known-exploited session flaw (fixture)",
+      "kind": "product",
+      "aliases": ["CVE-2025-54236"],
+      "target": { "type": "product", "product": "adobe-commerce" },
+      "affected": [
+        { "line": "2.4.8", "events": [{ "introduced": "2.4.8" }, { "fixed": "2.4.8-p3" }] }
+      ],
+      "fixed": ["2.4.8-p3"],
+      "severity": "critical",
+      "exploited": true,
+      "exploited_source": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+      "remediation_steps": [
+        "Apply the vendor security hotfix for your Adobe Commerce release line.",
+        "Verify the hotfix is installed on the deployed instance; a version string alone does not prove it.",
+        "Rebuild and redeploy the application image after patching."
+      ],
+      "sources": ["https://helpx.adobe.com/security/products/magento/apsb25-88.html"],
+      "status": "active",
+      "provisional": true,
+      "product_rule": "verify-hotfix"
+    },
+    {
+      "id": "SYN-2026-003",
+      "slug": "php-8-1-end-of-life",
+      "title": "PHP 8.1 has reached end of life and no longer receives security fixes (fixture)",
+      "kind": "eol",
+      "aliases": [],
+      "target": { "type": "runtime", "runtime": "php" },
+      "affected": [
+        { "line": "8.1", "events": [{ "introduced": "8.1.0" }, { "limit": "8.2.0" }] }
+      ],
+      "fixed": [],
+      "severity": "medium",
+      "exploited": false,
+      "remediation_steps": [
+        "Move the declared PHP runtime to a line that still receives security fixes.",
+        "Rebuild and redeploy the application and its container image after the upgrade."
+      ],
+      "sources": ["https://www.php.net/supported-versions.php"],
+      "status": "active",
+      "provisional": true
+    }
+  ]
+}

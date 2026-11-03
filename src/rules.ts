@@ -16,6 +16,8 @@ import { readTrivyDbDate } from "./engines/trivy.js";
 import { inspectEngineSetup } from "./engine-health.js";
 import { nativePackInventory, registeredNativeAnalyzers } from "./packs/registry.js";
 import type { advisoryDatabaseInfoSchema, listRulesOutput, ruleInfoSchema } from "./schemas.js";
+import { loadSynvoyaDataset } from "./synvoya/dataset.js";
+import { SYNVOYA_FAMILY, SYNVOYA_FAMILY_DISPLAY, isSynvoyaFinding } from "./synvoya/family.js";
 import type { ListRulesInput } from "./schemas.js";
 import { inspectPubDatabase } from "./pub/database.js";
 import { inspectOsvDatabases, osvDbSourceUrl, readOsvDbRecord } from "./osv/database.js";
@@ -23,6 +25,43 @@ import { inspectOsvDatabases, osvDbSourceUrl, readOsvDbRecord } from "./osv/data
 type ListRulesResult = z.infer<typeof listRulesOutput>;
 type RuleInfo = z.infer<typeof ruleInfoSchema>;
 type AdvisoryDatabaseInfo = z.infer<typeof advisoryDatabaseInfoSchema>;
+type SynvoyaDatasetInfo = ListRulesResult["synvoya_dataset"];
+
+/** One human line for the dataset state; shown wherever list_rules is summarised, including when it failed to load. */
+export function synvoyaDatasetLine(info: SynvoyaDatasetInfo): string {
+  return info.state === "available"
+    ? `Synvoya gap advisories: ${info.version} (${info.date}), ${info.advisory_count} advisories`
+    : `Synvoya gap advisories: unavailable (${info.reason})`;
+}
+
+async function synvoyaDatasetInfo(): Promise<SynvoyaDatasetInfo> {
+  try {
+    const loaded = await loadSynvoyaDataset();
+    return loaded.ok
+      ? { state: "available", version: loaded.dataset.version, date: loaded.dataset.date, advisory_count: loaded.dataset.advisories.length }
+      : { state: "unavailable", reason: loaded.reason };
+  } catch (error) {
+    return { state: "unavailable", reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** Custom rules grouped for humans: the Synvoya family first, then each remaining engine under its raw id. */
+function groupRules(rules: readonly RuleInfo[]): ListRulesResult["rule_groups"] {
+  const synvoya = rules.filter((rule) => rule.engine_family === SYNVOYA_FAMILY);
+  const groups: ListRulesResult["rule_groups"] = [];
+  if (synvoya.length) {
+    groups.push({
+      group: SYNVOYA_FAMILY_DISPLAY,
+      engine_family: SYNVOYA_FAMILY,
+      rule_count: synvoya.length,
+      engines: [...new Set(synvoya.map((rule) => rule.engine))],
+    });
+  }
+  const others = new Map<RuleInfo["engine"], number>();
+  for (const rule of rules) if (rule.engine_family !== SYNVOYA_FAMILY) others.set(rule.engine, (others.get(rule.engine) ?? 0) + 1);
+  for (const [engine, count] of others) groups.push({ group: engine, rule_count: count, engines: [engine] });
+  return groups;
+}
 
 /** OSV aggregates sources under their own licenses (attribution only; not a legal review). */
 const OSV_DATA_LICENSE =
@@ -152,6 +191,9 @@ function validateNativeRuleOwnership(rules: readonly RuleInfo[]): void {
   }
 }
 
+/** Engines that belong wholly to the Synvoya family are labelled for humans; `engine` keeps the raw id. */
+const FAMILY_ROW = { display_name: SYNVOYA_FAMILY_DISPLAY, engine_family: SYNVOYA_FAMILY } as const;
+
 export async function listRules(input: ListRulesInput): Promise<ListRulesResult> {
   const loadedManifest = await loadManifest().catch(() => undefined);
   const manifest = loadedManifest ?? ({
@@ -175,11 +217,12 @@ export async function listRules(input: ListRulesInput): Promise<ListRulesResult>
   }));
 
   const engineNames: EngineName[] = ["opengrep", "gitleaks", "trivy", "osv-scanner"];
-  const [engineSetup, trivyDbDate, pubDatabase, osvDatabases] = await Promise.all([
+  const [engineSetup, trivyDbDate, pubDatabase, osvDatabases, synvoyaDataset] = await Promise.all([
     inspectEngineSetup(),
     readTrivyDbDate(),
     inspectPubDatabase(),
     osvAdvisoryDatabases(),
+    synvoyaDatasetInfo(),
   ]);
   const rulesets: Record<EngineName, string> = {
     opengrep: "security-baseline",
@@ -197,25 +240,38 @@ export async function listRules(input: ListRulesInput): Promise<ListRulesResult>
     })),
     {
       engine: "codeinspectus-ai" as const,
+      ...FAMILY_ROW,
       version: CODEINSPECTUS_AI_VERSION,
       available: true,
       ruleset: "AI-code analyzers (§6)",
     },
     {
       engine: "codeinspectus-pub" as const,
+      ...FAMILY_ROW,
       version: CODEINSPECTUS_PUB_VERSION,
       available: pubDatabase.info.state === "current" || pubDatabase.info.state === "stale",
       ruleset: "bundled OSV Pub snapshot (exact enumerated versions)",
     },
+    {
+      engine: "synvoya" as const,
+      ...FAMILY_ROW,
+      version: synvoyaDataset.state === "available" ? synvoyaDataset.version : "unknown",
+      available: synvoyaDataset.state === "available",
+      ruleset: "bundled gap-advisory dataset (declared versions)",
+    },
   ];
 
-  let custom = manifest.custom_rules;
+  // Display grouping only: the raw engine and id of every rule stay as the manifest has them.
+  let custom: RuleInfo[] = manifest.custom_rules.map((rule) =>
+    isSynvoyaFinding({ engine: rule.engine, rule_id: rule.id }) ? { ...rule, engine_family: SYNVOYA_FAMILY } : rule);
   if (input.engine) custom = custom.filter((r) => r.engine === input.engine);
 
   return {
     detection_db_version: manifest.version,
     detection_db_date: manifest.date,
     engines,
+    synvoya_dataset: synvoyaDataset,
+    rule_groups: groupRules(custom),
     ...(trivyDbDate ? { trivy_db_date: trivyDbDate } : {}),
     engine_setup: engineSetup,
     native_packs: nativePacks,

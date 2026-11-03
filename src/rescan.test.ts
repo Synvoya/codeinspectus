@@ -506,3 +506,39 @@ describe("diffRescan — osv-scanner findings and their OSV database signature",
     expect(result.remaining[0]!.package?.name).toBe("litellm");
   });
 });
+
+describe("diffRescan — native JavaScript file selection changed in the coverage-honesty patch (review I2)", () => {
+  // Signatures CodeInspectus 3.3.2 recorded for the two parser components. The JSX retry, the
+  // Yarn-tooling skip and the token bound change which files are analyzed, so a finding absent after
+  // upgrading may sit in a file the new build skips: it must read not re-checked, never resolved.
+  const RELEASED_3_3_2 = {
+    "javascript:bounded-structural-parser": "sha256:19126721d10ba84605e343ba3155b93d65b3ddd072fcf8f7b8c7c6e7ee296e69",
+    "react-native:javascript-structural-parser": "sha256:fa67e54b2d3f6ed7a24da1817d43c2f51cde97393c1953f9cb30c84e7449a055",
+  };
+
+  test.each(Object.keys(RELEASED_3_3_2))("a prior native finding produced by %s is not re-checked after the upgrade", async (component) => {
+    const { staticComponentSignatures, PIPELINE_COMPONENT } = await import("./provenance.js");
+    const finding = mkFinding({
+      fingerprint: "yarn-plugin-finding",
+      engine: "codeinspectus-ai",
+      engines: ["codeinspectus-ai"],
+      location: { file: ".yarn/plugins/@yarnpkg/plugin.cjs", start_line: 4, end_line: 4 },
+      producer_components: [PIPELINE_COMPONENT, component],
+    });
+    const current = staticComponentSignatures([PIPELINE_COMPONENT, component]);
+    const prior = mkScan({
+      engine_details: [engineInfo("codeinspectus-ai", true)],
+      findings: [finding],
+      component_signatures: { ...current, [component]: RELEASED_3_3_2[component as keyof typeof RELEASED_3_3_2] },
+    });
+    const fresh = mkScan({
+      scan_id: "scan-22222222-2222-4222-8222-222222222222",
+      engine_details: [engineInfo("codeinspectus-ai", true)],
+      findings: [],
+      component_signatures: current,
+    });
+    const result = diffRescan(prior, fresh);
+    expect(result.summary.resolved).toBe(0);
+    expect(result.not_rechecked.map((f) => f.fingerprint)).toEqual(["yarn-plugin-finding"]);
+  });
+});

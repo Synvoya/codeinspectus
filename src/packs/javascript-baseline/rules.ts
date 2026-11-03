@@ -1,3 +1,4 @@
+import type { NativeGapRecord } from "../../native-gaps.js";
 import type { Finding } from "../../types.js";
 import { remediationForCwe } from "../../remediation.js";
 import { fingerprint } from "../../util/hash.js";
@@ -90,6 +91,7 @@ function candidateFinding(
 export interface JavaScriptBaselineCandidateResult {
   findings: Finding[];
   limitations: string[];
+  gaps: NativeGapRecord[];
 }
 
 /** Candidate execution primitive; the registered pack and reconciler control normal-scan surfacing. */
@@ -112,5 +114,6 @@ export async function runJavaScriptBaselineCandidates(
       left.rule_id.localeCompare(right.rule_id)
     ),
     limitations: [...(project.limitations ?? [])],
+    gaps: [...(project.gaps ?? [])],
   };
 }

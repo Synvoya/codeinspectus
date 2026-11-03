@@ -45,3 +45,37 @@ describe("dependency-vulnerability compliance tags", () => {
     expect(tagged.frameworks).toEqual([]);
   });
 });
+
+describe("Synvoya findings get the vulnerable-component controls for every kind", () => {
+  function synvoyaFinding(ruleId: string, cwe: string, pkg?: Finding["package"]): Finding {
+    return {
+      ...osvFinding(ruleId, [cwe]),
+      engine: "synvoya",
+      engines: ["synvoya"],
+      location: { file: pkg ? "requirements.txt" : ".nvmrc", start_line: 1, end_line: 1 },
+      ...(pkg ? { package: pkg } : { package: undefined }),
+    };
+  }
+
+  test.each([
+    ["runtime", synvoyaFinding("SYN-2026-009", "CWE-1104")],
+    ["end-of-life", synvoyaFinding("SYN-EOL-node-20", "CWE-1104")],
+    ["malware", synvoyaFinding("SYN-2026-001", "CWE-506", { ecosystem: "PyPI", name: "litellm", version: "1.107.0" })],
+    ["package", synvoyaFinding("SYN-2026-100", "CWE-1395", { ecosystem: "npm", name: "lodash", version: "4.17.4" })],
+  ])("%s", async (_kind, finding) => {
+    const data = await loadComplianceData();
+    const tagged = tagFinding(finding, data);
+    expect(tagged.frameworks).toEqual(expect.arrayContaining([
+      { framework: "ISO27001:2022", controls: expect.arrayContaining(["A.8.8"]) },
+      { framework: "NIST_CSF_2.0", controls: expect.arrayContaining(["ID.RA-01"]) },
+      { framework: "CIS_v8.1", controls: expect.arrayContaining(["7.1"]) },
+      { framework: "EssentialEight", controls: expect.arrayContaining(["PatchApplications"]) },
+    ]));
+  });
+
+  test("CWE-1104 (unmaintained third-party component) is a vulnerable-component CWE for any engine", async () => {
+    const data = await loadComplianceData();
+    const tagged = tagFinding({ ...osvFinding("some-rule", ["CWE-1104"]), finding_kind: "sast", engine: "opengrep", engines: ["opengrep"] }, data);
+    expect(tagged.frameworks).toEqual(expect.arrayContaining([{ framework: "EssentialEight", controls: ["PatchApplications"] }]));
+  });
+});

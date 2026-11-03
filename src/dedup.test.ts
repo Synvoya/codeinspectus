@@ -12,6 +12,7 @@
 import { describe, test, expect } from "vitest";
 import { dedupFindings, dedupKey, findingsMatch } from "./dedup.js";
 import type { Finding, Engine, Severity } from "./types.js";
+import { DEV_SCOPE_NOTE } from "./engines/trivy-dev-scope.js";
 
 function secretFinding(engine: Engine, severity: Severity): Finding {
   return {
@@ -248,10 +249,82 @@ describe("package-aware vulnerability dedup (osv-scanner, Trivy, Pub)", () => {
     expect(dedupKey(brotli)).not.toBe(dedupKey(cffi));
   });
 
+  // Merge of the osv-engine and coverage-honesty branches: eval E78 found an osv-scanner survivor of a
+  // merge with a development-only Trivy finding (handlebars in coverage-honesty-corpus/dev-deps)
+  // dropping the scope, which only Trivy reports and only as text.
+  test("an osv-scanner survivor keeps the development-only scope of the Trivy finding it absorbed", () => {
+    const pkg = { ecosystem: "npm", name: "handlebars", version: "4.7.9" };
+    const devTrivy = (severity: Severity): Finding => {
+      const base = packaged("trivy", "CVE-2026-106445", pkg, { file: "package-lock.json", severity });
+      return { ...base, title: `${base.title.slice(0, -1)}, dev dependency)`, message: `${base.message}\n${DEV_SCOPE_NOTE}` };
+    };
+    const osv = packaged("osv-scanner", "CVE-2026-106445", pkg, { file: "package-lock.json", severity: "critical" });
+    for (const order of [[devTrivy("high"), osv], [osv, devTrivy("high")]]) {
+      const [merged] = dedupFindings(order).findings;
+      expect(merged!.engine).toBe("osv-scanner");
+      expect(merged!.fingerprint).toBe(osv.fingerprint);
+      expect(merged!.title).toBe("CVE-2026-106445 (handlebars@4.7.9, dev dependency)");
+      expect(merged!.message).toBe(`${osv.message}\n${DEV_SCOPE_NOTE}`);
+    }
+    // A Trivy survivor already carries its own scope text, and a production Trivy finding adds none.
+    expect(dedupFindings([devTrivy("critical"), osv]).findings[0]!.title).toBe("CVE-2026-106445 (handlebars@4.7.9, dev dependency)");
+    const production = packaged("trivy", "CVE-2026-106445", pkg, { file: "package-lock.json" });
+    expect(dedupFindings([production, osv]).findings[0]!.title).toBe(osv.title);
+    // Different versions of the package: the scope of one is not claimed for the other.
+    const other = packaged("osv-scanner", "CVE-2026-106445", { ...pkg, version: "4.7.0" }, { file: "package-lock.json", severity: "critical" });
+    expect(dedupFindings([devTrivy("high"), other]).findings[0]!.title).toBe(other.title);
+  });
+
   test("a stored finding without a package still matches its packaged successor (scans before package support)", () => {
     const fresh = packaged("trivy", "CVE-2026-111497", { ecosystem: "PyPI", name: "Brotli", version: "1.2.0" });
     const { package: _omitted, ...stored } = { ...fresh, fingerprint: "stored-before-package-support" };
     expect(findingsMatch(stored, fresh)).toBe(true);
     expect(findingsMatch(fresh, stored)).toBe(true);
+  });
+});
+
+describe("Synvoya declaration findings (no package) dedup on advisory and subject", () => {
+  function declared(ruleId: string, fingerprint: string, aliases: string[], line: number): Finding {
+    return {
+      id: fingerprint,
+      fingerprint,
+      title: `${ruleId} declared in Dockerfile`,
+      severity: "critical",
+      engine: "synvoya",
+      engines: ["synvoya"],
+      rule_id: ruleId,
+      vulnerability_aliases: aliases,
+      cwe: ["CWE-1104"],
+      location: { file: "Dockerfile", start_line: line, end_line: line },
+      message: "declared",
+      remediation: { summary: `fix ${ruleId}`, steps: [], references: [] },
+      frameworks: [],
+      confidence: "high",
+      finding_kind: "vulnerability",
+    };
+  }
+
+  test("two advisories that share an alias in one file stay two findings", () => {
+    const node = declared("SYN-2026-009", "fp-node", ["CVE-2026-0100", "GHSA-test-0000-0100"], 5);
+    const dotnet = declared("SYN-2026-011", "fp-dotnet", ["CVE-2026-0100"], 10);
+    const { findings } = dedupFindings([node, dotnet]);
+    expect(findings.map((finding) => [finding.rule_id, finding.location.start_line, finding.vulnerability_aliases])).toEqual([
+      ["SYN-2026-009", 5, ["CVE-2026-0100", "GHSA-test-0000-0100"]],
+      ["SYN-2026-011", 10, ["CVE-2026-0100"]],
+    ]);
+    expect(dedupKey(node)).not.toBe(dedupKey(dotnet));
+    expect(findingsMatch(node, dotnet)).toBe(false);
+  });
+
+  test("one advisory on two subjects (different fingerprints) in one file stays two findings", () => {
+    const left = declared("SYN-EOL-node-20", "fp-a", [], 1);
+    const right = declared("SYN-EOL-node-20", "fp-b", [], 2);
+    expect(dedupFindings([left, right]).findings).toHaveLength(2);
+  });
+
+  test("the same Synvoya finding twice still merges, and matches itself across scans", () => {
+    const finding = declared("SYN-2026-009", "fp-node", ["CVE-2026-0100"], 5);
+    expect(dedupFindings([finding, { ...finding, location: { ...finding.location, start_line: 7, end_line: 7 } }]).findings).toHaveLength(1);
+    expect(findingsMatch(finding, { ...finding, location: { ...finding.location, start_line: 9, end_line: 9 } })).toBe(true);
   });
 });

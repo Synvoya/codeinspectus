@@ -1,0 +1,18 @@
+{
+  "entries": [
+    {
+      "product": "node",
+      "cycle": "16",
+      "eol": "2023-09-11",
+      "latest": "16.20.2",
+      "source": "https://nodejs.org/en/about/previous-releases"
+    },
+    {
+      "product": "php",
+      "cycle": "8.0",
+      "eol": "2023-11-26",
+      "latest": "8.0.30",
+      "source": "https://www.php.net/supported-versions.php"
+    }
+  ]
+}

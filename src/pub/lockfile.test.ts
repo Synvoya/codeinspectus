@@ -288,6 +288,33 @@ describe("Pub lockfile discovery and loading", () => {
     expect(result.notes.join(" ")).toMatch(/symbolic-link path linked_directory/);
   });
 
+  // Field validation: ghostfolio (no Dart) linked .claude/skills/* to .agents/skills/* inside the
+  // repository, and Pub read partial. Discovery walks the real path, so such a link hides nothing.
+  test("a directory link that resolves inside the root is not a discovery gap", async () => {
+    const root = await tempRoot();
+    const outside = await tempRoot();
+    await mkdir(join(root, ".agents", "skills", "helper"), { recursive: true });
+    await writeLockfile(join(root, "app", "pubspec.lock"));
+    await mkdir(join(root, ".claude", "skills"), { recursive: true });
+    await symlink(join(root, ".agents", "skills", "helper"), join(root, ".claude", "skills", "helper"), "dir");
+    await symlink(join(root, "app"), join(root, "app-link"), "dir");
+    await symlink(outside, join(root, "outside-link"), "dir");
+    // Security review: a target the walk never visits (ignored folder, beyond the depth bound) is not
+    // read at its real path, so a link to it still counts.
+    await writeLockfile(join(root, "node_modules", "dart_pkg", "pubspec.lock"));
+    await symlink(join(root, "node_modules", "dart_pkg"), join(root, "into-node-modules"), "dir");
+    const deep = join(root, ...Array.from({ length: 33 }, (_, index) => `d${index}`));
+    await writeLockfile(join(deep, "pubspec.lock"));
+    await symlink(deep, join(root, "too-deep"), "dir");
+
+    const result = await discoverPubLockfiles(root);
+    expect(result.lockfiles.map((lockfile) => lockfile.path)).toEqual(["app/pubspec.lock"]);
+    expect(result.skipped.symlinked_paths).toBe(3);
+    const notes = result.notes.join(" ");
+    for (const link of ["outside-link", "into-node-modules", "too-deep"]) expect(notes).toMatch(new RegExp(`symbolic-link path ${link}`));
+    expect(notes).not.toMatch(/\.claude|app-link/);
+  });
+
   test("retains all package sources while exposing exact native-SCA exclusions", async () => {
     const root = await tempRoot();
     await writeLockfile(join(root, "pubspec.lock"), [

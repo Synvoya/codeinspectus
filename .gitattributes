@@ -1,0 +1,3 @@
+# Synvoya dataset digests are over raw bytes; never convert line endings.
+detection-db/synvoya/** -text
+fixtures/synvoya/dataset/** -text

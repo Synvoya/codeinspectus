@@ -1,4 +1,5 @@
 import { relative, resolve, sep } from "node:path";
+import { partialOnlyThroughAcceptedGaps } from "./ci-policy.js";
 import { assessAggregateCoverage } from "./export/model.js";
 import { pathIsWithin } from "./path-safety.js";
 import { findingsMatch, pairMovedFindings } from "./dedup.js";
@@ -208,18 +209,47 @@ export function listScanHistory(snapshot: ScanStoreSnapshot, filters: HistoryLis
 
 export { findingsMatch } from "./dedup.js";
 
-function comparisonCoverageSufficient(oldScan: StoredScanResult, newScan: StoredScanResult): boolean {
+/**
+ * History comparison may rely only on accepted gaps for code no bundled SAST rule reads (`<lang>-sast`,
+ * `vue-/svelte-/astro-sast`): no engine produces a finding there in either scan. `sast-parse-errors`
+ * and the lockfile gaps remove input an engine may have analyzed in the other scan, so absence there
+ * proves nothing (re-review N-1); they keep a history comparison partial even when accepted.
+ */
+function historySoundGap(id: string): boolean {
+  return id.endsWith("-sast");
+}
+
+/** Accepted ids of a stored scan that a history comparison may rely on. */
+function historyAcceptedGaps(scan: StoredScanResult): string[] {
+  return (scan.accepted_gaps ?? []).filter(historySoundGap);
+}
+
+/**
+ * A scan partial only through declared gaps that were accepted counts as complete. `acceptedGaps`
+ * applies one list to both scans (the baseline CI path passes the current run's ids; a baseline can
+ * say New or Existing, never Resolved); without it each stored scan is judged by its own accepted
+ * gaps that are sound for history (`historySoundGap`).
+ */
+function comparisonCoverageSufficient(
+  oldScan: StoredScanResult,
+  newScan: StoredScanResult,
+  acceptedGaps?: readonly string[],
+): boolean {
+  const sufficient = (scan: StoredScanResult) => {
+    const coverage = assessAggregateCoverage(scan);
+    return coverage.aggregate === "complete" || partialOnlyThroughAcceptedGaps(coverage, acceptedGaps ?? historyAcceptedGaps(scan));
+  };
   return oldScan.canonical_findings === true && newScan.canonical_findings === true &&
-    assessAggregateCoverage(oldScan).aggregate === "complete" &&
-    assessAggregateCoverage(newScan).aggregate === "complete";
+    sufficient(oldScan) && sufficient(newScan);
 }
 
 export function findingAbsenceProvableAgainst(
   oldScan: StoredScanResult,
   newScan: StoredScanResult,
   finding: Finding,
+  acceptedGaps?: readonly string[],
 ): boolean {
-  if (!comparisonCoverageSufficient(oldScan, newScan)) return false;
+  if (!comparisonCoverageSufficient(oldScan, newScan, acceptedGaps)) return false;
   if (!finding.producer_components?.length || !oldScan.component_signatures || !newScan.component_signatures) return false;
   if (finding.engines.some((engine) => !oldScan.engine_details.some((detail) => detail.engine === engine && detail.ran))) return false;
   return finding.producer_components.every((component) => {
@@ -266,7 +296,22 @@ export function compareScanHistory(
   );
   if (history.corrupt_record_count) notes.push(`${history.corrupt_record_count} corrupt or foreign history record(s) prevent reopened proof.`);
   const sufficient = comparisonCoverageSufficient(oldScan, newScan);
+  // Gap ids actually present in a scan's evidence and accepted by it, split by soundness for history.
+  const acceptedPresent = (scan: StoredScanResult) => {
+    const present = new Set(assessAggregateCoverage(scan).evidence.map((item) => item.component));
+    return (scan.accepted_gaps ?? []).filter((id) => present.has(`gap:${id}`));
+  };
+  const accepted = [...new Set([oldScan, newScan].flatMap(acceptedPresent))];
+  const unsound = accepted.filter((id) => !historySoundGap(id));
   if (!sufficient) notes.push("One or both compared scans lack complete canonical, whole-product coverage; absence cannot prove resolution.");
+  if (unsound.length) {
+    notes.push(`Accepted gaps ${unsound.join(", ")} remove input an engine may have analyzed in the other scan, ` +
+      "so they do not make a history comparison complete.");
+  }
+  if (sufficient && accepted.length) {
+    notes.push(`One or both compared scans are partial only through accepted gaps for code no bundled SAST rule reads ` +
+      `(${accepted.join(", ")}); no engine reports SAST findings there in either scan.`);
+  }
 
   const diff = diffRescan(
     normalizeStoredScanForRuntime(oldScan),

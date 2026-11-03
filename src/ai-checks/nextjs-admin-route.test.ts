@@ -1,4 +1,6 @@
 import { beforeAll, describe, expect, test } from "vitest";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { Finding } from "../types.js";
@@ -12,6 +14,8 @@ const CORPUS = join(process.cwd(), "fixtures", "nextjs-admin-route-corpus");
 const RULE = "ci-ai-nextjs-admin-route-no-authz";
 const atFile = (findings: Finding[], suffix: string) =>
   findings.filter((finding) => finding.location.file.endsWith(suffix) && finding.rule_id === RULE);
+// Pre-release field validation item 3: limits are declared gaps (native-gaps.ts), never free-text notes.
+const gap = (id: string, path: RegExp) => expect.objectContaining({ id, path: expect.stringMatching(path) });
 
 describe("Next.js admin route authentication and authorization", () => {
   let analysis: NextjsAdminRouteAnalysis;
@@ -80,12 +84,12 @@ describe("Next.js admin route authentication and authorization", () => {
   });
 
   test("reports malformed, bounded-out, and custom guard coverage instead of guessing", () => {
-    expect(analysis.notes).toEqual(expect.arrayContaining([
-      expect.stringMatching(/bounded-out\/route\.ts:.*nesting bound exceeded/),
-      expect.stringMatching(/malformed\/route\.ts:.*unbalanced/),
-      expect.stringMatching(/unknown-wrapper\/route\.ts: GET uses secureAdmin/),
-      expect.stringMatching(/custom-wrapper\/report\.ts: default uses companyAdminBoundary/),
-      expect.stringMatching(/imported-guard\/route\.ts: GET calls requireAdmin/),
+    expect(analysis.gaps).toEqual(expect.arrayContaining([
+      gap("native-parse-errors", /bounded-out\/route\.ts$/),
+      gap("native-parse-errors", /malformed\/route\.ts$/),
+      gap("nextjs-routes-unresolved", /unknown-wrapper\/route\.ts$/),
+      gap("nextjs-routes-unresolved", /custom-wrapper\/report\.ts$/),
+      gap("nextjs-routes-unresolved", /imported-guard\/route\.ts$/),
     ]));
   });
 
@@ -207,18 +211,32 @@ describe("Next.js admin route authentication and authorization", () => {
   });
 
   test("direct imported guard before the boundary stays unknown, but later/conditional calls do not", () => {
-    expect(analysis.notes).toEqual(expect.arrayContaining([
-      expect.stringMatching(/imported-guard\/route\.ts: GET calls requireAdmin/),
-      expect.stringMatching(/local-auth-unknown\/route\.ts: GET calls auth/),
+    expect(analysis.gaps).toEqual(expect.arrayContaining([
+      gap("nextjs-routes-unresolved", /imported-guard\/route\.ts$/),
+      gap("nextjs-routes-unresolved", /local-auth-unknown\/route\.ts$/),
     ]));
-    expect(analysis.notes.some((note) => /imported-guard-after|imported-guard-conditional/.test(note))).toBe(false);
+    expect(analysis.gaps.some((record) => /imported-guard-after|imported-guard-conditional/.test(record.path))).toBe(false);
     expect(atFile(analysis.findings, "fp/app/api/admin/local-auth-unknown/route.ts")).toHaveLength(0);
   });
 
-  test("unsupported awaited calls become coverage notes instead of privileged-operation findings", () => {
+  test("unsupported awaited calls become declared gaps instead of privileged-operation findings", () => {
     expect(atFile(analysis.findings, "fp/app/api/admin/unsupported-awaited/route.ts")).toHaveLength(0);
-    expect(analysis.notes).toEqual(expect.arrayContaining([
-      expect.stringMatching(/unsupported-awaited\/route\.ts: GET calls parseRequest; privileged-operation semantics were not verified/),
+    expect(analysis.gaps).toEqual(expect.arrayContaining([
+      gap("nextjs-routes-unresolved", /unsupported-awaited\/route\.ts$/),
     ]));
   });
+
+  // Review I-2: a route file over the native lexing line cap is the gap oversized-files.
+  test("an admin route over the lexing line cap is an oversized-files gap", async () => {
+    const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-next-oversized-"));
+    try {
+      await mkdir(join(root, "app/api/admin/big"), { recursive: true });
+      await writeFile(join(root, "app/api/admin/big/route.ts"), `const pad = "${"x".repeat(70_000)}";\nexport async function DELETE() { await db.user.deleteMany(); }\n`);
+      const result = await runNextjsAdminRouteAnalysis(root);
+      expect(result.gaps).toEqual([{ id: "oversized-files", path: "app/api/admin/big/route.ts" }]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
+

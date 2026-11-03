@@ -19,4 +19,5 @@ paths = [
   '''fixtures/vulnerable-app/src/config\.ts''',
   '''evals/run-evals\.ts''',
   '''fixtures/secret-rls-corpus/''',
+  '''fixtures/coverage-honesty-corpus/gitleaksignore-relative/config\.yml''',
 ]

@@ -1,3 +1,4 @@
+import { partialOnlyThroughAcceptedGaps } from "./ci-policy.js";
 import { assessAggregateCoverage } from "./export/model.js";
 import { findingAbsenceProvableAgainst, findingsMatch } from "./scan-history.js";
 import { pairMovedFindings } from "./dedup.js";
@@ -30,21 +31,39 @@ function repositoryIdentity(scan: StoredScanResult): string {
   return scan.repository_root ?? scan.target;
 }
 
-export function compareAgainstBaseline(baseline: StoredScanResult, fresh: StoredScanResult): BaselineComparison {
+/**
+ * `acceptedGaps` are the declared coverage gap ids the caller accepted for this run (`--accept-gaps`).
+ * A scan that is partial only through those gaps is a sound foundation, as it is for the CI policy.
+ */
+export function compareAgainstBaseline(
+  baseline: StoredScanResult,
+  fresh: StoredScanResult,
+  acceptedGaps: readonly string[] = [],
+): BaselineComparison {
   const notes: string[] = [];
   const sameTarget = baseline.target === fresh.target;
   const sameRepository = repositoryIdentity(baseline) === repositoryIdentity(fresh);
   const ordered = Date.parse(baseline.started_at) <= Date.parse(fresh.started_at);
-  const baselineCoverage = assessAggregateCoverage(baseline).aggregate;
-  const freshCoverage = assessAggregateCoverage(fresh).aggregate;
+  const baselineAssessment = assessAggregateCoverage(baseline);
+  const freshAssessment = assessAggregateCoverage(fresh);
+  const baselineCoverage = baselineAssessment.aggregate;
+  const freshCoverage = freshAssessment.aggregate;
+  const sufficient = (assessment: typeof baselineAssessment) =>
+    assessment.aggregate === "complete" || partialOnlyThroughAcceptedGaps(assessment, acceptedGaps);
+  const coverageSufficient = sufficient(baselineAssessment) && sufficient(freshAssessment);
   const foundationComplete = sameTarget && sameRepository && ordered &&
-    baseline.canonical_findings === true && fresh.canonical_findings === true &&
-    baselineCoverage === "complete" && freshCoverage === "complete";
+    baseline.canonical_findings === true && fresh.canonical_findings === true && coverageSufficient;
   if (!sameTarget) notes.push("Baseline and current scan do not have the same canonical target.");
   if (!sameRepository) notes.push("Baseline and current scan do not have the same repository identity.");
   if (!ordered) notes.push("The baseline scan is newer than the current scan.");
   if (baseline.canonical_findings !== true || fresh.canonical_findings !== true) notes.push("One or both scans lack the canonical-finding marker.");
-  if (baselineCoverage !== "complete" || freshCoverage !== "complete") notes.push("One or both scans lack complete aggregate coverage.");
+  if (!coverageSufficient) notes.push("One or both scans lack complete aggregate coverage.");
+  else if (baselineCoverage !== "complete" || freshCoverage !== "complete") {
+    const gaps = acceptedGaps.filter((id) => [baselineAssessment, freshAssessment]
+      .some((assessment) => assessment.evidence.some((item) => item.component === `gap:${id}`)));
+    notes.push(`One or both scans are partial only through accepted coverage gaps (${[...new Set(gaps)].join(", ")}); ` +
+      "a finding in input the baseline did not analyze reads New.");
+  }
 
   const moved = pairMovedFindings(
     baseline.findings.filter((candidate) => !fresh.findings.some((finding) => findingsMatch(candidate, finding))),
@@ -56,7 +75,7 @@ export function compareAgainstBaseline(baseline: StoredScanResult, fresh: Stored
       state: "Existing", finding, baseline_finding_id: existing.id,
       evidence: "The finding exists in the baseline by fingerprint, stable dedup identity, or unchanged moved content.",
     };
-    if (foundationComplete && findingAbsenceProvableAgainst(baseline, fresh, finding)) return {
+    if (foundationComplete && findingAbsenceProvableAgainst(baseline, fresh, finding, acceptedGaps)) return {
       state: "New", finding,
       evidence: "The complete baseline ran compatible producer engines/components and did not contain this finding.",
     };

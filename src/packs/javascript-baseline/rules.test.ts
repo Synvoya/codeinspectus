@@ -62,7 +62,7 @@ describe("JavaScript baseline shadow candidates", () => {
       `,
     }));
 
-    expect(result).toEqual({ findings: [], limitations: [] });
+    expect(result).toEqual({ findings: [], limitations: [], gaps: [] });
   });
 
   test("retains duplicate same-line multiplicity and multiline end ranges", async () => {

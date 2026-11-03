@@ -85,7 +85,7 @@ describe("sealed scan bundles", () => {
     const verified = await verifySealedBundle(directory);
     expect(verified.manifest).toMatchObject({
       schema_version: "1.1.0", scan_id: scan().scan_id,
-      detection_database: { version: "1.19.0", date: "2026-08-13" },
+      detection_database: { version: "1.19.1", date: "2026-10-31" },
       native_engine: { name: "codeinspectus-ai", version: "5.20.0" },
       schemas: { export: "3.0.0" },
       artifacts: expect.arrayContaining([expect.objectContaining({ path: "artifacts/scan-record.json", sha256: expect.stringMatching(/^[0-9a-f]{64}$/) })]),

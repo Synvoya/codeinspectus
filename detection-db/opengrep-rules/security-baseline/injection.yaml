@@ -143,7 +143,6 @@ rules:
       - pattern-either:
           - pattern: $FS.readFile($P + ..., ...)
           - pattern: $FS.readFileSync($P + ...)
-          - pattern: $FS.readFile(`...${...}...`, ...)
           - pattern: $FS.createReadStream($P + ...)
       - metavariable-pattern:
           metavariable: $P

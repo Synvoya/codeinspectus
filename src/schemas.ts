@@ -12,6 +12,7 @@ import { z } from "zod";
 import { repositoryTrustChangesSchema, repositoryTrustDocumentSchema } from "./repository-trust/schemas.js";
 import { cleanupPlanObjectSchema, cleanupResultSchema } from "./repository-trust/cleanup.js";
 import { OSV_ECOSYSTEMS } from "./osv/ecosystems.js";
+import { COVERAGE_GAP_IDS } from "./coverage-gaps.js";
 
 // ── Enumerations ────────────────────────────────────────────────────────────
 export const severityEnum = z.enum(["critical", "high", "medium", "low", "info"]);
@@ -23,7 +24,9 @@ export const engineEnum = z.enum([
   "osv-scanner",
   "codeinspectus-ai",
   "codeinspectus-pub",
+  "synvoya",
 ]);
+export const engineFamilyEnum = z.enum(["synvoya"]);
 export const scannerEnum = z.enum(["sast", "secret", "vuln", "misconfig", "license", "ai"]);
 export const osvEcosystemEnum = z.enum(OSV_ECOSYSTEMS);
 
@@ -78,6 +81,7 @@ export const findingSchema = z.object({
   severity: severityEnum,
   engine: engineEnum,
   engines: z.array(engineEnum),
+  engine_family: engineFamilyEnum.optional(),
   rule_id: z.string(),
   vulnerability_aliases: z.array(z.string()).optional(),
   cwe: z.array(z.string()),
@@ -294,7 +298,23 @@ export const scanResultSchema = z.object({
   warnings: z.array(z.string()),
   secret_coverage: z.enum(["verified", "unverified"]).optional(),
   secret_suppression: secretSuppressionSchema.optional(),
+  coverage_gaps: z.array(z.object({
+    id: z.enum(COVERAGE_GAP_IDS),
+    files: z.number().int().nonnegative(),
+    examples: z.array(z.string()),
+  })).optional(),
+  accepted_gaps: z.array(z.enum(COVERAGE_GAP_IDS)).optional(),
+  coverage_notes: z.array(z.object({ component: z.string(), detail: z.string() })).optional(),
   component_signatures: z.record(z.string()).optional(),
+  synvoya_checked: z
+    .object({
+      runtime: z.array(z.string()).optional(),
+      images: z.array(z.string()).optional(),
+      products: z.array(z.string()).optional(),
+      "inventory:osv-scanner": z.array(z.string()).optional(),
+      "inventory:trivy": z.array(z.string()).optional(),
+    })
+    .optional(),
   security_control_evidence: z.array(securityControlEvidenceSchema).optional(),
   trivy_db_provenance: z
     .object({
@@ -364,6 +384,13 @@ export const scanInput = z.object({
     .boolean()
     .optional()
     .describe("Include the per-framework compliance overview in the result (default: true)."),
+  accept_gaps: z
+    .array(z.enum(COVERAGE_GAP_IDS))
+    .optional()
+    .describe(
+      "Coverage gap ids to accept for CI (e.g. php-sast, deno-lock). Coverage still reads partial and the " +
+        "gaps stay listed; CI passes coverage only when every other cause is absent.",
+    ),
 });
 
 export const rescanInput = z.object({
@@ -525,6 +552,7 @@ export const sbomOutput = z.object({
 export const ruleInfoSchema = z.object({
   id: z.string(),
   engine: engineEnum,
+  engine_family: engineFamilyEnum.optional(),
   pack_id: z.string().optional(),
   fallback_engine: z.literal("opengrep").optional(),
   name: z.string(),
@@ -591,17 +619,41 @@ export const advisoryDatabaseInfoSchema = z.discriminatedUnion("engine", [
   osvAdvisoryDatabaseInfoSchema,
 ]);
 
+/** Synvoya gap-advisory dataset state; an unloadable dataset is reported with its reason, never omitted. */
+export const synvoyaDatasetInfoSchema = z.discriminatedUnion("state", [
+  z.object({
+    state: z.literal("available"),
+    version: z.string(),
+    date: z.string(),
+    advisory_count: z.number().int().nonnegative(),
+  }),
+  z.object({ state: z.literal("unavailable"), reason: z.string() }),
+]);
+
+export const ruleGroupSchema = z.object({
+  /** Human label: "Synvoya (CodeInspectus)" for the family, the raw engine id otherwise. */
+  group: z.string(),
+  engine_family: engineFamilyEnum.optional(),
+  rule_count: z.number().int().nonnegative(),
+  engines: z.array(engineEnum),
+});
+
 export const listRulesOutput = z.object({
   detection_db_version: z.string(),
   detection_db_date: z.string(),
   engines: z.array(
     z.object({
       engine: engineEnum,
+      /** Human label for engines that belong wholly to the Synvoya family; `engine` keeps the raw id. */
+      display_name: z.string().optional(),
+      engine_family: engineFamilyEnum.optional(),
       version: z.string(),
       available: z.boolean(),
       ruleset: z.string(),
     }),
   ),
+  synvoya_dataset: synvoyaDatasetInfoSchema,
+  rule_groups: z.array(ruleGroupSchema),
   trivy_db_date: z.string().optional(),
   engine_setup: engineSetupSchema,
   native_packs: z.array(nativePackInfoSchema),

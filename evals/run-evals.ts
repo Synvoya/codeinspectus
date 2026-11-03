@@ -10,8 +10,8 @@
  * Run: npm run eval
  */
 
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { cp, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { runOpengrepShadowParity } from "../src/shadow/opengrep-parity.js";
@@ -79,6 +79,12 @@ const OSV_PYPI_FIXED_FIXTURE = resolve(OSV_PYPI_FIXTURE, "fixed");
 const OSV_PYPI_SUPPRESSED_FIXTURE = resolve(OSV_PYPI_FIXTURE, "suppressed");
 const OSV_CARGO_NO_DB_FIXTURE = resolve(process.cwd(), "fixtures/osv-cargo-no-db");
 const OPENGREP_SHADOW_FIXTURE = resolve(process.cwd(), "fixtures/opengrep-shadow-corpus");
+const COVERAGE_HONESTY_FIXTURE = resolve(process.cwd(), "fixtures/coverage-honesty-corpus");
+const OPENGREP_RULES_FIXTURE = resolve(COVERAGE_HONESTY_FIXTURE, "opengrep-rules");
+const SYNVOYA_EVAL_FIXTURES = resolve(process.cwd(), "fixtures/synvoya/evals");
+const SYNVOYA_GAP_DECLARATIONS_FIXTURE = resolve(SYNVOYA_EVAL_FIXTURES, "gap-declarations");
+const SYNVOYA_TRIVY_COVERED_FIXTURE = resolve(SYNVOYA_EVAL_FIXTURES, "trivy-covered");
+const SYNVOYA_FLOATING_TAG_FIXTURE = resolve(SYNVOYA_EVAL_FIXTURES, "floating-tag");
 // INTENTIONAL FAKE TEST DATA (planted fixture value; the evals below assert it is
 // detected and redacted) -- not a real credential; allowlisted in /.gitleaks.toml.
 const RAW_SECRET = "sk_live_51Mz9KQb2eRxW7vYpL3nHsD8tA6cF0gJ4uXiZ2oP1rE5wB9mNqK7";
@@ -277,6 +283,7 @@ const REACT_NATIVE_PACK_LIMITATIONS = [
   "Generated, dependency, build, test, fixture, demo, sample, and example trees are excluded from project-root scans unless a supported source file is scanned directly.",
   "Unreadable, malformed, symbolic-link, over-2 MiB, over-200,000-token, or over-64-level structurally nested files and source beyond the 50,000-entry/10,000-file/64 MiB/1,000,000-token/32-level project bounds are skipped and reported in pack coverage.",
   "The pack analyzes repository evidence only, never executes target code, and does not replace runtime mobile security testing.",
+  "Its lexer is lightweight, not a full parser: these are pattern checks for ordinary code and can be evaded by deliberately crafted code while a file reads as parsed. A full parser replacement is planned for 4.0.",
 ] as const;
 
 const EXPO_PACK_LIMITATIONS = [
@@ -290,7 +297,7 @@ const EXPO_PACK_LIMITATIONS = [
 const REACT_NATIVE_EXPO_COMPONENT_SIGNATURES: Readonly<Record<string, string>> = {
   "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
   "pack:react-native:dispatch": "sha256:b34edc998d094867fbb5e76edc81ada50a9e80bedcb6c23972f34da589c5b521",
-  "react-native:javascript-structural-parser": "sha256:fa67e54b2d3f6ed7a24da1817d43c2f51cde97393c1953f9cb30c84e7449a055",
+  "react-native:javascript-structural-parser": "sha256:f72c111621c233cc77fcfdddf781b5cbe6c72edf85e5fe6c55471bfb2086840a",
   "ai:react-native-sensitive-async-storage": "sha256:d8be985dfb0232afbba8fa5f698ec82e271d1971791d2c031ebcaad75f200f43",
   "ai:react-native-webview-untrusted-content": "sha256:4471ca3c31a6b5e77f15707fcfca7a6d8e20572c09a33dcfdf5efbe47e64d292",
   "ai:react-native-webview-mixed-content": "sha256:661de986f2b1babf01d9f4f2c15f3e7b316a56e2ebbdcd0f19b28034bd2c11bd",
@@ -558,10 +565,10 @@ class McpClient {
   private pending = new Map<number, (v: any) => void>();
   private nextId = 1;
 
-  constructor() {
-    this.child = spawn("node", ["dist/index.js"], {
+  constructor(envOverrides: NodeJS.ProcessEnv = {}, entry = "dist/index.js") {
+    this.child = spawn("node", [entry], {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, CODEINSPECTUS_INTERNAL_DISABLE_SCAN_PERSISTENCE: "1", CODEINSPECTUS_INTERNAL_DISABLE_TRIAGE_PERSISTENCE: "1" },
+      env: { ...process.env, CODEINSPECTUS_INTERNAL_DISABLE_SCAN_PERSISTENCE: "1", CODEINSPECTUS_INTERNAL_DISABLE_TRIAGE_PERSISTENCE: "1", ...envOverrides },
     });
     this.child.stdout.on("data", (d) => this.onData(d.toString()));
     this.child.stderr.on("data", () => {});
@@ -1943,6 +1950,51 @@ function assertNoOsvPypiTargetedFindings(findings: any[], label: string): void {
 /** A check that cannot exercise its scenario in this environment (recorded as a skip, never a pass). */
 class EvalSkip extends Error {}
 
+/**
+ * A throwaway copy of the built package (dist, data, detection-db, the lockfile of engines) that a test may alter,
+ * so the Synvoya dataset can be tampered with without ever touching the repository's own files. node_modules
+ * is linked, not copied. Returns the copy's server entry point.
+ */
+async function copyBuiltPackage(root: string): Promise<string> {
+  for (const name of ["dist", "data", "detection-db"]) await cp(resolve(process.cwd(), name), join(root, name), { recursive: true });
+  for (const name of ["package.json", "engines.lock.json"]) await cp(resolve(process.cwd(), name), join(root, name));
+  await symlink(resolve(process.cwd(), "node_modules"), join(root, "node_modules"), "junction");
+  return join(root, "dist", "index.js");
+}
+
+/** Edits one advisory of the copy's dataset without updating manifest.json, so its SHA-256 digest no longer matches. */
+async function tamperSynvoyaDataset(root: string): Promise<void> {
+  const file = join(root, "detection-db", "synvoya", "advisories.json");
+  const data = JSON.parse(await readFile(file, "utf8"));
+  data.advisories[0].title = `${data.advisories[0].title} (edited)`;
+  await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+/** Runs `fn` with a server that serves the intact package's tools over a Synvoya dataset that fails its integrity check. */
+async function withTamperedSynvoya<T>(fn: (server: { entry: string; client: McpClient }) => Promise<T>, env: NodeJS.ProcessEnv = {}): Promise<T> {
+  const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-tampered-"));
+  let client: McpClient | undefined;
+  try {
+    const entry = await copyBuiltPackage(root);
+    await tamperSynvoyaDataset(root);
+    client = new McpClient(env, entry);
+    await client.init();
+    return await fn({ entry, client });
+  } finally {
+    client?.close();
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+/** A home directory of its own with scan persistence on, so a scan and a later rescan can run in different servers. */
+const isolatedHome = (home: string): NodeJS.ProcessEnv => ({
+  HOME: home,
+  USERPROFILE: home,
+  CODEINSPECTUS_INTERNAL_DISABLE_SCAN_PERSISTENCE: undefined,
+});
+
+const synvoyaFindings = (findings: any[]): any[] => findings.filter((finding) => finding.engines.includes("synvoya"));
+
 async function replaceMobileFixture(target: string, state: "tp" | "fixed"): Promise<void> {
   await rm(target, { recursive: true, force: true });
   // Model a normal Flutter mobile repository so one MCP scan proves that the
@@ -2224,8 +2276,8 @@ async function main() {
       fn: async () => {
         const lr = (await client.callTool("codeinspectus_list_rules", {})).structuredContent;
         assert(lr.custom_rule_count === 94, `expected 94 custom rules, got ${lr.custom_rule_count}`);
-        assert(lr.detection_db_version === "1.19.0", `expected detection DB 1.19.0, got ${lr.detection_db_version}`);
-        assert(lr.detection_db_date === "2026-08-13", `unexpected detection DB date ${lr.detection_db_date}`);
+        assert(lr.detection_db_version === "1.19.1", `expected detection DB 1.19.1, got ${lr.detection_db_version}`);
+        assert(lr.detection_db_date === "2026-10-31", `unexpected detection DB date ${lr.detection_db_date}`);
         assert(lr.custom_rules.some((r: any) => r.id === "ci-ai-rls-using-true"), "missing ci-ai-rls-using-true in list_rules");
         const boundary = lr.custom_rules.find((r: any) => r.id === "ci-ai-client-error-leak");
         assert(boundary?.owasp_web?.includes("A05:2021") && boundary?.owasp_api?.includes("API8:2023"), "new rules must expose OWASP Web/API mappings");
@@ -3764,10 +3816,11 @@ async function main() {
         const pack = result.pack_coverage.find(
           (candidate: any) => candidate.pack_id === "javascript-typescript",
         );
+        // Pre-release field validation item 3: the deliberate limits are declared, acceptable gaps.
+        const gapFiles = (id: string) => result.coverage_gaps?.find((gap: any) => gap.id === id)?.files;
         assert(
-          pack?.state === "partial" && pack.analyzers.ran === 12 && pack.rules.ran === 29 &&
-            pack.note?.includes("custom guard semantics were not verified") &&
-            pack.note?.includes("structural nesting bound exceeded"),
+          pack?.state === "ran" && pack.analyzers.ran === 12 && pack.rules.ran === 29 &&
+            gapFiles("nextjs-routes-unresolved") === 5 && gapFiles("native-parse-errors") === 2,
           "Next.js adversarial corpus did not expose its deliberate JavaScript/TypeScript coverage limits",
         );
       },
@@ -4158,6 +4211,28 @@ async function main() {
       },
     },
     {
+      id: "E62 [engine] Opengrep runs under a UTF-8 locale when the host sets none",
+      engineDep: "opengrep",
+      fn: async () => {
+        const localeless = new McpClient({ LANG: undefined, LC_ALL: undefined, LC_CTYPE: undefined });
+        try {
+          await localeless.init();
+          const result = (await localeless.callTool("codeinspectus_scan", {
+            path: join(COVERAGE_HONESTY_FIXTURE, "opengrep-utf8"),
+            scanners: ["sast"],
+          })).structuredContent;
+          const opengrep = result.engine_details.find((engine: any) => engine.engine === "opengrep");
+          assert(opengrep?.ran === true, `Opengrep did not run without a host locale: ${opengrep?.note}`);
+          const planted = result.findings.find((finding: any) =>
+            finding.rule_id === "ci-baseline-dangerous-eval" && finding.location.file === "src/app.js");
+          assert(planted?.location.start_line === 4 && planted.engines.includes("opengrep"), "the planted eval() was not reported by Opengrep");
+          assert(planted.location.snippet?.includes("caf\u00e9 \u2014"), `non-ASCII snippet text was not decoded as UTF-8: ${planted.location.snippet}`);
+        } finally {
+          localeless.close();
+        }
+      },
+    },
+    {
       id: "E60 OSV cannot be silenced by the scanned repo",
       engineDep: "osv-pypi",
       fn: async () => {
@@ -4221,6 +4296,700 @@ async function main() {
         );
       },
     },
+    {
+      id: "E63 [engine] a repository .semgrepignore cannot remove files from Opengrep's scan",
+      engineDep: "opengrep",
+      fn: async () => {
+        const result = (await client.callTool("codeinspectus_scan", {
+          path: join(COVERAGE_HONESTY_FIXTURE, "opengrep-ignore-suppress"),
+          scanners: ["sast"],
+        })).structuredContent;
+        const opengrep = result.engine_details.find((engine: any) => engine.engine === "opengrep");
+        assert(opengrep?.ran === true, `Opengrep did not run: ${opengrep?.note}`);
+        const evals = result.findings.filter((finding: any) => finding.rule_id === "ci-baseline-dangerous-eval");
+        assert(
+          evals.some((finding: any) => finding.location.file === "src/app.js" && finding.engines.includes("opengrep")),
+          "the repository .semgrepignore (src/) hid the planted eval() from Opengrep",
+        );
+        assert(
+          !evals.some((finding: any) => finding.location.file === "public/app.min.js"),
+          "Opengrep's default ignores (*.min.js) no longer applied",
+        );
+      },
+    },
+    {
+      id: "E64 [engine] Trivy dependency findings name the package and its fixed version",
+      engineDep: "trivy-vuln",
+      fn: () => {
+        const dependencies = findings.filter((x) => x.engines.includes("trivy") && x.finding_kind === "vulnerability");
+        assert(dependencies.length > 0, "no Trivy dependency finding in the vulnerable-app scan");
+        for (const finding of dependencies) {
+          if (finding.engine !== "trivy") {
+            // Merged into another engine's finding for the same package (osv-scanner): the survivor's own
+            // text applies, and it must still name the package and an upgrade of it.
+            const pkg = finding.package;
+            assert(!!pkg?.name && !!pkg.version, `${finding.rule_id}: merged ${finding.engine} finding has no package`);
+            assert(finding.title.includes(` (${pkg.name}@${pkg.version}`), `${finding.rule_id}: title does not name ${pkg.name}@${pkg.version}`);
+            assert(finding.remediation.summary.startsWith(`Upgrade ${pkg.name} `), `${finding.rule_id}: remediation is "${finding.remediation.summary}"`);
+            continue;
+          }
+          const name = /^Package: (\S+)$/m.exec(finding.message)?.[1];
+          const installed = /^Installed Version: (\S+)$/m.exec(finding.message)?.[1];
+          const fixed = /^Fixed Version: *(\S.*)$/m.exec(finding.message)?.[1];
+          assert(!!name && !!installed, `${finding.rule_id}: Trivy message lost its package fields`);
+          assert(finding.title.endsWith(` (${name}@${installed})`), `${finding.rule_id}: title does not name ${name}@${installed}`);
+          if (fixed) {
+            assert(
+              finding.remediation.summary.startsWith(`Upgrade ${name} from ${installed} to `),
+              `${finding.rule_id}: Trivy supplied fixed version ${fixed} but remediation is "${finding.remediation.summary}"`,
+            );
+          }
+        }
+      },
+    },
+    {
+      id: "E65 valid JSX text with an apostrophe or a bare slash keeps JavaScript coverage complete",
+      fn: async () => {
+        const result = (await client.callTool("codeinspectus_scan", {
+          path: join(COVERAGE_HONESTY_FIXTURE, "jsx-text"),
+          scanners: ["ai", "sast"],
+        })).structuredContent;
+        for (const packId of ["javascript-typescript", "javascript-baseline"]) {
+          const pack = result.pack_coverage.find((coverage: any) => coverage.pack_id === packId);
+          assert(pack?.state === "ran", `${packId} read ${pack?.state}: ${pack?.note}`);
+          assert(!/malformed/i.test(pack.note ?? ""), `${packId} still skips valid JSX: ${pack.note}`);
+        }
+        assert(!result.warnings.some((warning: string) => /malformed/i.test(warning)), "a malformed-source warning remained");
+      },
+    },
+    {
+      id: "E66 [engine] only a .gitleaksignore entry Gitleaks can match lowers secret coverage",
+      engineDep: "gitleaks",
+      fn: async () => {
+        const relative = (await client.callTool("codeinspectus_scan", {
+          path: join(COVERAGE_HONESTY_FIXTURE, "gitleaksignore-relative"),
+          scanners: ["secret"],
+        })).structuredContent;
+        assert(
+          relative.findings.some((x: any) => x.engines.includes("gitleaks") && x.location.file === "config.yml" && x.location.start_line === 3),
+          "Gitleaks did not report the key a relative .gitleaksignore entry names",
+        );
+        assert(relative.secret_coverage === "verified", `a relative .gitleaksignore entry lowered secret coverage to ${relative.secret_coverage}`);
+        assert(relative.secret_suppression?.channels[0]?.handling === "ignored_by_codeinspectus", "relative .gitleaksignore not disclosed as inert");
+
+        const temporaryRoot = await mkdtemp(join(tmpdir(), "codeinspectus-e66-"));
+        try {
+          const target = await realpath(temporaryRoot);
+          await cp(join(COVERAGE_HONESTY_FIXTURE, "gitleaksignore-relative", "config.yml"), join(target, "config.yml"));
+          await writeFile(join(target, ".gitleaksignore"), `${join(target, "config.yml")}:generic-api-key:3\n`, "utf8");
+          const absolute = (await client.callTool("codeinspectus_scan", { path: target, scanners: ["secret"] })).structuredContent;
+          assert(
+            !absolute.findings.some((x: any) => x.engines.includes("gitleaks") && x.location.file === "config.yml"),
+            "an absolute .gitleaksignore entry no longer hides the finding; revisit the classifier",
+          );
+          assert(absolute.secret_coverage === "unverified", "an absolute .gitleaksignore entry hid a finding but coverage read verified");
+          // Gitleaks trims with Go's TrimSpace, which also strips U+0085 (NEL).
+          await writeFile(join(target, ".gitleaksignore"), `\u0085${join(target, "config.yml")}:generic-api-key:3\n`, "utf8");
+          const nel = (await client.callTool("codeinspectus_scan", { path: target, scanners: ["secret"] })).structuredContent;
+          assert(
+            !nel.findings.some((x: any) => x.engines.includes("gitleaks") && x.location.file === "config.yml"),
+            "a NEL-prefixed absolute .gitleaksignore entry no longer hides the finding; revisit the classifier",
+          );
+          assert(nel.secret_coverage === "unverified", "a NEL-prefixed .gitleaksignore entry hid a finding but coverage read verified");
+          // Review C2: Gitleaks looks up the whole absolute "<file>:<rule>:<line>", so ':' in the path
+          // (a `colon:target` checkout or a `sub:dir/` folder) does not stop an absolute entry.
+          // Windows forbids ':' in file names, so these folders cannot exist there.
+          for (const [folder, sub] of process.platform === "win32" ? [] : [["colon:target", ""], ["plain", "sub:dir"]] as const) {
+            const colonTarget = join(target, folder);
+            await mkdir(join(colonTarget, sub), { recursive: true });
+            const secretFile = join(colonTarget, sub, "config.yml");
+            await cp(join(COVERAGE_HONESTY_FIXTURE, "gitleaksignore-relative", "config.yml"), secretFile);
+            await writeFile(join(colonTarget, ".gitleaksignore"), `${secretFile}:generic-api-key:3\n`, "utf8");
+            const colon = (await client.callTool("codeinspectus_scan", { path: colonTarget, scanners: ["secret"] })).structuredContent;
+            assert(!colon.findings.some((x: any) => x.engines.includes("gitleaks")), `${folder}/${sub}: the absolute entry no longer hides the finding; revisit the classifier`);
+            assert(colon.secret_coverage === "unverified", `${folder}/${sub}: an absolute entry with ':' in its path hid a finding but coverage read verified`);
+          }
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E67 a committed Yarn release bundle is vendored tooling, not an oversized source",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e67-"));
+        try {
+          await cp(join(COVERAGE_HONESTY_FIXTURE, "jsx-text"), temporaryRoot, { recursive: true });
+          await mkdir(join(temporaryRoot, ".yarn", "releases"), { recursive: true });
+          await writeFile(join(temporaryRoot, ".yarn", "releases", "yarn-4.6.0.cjs"), `/*${"x".repeat(2_800_000)}*/\n`, "utf8");
+          const result = (await client.callTool("codeinspectus_scan", { path: temporaryRoot, scanners: ["ai", "sast"] })).structuredContent;
+          for (const packId of ["javascript-typescript", "javascript-baseline"]) {
+            const pack = result.pack_coverage.find((coverage: any) => coverage.pack_id === packId);
+            assert(pack?.state === "ran" && !/oversized/i.test(pack.note ?? ""), `${packId} read ${pack?.state}: ${pack?.note}`);
+          }
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E68 [engine] a scanned repository's trivy.yaml, .trivyignore and trivy-secret.yaml do not configure Trivy",
+      engineDep: "trivy-vuln",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e68-"));
+        try {
+          await mkdir(join(temporaryRoot, "src"));
+          for (const file of ["package.json", "package-lock.json", "src/config.ts"]) {
+            await cp(join(FIXTURE, file), join(temporaryRoot, file));
+          }
+          await writeFile(join(temporaryRoot, "Dockerfile"), "FROM node:latest\nRUN echo build\n", "utf8");
+          // Each of these hid findings on the real Trivy 0.76.1 binary when Trivy ran inside the target.
+          await writeFile(join(temporaryRoot, "trivy.yaml"), "severity:\n  - CRITICAL\n", "utf8");
+          await writeFile(join(temporaryRoot, ".trivyignore"), "CVE-2019-10744\nDS-0002\nstripe-secret-token\n", "utf8");
+          await writeFile(join(temporaryRoot, "trivy-secret.yaml"), "disable-rules:\n  - stripe-secret-token\n", "utf8");
+          const result = (await client.callTool("codeinspectus_scan", {
+            path: temporaryRoot,
+            scanners: ["vuln", "misconfig", "secret"],
+          })).structuredContent;
+          const trivy = result.findings.filter((x: any) => x.engines.includes("trivy"));
+          for (const id of ["CVE-2019-10744", "CVE-2020-8203", "DS-0002"]) {
+            assert(trivy.some((x: any) => x.rule_id === id), `${id} was hidden by repository Trivy configuration`);
+          }
+          assert(trivy.some((x: any) => x.is_secret && x.location.file === "src/config.ts"), "repository trivy-secret.yaml disabled a Trivy secret rule");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E69 [engine] a single-file scan ignores the .gitleaksignore beside the file",
+      engineDep: "gitleaks",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e69-"));
+        try {
+          const file = join(temporaryRoot, "config.yml");
+          await cp(join(COVERAGE_HONESTY_FIXTURE, "gitleaksignore-relative", "config.yml"), file);
+          // Gitleaks 8.30.1 run from the file's directory applied this entry and hid the finding.
+          await writeFile(join(temporaryRoot, ".gitleaksignore"), `${file}:generic-api-key:3\n`, "utf8");
+          const result = (await client.callTool("codeinspectus_scan", { path: file, scanners: ["secret"] })).structuredContent;
+          assert(
+            result.findings.some((x: any) => x.engines.includes("gitleaks") && x.location.file === "config.yml"),
+            `the neighbouring .gitleaksignore hid the finding while secret coverage read ${result.secret_coverage}`,
+          );
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Ruling 14: a parse error is the acceptable gap sast-parse-errors, not the non-acceptable warning.
+      id: "E70 [engine] files Opengrep skips for size or cannot parse make SAST coverage partial",
+      engineDep: "opengrep",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e70-"));
+        try {
+          await cp(join(COVERAGE_HONESTY_FIXTURE, "opengrep-utf8", "src"), join(temporaryRoot, "src"), { recursive: true });
+          // Over Opengrep's 1,000,000-byte target limit, and a syntax error: both used to read as covered.
+          await writeFile(join(temporaryRoot, "src", "generated.js"), `const data = [${"0,".repeat(600_000)}];\neval(location.hash);\n`, "utf8");
+          await writeFile(join(temporaryRoot, "src", "broken.js"), "function broken( {\n  return eval(x;\n", "utf8");
+          const result = (await client.callTool("codeinspectus_scan", { path: temporaryRoot, scanners: ["sast"] })).structuredContent;
+          assert(result.engine_details.some((engine: any) => engine.engine === "opengrep" && engine.ran), "Opengrep did not run");
+          const note = result.warnings.find((warning: string) => warning.startsWith("Opengrep SAST coverage partial"));
+          assert(!!note, `no Opengrep partial-coverage warning: ${JSON.stringify(result.warnings)}`);
+          assert(/1 over Opengrep's file size limit/.test(note) && note.includes("src/generated.js"), `size skip not reported: ${note}`);
+          assert(!note.includes("src/broken.js"), `a parse error was reported as a non-acceptable warning: ${note}`);
+          const parse = result.coverage_gaps?.find((gap: any) => gap.id === "sast-parse-errors");
+          assertExactJson(parse, { id: "sast-parse-errors", files: 1, examples: ["src/broken.js"] }, "parse error not declared as a gap");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // SEMGREP_R2C_INTERNAL_EXPLICIT_SEMGREPIGNORE is internal to Opengrep: this fails if a bump drops it.
+      id: "E71 [engine] Opengrep's ignore list applies inside the target, never to the folders above it",
+      engineDep: "opengrep",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e71-"));
+        try {
+          for (const parent of ["build", "tests", "node_modules"]) {
+            const target = join(temporaryRoot, parent, "app");
+            await cp(join(COVERAGE_HONESTY_FIXTURE, "opengrep-ignore-suppress"), target, { recursive: true });
+            const result = (await client.callTool("codeinspectus_scan", { path: target, scanners: ["sast"] })).structuredContent;
+            const evals = result.findings.filter((x: any) => x.rule_id === "ci-baseline-dangerous-eval" && x.engines.includes("opengrep"));
+            assert(evals.some((x: any) => x.location.file === "src/app.js"), `a checkout under ${parent}/ (or its .semgrepignore) hid the planted eval()`);
+            assert(!evals.some((x: any) => x.location.file === "public/app.min.js"), `Opengrep's default *.min.js exclusion stopped applying under ${parent}/`);
+          }
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E72 [engine] Opengrep scans git-ignored files in the target like the other engines",
+      engineDep: "opengrep",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e72-"));
+        try {
+          const planted = await readFile(join(COVERAGE_HONESTY_FIXTURE, "opengrep-ignore-suppress", "src", "app.js"), "utf8");
+          await mkdir(join(temporaryRoot, "generated"));
+          await writeFile(join(temporaryRoot, ".gitignore"), "generated/\n", "utf8");
+          await writeFile(join(temporaryRoot, "generated", "forced.js"), planted, "utf8");
+          await writeFile(join(temporaryRoot, "generated", "local.js"), planted, "utf8");
+          const git = (...args: string[]) => execFileSync("git", [
+            "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false",
+            "-c", "user.name=CodeInspectus eval", "-c", "user.email=eval@example.invalid", ...args,
+          ], { cwd: temporaryRoot, stdio: "ignore" });
+          git("init", "-q");
+          git("add", ".gitignore");
+          git("add", "-f", "generated/forced.js"); // committed although .gitignore matches it
+          git("commit", "-q", "-m", "fixture");
+          const result = (await client.callTool("codeinspectus_scan", { path: temporaryRoot, scanners: ["sast"] })).structuredContent;
+          const files = result.findings
+            .filter((x: any) => x.rule_id === "ci-baseline-dangerous-eval" && x.engines.includes("opengrep"))
+            .map((x: any) => x.location.file);
+          assert(files.includes("generated/forced.js"), "Opengrep skipped a committed file that .gitignore matches");
+          assert(files.includes("generated/local.js"), "Opengrep silently skipped an untracked git-ignored file the other engines scan");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Task 5 (Hibi, 2026-10-31): declared gaps are partial coverage with stable ids; accept_gaps is
+      // an explicit opt-in that keeps them listed, and an unknown id is an input error.
+      id: "E73 declared coverage gaps are listed by stable id and can only be accepted by name",
+      fn: async () => {
+        const path = join(COVERAGE_HONESTY_FIXTURE, "coverage-gaps");
+        const plain = (await client.callTool("codeinspectus_scan", { path })).structuredContent;
+        assertExactJson(
+          plain.coverage_gaps.map((gap: any) => [gap.id, gap.files, gap.examples]),
+          [["php-sast", 1, ["src/index.php"]], ["deno-lock", 1, ["deno.lock"]],
+            ["no-lockfile-npm", 1, ["package.json"]], ["no-lockfile-composer", 1, ["composer.json"]]],
+          "declared coverage gaps changed",
+        );
+        assert(plain.accepted_gaps === undefined, "gaps were accepted without accept_gaps");
+        const accepted = (await client.callTool("codeinspectus_scan", { path, accept_gaps: ["php-sast", "deno-lock"] })).structuredContent;
+        assertExactJson(accepted.accepted_gaps, ["php-sast", "deno-lock"], "accepted gaps not listed");
+        assert(accepted.coverage_gaps.length === 4, "an accepted gap disappeared from coverage_gaps");
+        let rejected = false;
+        try {
+          const response = await client.callTool("codeinspectus_scan", { path, accept_gaps: ["everything"] });
+          rejected = response.isError === true;
+        } catch {
+          rejected = true;
+        }
+        assert(rejected, "an unknown accept_gaps id was not rejected as an input error");
+      },
+    },
+    {
+      // Review C-1: host or CI settings such as Semgrep's diff-aware SEMGREP_BASELINE_REF or a team's
+      // TRIVY_SEVERITY must not narrow a scan while coverage reads complete.
+      id: "E74 [engine] inherited SEMGREP_*, TRIVY_* and GITLEAKS_* settings do not narrow a scan",
+      engineDep: "trivy-vuln",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e74-"));
+        try {
+          const target = join(temporaryRoot, "repo");
+          await cp(FIXTURE, target, { recursive: true });
+          const git = (...args: string[]) => execFileSync("git", [
+            "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false",
+            "-c", "user.name=CodeInspectus eval", "-c", "user.email=eval@example.invalid", ...args,
+          ], { cwd: target, stdio: "ignore" });
+          git("init", "-q");
+          git("add", "-A");
+          git("commit", "-q", "-m", "fixture");
+          await writeFile(join(temporaryRoot, "trivy.yaml"), "severity:\n  - CRITICAL\n", "utf8");
+          await writeFile(join(temporaryRoot, "gitleaks.toml"), "[allowlist]\npaths = ['.*']\n", "utf8");
+          const inherited = new McpClient({
+            SEMGREP_BASELINE_REF: "HEAD",
+            TRIVY_SEVERITY: "CRITICAL",
+            TRIVY_CONFIG: join(temporaryRoot, "trivy.yaml"),
+            GITLEAKS_CONFIG: join(temporaryRoot, "gitleaks.toml"),
+          });
+          let findings: any[] = [];
+          try {
+            await inherited.init();
+            findings = (await inherited.callTool("codeinspectus_scan", { path: target })).structuredContent.findings;
+          } finally {
+            inherited.close();
+          }
+          if (engineRan("opengrep")) {
+            assert(findings.some((x) => x.engines.includes("opengrep") && x.cwe.includes("CWE-89") && x.location.file === "src/db.ts"),
+              "SEMGREP_BASELINE_REF narrowed Opengrep to changed files");
+          }
+          assert(findings.some((x) => x.engines.includes("trivy") && x.rule_id === "CVE-2020-8203"),
+            "TRIVY_SEVERITY or TRIVY_CONFIG hid a non-critical Trivy finding");
+          if (engineRan("gitleaks")) {
+            assert(findings.some((x) => x.engines.includes("gitleaks") && x.location.file === "src/config.ts"),
+              "GITLEAKS_CONFIG replaced the bundled Gitleaks config");
+          }
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Ruling 13: a rule arm that binds a metavariable another clause needs makes Opengrep report an
+      // "Internal matching error" for the whole file. Every bundled rule has a folder here named by its
+      // id; tp/ must fire that rule, fp/ and known-gap/ must stay quiet, and no file may error.
+      id: "E75 [engine] every bundled Opengrep rule fires on its fixtures and none errors while matching",
+      engineDep: "opengrep",
+      fn: async () => {
+        const rulesDir = resolve(process.cwd(), "detection-db/opengrep-rules/security-baseline");
+        const ruleIds: string[] = [];
+        for (const name of (await readdir(rulesDir)).filter((x) => x.endsWith(".yaml"))) {
+          for (const match of (await readFile(join(rulesDir, name), "utf8")).matchAll(/^ {2}- id: (\S+)$/gm)) ruleIds.push(match[1] ?? "");
+        }
+        const folders = await readdir(OPENGREP_RULES_FIXTURE);
+        assertExactJson([...folders].sort(), [...ruleIds].sort(), "fixture folders and bundled Opengrep rule ids differ");
+        const result = (await client.callTool("codeinspectus_scan", { path: OPENGREP_RULES_FIXTURE, scanners: ["sast"] })).structuredContent;
+        assert(result.engine_details.some((engine: any) => engine.engine === "opengrep" && engine.ran), "Opengrep did not run");
+        const partial = result.warnings.filter((warning: string) => warning.startsWith("Opengrep SAST coverage partial"));
+        assert(partial.length === 0, `Opengrep reported skipped or failed files: ${JSON.stringify(partial)}`);
+        assert(!result.coverage_gaps?.some((gap: any) => gap.id === "sast-parse-errors"), "Opengrep could not parse a rule fixture");
+        const hits = new Set<string>();
+        // By rule id, not engine: native SAST reconciliation reports some rules (e.g. JS weak-hash) as its own.
+        for (const finding of result.findings.filter((x: any) => ruleIds.includes(x.rule_id))) {
+          const [folder, kind] = finding.location.file.split("/");
+          assert(folder === finding.rule_id && kind === "tp", `${finding.rule_id} fired at ${finding.location.file}:${finding.location.start_line}`);
+          hits.add(finding.location.file);
+        }
+        for (const id of ruleIds) {
+          for (const file of await readdir(join(OPENGREP_RULES_FIXTURE, id, "tp"))) {
+            assert(hits.has(`${id}/tp/${file}`), `${id} missed ${id}/tp/${file}`);
+          }
+        }
+      },
+    },
+    {
+      // Review I-7: Gitleaks 8.30.1 applies its default allowlist to absolute paths, so a target under
+      // node_modules/ or site-packages/ reported no secrets while secret coverage read verified.
+      id: "E76 [engine] a target under a folder Gitleaks allowlists still gets its secrets scanned",
+      engineDep: "gitleaks",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e76-"));
+        try {
+          for (const parent of ["node_modules/pkg", "bower_components/lib", "vendor/bundle/gem", "lib/python3.12/site-packages/pkg"]) {
+            const target = join(temporaryRoot, ...parent.split("/"));
+            await mkdir(target, { recursive: true });
+            await cp(join(COVERAGE_HONESTY_FIXTURE, "gitleaksignore-relative", "config.yml"), join(target, "config.yml"));
+            const result = (await client.callTool("codeinspectus_scan", { path: target, scanners: ["secret"] })).structuredContent;
+            if (process.platform === "win32") {
+              // Windows scans the real path (no link), so the allowlist applies and must be disclosed.
+              assert(result.secret_coverage === "unverified", `secret coverage under ${parent} read ${result.secret_coverage} on Windows`);
+              assert(result.warnings.some((warning: string) => warning.startsWith("Secret coverage unverified: Gitleaks' default allowlist")),
+                `the allowlisted target under ${parent} was not disclosed on Windows`);
+              continue;
+            }
+            assert(
+              result.findings.some((x: any) => x.engines.includes("gitleaks") && x.location.file === "config.yml" && x.location.start_line === 3),
+              `Gitleaks reported nothing for a target under ${parent}`,
+            );
+            assert(result.secret_coverage === "verified", `secret coverage under ${parent} read ${result.secret_coverage}`);
+          }
+          // A single file cannot be scanned through a link (Gitleaks skips symlinked files).
+          const single = (await client.callTool("codeinspectus_scan", {
+            path: join(temporaryRoot, "node_modules", "pkg", "config.yml"), scanners: ["secret"],
+          })).structuredContent;
+          assert(single.secret_coverage === "unverified", `a single file under node_modules/ read ${single.secret_coverage}`);
+          assert(single.warnings.some((warning: string) => warning.startsWith("Secret coverage unverified: Gitleaks' default allowlist")),
+            "the allowlisted single-file target was not disclosed");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Fix round 3: build output is skipped only in BUILD_DIRS, where file routing drops Opengrep
+      // findings anyway; committed code in .vercel/output is the repository's own and is kept.
+      id: "E77 [engine] Opengrep scans committed code under .vercel/output",
+      engineDep: "opengrep",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e77-"));
+        try {
+          const planted = await readFile(join(COVERAGE_HONESTY_FIXTURE, "opengrep-ignore-suppress", "src", "app.js"), "utf8");
+          const functionDir = join(temporaryRoot, ".vercel", "output", "functions", "api.func");
+          await mkdir(functionDir, { recursive: true });
+          await writeFile(join(functionDir, "index.js"), planted, "utf8");
+          await mkdir(join(temporaryRoot, ".next"));
+          await writeFile(join(temporaryRoot, ".next", "server.js"), planted, "utf8");
+          const git = (...args: string[]) => execFileSync("git", [
+            "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false",
+            "-c", "user.name=CodeInspectus eval", "-c", "user.email=eval@example.invalid", ...args,
+          ], { cwd: temporaryRoot, stdio: "ignore" });
+          git("init", "-q");
+          git("add", "-A");
+          git("commit", "-q", "-m", "fixture");
+          const result = (await client.callTool("codeinspectus_scan", { path: temporaryRoot, scanners: ["sast"] })).structuredContent;
+          const files = result.findings
+            .filter((x: any) => x.rule_id === "ci-baseline-dangerous-eval" && x.engines.includes("opengrep"))
+            .map((x: any) => x.location.file);
+          assert(files.includes(".vercel/output/functions/api.func/index.js"), `committed .vercel/output code was not scanned: ${JSON.stringify(files)}`);
+          assert(!files.some((file: string) => file.startsWith(".next/")), "an Opengrep finding in .next/ (BUILD_DIRS) was reported");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Pre-release field validation item 1: without --include-dev-deps Trivy dropped devDependencies
+      // and Composer packages-dev with no trace (a Nuxt app declaring everything as dev read 0 findings).
+      id: "E78 [engine] development dependencies are analysed and named as such",
+      engineDep: "trivy-vuln",
+      fn: async () => {
+        const result = (await client.callTool("codeinspectus_scan", { path: join(COVERAGE_HONESTY_FIXTURE, "dev-deps"), scanners: ["vuln"] })).structuredContent;
+        const trivy = result.findings.filter((x: any) => x.engines.includes("trivy"));
+        const about = (name: string) => trivy.filter((x: any) => x.title.includes(`(${name}@`));
+        for (const name of ["handlebars", "phpunit/phpunit"]) {
+          assert(about(name).length > 0, `no finding for the development dependency ${name}`);
+          assert(about(name).every((x: any) => x.title.endsWith(", dev dependency)") && x.message.includes("Dependency scope: development only")),
+            `${name} findings are not named as a development dependency`);
+        }
+        for (const name of ["lodash", "guzzlehttp/guzzle"]) {
+          assert(about(name).length > 0, `no finding for the production dependency ${name}`);
+          assert(about(name).every((x: any) => !x.title.includes("dev dependency")), `${name} is production but was named dev`);
+        }
+      },
+    },
+    {
+      // Pre-release field validation item 3 and recheck items 7-8: native-pack limits, WordPress plugins
+      // and third-party Actions are declared gaps with stable ids that accept_gaps can name.
+      id: "E79 native limits, WordPress plugins and GitHub Actions are declared, acceptable gaps",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e79-"));
+        try {
+          await mkdir(join(root, "src", "real"), { recursive: true });
+          await mkdir(join(root, ".github", "workflows"), { recursive: true });
+          await writeFile(join(root, "package.json"), "{}\n", "utf8");
+          await writeFile(join(root, "src", "app.ts"), "export const ok = 1;\n", "utf8");
+          await writeFile(join(root, "src", "broken.ts"), "function broken( {\n  return eval(x;\n", "utf8");
+          await writeFile(join(root, "src", "real", "util.ts"), "export const u = 1;\n", "utf8");
+          await symlink(join(root, "src", "real"), join(root, "src", "linked"));
+          await writeFile(join(root, "composer.lock"), JSON.stringify({ packages: [{ name: "wpackagist-plugin/contact-form-7", version: "5.1.1" }] }), "utf8");
+          await writeFile(join(root, ".github", "workflows", "ci.yml"), "on: push\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n", "utf8");
+          const ids = ["native-parse-errors", "symlinked-paths", "wordpress-plugins", "actions-unchecked"];
+          const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["sast", "ai", "vuln"], accept_gaps: ids })).structuredContent;
+          const gaps = Object.fromEntries(result.coverage_gaps.map((gap: any) => [gap.id, gap.examples]));
+          assertExactJson(gaps["native-parse-errors"], ["src/broken.ts"], "native-parse-errors gap missing");
+          assertExactJson(gaps["symlinked-paths"], ["src/linked"], "symlinked-paths gap missing");
+          assertExactJson(gaps["wordpress-plugins"], ["composer.lock: wpackagist-plugin/contact-form-7"], "wordpress-plugins gap missing");
+          assertExactJson(gaps["actions-unchecked"], ["actions/checkout@v4 (.github/workflows/ci.yml)"], "actions-unchecked gap missing");
+          assertExactJson(result.accepted_gaps, ids, "accepted gaps not listed");
+          for (const pack of ["javascript-baseline", "javascript-typescript"]) {
+            const state = result.pack_coverage.find((entry: any) => entry.pack_id === pack)?.state;
+            assert(state === "ran", `${pack} read ${state}, so a gap-only limit still made it partial`);
+          }
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Ruling 29: cap-collectif could never pass CI because of the 1,000,000-token project bound. Seven
+      // 180,000-token files: the first five fit, the last two are the declared gap native-token-budget.
+      id: "E80 files past the JavaScript/TypeScript token budget are a declared, acceptable gap",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e80-"));
+        try {
+          await writeFile(join(root, "package.json"), "{}\n", "utf8");
+          for (let index = 0; index < 7; index++) await writeFile(join(root, `f${index}.js`), "a;\n".repeat(90_000), "utf8");
+          const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["sast", "ai"], accept_gaps: ["native-token-budget"] })).structuredContent;
+          const gap = result.coverage_gaps?.find((entry: any) => entry.id === "native-token-budget");
+          assertExactJson(gap, { id: "native-token-budget", files: 2, examples: ["f5.js", "f6.js"] }, "native-token-budget gap wrong");
+          assertExactJson(result.accepted_gaps, ["native-token-budget"], "accepted gaps not listed");
+          for (const pack of ["javascript-baseline", "javascript-typescript"]) {
+            const state = result.pack_coverage.find((entry: any) => entry.pack_id === pack)?.state;
+            assert(state === "ran", `${pack} read ${state}, so the token budget still made it partial`);
+          }
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Review I-1: Trivy 0.76.1 drops Maven test/provided dependencies even with --include-dev-deps.
+      id: "E81 test-scoped Maven dependencies are the declared gap dev-deps-unscanned",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e81-"));
+        try {
+          await writeFile(join(root, "pom.xml"), [
+            '<project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion>',
+            "<groupId>com.example</groupId><artifactId>app</artifactId><version>1.0</version><dependencies>",
+            "<dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>2.9.1</version><scope>test</scope></dependency>",
+            "</dependencies></project>",
+          ].join("\n"), "utf8");
+          const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["vuln"], accept_gaps: ["dev-deps-unscanned"] })).structuredContent;
+          const gap = result.coverage_gaps?.find((entry: any) => entry.id === "dev-deps-unscanned");
+          assertExactJson(gap, { id: "dev-deps-unscanned", files: 1, examples: ["pom.xml: com.fasterxml.jackson.core:jackson-databind (test)"] }, "dev-deps-unscanned gap wrong");
+          assertExactJson(result.accepted_gaps, ["dev-deps-unscanned"], "accepted gaps not listed");
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Synvoya M1: declared runtime pins, an image tag and an Adobe Commerce lock. Every finding is the
+      // declared version (never "deployed"), carries a rebuild-and-redeploy fix, and is tagged engine_family.
+      id: "E82 Synvoya reports Node.js, PHP and Adobe Commerce gap findings with fixes for declared versions",
+      fn: async () => {
+        const result = (await client.callTool("codeinspectus_scan", { path: SYNVOYA_GAP_DECLARATIONS_FIXTURE, scanners: ["vuln"] })).structuredContent;
+        const engine = result.engine_details.find((entry: any) => entry.engine === "synvoya");
+        assert(engine?.available === true && engine.ran === true, `Synvoya did not run: ${JSON.stringify(engine)}`);
+        const found = synvoyaFindings(result.findings);
+        const pick = (ruleId: string, file: string) => {
+          const hit = found.find((finding) => finding.rule_id === ruleId && finding.location.file === file);
+          assert(hit !== undefined, `no ${ruleId} finding in ${file}: ${found.map((x) => `${x.rule_id}@${x.location.file}`).join(", ")}`);
+          return hit;
+        };
+        for (const finding of found) {
+          assert(finding.engine === "synvoya" && finding.engine_family === "synvoya", `${finding.rule_id} is not engine synvoya / family synvoya`);
+          assert(finding.message.includes("declare"), `${finding.rule_id} does not say the version is declared`);
+        }
+        // node:22.1.0-alpine: an exact image tag below the fixed release.
+        const image = pick("SYN-2026-009", "Dockerfile");
+        assert(image.severity === "critical" && image.confidence === "high" && image.location.start_line === 1, "Node image finding severity, confidence or line wrong");
+        assert(image.title.includes("Node.js 22.1.0 declared in Dockerfile"), `Node image title wrong: ${image.title}`);
+        assert(image.remediation.summary.includes("22.23.4") && image.remediation.summary.includes("rebuild and redeploy"), `Node image fix wrong: ${image.remediation.summary}`);
+        // .nvmrc 20: a floating major on an end-of-life line is a high-confidence EOL finding with the supported fix.
+        const nvm = pick("SYN-2026-013", ".nvmrc");
+        assert(nvm.severity === "high" && nvm.confidence === "high" && nvm.title.includes("End-of-life Node.js"), `.nvmrc EOL finding wrong: ${nvm.title}`);
+        assert(nvm.title.includes("Node.js 20 declared in .nvmrc") && nvm.remediation.summary.includes("rebuild and redeploy"), ".nvmrc declared version or fix wrong");
+        // composer.json "php": "8.1.*": the 8.1 line is end of life.
+        const php = pick("SYN-2026-015", "composer.json");
+        assert(php.severity === "critical" && php.confidence === "high" && php.location.start_line === 4, "PHP EOL finding severity, confidence or line wrong");
+        assert(php.title.includes("PHP 8.1.* declared in composer.json") && php.remediation.summary.includes("8.2.35"), `PHP EOL fix wrong: ${php.remediation.summary}`);
+        // Magento EE 2.4.7-p2: a hotfix advisory, so the finding asks to verify it and never claims it proved.
+        const adobe = pick("SYN-2026-084", "composer.lock");
+        assert(adobe.severity === "medium" && adobe.title.startsWith("Verify APSB25-88 is applied to Adobe Commerce 2.4.7-p2"), `Adobe verify finding wrong: ${adobe.title}`);
+        assert(adobe.remediation.summary.includes("2.4.7-p8"), `Adobe fix missing the patched release: ${adobe.remediation.summary}`);
+        assert(adobe.message.includes("does not change the version string"), "Adobe finding does not explain why the version cannot prove it");
+      },
+    },
+    {
+      // Review focus 3: an edited dataset must never read as "no findings". It runs from a COPY of the built
+      // package, never the repo's own files; the rescan half checks the prior Synvoya findings stay unconfirmed.
+      id: "E83 a tampered Synvoya dataset makes the engine unavailable, warns, and never confirms a prior finding fixed",
+      fn: async () => {
+        await withTamperedSynvoya(async ({ client: tampered }) => {
+          const result = (await tampered.callTool("codeinspectus_scan", { path: SYNVOYA_GAP_DECLARATIONS_FIXTURE, scanners: ["vuln"] })).structuredContent;
+          const engine = result.engine_details.find((entry: any) => entry.engine === "synvoya");
+          assert(engine?.available === false && engine.ran === false, `tampered dataset did not make Synvoya unavailable: ${JSON.stringify(engine)}`);
+          assert(String(engine.note).includes("SHA-256 digest"), `unavailable note does not name the digest check: ${engine.note}`);
+          assert(result.warnings.some((warning: string) => warning.startsWith("Synvoya gap advisories unavailable")), `no unavailable warning: ${JSON.stringify(result.warnings)}`);
+          assert(!result.engines_run.includes("synvoya"), "synvoya listed in engines_run");
+          assert(synvoyaFindings(result.findings).length === 0, "a tampered dataset still produced Synvoya findings");
+        });
+        const home = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e83-home-"));
+        const intact = new McpClient(isolatedHome(home));
+        try {
+          await intact.init();
+          const prior = (await intact.callTool("codeinspectus_scan", { path: SYNVOYA_GAP_DECLARATIONS_FIXTURE, scanners: ["vuln"] })).structuredContent;
+          const priorSynvoya = synvoyaFindings(prior.findings);
+          assert(priorSynvoya.length > 0, "the intact baseline scan produced no Synvoya findings");
+          await withTamperedSynvoya(async ({ client: tampered }) => {
+            const rescan = (await tampered.callTool("codeinspectus_rescan", {
+              path: SYNVOYA_GAP_DECLARATIONS_FIXTURE,
+              prior_scan_id: prior.scan_id,
+              scanners: ["vuln"],
+            })).structuredContent;
+            assert(rescan.summary.resolved === 0, `an unavailable Synvoya confirmed ${rescan.summary.resolved} finding(s) fixed`);
+            assert(rescan.partial === true, "the rescan with an unavailable Synvoya was not reported partial");
+            const unconfirmed = synvoyaFindings(rescan.not_rechecked).map((finding: any) => finding.fingerprint).sort();
+            assertExactJson(unconfirmed, priorSynvoya.map((finding: any) => finding.fingerprint).sort(), "prior Synvoya findings are not all not_rechecked");
+          }, isolatedHome(home));
+        } finally {
+          intact.close();
+          await rm(home, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Enrich, never merge: the upstream finding is the only one; it keeps its id, fingerprint and producers and
+      // gains Synvoya's fix. The baseline is the same scan with Synvoya unavailable (a tampered package copy).
+      id: "E84 a package CVE Trivy or osv-scanner reports is one upstream finding enriched with the Synvoya fix",
+      engineDep: "trivy-vuln",
+      fn: async () => {
+        const covered = ["CVE-2026-33894", "GHSA-86w9-cpqp-85rv"];
+        const isCovered = (finding: any) => [finding.rule_id, ...(finding.vulnerability_aliases ?? [])].some((id: string) => covered.includes(id));
+        const result = (await client.callTool("codeinspectus_scan", { path: SYNVOYA_TRIVY_COVERED_FIXTURE, scanners: ["vuln"] })).structuredContent;
+        const upstream = result.findings.filter((finding: any) => !finding.engines.includes("synvoya") && finding.package?.name === "node-forge" && isCovered(finding));
+        if (upstream.length === 0) throw new EvalSkip("the installed vulnerability database does not list the Synvoya-covered node-forge CVE yet (repair-engines)");
+        assert(synvoyaFindings(result.findings).every((finding: any) => finding.rule_id !== "SYN-2026-057"), "SYN-2026-057 was reported beside the upstream finding it duplicates");
+        assert(upstream.length === 1, `expected one upstream finding for the covered advisory, got ${upstream.map((finding: any) => finding.rule_id).join(", ")}`);
+        const [enriched] = upstream;
+        const synvoyaStep = enriched.remediation.steps.find((step: string) => step.startsWith("Synvoya SYN-2026-057:"));
+        assert(synvoyaStep !== undefined && synvoyaStep.includes("1.4.1"), `the Synvoya fix is not in the upstream remediation: ${JSON.stringify(enriched.remediation.steps)}`);
+        assert(enriched.producer_components.every((component: string) => !component.startsWith("synvoya:")), "the upstream finding gained Synvoya producer components");
+
+        const baseline = await withTamperedSynvoya(async ({ client: tampered }) =>
+          (await tampered.callTool("codeinspectus_scan", { path: SYNVOYA_TRIVY_COVERED_FIXTURE, scanners: ["vuln"] })).structuredContent);
+        const before = baseline.findings.find((finding: any) => finding.rule_id === enriched.rule_id && finding.package?.name === "node-forge");
+        assert(before !== undefined, "the baseline scan without Synvoya lost the upstream finding");
+        for (const key of ["id", "fingerprint", "severity", "title", "engine", "engines", "producer_components", "location"]) {
+          assertExactJson(enriched[key], before[key], `upstream ${key} changed once Synvoya enriched the finding`);
+        }
+        assert(before.remediation.steps.every((step: string) => enriched.remediation.steps.includes(step)), "enrichment dropped an upstream remediation step");
+        assert(!before.remediation.steps.some((step: string) => step.startsWith("Synvoya ")), "the baseline already carried a Synvoya step");
+      },
+    },
+    {
+      // Design §8.4/§8.5: a floating tag on a supported line is a hygiene note, never a finding or a coverage gap.
+      id: "E85 a floating node:22-alpine tag is an info note, not a finding or a coverage gap",
+      fn: async () => {
+        const result = (await client.callTool("codeinspectus_scan", { path: SYNVOYA_FLOATING_TAG_FIXTURE, scanners: ["vuln"] })).structuredContent;
+        const engine = result.engine_details.find((entry: any) => entry.engine === "synvoya");
+        assert(engine?.available === true && engine.ran === true, `Synvoya did not run: ${JSON.stringify(engine)}`);
+        assert(synvoyaFindings(result.findings).length === 0, `a floating tag on a supported line produced findings: ${synvoyaFindings(result.findings).map((x: any) => x.rule_id).join(", ")}`);
+        const notes = (result.coverage_notes ?? []).filter((note: any) => note.component === "engine:synvoya");
+        assert(notes.length > 0 && notes.every((note: any) => note.detail.startsWith("Dockerfile:1:") && note.detail.includes("Node.js 22") && note.detail.includes("pin Node.js")),
+          `expected only Dockerfile:1 Node.js 22 pin notes, got ${JSON.stringify(notes)}`);
+        assert(!result.coverage_gaps?.length, `a floating tag lowered coverage: ${JSON.stringify(result.coverage_gaps)}`);
+        assert(!result.warnings.some((warning: string) => warning.toLowerCase().includes("synvoya")), `a floating tag raised a Synvoya warning: ${JSON.stringify(result.warnings)}`);
+      },
+    },
+    {
+      // A reader that hit its wall-clock deadline never read the file, so a rescan must not call the prior finding
+      // fixed. The deadline is forced with the internal override (0 ms = already expired) on the rescanning server.
+      id: "E86 a rescan whose Synvoya reader deadline is hit reports the prior findings not_rechecked, never resolved",
+      fn: async () => {
+        const home = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e86-home-"));
+        const normal = new McpClient(isolatedHome(home));
+        const expired = new McpClient({ ...isolatedHome(home), CODEINSPECTUS_INTERNAL_SYNVOYA_DEADLINE_MS: "0" });
+        try {
+          await normal.init();
+          await expired.init();
+          const prior = (await normal.callTool("codeinspectus_scan", { path: SYNVOYA_GAP_DECLARATIONS_FIXTURE, scanners: ["vuln"] })).structuredContent;
+          const priorSynvoya = synvoyaFindings(prior.findings);
+          assert(priorSynvoya.length > 0, "the baseline scan produced no Synvoya findings");
+          // Control: without the override the same rescan keeps every finding as remaining, so the deadline is what changes it.
+          const control = (await normal.callTool("codeinspectus_rescan", {
+            path: SYNVOYA_GAP_DECLARATIONS_FIXTURE,
+            prior_scan_id: prior.scan_id,
+            scanners: ["vuln"],
+          })).structuredContent;
+          assert(control.summary.remaining === priorSynvoya.length && control.summary.not_rechecked === 0 && control.partial === false,
+            `the unchanged rescan did not keep every Synvoya finding: ${JSON.stringify(control.summary)}`);
+          const rescan = (await expired.callTool("codeinspectus_rescan", {
+            path: SYNVOYA_GAP_DECLARATIONS_FIXTURE,
+            prior_scan_id: prior.scan_id,
+            scanners: ["vuln"],
+          })).structuredContent;
+          assert(String(rescan.not_rechecked_note).includes("Synvoya gap layer"), `the rescan does not name the Synvoya gap layer as the reason: ${rescan.not_rechecked_note}`);
+          assert(rescan.summary.resolved === 0, `a deadline-cut rescan confirmed ${rescan.summary.resolved} finding(s) fixed`);
+          assert(rescan.partial === true, "the deadline-cut rescan was not reported partial");
+          assertExactJson(
+            synvoyaFindings(rescan.not_rechecked).map((finding: any) => finding.fingerprint).sort(),
+            priorSynvoya.map((finding: any) => finding.fingerprint).sort(),
+            "prior Synvoya findings are not all not_rechecked",
+          );
+        } finally {
+          normal.close();
+          expired.close();
+          await rm(home, { recursive: true, force: true });
+        }
+      },
+    },
   ];
 
   for (const c of checks) {
@@ -4228,6 +4997,10 @@ async function main() {
       // Engine-dependency gating for stable runs.
       if (c.engineDep === "opengrep" && !engineRan("opengrep")) {
         record(c.id, "skip", "opengrep did not run (repair-engines)");
+        continue;
+      }
+      if (c.engineDep === "gitleaks" && !engineRan("gitleaks")) {
+        record(c.id, "skip", "gitleaks did not run (repair-engines)");
         continue;
       }
       if (c.engineDep === "trivy-vuln") {

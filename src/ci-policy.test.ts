@@ -38,4 +38,36 @@ describe("CI policy exit contract", () => {
   test("incomplete coverage takes precedence over threshold findings and returns 2", () => {
     expect(evaluateCiPolicy(document("partial", ["critical"]), "high")).toMatchObject({ exit_code: 2, findings_at_or_above_threshold: 1 });
   });
+
+  // Task 5 (Hibi, 2026-10-31): declared gaps make coverage partial; a named opt-in lets CI pass them.
+  describe("accepted coverage gaps", () => {
+    const evidence = (...items: Array<[string, "partial" | "unknown" | "excluded" | "covered" | "informational"]>) =>
+      items.map(([component, state]) => ({ category: "declared_scope" as const, component, state, detail: "d" }));
+    const gapped = (items: ReturnType<typeof evidence>, severities: Array<"critical" | "high"> = []) => ({
+      ...document("partial", severities),
+      coverage: { aggregate: "partial" as const, evidence: items },
+    });
+
+    test("passes coverage when every non-complete cause is an accepted gap, still reporting partial", () => {
+      const result = evaluateCiPolicy(gapped(evidence(["gap:php-sast", "partial"], ["engine:opengrep", "covered"])), undefined, ["php-sast", "deno-lock"]);
+      expect(result).toMatchObject({ exit_code: 0, coverage: "partial", accepted_gaps: ["php-sast", "deno-lock"] });
+      expect(evaluateCiPolicy(gapped(evidence(["gap:php-sast", "partial"]), ["critical"]), "high", ["php-sast"]))
+        .toMatchObject({ exit_code: 1, coverage: "partial" });
+    });
+
+    test.each([
+      ["an unaccepted gap", evidence(["gap:php-sast", "partial"], ["gap:deno-lock", "partial"])],
+      ["another partial cause", evidence(["gap:php-sast", "partial"], ["scan-pipeline", "partial"])],
+      ["an excluded scanner", evidence(["gap:php-sast", "partial"], ["scanner:sast", "excluded"])],
+      ["an unknown component", evidence(["gap:php-sast", "partial"], ["engine:trivy", "unknown"])],
+      ["no gap evidence at all", evidence()],
+    ])("still returns 2 with %s", (_label, items) => {
+      expect(evaluateCiPolicy(gapped(items), undefined, ["php-sast"])).toMatchObject({ exit_code: 2 });
+    });
+
+    test("unknown aggregate coverage never passes", () => {
+      const unknown = { ...document("unknown", []), coverage: { aggregate: "unknown" as const, evidence: evidence(["gap:php-sast", "partial"]) } };
+      expect(evaluateCiPolicy(unknown, undefined, ["php-sast"])).toMatchObject({ exit_code: 2 });
+    });
+  });
 });

@@ -42,21 +42,28 @@ import { detectOsvLockfiles } from "./osv/ecosystems.js";
 import type { EngineOutput } from "./engines/types.js";
 import { runAiChecks } from "./ai-checks/index.js";
 import { nativePackNotRunCoverage } from "./packs/registry.js";
-import { detectTechnologies } from "./technology-detection.js";
+import { detectionVisitsLinkTarget, detectTechnologies } from "./technology-detection.js";
 import { normalizeEngineOutput } from "./sarif/normalize.js";
 import { routeScanFindings } from "./file-routing.js";
 import { detectGitSafety } from "./git-safety.js";
 import { dedupFindings } from "./dedup.js";
+import { withEngineFamily } from "./synvoya/family.js";
 import { isConfigurationFile, scrubCredentialContext } from "./redact.js";
 import { tagFindings } from "./compliance/mapper.js";
 import { buildComplianceOverview } from "./compliance/report.js";
 import { hasUnverifiedSecretCoverage, secretSuppressionWarnings } from "./gitleaks-suppression.js";
+import { detectTrivyInlineIgnores, trivyInlineIgnoreWarning } from "./trivy-suppression.js";
+import { escapeScanDisplayText } from "./display-path.js";
+import { nativeGaps } from "./native-gaps.js";
 import { PIPELINE_COMPONENT, staticComponentSignatures } from "./provenance.js";
 import { trivyDbProvenanceSignal } from "./trivy-db-provenance.js";
 import { inspectEngineSetup } from "./engine-health.js";
 import { runPubScan } from "./pub/scanner.js";
+import { runSynvoyaScan, synvoyaUpstreamInputs } from "./synvoya/scanner.js";
+import { enrichUpstream } from "./synvoya/enrich.js";
 import { PROMOTED_OPENGREP_RULE_IDS, reconcileNativeSast } from "./native-sast-reconciliation.js";
 import { requireSafeScanTarget } from "./path-safety.js";
+import { COVERAGE_GAP_IDS, defaultScopeNotes, discoverCoverageGaps, type CoverageGap, type CoverageNote } from "./coverage-gaps.js";
 
 function wants(input: ScanInput, scanner: string): boolean {
   return !input.scanners || input.scanners.length === 0 || input.scanners.includes(scanner as never);
@@ -118,8 +125,10 @@ export async function projectScanForDisplay(
   }
   const totalBeforeLimit = visible.length;
   const limited = visible.slice(0, input.max_findings ?? DEFAULT_MAX_FINDINGS);
+  // Rescan proof data only; kept out of the agent-facing view to protect its context window.
+  const { synvoya_checked: _checked, ...shown } = canonical;
   const display: ScanResult = {
-    ...canonical,
+    ...shown,
     summary: summarize(visible),
     findings: limited,
     truncated: limited.length < totalBeforeLimit,
@@ -150,6 +159,7 @@ export async function executeScan(
     warnings.push(`Repository-trust detectors unavailable: ${error instanceof Error ? error.message : "unknown detector failure"}`);
     return createUnavailableRepositoryTrust();
   });
+  const gapProbe = discoverCoverageGaps(target);
   const tmpDir = await mkdtemp(join(tmpdir(), "ci-scan-"));
 
   try {
@@ -166,7 +176,8 @@ export async function executeScan(
     const tasks: Array<Promise<EngineOutput | (EngineOutput & { trivyDbDate?: string })>> = [];
     if (runSast) tasks.push(runOpengrep(target, tmpDir));
     if (runSecret) tasks.push(runGitleaks(target, tmpDir));
-    let trivyTask: Promise<EngineOutput & { trivyDbDate?: string }> | undefined;
+    let trivyTask: ReturnType<typeof runTrivy> | undefined;
+    const trivyIgnoreProbe = trivyScanners.includes("misconfig") ? detectTrivyInlineIgnores(target) : undefined;
     if (trivyScanners.length) {
       trivyTask = runTrivy(target, tmpDir, trivyScanners);
       tasks.push(trivyTask);
@@ -189,8 +200,17 @@ export async function executeScan(
     const osvTask = runVuln ? runOsvScanner(target, tmpDir) : undefined;
     // Bounded, name-only walk, run alongside the engines; used only to reconcile an osv-scanner run that happened.
     const osvLockfilesTask = runVuln ? detectOsvLockfiles(target) : undefined;
+    // Synvoya gap layer (same gate as Pub): its readers start now, alongside the engines; evaluation
+    // waits for the package inventory osv-scanner and Trivy produce in this scan (design §8 item 2).
+    const synvoyaUpstream = runVuln
+      ? Promise.all([trivyTask, osvTask]).then(([trivy, osv]) =>
+          synvoyaUpstreamInputs({ trivy, trivyVulnerabilityScan: trivyScanners.includes("vuln"), osv }))
+      : undefined;
+    const synvoyaTask = synvoyaUpstream
+      ? runSynvoyaScan(target, synvoyaUpstream.then((inputs) => inputs.inventory), synvoyaUpstream.then((inputs) => inputs.dates))
+      : undefined;
 
-    const [engineOutputs, nativeResult, technologyDetection, pubResult, repositoryTrust, osvResult, osvLockfiles] = await Promise.all([
+    const [engineOutputs, nativeResult, technologyDetection, pubResult, repositoryTrust, osvResult, osvLockfiles, synvoyaResult] = await Promise.all([
       Promise.all(tasks),
       nativeTask ?? Promise.resolve(undefined),
       technologyProbe,
@@ -198,12 +218,30 @@ export async function executeScan(
       repositoryTrustProbe,
       osvTask ?? Promise.resolve(undefined),
       osvLockfilesTask ?? Promise.resolve([]),
+      synvoyaTask ?? Promise.resolve(undefined),
     ]);
 
-    if (technologyDetection.limitations.length) {
+    // A skipped symbolic link whose real target detection visits inside the root is the declared gap
+    // symlinked-paths (Ruling 30); any other link, and every other detection limit, stays partial.
+    const visitedLinks = new Set<string>();
+    for (const limitation of technologyDetection.limitations) {
+      if (limitation.reason === "symlink_skipped" && await detectionVisitsLinkTarget(target, limitation.path)) {
+        visitedLinks.add(limitation.path);
+      }
+    }
+    const isVisitedLink = (limitation: { reason: string; path: string }) =>
+      limitation.reason === "symlink_skipped" && visitedLinks.has(limitation.path);
+    const detectionLimits = technologyDetection.limitations.filter((limitation) => !isVisitedLink(limitation));
+    const nativeGapEntries = [
+      ...technologyDetection.limitations
+        .filter(isVisitedLink)
+        .map((limitation) => ({ id: "symlinked-paths" as const, path: limitation.path })),
+      ...(nativeResult?.gapRecords ?? []),
+    ];
+    if (detectionLimits.length) {
       warnings.push(
         "Technology detection was partial: " +
-          technologyDetection.limitations
+          detectionLimits
             .map((limitation) => `${limitation.path} (${limitation.reason})`)
             .join(", "),
       );
@@ -259,6 +297,7 @@ export async function executeScan(
     // Normalize engine SARIF → findings; track per-engine raw counts.
     let allFindings: Finding[] = [];
     const engineDetails: EngineRunInfo[] = [];
+    const engineGaps: CoverageGap[] = nativeGaps(nativeGapEntries);
     let trivyDbDate: string | undefined;
     let secretCoverage: "verified" | "unverified" | undefined;
     let secretSuppression: SecretSuppressionMetadata | undefined;
@@ -280,7 +319,7 @@ export async function executeScan(
         trivyVulnerabilityScanRan = true;
       }
       if (out.engine === "gitleaks" && out.secretSuppression) {
-        secretCoverage = out.ran && !hasUnverifiedSecretCoverage(out.secretSuppression)
+        secretCoverage = out.ran && !hasUnverifiedSecretCoverage(out.secretSuppression) && !out.coverageWarnings?.length
           ? "verified"
           : "unverified";
         if (out.secretSuppression.channels.length) {
@@ -299,6 +338,10 @@ export async function executeScan(
         ...(out.note ? { note: out.note } : {}),
       });
       if (!out.ran && out.note) warnings.push(`${out.engine} did not run: ${out.note}`);
+      if (out.ran) {
+        warnings.push(...(out.coverageWarnings ?? []));
+        engineGaps.push(...(out.coverageGaps ?? []));
+      }
     }
 
     if (nativeResult) {
@@ -357,6 +400,27 @@ export async function executeScan(
       }
     }
 
+    // Synvoya: enrich, never merge (PRD §9.1 rule 3). A Synvoya package finding an upstream engine
+    // already reports only adds its fix to that finding's remediation; the rest stand alone.
+    let synvoyaRow: EngineRunInfo | undefined;
+    if (synvoyaResult) {
+      const enrichment = enrichUpstream(allFindings, synvoyaResult.findings);
+      allFindings = [...enrichment.upstream, ...enrichment.standalone];
+      Object.assign(componentSignatures, synvoyaResult.componentSignatures);
+      const folded = synvoyaResult.findings.length - enrichment.standalone.length;
+      const foldedNote = folded > 0
+        ? ` ${folded} Synvoya finding(s) duplicated an upstream finding; ${enrichment.enriched} matching upstream finding(s) gained its fix instead.`
+        : "";
+      synvoyaRow = {
+        ...synvoyaResult.info,
+        // Recounted after routing and dedup below, so the row matches the findings shown.
+        finding_count: enrichment.standalone.length,
+        ...(synvoyaResult.info.note || foldedNote ? { note: `${synvoyaResult.info.note ?? ""}${foldedNote}`.trim() } : {}),
+      };
+      engineDetails.push(synvoyaRow);
+      warnings.push(...synvoyaResult.warnings);
+    }
+
     // CG-30 git-aware file routing: classify each finding by WHERE it lives (node_modules /
     // build output / git-ignored / tracked) and set severity+framing accordingly. Runs
     // BEFORE dedup so severity-first dedup (CG-24) operates on the corrected severities.
@@ -379,7 +443,10 @@ export async function executeScan(
     }
 
     // Dedup (global + secret overlap), then compliance-tag.
-    const { findings: deduped, stats } = dedupFindings(routed);
+    const { findings: dedupedRaw, stats } = dedupFindings(routed);
+    // Display family only: runs once, after dedup, so no key, fingerprint or id ever sees it.
+    const deduped = dedupedRaw.map(withEngineFamily);
+    if (synvoyaRow) synvoyaRow.finding_count = deduped.filter((finding) => finding.engines.includes("synvoya")).length;
     if (stats.merged > 0) log.debug(`dedup merged ${stats.merged} overlapping findings`);
     // Single chokepoint before persistence and every presentation surface: context windows can
     // carry neighbouring or truncated credentials that per-engine redaction cannot localize.
@@ -387,6 +454,8 @@ export async function executeScan(
       const scrub = { literalValues: isConfigurationFile(finding.location.file) };
       if (finding.location.snippet) finding.location.snippet = scrubCredentialContext(finding.location.snippet, scrub);
       finding.message = scrubCredentialContext(finding.message, scrub);
+      // Synvoya titles quote the declared version as written in the repository.
+      if (finding.engine === "synvoya") finding.title = scrubCredentialContext(finding.title, scrub);
     }
     await tagFindings(deduped);
 
@@ -414,8 +483,27 @@ export async function executeScan(
       componentSignatures,
     );
 
+    // Review I-6: Trivy honours in-source ignore comments it cannot be told to disregard.
+    const trivyIgnores = await trivyIgnoreProbe;
+    const trivyIgnoreWarning = trivyIgnores && engineDetails.some((engine) => engine.engine === "trivy" && engine.ran)
+      ? trivyInlineIgnoreWarning(trivyIgnores)
+      : undefined;
+    if (trivyIgnoreWarning) warnings.push(trivyIgnoreWarning);
+
+    // A gap only matters for a scanner class this scan runs: SAST gaps with sast, lockfile gaps with vuln.
+    const gapDiscovery = await gapProbe;
+    if (gapDiscovery.limitation) warnings.push(gapDiscovery.limitation);
+    const coverageGaps = [
+      ...gapDiscovery.gaps.filter((gap) => wants(input, gap.id.endsWith("-sast") ? "sast" : "vuln")),
+      ...engineGaps,
+    ].sort((left, right) => COVERAGE_GAP_IDS.indexOf(left.id) - COVERAGE_GAP_IDS.indexOf(right.id));
+    const coverageNotes: CoverageNote[] = defaultScopeNotes({ engine_details: engineDetails, pack_coverage: packCoverage });
+    if (runSast && gapDiscovery.scriptNote) coverageNotes.push({ component: "scope:scripts", detail: gapDiscovery.scriptNote });
+    // Synvoya notes quote repository text (image references, declared versions): the same scrub as snippets.
+    for (const detail of synvoyaResult?.notes ?? []) coverageNotes.push({ component: "engine:synvoya", detail: scrubCredentialContext(detail) });
     const engineSetup = await inspectEngineSetup();
-    const canonical: ScanResult = {
+    // Fix round 3: notes and warnings that can embed repository paths are escaped once, here.
+    const canonical: ScanResult = escapeScanDisplayText({
       scan_id: `scan-${randomUUID()}`,
       target,
       ...(targetInspection.repository_root ? { repository_root: targetInspection.repository_root } : {}),
@@ -437,7 +525,11 @@ export async function executeScan(
       warnings,
       ...(secretCoverage ? { secret_coverage: secretCoverage } : {}),
       ...(secretSuppression ? { secret_suppression: secretSuppression } : {}),
+      ...(coverageGaps.length ? { coverage_gaps: coverageGaps } : {}),
+      ...(input.accept_gaps?.length ? { accepted_gaps: [...new Set(input.accept_gaps)] } : {}),
+      ...(coverageNotes.length ? { coverage_notes: coverageNotes } : {}),
       component_signatures: componentSignatures,
+      ...(synvoyaResult?.info.ran ? { synvoya_checked: synvoyaResult.evidence.checked } : {}),
       ...(nativeResult?.securityControlEvidence.length
         ? { security_control_evidence: nativeResult.securityControlEvidence }
         : {}),
@@ -452,7 +544,7 @@ export async function executeScan(
         ...(input.severity_threshold ? { severity_threshold: input.severity_threshold } : {}),
         max_findings: max,
       },
-    };
+    });
 
     canonical.compliance_overview = await buildComplianceOverview(sorted);
     if (options.persist !== false) await saveScan(canonical, { canonicalFindings: true });

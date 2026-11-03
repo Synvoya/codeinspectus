@@ -478,6 +478,68 @@ describe("osv-scanner result mapping", () => {
     );
   });
 
+  describe("Drupal contrib repository prefix", () => {
+    const REPO = "https://packages.drupal.org/8:";
+    const vuln = (id: string, ecosystem: string, name: string, fixed: string) => ({
+      id,
+      summary: "x",
+      aliases: [],
+      affected: [{ package: { ecosystem, name }, ranges: [{ type: "ECOSYSTEM", events: [{ introduced: "0" }, { fixed }] }] }],
+    });
+    const drupalAndNpm = () => doc("composer.lock", [
+      pkg("Packagist", "drupal/ai", "1.4.0", [{ ids: ["DRUPAL-CONTRIB-2026-254"] }], [
+        vuln("DRUPAL-CONTRIB-2026-254", "Packagist", `${REPO}drupal/ai`, "1.4.11"),
+      ]),
+      pkg("npm", "lodash", "4.17.4", [{ ids: ["GHSA-aaaa-bbbb-cccc"] }], [
+        vuln("GHSA-aaaa-bbbb-cccc", "npm", "lodash", "4.17.21"),
+      ]),
+    ]);
+    const scanBoth = (output: object) => scan({ output, code: 1, lockfiles: { "composer.lock": "{}" }, db: { Packagist: "installed", npm: "installed" } });
+
+    it("names the fixed version when OSV keys the package with a repository prefix", async () => {
+      const { result } = await scanBoth(drupalAndNpm());
+      const drupal = result.findings.find((item) => item.package?.name === "drupal/ai")!;
+
+      expect(drupal.remediation.summary).toContain("1.4.11");
+      expect(drupal.remediation.summary).not.toContain("not listed as affected");
+    });
+
+    it("strips the prefix from a fixed version string too", async () => {
+      const output = doc("composer.lock", [
+        pkg("Packagist", "drupal/ai", "1.4.0", [{ ids: ["DRUPAL-CONTRIB-2026-254"] }], [
+          vuln("DRUPAL-CONTRIB-2026-254", "Packagist", "drupal/ai", `${REPO}1.4.11`),
+        ]),
+      ]);
+      const { result } = await scanBoth(output);
+
+      expect(result.findings[0]!.remediation.summary).toContain("Upgrade drupal/ai to 1.4.11,");
+    });
+
+    it("leaves other findings' remediation and every fingerprint unchanged", async () => {
+      const { result } = await scanBoth(drupalAndNpm());
+      const byName = Object.fromEntries(result.findings.map((item) => [item.package?.name, item]));
+
+      expect(byName["lodash"]!.remediation.summary).toContain("4.17.21");
+      expect(byName["drupal/ai"]!.fingerprint).toBe(
+        makeFingerprint(["osv-scanner", "composer.lock", "drupal/ai", "1.4.0", "DRUPAL-CONTRIB-2026-254"]),
+      );
+      expect(byName["lodash"]!.fingerprint).toBe(
+        makeFingerprint(["osv-scanner", "composer.lock", "lodash", "4.17.4", "GHSA-aaaa-bbbb-cccc"]),
+      );
+    });
+
+    it("does not strip a prefix from another ecosystem's names", async () => {
+      const output = doc("package-lock.json", [
+        pkg("npm", "drupal/ai", "1.4.0", [{ ids: ["GHSA-aaaa-bbbb-cccc"] }], [
+          vuln("GHSA-aaaa-bbbb-cccc", "npm", `${REPO}drupal/ai`, "1.4.11"),
+        ]),
+      ]);
+      const { result } = await scan({ output, code: 1, lockfiles: { "package-lock.json": "{}" }, db: { npm: "installed" } });
+
+      expect(result.findings[0]!.remediation.summary).toContain("not listed as affected");
+    });
+  });
+
   it("passes the finding schema, including the structured package field", async () => {
     const { result } = await vulnerable();
 
@@ -723,6 +785,44 @@ describe("osv-scanner dependency coverage", () => {
     expect(result.warnings).toEqual([]);
     // The files the JSON listed packages from, so the scan can note a detected lockfile it did not list.
     expect(result.lockfiles).toEqual(["requirements.txt"]);
+  });
+
+  it("exposes every package it listed, vulnerable or not, with its target-relative file (the Synvoya inventory)", async () => {
+    const { result } = await scan({
+      output: {
+        results: [
+          {
+            source: { path: "<target>/web/package-lock.json", type: "lockfile" },
+            packages: [pkg("npm", "lodash", "4.17.4", [{ ids: ["GHSA-x"], aliases: ["CVE-1"] }]), pkg("npm", "left-pad", "1.3.0")],
+          },
+          { source: { path: "<target>/requirements.txt", type: "lockfile" }, packages: [pkg("PyPI", "requests", "2.19.0")] },
+        ],
+      },
+      code: 1,
+      lockfiles: { "web/package-lock.json": PACKAGE_LOCK, "requirements.txt": REQUIREMENTS },
+      db: { npm: "installed", PyPI: "installed" },
+    });
+    expect(result.packages).toEqual([
+      { ecosystem: "npm", name: "lodash", version: "4.17.4", file: "web/package-lock.json" },
+      { ecosystem: "npm", name: "left-pad", version: "1.3.0", file: "web/package-lock.json" },
+      { ecosystem: "PyPI", name: "requests", version: "2.19.0", file: "requirements.txt" },
+    ]);
+  });
+
+  it("marks a package whose source is outside the target, so its line is never looked up in a same-named file", async () => {
+    const { result } = await scan({
+      output: { results: [{ source: { path: "/elsewhere/package-lock.json", type: "lockfile" }, packages: [pkg("npm", "left-pad", "1.3.0")] }] },
+      code: 0,
+      lockfiles: { "package-lock.json": PACKAGE_LOCK },
+      db: { npm: "installed" },
+    });
+    expect(result.packages).toEqual([{ ecosystem: "npm", name: "left-pad", version: "1.3.0", file: "package-lock.json", outside: true }]);
+  });
+
+  it("lists no packages for a run that did not complete", async () => {
+    const { result } = await scan({ output: null, code: 2, lockfiles: { "requirements.txt": REQUIREMENTS }, db: { PyPI: "installed" } });
+    expect(result.info.ran).toBe(false);
+    expect(result.packages ?? []).toEqual([]);
   });
 
   it("reports no database_version when the install recorded no upstream date, never the archive hash", async () => {

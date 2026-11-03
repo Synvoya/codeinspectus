@@ -276,6 +276,13 @@ Apache-2.0.** Convergent functional idioms; the public registry was referenced d
 **no expression copied** (merger / scenes a faire). See LICENSE-PROVENANCE.md +
 `docs/legal/RULE-DERIVATION-REVIEWS.md`.
 
+Detection database 1.19.1 (2026-10-31) removed four pattern arms that could never report a finding
+(`$T = Math.random()` in `crypto.yaml`, the template-literal `$FS.readFile` arm in `injection.yaml`,
+and the template-literal `fetch`/`axios.get` arms in `ssrf.yaml`): each matched without binding the
+metavariable the rule's `metavariable-pattern` then checks, so Opengrep reported an internal matching
+error instead. Nothing was added; rule ids, languages, CWEs and messages are unchanged. Every rule
+has true-positive cases in `fixtures/coverage-honesty-corpus/opengrep-rules/` (eval E75).
+
 | Rule id | File | Langs | CWE | What it flags |
 |---|---|---|---|---|
 | `ci-baseline-weak-hash` | `crypto.yaml` | js,ts | CWE-327 | Weak hashing algorithm (MD5/SHA1) |

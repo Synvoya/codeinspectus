@@ -15,9 +15,7 @@ rules:
     patterns:
       - pattern-either:
           - pattern: fetch($U + ..., ...)
-          - pattern: fetch(`...${...}...`, ...)
           - pattern: axios.get($U + ..., ...)
-          - pattern: axios.get(`...${...}...`, ...)
           - pattern: $H.get($U + ..., ...)
           - pattern: $H.request($U + ..., ...)
       - metavariable-pattern:

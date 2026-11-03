@@ -1,0 +1,6 @@
+<project>
+  <properties>
+    <java.version>11</java.version>
+    <maven.compiler.release>17</maven.compiler.release>
+  </properties>
+</project>

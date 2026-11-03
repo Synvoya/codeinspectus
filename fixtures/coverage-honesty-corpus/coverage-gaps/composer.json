@@ -1,0 +1,4 @@
+{
+  "name": "fixture/coverage-gaps",
+  "require": { "php": ">=8.1", "monolog/monolog": "^3.0" }
+}
