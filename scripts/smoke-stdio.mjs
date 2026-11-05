@@ -146,8 +146,9 @@ async function waitFor(id, timeoutMs = 8000) {
   // A full-project scan invokes all managed engines and can legitimately take
   // longer than the lightweight initialize/tools-list requests, especially on
   // cold CI runners. Keep the short default for protocol calls, but give the
-  // scanner a bounded, engine-appropriate window.
-  const scan = await waitFor(4, 30_000);
+  // scanner a bounded, engine-appropriate window (90 s: the macOS Intel runner took over 30 s on the
+  // 4.0 tree, which scans in about 7 s locally).
+  const scan = await waitFor(4, 90_000);
   const sc = scan.result?.structuredContent;
   if (!sc || typeof sc.scan_id !== "string") throw new Error("scan returned no structuredContent");
   if (!Array.isArray(sc.detected_technologies)) throw new Error("scan returned no detected_technologies array");
