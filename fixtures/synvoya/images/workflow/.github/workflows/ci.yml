@@ -1,0 +1,13 @@
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: node:18-bullseye
+    services:
+      db:
+        image: postgres:13.4
+      cache:
+        image: redis
+  build:
+    container:
+      image: python:3.9
+    steps: []

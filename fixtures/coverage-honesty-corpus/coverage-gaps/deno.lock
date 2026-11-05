@@ -1,0 +1,19 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:axios@1.18.0": "1.18.0",
+    "npm:node-forge@1.4.0": "1.4.0"
+  },
+  "npm": {
+    "axios@1.18.0": {
+      "integrity": "sha512-AAAA",
+      "dependencies": []
+    },
+    "node-forge@1.4.0": {
+      "integrity": "sha512-BBBB"
+    }
+  },
+  "workspace": {
+    "dependencies": ["npm:axios@1.18.0", "npm:node-forge@1.4.0"]
+  }
+}

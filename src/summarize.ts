@@ -3,9 +3,11 @@
  * Kept compact to protect the agent's context window (PRD §5 output discipline).
  */
 
+import { describeCoverageGap } from "./coverage-gaps.js";
 import { SEVERITY_RANK, type ScanResult, type RescanResult, type Finding, type DependencyCoverage } from "./types.js";
 import { TRIVY_DB_PROVENANCE_MESSAGE } from "./trivy-db-provenance.js";
 import { engineSetupMessage } from "./engine-health.js";
+import { SYNVOYA_FAMILY_DISPLAY, displayEnginesRun, isSynvoyaFinding } from "./synvoya/family.js";
 import type { RepositoryArtifact, RepositoryTrustDocument } from "./repository-trust/schemas.js";
 import { inlineField } from "./util/terminal.js";
 
@@ -36,16 +38,40 @@ function technologyAndPackSummary(
 function dependencyCoverageSummary(coverage: DependencyCoverage[] | undefined): string {
   if (!coverage?.length) return "";
   const lines = coverage.map((entry) => {
-    const snapshot = entry.database_version ? `, snapshot ${entry.database_version}` : "";
+    // Native Pub skips only git/custom-hosted packages it cannot verify and matches a bundled snapshot;
+    // osv-scanner skips the packages of an ecosystem it could not check and reads an installed database.
+    const pub = entry.engine === "codeinspectus-pub";
+    const skipped = pub ? "unverifiable git/custom-hosted" : "not checked";
+    const database = entry.database_version ? `, ${pub ? "snapshot" : "database"} ${entry.database_version}` : "";
     const limitation = entry.note ? ` — ${inlineField(entry.note)}` : "";
     return (
       `${entry.ecosystem}/${entry.engine}=${entry.state} ` +
       `(${entry.lockfiles.analyzed}/${entry.lockfiles.discovered} lockfiles, ` +
       `${entry.packages.eligible}/${entry.packages.resolved} eligible packages, ` +
-      `${entry.packages.skipped} unverifiable git/custom-hosted${snapshot})${limitation}`
+      `${entry.packages.skipped} ${skipped}${database})${limitation}`
     );
   });
-  return `\n\nNative dependency coverage (exact locked-version matching only):\n  ${lines.join("\n  ")}`;
+  return `\n\nDependency coverage (exact locked-version matching only):\n  ${lines.join("\n  ")}`;
+}
+
+const SYNVOYA_NOTES_SHOWN = 10;
+
+/** The Synvoya gap layer's engine row and its coverage notes (the full list stays in coverage_notes). */
+function synvoyaSummary(r: ScanResult): string {
+  const row = r.engine_details.find((engine) => engine.engine === "synvoya");
+  if (!row) return "";
+  const state = row.ran ? "ran" : row.available ? "did not run" : "unavailable";
+  const notes = (r.coverage_notes ?? []).filter((note) => note.component === "engine:synvoya");
+  const shown = notes.slice(0, SYNVOYA_NOTES_SHOWN).map((note) => `\n  - ${inlineField(note.detail)}`).join("");
+  const more = notes.length > SYNVOYA_NOTES_SHOWN ? `\n  - … ${notes.length - SYNVOYA_NOTES_SHOWN} more in coverage_notes` : "";
+  // The note doubles as the scan warning, so it repeats the state; the row has already said it.
+  const note = row.note?.replace(/^Synvoya gap advisories (?:unavailable|did not run): /, "");
+  return (
+    `\n\nSynvoya gap advisories: synvoya@${inlineField(row.version)} ${state}, ${row.finding_count} finding(s)` +
+    (note ? ` — ${inlineField(note)}` : "") +
+    shown +
+    more
+  );
 }
 
 function topLines(findings: Finding[], n: number): string {
@@ -53,7 +79,7 @@ function topLines(findings: Finding[], n: number): string {
     .slice(0, n)
     .map(
       (f) =>
-        `  • [${f.severity}]${f.scope_role ? ` [${f.scope_role === "primary" ? "changed" : "supporting context"}]` : ""} ${inlineField(f.title)} — ${inlineField(f.location.file)}:${f.location.start_line} (${f.cwe.join(", ")}, ${f.engine})`,
+        `  • [${f.severity}]${f.scope_role ? ` [${f.scope_role === "primary" ? "changed" : "supporting context"}]` : ""} ${inlineField(f.title)} — ${inlineField(f.location.file)}:${f.location.start_line} (${f.cwe.join(", ")}, ${f.engine_family || isSynvoyaFinding(f) ? `${SYNVOYA_FAMILY_DISPLAY}: ` : ""}${f.engine})`,
     )
     .join("\n");
 }
@@ -108,12 +134,13 @@ export function summarizeScan(r: ScanResult): string {
   const head =
     `CodeInspectus scan of ${inlineField(r.target)}\n` +
     `${severityHeadline(r)}\n` +
-    `Engines: ${r.engines_run.join(", ")} | offline: ${r.offline}` +
+    `Engines: ${displayEnginesRun(r.engines_run).join(", ")} | offline: ${r.offline}` +
     (r.trivy_db_date ? ` | trivy DB: ${r.trivy_db_date}` : "") +
     (r.secret_coverage === "unverified" ? " | secret coverage: UNVERIFIED" : "");
 
   const engineNotes = r.engine_details
-    .filter((e) => !e.ran && e.note)
+    // The Synvoya row has its own section.
+    .filter((e) => !e.ran && e.note && e.engine !== "synvoya")
     .map((e) => `  ! ${e.engine}: ${inlineField(e.note ?? "")}`)
     .join("\n");
 
@@ -163,6 +190,16 @@ export function summarizeScan(r: ScanResult): string {
       })()
     : "";
 
+  const accepted = new Set<string>(r.accepted_gaps ?? []);
+  const gaps = r.coverage_gaps?.length
+    ? `\n\nCoverage gaps (coverage is partial; accept with --accept-gaps <id> / accept_gaps):\n  - ` +
+      r.coverage_gaps.map((gap) => inlineField(describeCoverageGap(gap, accepted.has(gap.id)))).join("\n  - ")
+    : "";
+  const otherNotes = (r.coverage_notes ?? []).filter((note) => note.component !== "engine:synvoya");
+  const notes = otherNotes.length
+    ? `\n\nCoverage notes (informational; not gaps):\n  - ` +
+      otherNotes.map((note) => inlineField(note.detail)).join("\n  - ")
+    : "";
   const nativeCoverage = technologyAndPackSummary(r.detected_technologies, r.pack_coverage);
   const repositoryTrust = repositoryTrustSummary(r.repository_trust);
   const dependencyCoverage = dependencyCoverageSummary(r.dependency_coverage);
@@ -172,7 +209,7 @@ export function summarizeScan(r: ScanResult): string {
       ` | ${r.git_scope.entries.length} change record(s) | ${r.git_scope.primary_finding_count} changed-path finding(s) | ${r.git_scope.supporting_context_finding_count} supporting-context finding(s) | ${r.git_scope.completeness}`
     : "";
 
-  return `${head}${gitScope}${nativeCoverage}${repositoryTrust}${dependencyCoverage}${body}${trunc}${controlEvidence}${dbProvenance}${engineSetup}${beforeFix}${eng}${warn}\n\n${r.disclaimer}`;
+  return `${head}${gitScope}${nativeCoverage}${repositoryTrust}${dependencyCoverage}${synvoyaSummary(r)}${body}${trunc}${controlEvidence}${dbProvenance}${engineSetup}${beforeFix}${eng}${gaps}${notes}${warn}\n\n${r.disclaimer}`;
 }
 
 export function summarizeRescan(r: RescanResult): string {

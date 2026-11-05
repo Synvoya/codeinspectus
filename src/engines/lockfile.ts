@@ -7,8 +7,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import { ENGINES_LOCKFILE, type EngineName } from "../config.js";
 
 export interface Provenance {
-  /** "cosign" (signature-verified) | "checksums" (checksum-only; no publisher signature). */
-  method: "cosign" | "checksums";
+  /**
+   * "cosign" (signature-verified) | "checksums" (checksum-only; no publisher signature) |
+   * "slsa" (checksum-matched asset whose SLSA provenance attestation verified).
+   */
+  method: "cosign" | "checksums" | "slsa";
   verified: boolean;
   at: string;
   identity?: string;
@@ -32,8 +35,10 @@ export interface EngineLockEntry {
   version: string;
   repo: string;
   release_base: string;
-  signature: "cosign" | "checksums" | "checksums+sigstore";
+  signature: "cosign" | "checksums" | "checksums+sigstore" | "checksums+slsa";
   checksums_asset: string | null;
+  /** SLSA provenance bundle published with the release (checksums+slsa only). */
+  attestation_asset?: string;
   platforms: Record<string, PlatformEntry>;
   _security_note?: string;
 }
@@ -42,6 +47,8 @@ export interface Lockfile {
   schema_version: number;
   generated_at: string | null;
   sigstore_identities?: Record<string, string>;
+  /** Pinned `owner/repo` the SLSA attestation must come from, per checksums+slsa engine. */
+  slsa_workflow_repositories?: Record<string, string>;
   engines: Record<EngineName, EngineLockEntry>;
   /** Bootstrap tools are not scanners, but use the same immutable release-pin shape. */
   verifiers?: { cosign: EngineLockEntry };

@@ -1,0 +1,7 @@
+services:
+  app:
+    image: example/app:1.0
+    environment:
+      DATABASE_URL: postgresql://app:app@db:5432/app
+      APP_SECRET: replace-me-with-a-random-string
+      - JWT_SECRET=changeme

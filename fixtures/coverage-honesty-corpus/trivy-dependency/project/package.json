@@ -1,0 +1,10 @@
+{
+  "name": "trivy-dependency",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "lodash": "4.17.4",
+    "minimist": "1.2.0",
+    "node-forge": "1.4.0"
+  }
+}

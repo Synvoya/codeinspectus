@@ -1,0 +1,6 @@
+# Debug databases only.
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: password

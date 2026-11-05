@@ -1,8 +1,10 @@
+import type { CoverageGapId } from "./coverage-gaps.js";
 import {
   DEFAULT_MAX_FINDINGS,
   ENGINE_TIMEOUT_MS,
   MAX_BUFFER_BYTES,
   SERVER_VERSION,
+  type EngineName,
 } from "./config.js";
 import { inspectEngineSetup } from "./engine-health.js";
 import { listNativePacks } from "./packs/registry.js";
@@ -41,6 +43,10 @@ export interface CliScanConfiguration {
   baseline_scan_id?: string;
   fail_on_new_severity?: Severity;
   git_scope?: { mode: "commit_diff" | "working_tree"; base: string; head?: string };
+  /** Declared coverage gap ids accepted for CI (`--accept-gaps`). */
+  accept_gaps?: CoverageGapId[];
+  /** Include licence findings (`--licenses`); off by default since 4.0. */
+  include_licenses?: boolean;
 }
 
 export interface PreflightPackApplicability {
@@ -88,7 +94,7 @@ export interface PreflightResult {
   native_pack_applicability: PreflightPackApplicability[];
   engine_setup: EngineSetupStatus;
   engine_integrity: Array<{
-    engine: "opengrep" | "gitleaks" | "trivy";
+    engine: EngineName;
     version: string;
     selected: boolean;
     state: string;
@@ -114,21 +120,29 @@ function unique<T>(values: readonly T[]): T[] {
   return [...new Set(values)];
 }
 
-function selectedExternalEngines(scanners: readonly ScannerKind[]): Array<"opengrep" | "gitleaks" | "trivy"> {
+function selectedExternalEngines(scanners: readonly ScannerKind[]): EngineName[] {
   return unique([
     ...(scanners.includes("sast") ? ["opengrep" as const] : []),
     ...(scanners.includes("secret") ? ["gitleaks" as const] : []),
     ...(scanners.some((scanner) => ["secret", "vuln", "misconfig", "license"].includes(scanner))
       ? ["trivy" as const]
       : []),
+    ...(scanners.includes("vuln") ? ["osv-scanner" as const] : []),
   ]);
 }
+
+/** Selected when in scope, but additive: a scan without it is complete for the other engines, so it never blocks readiness. */
+const ADDITIVE_ENGINES: ReadonlySet<EngineName> = new Set(["osv-scanner"]);
 
 function scannerComponents(scanner: ScannerKind): string[] {
   switch (scanner) {
     case "sast": return ["opengrep", "native javascript-baseline pack"];
     case "secret": return ["gitleaks", "trivy secret scanner", "applicable native secret checks"];
-    case "vuln": return ["trivy vulnerability scanner", "native Pub advisory matcher when applicable"];
+    case "vuln": return [
+      "trivy vulnerability scanner",
+      "native Pub advisory matcher when applicable",
+      "osv-scanner against installed OSV ecosystem databases when installed",
+    ];
     case "misconfig": return ["trivy misconfiguration scanner"];
     case "license": return ["trivy license scanner"];
     case "ai": return ["applicable first-party native packs"];
@@ -232,7 +246,10 @@ export async function runPreflight(
   const selectedEngines = selectedExternalEngines(scanners);
   const selectedTrivyDatabase = scanners.includes("vuln");
   const selectedEngineBroken = engineSetup.engines.some(
-    (engine) => selectedEngines.includes(engine.engine) && engine.state !== "ready",
+    (engine) => selectedEngines.includes(engine.engine) && !ADDITIVE_ENGINES.has(engine.engine) && engine.state !== "ready",
+  );
+  const unavailableAdditive = engineSetup.engines.filter(
+    (engine) => selectedEngines.includes(engine.engine) && ADDITIVE_ENGINES.has(engine.engine) && engine.state !== "ready",
   );
   const selectedDbMissing = selectedTrivyDatabase && engineSetup.trivy_db.state === "missing";
   const repairRequired = selectedEngineBroken || selectedDbMissing;
@@ -250,6 +267,9 @@ export async function runPreflight(
       ? [`Trivy vulnerability database state is ${engineSetup.trivy_db.state}; current findings may run, but provenance/freshness continuity is limited.`]
       : []),
     ...(repairRequired ? ["Selected scanner scope requires engine or vulnerability-database repair before complete execution."] : []),
+    ...unavailableAdditive.map((engine) =>
+      `${engine.engine} is ${engine.state}, so the scan will not include its OSV dependency matching (malicious-package and OSV advisories); ` +
+        "run `codeinspectus setup` to review and install it."),
   ];
 
   return {

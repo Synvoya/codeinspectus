@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../engines/trivy.js", () => ({
   runTrivy: vi.fn(async () => ({
     engine: "trivy",
-    version: "0.71.2",
+    version: "0.76.1",
     available: false,
     ran: false,
     durationMs: 1,
@@ -15,6 +15,17 @@ vi.mock("../engines/trivy.js", () => ({
   readTrivyDbDate: vi.fn(async () => undefined),
 }));
 vi.mock("../store.js", () => ({ saveScan: vi.fn(async () => undefined) }));
+// osv-scanner is covered by scan-osv-integration.test.ts; here it is absent so no binary ever runs.
+vi.mock("../engines/osv-scanner.js", () => ({
+  runOsvScanner: vi.fn(async () => ({
+    info: { engine: "osv-scanner", version: "unknown", available: false, ran: false, finding_count: 0, duration_ms: 0 },
+    applicable: false,
+    findings: [],
+    coverage: [],
+    componentSignatures: {},
+    warnings: [],
+  })),
+}));
 
 const { runScan } = await import("../scan.js");
 const { scanResultSchema } = await import("../schemas.js");
@@ -100,7 +111,10 @@ describe("scan orchestrator native Pub integration", () => {
       lockfiles: { discovered: 0, analyzed: 0 },
     });
     expect(result.dependency_coverage?.[0]?.limitations.join(" ")).toMatch(/symbolic-link path mobile/i);
-    expect(result.warnings.join(" ")).toMatch(/Technology detection was partial.*mobile.*symlink_skipped/i);
+    // Ruling 30 (review I-3): the link resolves outside the scan root, so it is not the acceptable gap
+    // symlinked-paths; technology detection reports it as a partial limit.
+    expect(result.coverage_gaps?.some((gap) => gap.id === "symlinked-paths") ?? false).toBe(false);
+    expect(result.warnings.join(" ")).toMatch(/mobile \(symlink_skipped\)/);
   });
 
   it("maps a complete no-lockfile probe back to not_applicable", async () => {

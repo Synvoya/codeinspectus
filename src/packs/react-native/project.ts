@@ -1,5 +1,6 @@
 /** Read-only, bounded React Native JavaScript/TypeScript project loading. */
 
+import type { NativeGapRecord } from "../../native-gaps.js";
 import { constants, type BigIntStats, type Dirent } from "node:fs";
 import { lstat, open, opendir, type FileHandle } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -31,6 +32,8 @@ export interface ReactNativeProject {
   root: string;
   files: JsDocument[];
   limitations?: string[];
+  /** Declared gaps hit while loading (native-gaps.ts). */
+  gaps?: NativeGapRecord[];
 }
 
 export type ReactNativeProjectInput = string | ReactNativeProject | Promise<ReactNativeProject>;
@@ -168,11 +171,14 @@ async function loadFile(
   }
 }
 
+/** An unparsed file is the declared gap native-parse-errors, recorded where it is detected. */
+function documentGap(document: JsDocument): NativeGapRecord | undefined {
+  if (document.balanced) return undefined;
+  return { id: document.oversized ? "oversized-files" : "native-parse-errors", path: document.path };
+}
+
 function documentLimitations(document: JsDocument): string[] {
   const notes: string[] = [];
-  if (!document.balanced) {
-    notes.push(`Skipped structurally malformed JavaScript/TypeScript source ${document.path}.`);
-  }
   if (document.hasDynamicJsxSpread) {
     notes.push(`Dynamic JSX spread props in ${document.path} were not interpreted.`);
   }
@@ -186,6 +192,11 @@ async function loadUncached(
   const bounds = normalizedBounds(boundOverrides);
   const absoluteTarget = resolve(target);
   const limitations = limitationCollector();
+  const gaps: NativeGapRecord[] = [];
+  const recordGap = (document: JsDocument) => {
+    const gap = documentGap(document);
+    if (gap) gaps.push(gap);
+  };
   let targetMetadata;
   try {
     targetMetadata = await lstat(absoluteTarget);
@@ -217,6 +228,7 @@ async function loadUncached(
     );
     if (loaded.limitation) limitations.add(loaded.limitation);
     if (loaded.document) documentLimitations(loaded.document).forEach(limitations.add);
+    if (loaded.document) recordGap(loaded.document);
     if (loaded.document && loaded.document.tokens.length > bounds.maxTotalTokens) {
       limitations.add(
         `Stopped React Native source discovery at the ${bounds.maxTotalTokens}-token project bound.`,
@@ -227,6 +239,7 @@ async function loadUncached(
       root: dirname(absoluteTarget),
       files: loaded.document && loaded.document.tokens.length <= bounds.maxTotalTokens ? [loaded.document] : [],
       limitations: limitations.finish(),
+      gaps,
     };
   }
   if (!targetMetadata.isDirectory()) {
@@ -366,6 +379,7 @@ async function loadUncached(
       totalTokens += loaded.document.tokens.length;
       files.push(loaded.document);
       documentLimitations(loaded.document).forEach(limitations.add);
+      recordGap(loaded.document);
     }
   }
 
@@ -388,6 +402,7 @@ async function loadUncached(
     root: absoluteTarget,
     files,
     limitations: limitations.finish(),
+    gaps,
   };
 }
 

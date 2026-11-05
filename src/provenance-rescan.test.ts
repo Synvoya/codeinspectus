@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { externalFindingComponents, OPENGREP_PACK_INVOCATION } from "./provenance.js";
 import { diffRescan } from "./rescan.js";
 import { summarizeRescan } from "./summarize.js";
 import type { Engine, EngineRunInfo, Finding, ScanResult } from "./types.js";
@@ -232,6 +233,62 @@ describe("diffRescan — component provenance", () => {
     expect(diffRescan(scan([merged], priorComponents, ["opengrep", "gitleaks"]), scan([], freshComponents, ["opengrep", "gitleaks"])).summary).toMatchObject({
       resolved: 0,
       not_rechecked: 1,
+    });
+  });
+
+  // M4 Task 4: the Synvoya pack rules run in their own Opengrep pass with their own invocation signature.
+  describe("Opengrep baseline and Synvoya pack passes", () => {
+    const base = { [PIPELINE]: "p1", "opengrep:binary": "b1", "opengrep:ruleset": "r1", "opengrep:invocation": "i1" };
+    const packFinding = (): TestFinding => {
+      const pack = finding("pack", "opengrep", externalFindingComponents("opengrep", "sast", "syn-node-zip-slip"), "sast");
+      pack.rule_id = "syn-node-zip-slip";
+      return pack;
+    };
+    const baselineFinding = (): TestFinding =>
+      finding("baseline", "opengrep", externalFindingComponents("opengrep", "sast", "ci-baseline-ssrf-request-from-input"), "sast");
+
+    test("a pack finding depends on the pack invocation, a baseline finding on the baseline invocation", () => {
+      expect(packFinding().producer_components).toContain(OPENGREP_PACK_INVOCATION);
+      expect(packFinding().producer_components).not.toContain("opengrep:invocation");
+      expect(baselineFinding().producer_components).toContain("opengrep:invocation");
+      expect(baselineFinding().producer_components).not.toContain(OPENGREP_PACK_INVOCATION);
+    });
+
+    // M4 perf fix: the taint-mode baseline SQL rule runs in the bundle-skipping pass, so its findings
+    // depend on that pass's invocation (which records the skipped bundles), not the baseline one.
+    test("the moved taint baseline rule depends on the bundle-skipping pass invocation", () => {
+      const components = externalFindingComponents("opengrep", "sast", "ci-baseline-sql-injection-string-build");
+      expect(components).toContain(OPENGREP_PACK_INVOCATION);
+      expect(components).not.toContain("opengrep:invocation");
+      const sql = finding("sql", "opengrep", components, "sast");
+      sql.rule_id = "ci-baseline-sql-injection-string-build";
+      const prior = { ...base, [OPENGREP_PACK_INVOCATION]: "k1" };
+      const fresh = { ...base, [OPENGREP_PACK_INVOCATION]: "k2" };
+      expect(diffRescan(scan([sql], prior, ["opengrep"]), scan([], fresh, ["opengrep"])).summary)
+        .toMatchObject({ resolved: 0, not_rechecked: 1 });
+    });
+
+    test("unchanged passes prove a vanished pack finding resolved", () => {
+      const components = { ...base, [OPENGREP_PACK_INVOCATION]: "k1" };
+      expect(diffRescan(scan([packFinding()], components, ["opengrep"]), scan([], components, ["opengrep"])).summary)
+        .toMatchObject({ resolved: 1, not_rechecked: 0 });
+    });
+
+    test("a rescan whose pack pass failed or skipped other bundles cannot resolve a pack finding", () => {
+      const prior = { ...base, [OPENGREP_PACK_INVOCATION]: "k1" };
+      for (const fresh of [base, { ...base, [OPENGREP_PACK_INVOCATION]: "k2" }]) {
+        const result = diffRescan(scan([packFinding(), baselineFinding()], prior, ["opengrep"]), scan([], fresh, ["opengrep"]));
+        expect(result.not_rechecked.map((f) => f.fingerprint)).toEqual(["pack"]);
+        expect(result.resolved.map((f) => f.fingerprint)).toEqual(["baseline"]);
+      }
+    });
+
+    test("a pre-routing scan's pack finding (single-pass invocation) is not resolved by a two-pass rescan", () => {
+      const legacy = finding("legacy-pack", "opengrep", externalFindingComponents("opengrep", "sast"), "sast");
+      legacy.rule_id = "syn-php-sqli";
+      const fresh = { ...base, "opengrep:invocation": "i2", [OPENGREP_PACK_INVOCATION]: "k1" };
+      expect(diffRescan(scan([legacy], base, ["opengrep"]), scan([], fresh, ["opengrep"])).summary)
+        .toMatchObject({ resolved: 0, not_rechecked: 1 });
     });
   });
 

@@ -1,0 +1,3 @@
+service:
+  # INTENTIONAL FAKE TEST DATA: not a real credential.
+  api_key: "Zx9QwErTy7UiOp3AsDfGh5JkLm2NbVcX"

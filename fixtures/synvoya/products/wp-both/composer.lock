@@ -1,0 +1,14 @@
+{
+    "_readme": ["This file locks the dependencies of your project to a known state"],
+    "packages": [
+        {
+            "name": "roots/wordpress",
+            "version": "6.5.2",
+            "type": "metapackage"
+        }
+    ],
+    "packages-dev": [
+
+    ],
+    "platform": {}
+}

@@ -426,3 +426,119 @@ describe("diffRescan — content anchors never absorb exact matches", () => {
     expect(diffRescan(prior, fresh).summary).toMatchObject({ resolved: 1, remaining: 1 });
   });
 });
+
+describe("diffRescan — osv-scanner findings and their OSV database signature", () => {
+  // Findings always list osv-scanner:vulnerability-db:<Eco>. In the wrapper's `partial` state (archive
+  // present, install record absent) no signature is emitted for it; a refresh changes the signature.
+  const OSV_COMPONENTS = [
+    "codeinspectus:pipeline",
+    "osv-scanner:binary",
+    "osv-scanner:invocation",
+    "osv-scanner:config",
+    "osv-scanner:vulnerability-db:PyPI",
+  ];
+  const signatures = (database?: string): Record<string, string> => ({
+    "codeinspectus:pipeline": "pipeline-v1",
+    "osv-scanner:binary": "sha256:binary",
+    "osv-scanner:invocation": "sha256:invocation",
+    "osv-scanner:config": "sha256:config",
+    ...(database ? { "osv-scanner:vulnerability-db:PyPI": database } : {}),
+  });
+  const osv = () => mkFinding({
+    fingerprint: "osv-litellm",
+    engine: "osv-scanner",
+    rule_id: "MAL-2026-2144",
+    finding_kind: "vulnerability",
+    location: { file: "requirements.txt", start_line: 1, end_line: 1 },
+    producer_components: OSV_COMPONENTS,
+    package: { ecosystem: "PyPI", name: "litellm", version: "1.107.0" },
+  });
+
+  test.each([
+    ["neither scan recorded the database", undefined, undefined],
+    ["the database was installed with a record before the rescan", undefined, "sha256:pypi-db"],
+    ["the record disappeared before the rescan", "sha256:pypi-db", undefined],
+  ])("an absent osv finding is not_rechecked, never resolved, when %s", (_label, priorDb, freshDb) => {
+    const prior = mkScan({
+      engine_details: [engineInfo("osv-scanner", true)],
+      component_signatures: signatures(priorDb),
+      findings: [osv()],
+    });
+    const fresh = mkScan({
+      scan_id: "scan-11111111-1111-4111-8111-111111111111",
+      engine_details: [engineInfo("osv-scanner", true)],
+      component_signatures: signatures(freshDb),
+      findings: [],
+    });
+    const result = diffRescan(prior, fresh);
+    expect(result.resolved).toEqual([]);
+    expect(result.not_rechecked.map((finding) => finding.fingerprint)).toEqual(["osv-litellm"]);
+    expect(result.not_rechecked[0]!.package).toEqual({ ecosystem: "PyPI", name: "litellm", version: "1.107.0" });
+  });
+
+  test("an OSV DB refresh makes osv findings not_rechecked, never resolved", () => {
+    const prior = mkScan({
+      engine_details: [engineInfo("osv-scanner", true)],
+      component_signatures: signatures("sha256:pypi-db-2026-10-01"),
+      findings: [osv()],
+    });
+    const rescan = (database: string) => mkScan({
+      scan_id: "scan-22222222-2222-4222-8222-222222222222",
+      engine_details: [engineInfo("osv-scanner", true)],
+      component_signatures: signatures(database),
+      findings: [],
+    });
+
+    const refreshed = diffRescan(prior, rescan("sha256:pypi-db-2026-10-30"));
+    expect(refreshed.resolved).toEqual([]);
+    expect(refreshed.not_rechecked.map((finding) => finding.fingerprint)).toEqual(["osv-litellm"]);
+    expect(refreshed.not_rechecked_note).toMatch(/checks changed/);
+
+    // Control: with the same PyPI database the absence is provable, so the refresh alone made it unprovable.
+    expect(diffRescan(prior, rescan("sha256:pypi-db-2026-10-01")).resolved.map((finding) => finding.fingerprint)).toEqual(["osv-litellm"]);
+  });
+
+  test("a still-present osv finding stays remaining and keeps its package", () => {
+    const prior = mkScan({ engine_details: [engineInfo("osv-scanner", true)], component_signatures: signatures(), findings: [osv()] });
+    const fresh = mkScan({ engine_details: [engineInfo("osv-scanner", true)], component_signatures: signatures(), findings: [osv()] });
+    const result = diffRescan(prior, fresh);
+    expect(result.summary).toMatchObject({ remaining: 1, resolved: 0, not_rechecked: 0 });
+    expect(result.remaining[0]!.package?.name).toBe("litellm");
+  });
+});
+
+describe("diffRescan — native JavaScript file selection changed in the coverage-honesty patch (review I2)", () => {
+  // Signatures CodeInspectus 3.3.2 recorded for the two parser components. The JSX retry, the
+  // Yarn-tooling skip and the token bound change which files are analyzed, so a finding absent after
+  // upgrading may sit in a file the new build skips: it must read not re-checked, never resolved.
+  const RELEASED_3_3_2 = {
+    "javascript:bounded-structural-parser": "sha256:19126721d10ba84605e343ba3155b93d65b3ddd072fcf8f7b8c7c6e7ee296e69",
+    "react-native:javascript-structural-parser": "sha256:fa67e54b2d3f6ed7a24da1817d43c2f51cde97393c1953f9cb30c84e7449a055",
+  };
+
+  test.each(Object.keys(RELEASED_3_3_2))("a prior native finding produced by %s is not re-checked after the upgrade", async (component) => {
+    const { staticComponentSignatures, PIPELINE_COMPONENT } = await import("./provenance.js");
+    const finding = mkFinding({
+      fingerprint: "yarn-plugin-finding",
+      engine: "codeinspectus-ai",
+      engines: ["codeinspectus-ai"],
+      location: { file: ".yarn/plugins/@yarnpkg/plugin.cjs", start_line: 4, end_line: 4 },
+      producer_components: [PIPELINE_COMPONENT, component],
+    });
+    const current = staticComponentSignatures([PIPELINE_COMPONENT, component]);
+    const prior = mkScan({
+      engine_details: [engineInfo("codeinspectus-ai", true)],
+      findings: [finding],
+      component_signatures: { ...current, [component]: RELEASED_3_3_2[component as keyof typeof RELEASED_3_3_2] },
+    });
+    const fresh = mkScan({
+      scan_id: "scan-22222222-2222-4222-8222-222222222222",
+      engine_details: [engineInfo("codeinspectus-ai", true)],
+      findings: [],
+      component_signatures: current,
+    });
+    const result = diffRescan(prior, fresh);
+    expect(result.summary.resolved).toBe(0);
+    expect(result.not_rechecked.map((f) => f.fingerprint)).toEqual(["yarn-plugin-finding"]);
+  });
+});

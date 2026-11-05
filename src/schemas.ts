@@ -11,6 +11,8 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { repositoryTrustChangesSchema, repositoryTrustDocumentSchema } from "./repository-trust/schemas.js";
 import { cleanupPlanObjectSchema, cleanupResultSchema } from "./repository-trust/cleanup.js";
+import { OSV_ECOSYSTEMS } from "./osv/ecosystems.js";
+import { COVERAGE_GAP_IDS } from "./coverage-gaps.js";
 
 // ── Enumerations ────────────────────────────────────────────────────────────
 export const severityEnum = z.enum(["critical", "high", "medium", "low", "info"]);
@@ -19,10 +21,14 @@ export const engineEnum = z.enum([
   "opengrep",
   "gitleaks",
   "trivy",
+  "osv-scanner",
   "codeinspectus-ai",
   "codeinspectus-pub",
+  "synvoya",
 ]);
+export const engineFamilyEnum = z.enum(["synvoya"]);
 export const scannerEnum = z.enum(["sast", "secret", "vuln", "misconfig", "license", "ai"]);
+export const osvEcosystemEnum = z.enum(OSV_ECOSYSTEMS);
 
 // ── scan_id hardening (CG-75 / Claim 2) ─────────────────────────────────────
 // scan_ids are generated as `scan-${randomUUID()}` (UUIDv4, lowercase hex) — see
@@ -75,6 +81,7 @@ export const findingSchema = z.object({
   severity: severityEnum,
   engine: engineEnum,
   engines: z.array(engineEnum),
+  engine_family: engineFamilyEnum.optional(),
   rule_id: z.string(),
   vulnerability_aliases: z.array(z.string()).optional(),
   cwe: z.array(z.string()),
@@ -92,6 +99,7 @@ export const findingSchema = z.object({
   producer_components: z.array(z.string()).optional(),
   finding_kind: z.enum(["vulnerability", "license", "misconfiguration", "secret", "sast", "ai", "other"]).optional(),
   scope_role: z.enum(["primary", "supporting_context"]).optional(),
+  package: z.object({ ecosystem: z.string(), name: z.string(), version: z.string() }).optional(),
 });
 
 export const summarySchema = z.object({
@@ -141,8 +149,8 @@ export const detectorPackCoverageSchema = z.object({
 });
 
 export const dependencyCoverageSchema = z.object({
-  ecosystem: z.literal("Pub"),
-  engine: z.literal("codeinspectus-pub"),
+  ecosystem: z.string(),
+  engine: z.enum(["codeinspectus-pub", "osv-scanner"]),
   state: z.enum(["ran", "partial", "not_run", "not_applicable", "unavailable"]),
   lockfiles: z.object({
     discovered: z.number().int().nonnegative(),
@@ -155,7 +163,7 @@ export const dependencyCoverageSchema = z.object({
   }),
   database_version: z.string().optional(),
   database_checked_at: z.string().optional(),
-  matching: z.literal("exact-enumerated-versions"),
+  matching: z.enum(["exact-enumerated-versions", "osv-scanner-offline"]),
   limitations: z.array(z.string()),
   note: z.string().optional(),
 });
@@ -165,7 +173,7 @@ export const engineSetupSchema = z.object({
   platform: z.string(),
   engines: z.array(
     z.object({
-      engine: z.enum(["opengrep", "gitleaks", "trivy"]),
+      engine: z.enum(["opengrep", "gitleaks", "trivy", "osv-scanner"]),
       version: z.string(),
       state: z.enum([
         "ready",
@@ -182,6 +190,16 @@ export const engineSetupSchema = z.object({
     state: z.enum(["ready", "missing", "provenance_missing", "stale"]),
     downloaded_at: z.string().optional(),
   }),
+  // Optional so scan results stored before OSV support still validate.
+  osv_databases: z
+    .array(
+      z.object({
+        ecosystem: osvEcosystemEnum,
+        state: z.enum(["ready", "provenance_missing", "stale"]),
+        downloaded_at: z.string().optional(),
+      }),
+    )
+    .optional(),
   repair_command: z.string().optional(),
   network_required: z.boolean(),
 });
@@ -280,7 +298,26 @@ export const scanResultSchema = z.object({
   warnings: z.array(z.string()),
   secret_coverage: z.enum(["verified", "unverified"]).optional(),
   secret_suppression: secretSuppressionSchema.optional(),
+  coverage_gaps: z.array(z.object({
+    id: z.enum(COVERAGE_GAP_IDS),
+    files: z.number().int().nonnegative(),
+    examples: z.array(z.string()),
+  })).optional(),
+  accepted_gaps: z.array(z.enum(COVERAGE_GAP_IDS)).optional(),
+  coverage_notes: z.array(z.object({ component: z.string(), detail: z.string() })).optional(),
   component_signatures: z.record(z.string()).optional(),
+  synvoya_checked: z
+    .object({
+      runtime: z.array(z.string()).optional(),
+      images: z.array(z.string()).optional(),
+      products: z.array(z.string()).optional(),
+      "inventory:osv-scanner": z.array(z.string()).optional(),
+      "inventory:trivy": z.array(z.string()).optional(),
+      vendored: z.array(z.string()).optional(),
+      "sbom:osv-scanner": z.array(z.string()).optional(),
+      actions: z.array(z.string()).optional(),
+    })
+    .optional(),
   security_control_evidence: z.array(securityControlEvidenceSchema).optional(),
   trivy_db_provenance: z
     .object({
@@ -297,6 +334,7 @@ export const scanResultSchema = z.object({
       scanners: z.array(scannerEnum).optional(),
       severity_threshold: severityEnum.optional(),
       max_findings: z.number().int(),
+      include_licenses: z.boolean().optional(),
     })
     .optional(),
   git_scope: gitScanScopeSchema.optional(),
@@ -338,7 +376,7 @@ export const scanInput = z.object({
     .array(scannerEnum)
     .optional()
     .describe(
-      "Limit which scanner classes run: sast, secret, vuln, misconfig, license, ai. Default: all.",
+      "Limit which scanner classes run: sast, secret, vuln, misconfig, license, ai. Default: all except license, which needs include_licenses or an explicit license entry.",
     ),
   max_findings: z
     .number()
@@ -350,6 +388,20 @@ export const scanInput = z.object({
     .boolean()
     .optional()
     .describe("Include the per-framework compliance overview in the result (default: true)."),
+  include_licenses: z
+    .boolean()
+    .optional()
+    .describe(
+      "Include Trivy licence findings (default: false; they are informational and not fixable). " +
+        "Listing license in scanners also requests them. A rescan follows the prior scan's setting.",
+    ),
+  accept_gaps: z
+    .array(z.enum(COVERAGE_GAP_IDS))
+    .optional()
+    .describe(
+      "Coverage gap ids to accept for CI (e.g. php-sast, deno-lock). Coverage still reads partial and the " +
+        "gaps stay listed; CI passes coverage only when every other cause is absent.",
+    ),
 });
 
 export const rescanInput = z.object({
@@ -390,12 +442,17 @@ export const listRulesInput = z.object({
   engine: engineEnum.optional().describe("Filter to one engine's rules/detectors."),
 });
 
-export const setupComponentEnum = z.enum(["opengrep", "gitleaks", "trivy"]);
+export const setupComponentEnum = z.enum(["opengrep", "gitleaks", "trivy", "osv-scanner"]);
 export const setupInput = z.object({
   action: z.enum(["plan", "install", "decline"]).default("plan")
     .describe("Plan is offline/read-only. Install downloads only after confirm_downloads=true. Decline saves the choice."),
   components: z.array(setupComponentEnum).optional()
-    .describe("Components to install or decline. Default: all three external engines."),
+    .describe("Components to install or decline. Default: all four external engines."),
+  path: absolutePath(
+    "Absolute path to the repository the user wants to scan. Only the OSV vulnerability databases for ecosystems whose lockfiles are found there (read-only, by file name) are offered.",
+  ).optional(),
+  osv_ecosystems: z.array(osvEcosystemEnum).optional()
+    .describe("Exact OSV ecosystem databases the user approved, e.g. [\"npm\", \"PyPI\"]. Overrides the detection from path. Omitted or empty (an empty list is no list): the databases path needs (none without path), plus a refresh of any installed database that went stale. To download no OSV database, leave osv-scanner out of components."),
   confirm_downloads: z.boolean().optional()
     .describe("Must be true for an install that needs network downloads."),
 });
@@ -478,6 +535,8 @@ export const complianceReportOutput = z.object({
   posture_score: z.number(),
   posture_note: z.string(),
   frameworks: z.array(frameworkCoverageSchema),
+  /** Present when licence findings were not requested for the scan: no licence evidence is in these controls. */
+  coverage_notes: z.array(z.object({ component: z.string(), detail: z.string() })).optional(),
   disclaimer: z.string(),
 });
 
@@ -506,6 +565,7 @@ export const sbomOutput = z.object({
 export const ruleInfoSchema = z.object({
   id: z.string(),
   engine: engineEnum,
+  engine_family: engineFamilyEnum.optional(),
   pack_id: z.string().optional(),
   fallback_engine: z.literal("opengrep").optional(),
   name: z.string(),
@@ -530,7 +590,7 @@ export const nativePackInfoSchema = z.object({
   rule_count: z.number().int().nonnegative(),
 });
 
-export const advisoryDatabaseInfoSchema = z.object({
+const pubAdvisoryDatabaseInfoSchema = z.object({
   engine: z.literal("codeinspectus-pub"),
   ecosystem: z.literal("Pub"),
   state: z.enum(["current", "stale", "missing", "invalid"]),
@@ -551,17 +611,72 @@ export const advisoryDatabaseInfoSchema = z.object({
   note: z.string().optional(),
 });
 
+/** One installed per-ecosystem OSV database read by osv-scanner. */
+const osvAdvisoryDatabaseInfoSchema = z.object({
+  engine: z.literal("osv-scanner"),
+  ecosystem: osvEcosystemEnum,
+  state: z.enum(["current", "stale", "provenance_missing"]),
+  version: z.string(),
+  checked_at: z.string().optional(),
+  content_digest: z.string().optional(),
+  matching: z.literal("osv-scanner-offline"),
+  source_url: z.string().url(),
+  source_database: z.literal("OSV.dev"),
+  license: z.string(),
+  attribution: z.string(),
+  note: z.string().optional(),
+});
+
+export const advisoryDatabaseInfoSchema = z.discriminatedUnion("engine", [
+  pubAdvisoryDatabaseInfoSchema,
+  osvAdvisoryDatabaseInfoSchema,
+]);
+
+/** Synvoya gap-advisory dataset state; an unloadable dataset is reported with its reason, never omitted. */
+export const synvoyaDatasetInfoSchema = z.discriminatedUnion("state", [
+  z.object({
+    state: z.literal("available"),
+    version: z.string(),
+    date: z.string(),
+    advisory_count: z.number().int().nonnegative(),
+  }),
+  z.object({ state: z.literal("unavailable"), reason: z.string() }),
+]);
+
+export const ruleGroupSchema = z.object({
+  /** Human label: "Synvoya (CodeInspectus)" for the family, the raw engine id otherwise. */
+  group: z.string(),
+  engine_family: engineFamilyEnum.optional(),
+  rule_count: z.number().int().nonnegative(),
+  engines: z.array(engineEnum),
+});
+
+/** Bundled Opengrep rules per declared language (`generic` = config files and templates). */
+export const sastRuleLanguageSchema = z.object({
+  language: z.string(),
+  rule_count: z.number().int().nonnegative(),
+  /** Rule folders under detection-db/opengrep-rules that hold these rules, e.g. `synvoya-php`. */
+  rulesets: z.array(z.string()),
+});
+
 export const listRulesOutput = z.object({
   detection_db_version: z.string(),
   detection_db_date: z.string(),
   engines: z.array(
     z.object({
       engine: engineEnum,
+      /** Human label for engines that belong wholly to the Synvoya family; `engine` keeps the raw id. */
+      display_name: z.string().optional(),
+      engine_family: engineFamilyEnum.optional(),
       version: z.string(),
       available: z.boolean(),
       ruleset: z.string(),
     }),
   ),
+  synvoya_dataset: synvoyaDatasetInfoSchema,
+  rule_groups: z.array(ruleGroupSchema),
+  /** Optional (added in 4.0): absent when the bundled rule files could not be read. */
+  sast_rule_languages: z.array(sastRuleLanguageSchema).optional(),
   trivy_db_date: z.string().optional(),
   engine_setup: engineSetupSchema,
   native_packs: z.array(nativePackInfoSchema),
@@ -598,6 +713,14 @@ export const setupPlanSchema = z.object({
   network_required: z.boolean(),
   confirmation_required: z.boolean(),
   exact_download_bytes: z.number().int().nonnegative(),
+  osv_databases: z.array(z.object({
+    ecosystem: osvEcosystemEnum,
+    state: z.enum(["installed", "missing", "stale"]),
+    selected: z.boolean(),
+    estimated_download_bytes: z.number().int().nonnegative(),
+    note: z.string().optional(),
+  })),
+  estimated_osv_download_bytes: z.number().int().nonnegative(),
   estimated_database_disk_bytes: z.number().int().nonnegative(),
   warnings: z.array(z.string()),
 });

@@ -1,0 +1,8 @@
+# pinned toolchain
+nodejs 18.19.0
+python 3.12
+ruby 3.2.2
+golang 1.21
+java temurin-17.0.2+8
+php 8.3
+terraform 1.6.0

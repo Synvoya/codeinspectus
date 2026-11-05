@@ -1,0 +1,499 @@
+{
+  "schema_version": "1.0.0",
+  "scan_id": "scan-673fdc74-716f-47bf-9bf2-c03acdafc0f7",
+  "findings": [
+    {
+      "id": "CI-0001",
+      "fingerprint": "sha256:2f4ab4fbdf6acb9a44a91d6678f2989d976cd25c80505294934d5d1adbe2610b",
+      "title": "Hard-coded secret in client-reachable code",
+      "severity": "critical",
+      "engine": "codeinspectus-ai",
+      "engines": [
+        "gitleaks",
+        "codeinspectus-ai"
+      ],
+      "rule_id": "ci-ai-client-hardcoded-secret",
+      "cwe": [
+        "CWE-798",
+        "CWE-312"
+      ],
+      "owasp_web": [
+        "A02:2021",
+        "A07:2021"
+      ],
+      "owasp_llm": [
+        "LLM02:2025"
+      ],
+      "attack_techniques": [
+        "T1552",
+        "T1552.001"
+      ],
+      "location": {
+        "file": "src/config.ts",
+        "start_line": 5,
+        "end_line": 5,
+        "snippet": "[redacted potential secret: ci-ai-client-hardcoded-secret]"
+      },
+      "message": "[redacted potential secret: ci-ai-client-hardcoded-secret]",
+      "remediation": {
+        "summary": "Remove the hard-coded credential; load it from a server-side secret store and rotate the exposed value.",
+        "steps": [
+          "Delete the literal credential from source.",
+          "Move it to a server-side environment variable or a secrets manager (never a client-exposed env prefix).",
+          "Rotate/revoke the exposed credential — assume it is already compromised.",
+          "Add the file/path to secret-scanning so it cannot reappear."
+        ],
+        "code_suggestion": "const key = process.env.SERVICE_SECRET_KEY; // server-side only",
+        "references": [
+          "CWE-798",
+          "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
+        ]
+      },
+      "frameworks": [
+        {
+          "framework": "NIST_CSF_2.0",
+          "controls": [
+            "PR.AA-05",
+            "PR.DS-01"
+          ]
+        },
+        {
+          "framework": "ISO27001:2022",
+          "controls": [
+            "A.8.12",
+            "A.8.24",
+            "A.8.28"
+          ]
+        },
+        {
+          "framework": "SOC2",
+          "controls": [
+            "CC6.1"
+          ]
+        },
+        {
+          "framework": "CIS_v8.1",
+          "controls": [
+            "16.12",
+            "3.11"
+          ]
+        }
+      ],
+      "confidence": "high",
+      "is_secret": true,
+      "secret_value_hash": "sha256:91df778b893672d30b925564c70467e9c73a4e44c97193cc34d2dd2ec799cdf4",
+      "producer_components": [
+        "ai:client-secrets",
+        "codeinspectus-ai:invocation",
+        "codeinspectus:pipeline",
+        "gitleaks:binary",
+        "gitleaks:config",
+        "gitleaks:effective-ignore",
+        "gitleaks:invocation"
+      ],
+      "finding_kind": "secret",
+      "coverage_context": {
+        "aggregate": "partial",
+        "producer_components": [
+          "ai:client-secrets",
+          "codeinspectus-ai:invocation",
+          "codeinspectus:pipeline",
+          "gitleaks:binary",
+          "gitleaks:config",
+          "gitleaks:effective-ignore",
+          "gitleaks:invocation"
+        ]
+      }
+    },
+    {
+      "id": "CI-0002",
+      "fingerprint": "sha256:ec411f41a7ecedc6ec9ddf67598f4aff8b2e5b5ac69e6a72122f30096bb007bb",
+      "title": "RLS permits SELECT on sensitive table 'profiles' for anonymous and authenticated clients",
+      "severity": "critical",
+      "engine": "codeinspectus-ai",
+      "engines": [
+        "codeinspectus-ai"
+      ],
+      "rule_id": "ci-ai-rls-using-true",
+      "cwe": [
+        "CWE-863",
+        "CWE-285"
+      ],
+      "owasp_web": [
+        "A01:2021"
+      ],
+      "attack_techniques": [
+        "T1190",
+        "T1548"
+      ],
+      "location": {
+        "file": "supabase/migrations/0001_init.sql",
+        "start_line": 18,
+        "end_line": 18,
+        "snippet": "  using (true);"
+      },
+      "message": "The final applicable permissive and restrictive policy composition for SELECT is provably TRUE for anonymous and authenticated clients. The checked repository SQL therefore contains no row predicate for that operation and role. This does not prove deployed API reachability, table grants, migration application, or hosted configuration.",
+      "remediation": {
+        "summary": "Replace the open policy composition with operation-specific ownership or authorization predicates unless this access is deliberate.",
+        "steps": [
+          "Confirm which database roles should perform this operation.",
+          "Use auth.uid()-bound ownership or a server-controlled authorization predicate.",
+          "Review both permissive and restrictive policies for the same command and role.",
+          "Verify deployed grants and policy state separately."
+        ],
+        "references": [
+          "CWE-863",
+          "https://supabase.com/docs/guides/database/postgres/row-level-security"
+        ]
+      },
+      "frameworks": [
+        {
+          "framework": "NIST_CSF_2.0",
+          "controls": [
+            "PR.AA-05"
+          ]
+        },
+        {
+          "framework": "ISO27001:2022",
+          "controls": [
+            "A.8.26",
+            "A.8.28"
+          ]
+        },
+        {
+          "framework": "SOC2",
+          "controls": [
+            "CC6.1"
+          ]
+        },
+        {
+          "framework": "CIS_v8.1",
+          "controls": [
+            "16.10"
+          ]
+        }
+      ],
+      "confidence": "high",
+      "producer_components": [
+        "codeinspectus:pipeline",
+        "codeinspectus-ai:invocation",
+        "ai:supabase-rls-policy-state"
+      ],
+      "finding_kind": "ai",
+      "coverage_context": {
+        "aggregate": "partial",
+        "producer_components": [
+          "codeinspectus:pipeline",
+          "codeinspectus-ai:invocation",
+          "ai:supabase-rls-policy-state"
+        ]
+      }
+    },
+    {
+      "id": "CI-0003",
+      "fingerprint": "sha256:364bac67848239c024a8d5f2d5712e214cded1fa1dcb5c33359de1a9f28fbb42",
+      "title": "Model-produced tool argument reaches shell execution",
+      "severity": "high",
+      "engine": "codeinspectus-ai",
+      "engines": [
+        "codeinspectus-ai"
+      ],
+      "rule_id": "ci-ai-llm-tool-argument-command-execution",
+      "cwe": [
+        "CWE-78",
+        "CWE-1426"
+      ],
+      "owasp_web": [
+        "A03:2021"
+      ],
+      "owasp_llm": [
+        "LLM05:2025",
+        "LLM06:2025"
+      ],
+      "location": {
+        "file": "src/agent.ts",
+        "start_line": 9,
+        "end_line": 9,
+        "snippet": "  return exec(command);"
+      },
+      "message": "A model-produced tool/function argument appears to reach import-proven child_process.exec/execSync without a visible checked approval, allowlist, or validated replacement value. This is bounded static evidence; verify runtime approval and sandboxing manually.",
+      "remediation": {
+        "summary": "Treat model tool arguments as untrusted: validate against a strict schema and server-owned allowlist, require approval for sensitive actions, and avoid shell command strings.",
+        "steps": [
+          "Map a fixed tool name to a server-owned implementation; never let the model choose an executable or arbitrary shell string.",
+          "Validate every argument against an allowlist/schema and reject unknown properties or values.",
+          "Require explicit human approval before command execution and run allowed actions with least privilege in an isolated sandbox.",
+          "Prefer execFile/spawn with a fixed executable and separated argument array over exec/execSync."
+        ],
+        "references": [
+          "CWE-78",
+          "CWE-1426",
+          "https://genai.owasp.org/llmrisk/llm05-improper-output-handling/",
+          "https://genai.owasp.org/llmrisk/llm06-excessive-agency/"
+        ]
+      },
+      "frameworks": [
+        {
+          "framework": "NIST_CSF_2.0",
+          "controls": [
+            "PR.PS-06"
+          ]
+        },
+        {
+          "framework": "ISO27001:2022",
+          "controls": [
+            "A.8.26",
+            "A.8.28"
+          ]
+        },
+        {
+          "framework": "CIS_v8.1",
+          "controls": [
+            "16.1"
+          ]
+        }
+      ],
+      "confidence": "medium",
+      "producer_components": [
+        "codeinspectus:pipeline",
+        "codeinspectus-ai:invocation",
+        "ai:unsafe-tool-execution"
+      ],
+      "finding_kind": "ai",
+      "coverage_context": {
+        "aggregate": "partial",
+        "producer_components": [
+          "codeinspectus:pipeline",
+          "codeinspectus-ai:invocation",
+          "ai:unsafe-tool-execution"
+        ]
+      }
+    },
+    {
+      "id": "CI-0004",
+      "fingerprint": "sha256:6261a681be71739ac4687769e41a74b06badaae92ff73abe55376da98b8b3d84",
+      "title": "Secret exposed via client-visible env prefix",
+      "severity": "high",
+      "engine": "codeinspectus-ai",
+      "engines": [
+        "codeinspectus-ai"
+      ],
+      "rule_id": "ci-ai-public-env-secret",
+      "cwe": [
+        "CWE-798",
+        "CWE-312"
+      ],
+      "owasp_web": [
+        "A02:2021",
+        "A07:2021"
+      ],
+      "owasp_llm": [
+        "LLM02:2025"
+      ],
+      "attack_techniques": [
+        "T1552",
+        "T1552.001"
+      ],
+      "location": {
+        "file": "src/components/PaymentForm.tsx",
+        "start_line": 6,
+        "end_line": 6,
+        "snippet": "  const stripeSecret = process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY;"
+      },
+      "message": "Env var 'NEXT_PUBLIC_STRIPE_SECRET_KEY' uses a client-exposed prefix but names a secret — frameworks ship these to the browser. Move it to a server-only variable.",
+      "remediation": {
+        "summary": "Rename to a server-only env var (no public prefix) and read it only in server code; rotate if it ever shipped.",
+        "steps": [
+          "Remove the client-exposed prefix; use a server-only env var.",
+          "Access the value only in server-side code (API route / server action / edge function).",
+          "Rotate the secret if a build with this prefix was ever shipped."
+        ],
+        "references": [
+          "CWE-798",
+          "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
+        ]
+      },
+      "frameworks": [
+        {
+          "framework": "NIST_CSF_2.0",
+          "controls": [
+            "PR.AA-05",
+            "PR.DS-01"
+          ]
+        },
+        {
+          "framework": "ISO27001:2022",
+          "controls": [
+            "A.8.12",
+            "A.8.24",
+            "A.8.28"
+          ]
+        },
+        {
+          "framework": "SOC2",
+          "controls": [
+            "CC6.1"
+          ]
+        },
+        {
+          "framework": "CIS_v8.1",
+          "controls": [
+            "16.12",
+            "3.11"
+          ]
+        }
+      ],
+      "confidence": "medium",
+      "producer_components": [
+        "codeinspectus:pipeline",
+        "codeinspectus-ai:invocation",
+        "ai:client-secrets"
+      ],
+      "finding_kind": "ai",
+      "coverage_context": {
+        "aggregate": "partial",
+        "producer_components": [
+          "codeinspectus:pipeline",
+          "codeinspectus-ai:invocation",
+          "ai:client-secrets"
+        ]
+      }
+    },
+    {
+      "id": "CI-0005",
+      "fingerprint": "sha256:672246a8b1c88e886317dca6e77a96969da276939f85974e3a0bba3a0261f2d0",
+      "title": "Potential prompt-injection sink with tool/function-calling access",
+      "severity": "high",
+      "engine": "codeinspectus-ai",
+      "engines": [
+        "codeinspectus-ai"
+      ],
+      "rule_id": "ci-ai-prompt-injection-sink",
+      "cwe": [
+        "CWE-1427"
+      ],
+      "owasp_llm": [
+        "LLM01:2025",
+        "LLM06:2025"
+      ],
+      "location": {
+        "file": "src/llm.ts",
+        "start_line": 11,
+        "end_line": 11,
+        "snippet": "  const completion = await openai.chat.completions.create({"
+      },
+      "message": "Untrusted input appears to reach an LLM call at a higher-risk position. The same call grants the model tool/function-calling access, so a successful injection can trigger actions (excessive agency, LLM06). Prompt-injection detection is heuristic — verify manually.",
+      "remediation": {
+        "summary": "Keep untrusted content as data in a separate user-role message, never concatenated into the system prompt; validate it first; and gate any tool actions.",
+        "steps": [
+          "Do not concatenate request/user input into the system prompt or a single instruction string.",
+          "Place untrusted content in its own user-role message and validate it first.",
+          "For tool/function-calling, require confirmation before any sensitive action."
+        ],
+        "references": [
+          "CWE-1427",
+          "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
+        ]
+      },
+      "frameworks": [],
+      "confidence": "medium",
+      "producer_components": [
+        "codeinspectus:pipeline",
+        "codeinspectus-ai:invocation",
+        "ai:prompt-injection"
+      ],
+      "finding_kind": "ai",
+      "coverage_context": {
+        "aggregate": "partial",
+        "producer_components": [
+          "codeinspectus:pipeline",
+          "codeinspectus-ai:invocation",
+          "ai:prompt-injection"
+        ]
+      }
+    },
+    {
+      "id": "CI-0006",
+      "fingerprint": "sha256:dc7bf373a90cff54f02a627b91a2fa3e623bbaad5ea96ac28aad78805e50229f",
+      "title": "Repository-defined public table 'payments' lacks Row Level Security",
+      "severity": "high",
+      "engine": "codeinspectus-ai",
+      "engines": [
+        "codeinspectus-ai"
+      ],
+      "rule_id": "ci-ai-rls-missing",
+      "cwe": [
+        "CWE-862",
+        "CWE-285"
+      ],
+      "owasp_web": [
+        "A01:2021"
+      ],
+      "attack_techniques": [
+        "T1190",
+        "T1548"
+      ],
+      "location": {
+        "file": "supabase/migrations/0001_init.sql",
+        "start_line": 22,
+        "end_line": 22,
+        "snippet": "create table public.payments ("
+      },
+      "message": "The checked repository defines public.payments and does not enable Row Level Security in the conclusive migration sequence. This is a repository-visible missing control, not proof that the deployed table is reachable through an API or granted to client roles.",
+      "remediation": {
+        "summary": "Enable RLS on public.payments, add least-privilege policies, and verify deployed grants separately.",
+        "steps": [
+          "ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;",
+          "Add command-specific policies with ownership or authorization predicates.",
+          "Verify the applied migration, table grants, and hosted API exposure outside repository analysis."
+        ],
+        "references": [
+          "CWE-862",
+          "https://supabase.com/docs/guides/database/postgres/row-level-security"
+        ]
+      },
+      "frameworks": [
+        {
+          "framework": "NIST_CSF_2.0",
+          "controls": [
+            "PR.AA-05"
+          ]
+        },
+        {
+          "framework": "ISO27001:2022",
+          "controls": [
+            "A.8.26",
+            "A.8.28"
+          ]
+        },
+        {
+          "framework": "SOC2",
+          "controls": [
+            "CC6.1"
+          ]
+        },
+        {
+          "framework": "CIS_v8.1",
+          "controls": [
+            "16.10"
+          ]
+        }
+      ],
+      "confidence": "medium",
+      "producer_components": [
+        "codeinspectus:pipeline",
+        "codeinspectus-ai:invocation",
+        "ai:supabase-rls-policy-state"
+      ],
+      "finding_kind": "ai",
+      "coverage_context": {
+        "aggregate": "partial",
+        "producer_components": [
+          "codeinspectus:pipeline",
+          "codeinspectus-ai:invocation",
+          "ai:supabase-rls-policy-state"
+        ]
+      }
+    }
+  ]
+}

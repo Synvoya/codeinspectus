@@ -56,12 +56,19 @@ export async function loadComplianceData(): Promise<ComplianceData> {
   return cached;
 }
 
+/**
+ * Advisory id families: CVE, GHSA, the OSV sources osv-scanner reports (PyPA, Go, RustSec, OSS-Fuzz,
+ * OpenSSF malicious packages), and Synvoya gap advisories (`SYN-`, including `SYN-EOL-`), whose
+ * runtime, end-of-life and malware kinds carry CWE-1104 or CWE-506.
+ */
+const DEPENDENCY_ADVISORY_ID = /^(cve-|ghsa-|pysec-|go-|rustsec-|osv-|mal-|syn-)/i;
+
 function isDependencyVuln(f: Finding): boolean {
   return (
     f.finding_kind === "vulnerability" ||
     f.engine === "trivy" ||
     f.engine === "codeinspectus-pub"
-  ) && /^(cve-|ghsa-)/i.test(f.rule_id);
+  ) && DEPENDENCY_ADVISORY_ID.test(f.rule_id);
 }
 function isMisconfig(f: Finding): boolean {
   return f.engine === "trivy" && /^(avd-|ds-|ksv|kcv|aws-|gcp-|azu-)/i.test(f.rule_id);

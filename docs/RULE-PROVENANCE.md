@@ -10,7 +10,7 @@
 > versions. Where this document and any other doc disagree on a count or a version, the
 > two files above win and this document is the one to correct.
 
-_Last refreshed: robust Supabase RLS/Edge authentication, Next.js/Express admin authorization,
+_Last refreshed: the 4.0 documentation pass (2026-11-05) added the Synvoya PHP inventory and the experimental-rule locations; before that, robust Supabase RLS/Edge authentication, Next.js/Express admin authorization,
 Referrer-Policy/Permissions-Policy, and modern Supabase opaque-key coverage (2026-08-12), plus JavaScript/TypeScript model-output execution, GitHub Actions, Firebase, Ruby, Rust, PHP, C#, Java, Go, JavaScript/TypeScript unsafe tool execution, and Python AI/API native packs
 (2026-07-28) — recorded the original bounded GitHub Actions workflow rules, Firebase configuration rules, Ruby, Rust, PHP, C#, Java, Go, JavaScript, and Python model-tool-argument-to-shell rules and ten original Python structural rules
 and their first-party pack ownership, including the exact LangChain FAISS dangerous-deserialization
@@ -29,9 +29,9 @@ and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api,go,java,csha
 
 ---
 
-## Reconciled detection count — **94 active CodeInspectus detections**
+## Reconciled detection count — **126 active CodeInspectus detections**
 
-`detection-db/manifest.json` `custom_rules` has **94** entries:
+`detection-db/manifest.json` `custom_rules` has **126** entries:
 
 | Group | Count | Engine | Kind | Where |
 |---|---:|---|---|---|
@@ -52,15 +52,23 @@ and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api,go,java,csha
 | GitHub Actions workflow native rules | **2** | `codeinspectus-ai` | `ai` | `src/packs/github-actions/*.ts` |
 | JavaScript baseline native rules | **2** | `codeinspectus-ai` | `sast` | `src/packs/javascript-baseline/*.ts` |
 | Opengrep-owned SAST rules | **18** | `opengrep` | `sast` | `detection-db/opengrep-rules/security-baseline/` |
-| Gitleaks secret rules | **4** | `gitleaks` | `secret` | `detection-db/gitleaks/codeinspectus.toml` |
-| **Total** | **94** | — | — | — |
+| Synvoya PHP pack (Opengrep) | **19** | `opengrep` | `sast` | `detection-db/opengrep-rules/synvoya-php/` |
+| Synvoya Node.js Opengrep rules (`syn-node-*`) | **12** | `opengrep` | `sast` | `detection-db/opengrep-rules/synvoya-node/` |
+| Gitleaks secret rules | **5** | `gitleaks` | `secret` | `detection-db/gitleaks/codeinspectus.toml` |
+| **Total** | **126** | — | — | — |
 
-Verified physical counts: 20 Opengrep YAML rule ids and 4 Gitleaks rule ids are greppable on disk.
-The catalog assigns 72 rule IDs to sixteen native packs and 18 to Opengrep; the two promoted native
-SAST IDs retain physically active Opengrep fallbacks and are not double-counted.
+Verified physical counts: 20 `security-baseline` (`ci-baseline-*`), 19 `synvoya-php` (`syn-php-*`) and
+12 `synvoya-node` (`syn-node-*`) Opengrep YAML rule ids and 5 Gitleaks rule ids are greppable on disk.
+The Synvoya PHP pack's provenance is in `detection-db/opengrep-rules/synvoya-php/LICENSE-PROVENANCE.md`
+and the Synvoya Node.js pack's in `detection-db/opengrep-rules/synvoya-node/LICENSE-PROVENANCE.md`
+(both written from first principles, no registry rule opened).
+The catalog assigns 72 rule IDs to sixteen native packs and 49 to Opengrep (18 baseline, 19 Synvoya PHP,
+12 Synvoya Node.js); the two promoted native SAST IDs retain physically active Opengrep fallbacks and are
+not double-counted.
 
-The authoritative current figure is **94**, decomposing as **72 first-party native rules +
-18 Opengrep-owned SAST + 4 Gitleaks** (single source of truth: `detection-db/manifest.json`).
+The authoritative current figure is **126**, decomposing as **72 first-party native rules +
+18 Opengrep-owned SAST + 19 Synvoya PHP pack + 12 Synvoya Node.js Opengrep (`syn-node-*`) + 5 Gitleaks**
+(single source of truth: `detection-db/manifest.json`).
 The modern Supabase addition consists of the independently authored native
 `ci-ai-supabase-secret-key-client` rule plus the exact
 `codeinspectus-supabase-secret-key` Gitleaks extension. Both implement Supabase's documented
@@ -201,7 +209,7 @@ are confirmed exploitable vulnerabilities.
 
 ## Provenance summary (the headline for counsel)
 
-- **All 94 custom detections are CodeInspectus-original work, licensed Apache-2.0 from
+- **All 126 custom detections are CodeInspectus-original work, licensed Apache-2.0 from
   CodeInspectus 2.5.0.** In
   `manifest.json` every `custom_rules` entry carries `"source": "codeinspectus-custom"`,
   and the Opengrep ruleset carries `"source": "codeinspectus-apache-2.0"` /
@@ -238,7 +246,7 @@ bundle them.
 
 ## Managed engines + the engine-authored rulesets in use
 
-The three scan engines are **external SHA-pinned binaries**, **not** npm dependencies. They
+The four scan engines are **external SHA-pinned binaries**, **not** npm dependencies. They
 are downloaded and verified by `codeinspectus repair-engines` into a per-machine managed
 dir (`~/.codeinspectus/`); they are **not** redistributed inside the npm tarball. `npm pack`
 ships runtime assets only (`dist/`, `data/`, `detection-db/`, `engines.lock.json`,
@@ -251,17 +259,21 @@ Versions are cited from **`engines.lock.json` (ground truth)** — *not* the PRD
 
 | Engine | Version (`engines.lock.json`) | Engine license | Engine-authored ruleset in use | Ruleset license | In npm tarball? |
 |---|---|---|---|---|---|
-| Opengrep | **1.23.0** | LGPL-2.1 (PRD §4.1 / §11) | **None.** Runs only CI's `security-baseline`; explicitly **not** `--config auto` (`src/engines/opengrep.ts`) | — | Binary: **No**. CI rules: yes (`detection-db/`) |
+| Opengrep | **1.33.1** | LGPL-2.1 (PRD §4.1 / §11) | **None.** Runs only CI's `security-baseline`; explicitly **not** `--config auto` (`src/engines/opengrep.ts`) | — | Binary: **No**. CI rules: yes (`detection-db/`) |
 | Gitleaks | **8.30.1** | MIT (CLI; PRD §4.2) | Gitleaks' **built-in default** secret rules (`[extend] useDefault = true` in `codeinspectus.toml`) | MIT (gitleaks-authored) | Binary: **No**. CI `.toml`: yes |
-| Trivy | **0.71.2** | Apache-2.0 (PRD §4.3) | Trivy built-in **vuln / misconfig / secret / license** scanners + the Trivy **vuln DB** | Apache-2.0 (engine); **DB = aggregated third-party advisory data, heterogeneous licenses** | Binary + DB: **No** (downloaded) |
+| Trivy | **0.76.1** | Apache-2.0 (PRD §4.3) | Trivy built-in **vuln / misconfig / secret / license** scanners + the Trivy **vuln DB** | Apache-2.0 (engine); **DB = aggregated third-party advisory data, heterogeneous licenses** | Binary + DB: **No** (downloaded) |
+| osv-scanner | **2.7.0** | Apache-2.0 (PRD §4.5) | **None.** Runs `scan source --offline` over per-ecosystem **OSV.dev databases** the user approved and downloaded; `--config` is a managed empty file, so no repository or vendor ruleset applies (`src/engines/osv-scanner.ts`) | Apache-2.0 (engine); **DB = per-source licenses, no single OSV license** (CC-BY-4.0 GHSA/PYSEC/OSS-Fuzz/Go, Apache-2.0 MAL, MIT Drupal, CC0-1.0 RustSec) | Binary + DB: **No** (downloaded) |
 
 The engine licenses were reconciled against the exact pinned releases for 2.5.0. Opengrep's
 LGPL-2.1 obligations must not be described as permissive; the executable stays separate and is
-downloaded from upstream rather than redistributed in the npm package.
+downloaded from upstream rather than redistributed in the npm package. osv-scanner 2.7.0's
+Apache-2.0 `LICENSE` was checked at its `v2.7.0` tag when the engine was added (the tag has no
+`NOTICE` file).
 
 **What this means at scan time:** findings can carry engine-authored rule ids that are *not*
-`codeinspectus-*` (e.g. Gitleaks default ids like `generic-api-key`, Trivy CVE ids). Those
-come from the separately licensed engines, not from CodeInspectus's corpus.
+`codeinspectus-*` (e.g. Gitleaks default ids like `generic-api-key`, Trivy CVE ids, OSV advisory
+ids such as `GHSA-`, `PYSEC-` and `MAL-`). Those come from the separately licensed engines and
+data sources, not from CodeInspectus's corpus.
 
 ---
 
@@ -272,6 +284,13 @@ Apache-2.0.** Convergent functional idioms; the public registry was referenced d
 **no expression copied** (merger / scenes a faire). See LICENSE-PROVENANCE.md +
 `docs/legal/RULE-DERIVATION-REVIEWS.md`.
 
+Detection database 2.0.0 (CodeInspectus 4.0) removed four pattern arms that could never report a finding
+(`$T = Math.random()` in `crypto.yaml`, the template-literal `$FS.readFile` arm in `injection.yaml`,
+and the template-literal `fetch`/`axios.get` arms in `ssrf.yaml`): each matched without binding the
+metavariable the rule's `metavariable-pattern` then checks, so Opengrep reported an internal matching
+error instead. Nothing was added; rule ids, languages, CWEs and messages are unchanged. Every rule
+has true-positive cases in `fixtures/coverage-honesty-corpus/opengrep-rules/` (eval E75).
+
 | Rule id | File | Langs | CWE | What it flags |
 |---|---|---|---|---|
 | `ci-baseline-weak-hash` | `crypto.yaml` | js,ts | CWE-327 | Weak hashing algorithm (MD5/SHA1) |
@@ -280,26 +299,132 @@ Apache-2.0.** Convergent functional idioms; the public registry was referenced d
 | `ci-baseline-weak-hash-python` | `crypto.yaml` | python | CWE-327 | Weak hashing algorithm (MD5/SHA1) |
 | `ci-baseline-insecure-deserialization-node` | `deserialization.yaml` | js,ts | CWE-502 | node-serialize `unserialize()` on untrusted data |
 | `ci-baseline-insecure-deserialization-python` | `deserialization.yaml` | python | CWE-502 | Insecure deserialization via an untrusted loader |
-| `ci-baseline-sql-injection-string-build` | `injection.yaml` | js,ts | CWE-89 | SQL built by string concat/template |
+| `ci-baseline-sql-injection-string-build` | `injection-taint.yaml` | js,ts | CWE-89 | HTTP request input reaching a string-built SQL query in the same file (taint; cross-file flow is a known gap) |
 | `ci-baseline-sql-injection-python` | `injection.yaml` | python | CWE-89 | SQL built by string formatting |
 | `ci-baseline-command-injection` | `injection.yaml` | js,ts | CWE-77 | Untrusted data to a shell-exec sink |
 | `ci-baseline-command-injection-python` | `injection.yaml` | python | CWE-77 | Shell command from non-literal data |
 | `ci-baseline-dangerous-eval` | `injection.yaml` | js,ts | CWE-94 | Dynamic eval of a non-literal |
 | `ci-baseline-eval-python` | `injection.yaml` | python | CWE-94 | Dynamic eval/exec of non-literal input |
-| `ci-baseline-nosql-injection` | `injection.yaml` | js,ts | CWE-943 | NoSQL query operator from request data |
+| `ci-baseline-nosql-injection` | `injection.yaml` | js,ts | CWE-943 | Request body/query value in a MongoDB-style filter (Mongoose model, driver collection, or mongoose/mongodb import) |
 | `ci-baseline-path-traversal` | `injection.yaml` | js,ts | CWE-22 | Filesystem path from request input |
 | `ci-baseline-ssrf-request-from-input` | `ssrf.yaml` | js,ts | CWE-918 | Outbound request URL from request input |
 | `ci-baseline-cors-wildcard-credentials` | `web-misconfig.yaml` | js,ts | CWE-942 | CORS wildcard origin with credentials |
 | `ci-baseline-cors-arbitrary-origin-credentials` | `web-misconfig.yaml` | js,ts | CWE-942 | Credentialed CORS unconditionally accepts or reflects arbitrary origins |
 | `ci-baseline-insecure-cookie` | `web-misconfig.yaml` | js,ts | CWE-1004 | Session cookie without httpOnly/secure |
 | `ci-baseline-jwt-alg-none` | `web-misconfig.yaml` | js,ts | CWE-347 | JWT verification accepts alg `none` |
-| `ci-baseline-dom-xss-innerhtml` | `xss.yaml` | js,ts | CWE-79 | DOM XSS via innerHTML/outerHTML sink |
+| `ci-baseline-dom-xss-innerhtml` | `xss.yaml` | js,ts | CWE-79 | URL, referrer, `window.name` or message payload reaching an HTML sink (stored/fetched markup is a known gap) |
 
-## Inventory — Gitleaks custom secret rules (4)
+## Inventory — Synvoya PHP Opengrep rules (19)
+
+Path: `detection-db/opengrep-rules/synvoya-php/`. **Origin: written for CodeInspectus 4.0 (M3) from
+first principles; no third-party rule corpus opened (CG-63).** See that folder's
+`LICENSE-PROVENANCE.md`. Scope: `.php`, `.phtml` and `.blade.php` (plain PHP, Laravel, Symfony,
+WordPress); regex-mode rules use language `generic` and match deployable env files and Blade
+templates. Every rule carries `metadata.cwe` and `metadata.synvoya_pack: synvoya-php`, and has
+true-positive and false-positive fixtures under `fixtures/synvoya-php/<rule-id>/{tp,fp}/` (eval
+E100). A rule that failed the precision gate is not in this folder: `syn-php-xss-echo` and the five
+holdout failures live in the unshipped `experimental/opengrep-rules/synvoya-php-experimental/` (see
+[Experimental rules](#experimental-rules-not-loaded-not-shipped) and [Holdout precision gate](#holdout-precision-gate-40-final-field-run)).
+
+| Rule id | File | Lang | CWE | Mode |
+|---|---|---|---|---|
+| `syn-php-env-app-debug-enabled` | `framework-config.yaml` | generic | CWE-489 | regex |
+| `syn-php-symfony-prod-debug` | `framework-config.yaml` | generic | CWE-489 | regex |
+| `syn-php-symfony-front-controller-debug` | `framework-config.yaml` | php | CWE-489 | structural |
+| `syn-php-wp-rest-route-public-write` | `framework-config.yaml` | php | CWE-862 | structural |
+| `syn-php-wp-ajax-handler-no-auth-check` | `framework-config.yaml` | php | CWE-862 | structural |
+| `syn-php-wp-debug-display-enabled` | `framework-config.yaml` | php | CWE-209 | structural |
+| `syn-php-weak-password-hash` | `syntactic.yaml` | php | CWE-916 | structural |
+| `syn-php-tls-verification-disabled` | `syntactic.yaml` | php | CWE-295 | structural |
+| `syn-php-insecure-random-token` | `syntactic.yaml` | php | CWE-338 | structural |
+| `syn-php-sql-injection` | `taint.yaml` | php | CWE-89 | taint |
+| `syn-php-command-injection` | `taint.yaml` | php | CWE-78 | taint |
+| `syn-php-code-injection` | `taint.yaml` | php | CWE-94 | taint |
+| `syn-php-unserialize-input` | `taint.yaml` | php | CWE-502 | taint |
+| `syn-php-ssrf` | `taint.yaml` | php | CWE-918 | taint |
+| `syn-php-extract-request-input` | `taint.yaml` | php | CWE-621 | taint |
+| `syn-php-upload-client-filename` | `taint.yaml` | php | CWE-434 | taint |
+| `syn-php-file-inclusion` | `taint.yaml` | php | CWE-98 | taint |
+| `syn-php-phar-path-input` | `taint.yaml` | php | CWE-502 | taint |
+| `syn-php-blade-raw-request-output` | `templates.yaml` | generic | CWE-79 | regex |
+
+## Inventory — Synvoya Node.js Opengrep rules (12)
+
+Path: `detection-db/opengrep-rules/synvoya-node/`. **Origin: written for CodeInspectus 4.0 (M3) from
+first principles; no third-party rule corpus opened (CG-63).** See that folder's
+`LICENSE-PROVENANCE.md`. Rules that failed the precision gate are not in this folder; see
+[Experimental rules](#experimental-rules-not-loaded-not-shipped).
+
+| Rule id | File | Lang | CWE | Mode |
+|---|---|---|---|---|
+| `syn-node-jwt-verify-no-algorithms` | `auth.yaml` | js,ts | CWE-347 | structural |
+| `syn-node-jwt-decode-without-verify` | `auth.yaml` | js,ts | CWE-345 | taint |
+| `syn-node-session-cookie-insecure` | `config.yaml` | js,ts | CWE-614 | structural |
+| `syn-node-nestjs-validation-pipe-no-whitelist` | `config.yaml` | ts,js | CWE-915 | structural |
+| `syn-node-trust-proxy-unconditional` | `config.yaml` | js,ts | CWE-348 | structural |
+| `syn-node-placeholder-secret-deploy` | `deploy-defaults.yaml` | generic | CWE-1188 | regex |
+| `syn-node-unsafe-deserialization` | `deserialization.yaml` | js,ts | CWE-502 | structural |
+| `syn-node-zip-slip` | `files.yaml` | js,ts | CWE-22 | taint |
+| `syn-node-command-injection` | `injection.yaml` | js,ts | CWE-78 | taint |
+| `syn-node-code-injection-vm` | `injection.yaml` | js,ts | CWE-94 | taint |
+| `syn-node-prototype-pollution-key` | `prototype-pollution.yaml` | js,ts | CWE-1321 | taint |
+| `syn-node-prototype-pollution-merge` | `prototype-pollution.yaml` | js,ts | CWE-1321 | structural |
+
+## Experimental rules (not loaded, not shipped)
+
+Rules that failed the Synvoya precision gate (field hits triaged, then triaged again by an
+independent pass) are kept in the repository but
+outside `detection-db/`. Opengrep never loads them, `package.json` `files` does not include them, and
+the public seed allow-list does not publish them. They are **not** counted in the 126. The two packs
+use two different locations:
+
+| Pack | Rule folder | Fixtures | Rules |
+|---|---|---|---|
+| Synvoya PHP | `experimental/opengrep-rules/synvoya-php-experimental/` (`rules.yaml`, `README.md`) | `fixtures/synvoya-php-experimental/<rule-id>/{tp,fp}/` | `syn-php-xss-echo`, `syn-php-path-traversal`, `syn-php-preg-replace-eval-modifier`, `syn-php-laravel-mass-assignment-unguarded`, `syn-php-open-redirect`, `syn-php-xxe-entity-expansion` |
+| Synvoya Node.js | `opengrep-rules-experimental/synvoya-node-experimental/` (one YAML per rule) | `opengrep-rules-experimental/synvoya-node-experimental/fixtures/<rule-id>/` (none for `syn-node-prototype-pollution-library-merge`) | `syn-node-default-credentials`, `syn-node-open-redirect`, `syn-node-path-traversal`, `syn-node-prototype-pollution-library-merge`, `syn-node-session-secret-literal`, `syn-node-sql-injection` |
+
+Both locations are as built at 4.0; they are not unified. A rule is promoted only after a fix, a field
+re-run with every hit triaged, a run over a NEW holdout set it was never tuned on, and another
+independent re-triage; then its rule, fixtures and manifest entry move into the pack.
+
+### Holdout precision gate (4.0 final field run)
+
+The M3 gate triaged each rule's hits on the field repositories the rules were tuned on; there the PHP
+and Node.js packs scored 24 of 24 true positives. The 4.0 final field run (2026-11-05) re-measured
+every pack rule on 12 holdout repositories none of the rules had been tuned on, and the packs fell to
+3 of 26 (PHP) and 17 of 131 (Node.js) true positives: the tuning result was over-fitted. The release
+rule, per rule on the holdout set: ship if at most 1 in 5 of its holdout hits is a false positive; a
+rule with no holdout hit ships (medium confidence, as before) only if it had no false positive on the
+tuning repositories and its fixtures pass; otherwise it moves to experimental for 4.1, to be fixed and
+re-measured on a new holdout set. Hits were triaged by reading each one at file:line (kept in the
+maintainers' private triage record).
+
+| Rule | Holdout hits | TP (of which low) | FP | Decision |
+|---|---:|---:|---:|---|
+| `syn-node-sql-injection` | 103 | 11 (0) | 92 | experimental |
+| `syn-node-path-traversal` | 22 | 0 | 22 | experimental |
+| `syn-node-jwt-verify-no-algorithms` | 5 | 5 (5) | 0 | ship |
+| `syn-node-trust-proxy-unconditional` | 1 | 1 (1) | 0 | ship |
+| `syn-php-path-traversal` | 11 | 0 | 11 | experimental |
+| `syn-php-preg-replace-eval-modifier` | 5 | 0 | 5 | experimental |
+| `syn-php-tls-verification-disabled` | 4 | 2 (1) | 2 | ship (kept, see below) |
+| `syn-php-insecure-random-token` | 2 | 1 (0) | 1 | ship (kept, see below) |
+| `syn-php-laravel-mass-assignment-unguarded` | 2 | 0 | 2 | experimental |
+| `syn-php-open-redirect` | 1 | 0 | 1 | experimental |
+| `syn-php-xxe-entity-expansion` | 1 | 0 | 1 | experimental |
+| the other 10 `syn-node-*` and 17 `syn-php-*` rules | 0 | — | — | ship |
+
+`syn-php-tls-verification-disabled` and `syn-php-insecure-random-token` are above the 1-in-5 line on
+samples of 4 and 2 hits. They are kept because their holdout true positives are real, exploitable
+issues (lobbywatch posts its reCAPTCHA secret with TLS verification off, and builds password-recovery
+tokens from `sha1(uniqid(mt_rand()))`); their false positives are an opt-in mPDF flag (two lines of
+one call) and a token that also mixes in `random_bytes(32)`.
+
+## Inventory — Gitleaks custom secret rules (5)
 
 Path: `detection-db/gitleaks/codeinspectus.toml`. **Origin: CodeInspectus-original ·
 License: Apache-2.0 · Derived-from: none.** (The file also sets `[extend] useDefault = true`, so
-Gitleaks' own MIT default rules run alongside these four.)
+Gitleaks' own MIT default rules run alongside these five.)
 
 | Rule id | CWE | What it flags |
 |---|---|---|
@@ -307,6 +432,7 @@ Gitleaks' own MIT default rules run alongside these four.)
 | `codeinspectus-supabase-service-role` | CWE-798 | Supabase service_role JWT (bypasses RLS) |
 | `codeinspectus-supabase-secret-key` | CWE-798 | Exact modern Supabase secret API key (bypasses RLS) |
 | `codeinspectus-anthropic-key` | CWE-798 | Anthropic API key |
+| `codeinspectus-laravel-app-key` | CWE-798 | Laravel APP_KEY in a deployable `.env` file (Synvoya PHP pack) |
 
 ## Inventory — first-party native rules (72) — the moat
 
@@ -635,12 +761,28 @@ items for the reviewer, ranked by where attention is best spent:
    (NVD, GitHub Security Advisories, vendor feeds). CodeInspectus **does not redistribute**
    the DB (downloaded by the user at install), so this is the user's local use, not CI's
    distribution — but confirm no DB content is ever copied into the repo or tarball.
-3. **Gitleaks default ruleset (low risk).** `useDefault = true` means Gitleaks' own MIT
+3. **OSV data licensing (low risk, worth a note; not a legal review).** osv-scanner's engine is
+   Apache-2.0, but the OSV databases it reads carry **each source's own license** (CC-BY-4.0 for
+   GHSA, PYSEC, OSS-Fuzz and Go; Apache-2.0 for OpenSSF Malicious Packages; MIT for Drupal; CC0-1.0
+   for RustSec). CodeInspectus **does not re-host** the data: the user downloads each
+   `<Ecosystem>/all.zip` from OSV's own bucket after consent. The control is the download
+   **allow-list of language ecosystems only (never distribution ecosystems)**, because some
+   distribution sources publish under non-commercial, no-derivatives or share-alike terms. No
+   per-record license filter exists, so re-check the sources inside an ecosystem whenever one is
+   added to the allow-list or OSV adds a source. "GitHub Actions" was added on 2026-11-04 after that
+   check: all 57 records then in its `all.zip` were GHSA (`github-reviewed`, CC-BY-4.0); it is read by
+   the Synvoya Actions matcher, never by osv-scanner. Nine of those records are copied verbatim, with
+   attribution to the GitHub Advisory Database, as test fixtures in `fixtures/synvoya/actions-osv/`
+   (repository only, not the npm package). Attribution ships in `THIRD-PARTY-NOTICES.md`,
+   `NOTICE` and `codeinspectus_list_rules`. The one OSV derivative that **does** ship in the npm
+   package is the Pub snapshot (`detection-db/osv-pub/`, CC-BY-4.0, attributed).
+4. **Gitleaks default ruleset (low risk).** `useDefault = true` means Gitleaks' own MIT
    rules run. MIT is permissive; no action beyond noting the dependency.
-4. **Engine-license re-confirmation (mechanical).** Re-confirm Opengrep LGPL-2.1 / Gitleaks
-   MIT / Trivy Apache-2.0 against each pinned release's `LICENSE` whenever a pin changes;
-   watch for any AGPL transitive pull-in if a hosted version is built (PRD §11).
-5. **No rule is currently flagged as unclear or risky on provenance** beyond item 1's
+5. **Engine-license re-confirmation (mechanical).** Re-confirm Opengrep LGPL-2.1 / Gitleaks
+   MIT / Trivy Apache-2.0 / osv-scanner Apache-2.0 against each pinned release's `LICENSE`
+   whenever a pin changes; watch for any AGPL transitive pull-in if a hosted version is built
+   (PRD §11).
+6. **No rule is currently flagged as unclear or risky on provenance** beyond item 1's
    standing originality review. If any single rule's originality is ever in doubt, **remove
    it pending review** rather than ship it (the engine still runs; coverage just narrows).
 

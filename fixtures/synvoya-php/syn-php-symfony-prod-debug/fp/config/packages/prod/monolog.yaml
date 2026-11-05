@@ -1,0 +1,4 @@
+monolog:
+    handlers:
+        main:
+            type: fingers_crossed

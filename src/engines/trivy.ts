@@ -8,7 +8,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { readFile, access, lstat, mkdir, rm } from "node:fs/promises";
+import { readFile, access, lstat, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MANAGED_TRIVY_CACHE, MANAGED_TRIVY_DB_META } from "../config.js";
 import { resolveEngine, EngineUnavailableError } from "./resolve.js";
@@ -16,8 +17,9 @@ import { execBinary } from "./exec.js";
 import { log } from "../logger.js";
 import type { EngineOutput } from "./types.js";
 import type { SarifLog } from "../sarif/types.js";
-import { invocationSignature, readTrivyDbContentDigest, signature } from "../provenance.js";
-import { engineWorkingDirectory } from "./target.js";
+import { invocationSignature, readTrivyDbContentDigest, signature, TRIVY_LICENSE_TOGGLED_INVOCATION } from "../provenance.js";
+import { devScopeFromReport, foldDevDuplicates, markDevScope } from "./trivy-dev-scope.js";
+import { osvEcosystemForFile } from "../osv/ecosystems.js";
 
 const OFFLINE_FLAGS = [
   "--skip-db-update",
@@ -29,6 +31,42 @@ const OFFLINE_FLAGS = [
 export type TrivyScanner = "vuln" | "misconfig" | "secret" | "license";
 const MAX_TRIVY_SBOM_BYTES = 128 * 1024 * 1024;
 
+/** A package Trivy's `--list-all-pkgs` report lists; `line` is 0 when the report gives none. */
+export interface TrivyReportPackage {
+  ecosystem: string;
+  name: string;
+  version: string;
+  /** Target-relative lockfile, as Trivy names it. */
+  file: string;
+  line: number;
+}
+
+/**
+ * Every package of each lockfile result in Trivy's JSON report, vulnerable or not: the package inventory
+ * the Synvoya gap layer evaluates. The ecosystem comes from the lockfile name, exactly as a Trivy
+ * finding's package ecosystem does (normalize.ts); a result whose file names no allow-listed ecosystem
+ * is skipped. Anything unreadable is skipped, never guessed.
+ */
+export function trivyReportPackages(report: unknown): TrivyReportPackage[] {
+  const records = (value: unknown): Record<string, unknown>[] =>
+    Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => item !== null && typeof item === "object") : [];
+  const root = report !== null && typeof report === "object" ? (report as Record<string, unknown>) : {};
+  const out: TrivyReportPackage[] = [];
+  for (const result of records(root.Results)) {
+    if (typeof result.Target !== "string") continue;
+    const ecosystem = osvEcosystemForFile(result.Target);
+    if (!ecosystem) continue;
+    const file = result.Target.replace(/\\/g, "/");
+    for (const pkg of records(result.Packages)) {
+      if (typeof pkg.Name !== "string" || typeof pkg.Version !== "string" || !pkg.Name || !pkg.Version) continue;
+      const start = records(pkg.Locations)[0]?.StartLine;
+      const line = typeof start === "number" && Number.isInteger(start) && start > 0 ? start : 0;
+      out.push({ ecosystem, name: pkg.Name, version: pkg.Version, file, line });
+    }
+  }
+  return out;
+}
+
 export interface TrivySbomRun {
   ran: boolean;
   note?: string;
@@ -37,36 +75,64 @@ export interface TrivySbomRun {
   content?: string;
 }
 
+/**
+ * The Trivy invocation signature, and the signature of the same invocation with `license` added to (or removed
+ * from) `--scanners`. Licence findings are opt-in, so an unchanged vuln/misconfig/secret check must not read as
+ * changed only because the licence scanner was switched; `componentSignaturesMatch` accepts either form.
+ */
+export function trivyInvocationSignatures(
+  target: string,
+  reportPath: string,
+  sarifPath: string,
+  scanners: TrivyScanner[],
+): Record<string, string> {
+  const signatureFor = (list: TrivyScanner[]): string =>
+    invocationSignature("trivy", [...buildTrivyArgs(target, reportPath, list), "&&", ...buildTrivyConvertArgs(reportPath, sarifPath)].map((arg) =>
+      arg === sarifPath || arg === reportPath ? "<managed-temp>"
+        : arg === MANAGED_TRIVY_CACHE ? "<managed-cache>"
+          : arg === target ? "<target>"
+            : arg));
+  const toggled = scanners.includes("license")
+    ? scanners.filter((scanner) => scanner !== "license")
+    : [...scanners, "license" as const];
+  return { "trivy:invocation": signatureFor(scanners), [TRIVY_LICENSE_TOGGLED_INVOCATION]: signatureFor(toggled) };
+}
+
 export async function runTrivy(
   target: string,
   tmpDir: string,
   scanners: TrivyScanner[] = ["vuln", "misconfig", "secret", "license"],
-): Promise<EngineOutput & { trivyDbDate?: string }> {
+): Promise<EngineOutput & { trivyDbDate?: string; packages?: TrivyReportPackage[] }> {
   const t0 = Date.now();
   let version = "unknown";
   try {
     const bin = await resolveEngine("trivy");
     version = bin.version;
     const sarifPath = join(tmpDir, "trivy.sarif");
-    const args = buildTrivyArgs(target, sarifPath, scanners);
+    const reportPath = join(tmpDir, "trivy.json");
+    const args = buildTrivyArgs(target, reportPath, scanners);
+    const convertArgs = buildTrivyConvertArgs(reportPath, sarifPath);
     const dbSignature = await readTrivyDbContentDigest();
     const componentSignatures: Record<string, string> = {
       "trivy:binary": `sha256:${bin.sha256}`,
       // Trivy's built-in secret/license/misconfiguration checks ship with the verified binary.
       "trivy:checks": signature(`trivy:checks\0${bin.sha256}`),
-      "trivy:invocation": invocationSignature("trivy", args.map((arg) =>
-        arg === sarifPath ? "<managed-temp>"
-          : arg === MANAGED_TRIVY_CACHE ? "<managed-cache>"
-            : arg === target ? "<target>"
-              : arg)),
+      ...trivyInvocationSignatures(target, reportPath, sarifPath, scanners),
       ...(dbSignature ? { "trivy:vulnerability-db": dbSignature } : {}),
     };
     await mkdir(MANAGED_TRIVY_CACHE, { recursive: true });
+    const workingDirectory = join(tmpDir, "trivy-cwd");
+    await mkdir(workingDirectory);
 
-    const res = await execBinary(bin.path, args, {
-      cwd: await engineWorkingDirectory(target),
+    let res = await execBinary(bin.path, args, {
+      cwd: workingDirectory,
       offline: true,
     });
+    // The JSON report is converted to the same SARIF a direct run writes (verified: identical results
+    // and rules on a field repository), and keeps each package's Dev flag for the scope marking.
+    if (!res.timedOut && await access(reportPath).then(() => true, () => false)) {
+      res = await execBinary(bin.path, convertArgs, { cwd: workingDirectory, offline: true });
+    }
     const trivyDbDate = await readTrivyDbDate();
 
     let sarif: SarifLog | undefined;
@@ -82,6 +148,12 @@ export async function runTrivy(
       return note(version, t0, `Trivy produced no SARIF (exit ${res.code}).${dbHint} stderr: ${trunc(res.stderr)}`, trivyDbDate);
     }
 
+    // Findings are reported either way; an unreadable report only leaves their scope unmarked.
+    const report = await readFile(reportPath, "utf8").then((text) => JSON.parse(text) as unknown, () => undefined);
+    markDevScope(sarif, devScopeFromReport(report));
+    foldDevDuplicates(sarif);
+    const packages = scanners.includes("vuln") ? trivyReportPackages(report) : [];
+
     return {
       engine: "trivy",
       version,
@@ -91,6 +163,7 @@ export async function runTrivy(
       durationMs: Date.now() - t0,
       trivyDbDate,
       componentSignatures,
+      packages,
     };
   } catch (err) {
     if (err instanceof EngineUnavailableError) return note(version, t0, err.message);
@@ -99,20 +172,41 @@ export async function runTrivy(
   }
 }
 
-export function buildTrivyArgs(target: string, sarifPath: string, scanners: TrivyScanner[]): string[] {
+/**
+ * Trivy 0.76.1 reads `trivy.yaml`, `.trivyignore` and `trivy-secret.yaml` from its working directory,
+ * so a scanned repository could lower severities, ignore CVEs or disable secret rules (verified on the
+ * real binary). Callers run it from an empty managed directory, and an empty value for each of the
+ * three flags disables loading (Trivy's documented behaviour; it also beats TRIVY_CONFIG).
+ */
+const NO_REPOSITORY_CONFIG = ["--config", "", "--secret-config", "", "--ignorefile", ""];
+
+/**
+ * Pre-release field validation: without `--include-dev-deps` Trivy drops devDependencies (npm, Yarn,
+ * pnpm, Bun) and Composer `packages-dev` with no trace. The JSON report (`--list-all-pkgs`) records
+ * each package's Dev flag; `buildTrivyConvertArgs` turns it into SARIF.
+ */
+export function buildTrivyArgs(target: string, reportPath: string, scanners: TrivyScanner[]): string[] {
   return [
     "fs",
     "--scanners",
     scanners.join(","),
     "--format",
-    "sarif",
+    "json",
+    "--list-all-pkgs",
+    "--include-dev-deps",
     "--output",
-    sarifPath,
+    reportPath,
     ...OFFLINE_FLAGS,
+    ...NO_REPOSITORY_CONFIG,
     "--cache-dir",
     MANAGED_TRIVY_CACHE,
     target,
   ];
+}
+
+/** `trivy convert` has no `--secret-config`; it does read a config file and an ignore file. */
+export function buildTrivyConvertArgs(reportPath: string, sarifPath: string): string[] {
+  return ["convert", "--format", "sarif", "--output", sarifPath, "--config", "", "--ignorefile", "", "--cache-dir", MANAGED_TRIVY_CACHE, reportPath];
 }
 
 /** SBOM generation (PRD §8). The caller validates and promotes the staged content. */
@@ -123,6 +217,7 @@ export async function runTrivySbom(
 ): Promise<TrivySbomRun> {
   let version = "unknown";
   const stagedOutput = `${outputPath}.${process.pid}.${randomUUID()}.trivy.tmp`;
+  let workingDirectory: string | undefined;
   try {
     const bin = await resolveEngine("trivy");
     version = bin.version;
@@ -135,12 +230,16 @@ export async function runTrivySbom(
       "--output",
       stagedOutput,
       ...OFFLINE_FLAGS,
+      "--config",
+      "",
       "--cache-dir",
       MANAGED_TRIVY_CACHE,
       target,
     ];
+    // Same reason as buildTrivyArgs: never let the target's trivy.yaml shape the SBOM.
+    workingDirectory = await mkdtemp(join(tmpdir(), "ci-trivy-sbom-cwd-"));
     const res = await execBinary(bin.path, args, {
-      cwd: await engineWorkingDirectory(target),
+      cwd: workingDirectory,
       offline: true,
     });
     if (res.timedOut || res.code !== 0) {
@@ -172,6 +271,7 @@ export async function runTrivySbom(
     return { ran: false, version, note: msg };
   } finally {
     await rm(stagedOutput, { force: true }).catch(() => undefined);
+    if (workingDirectory) await rm(workingDirectory, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 

@@ -20,6 +20,15 @@ Shared scan options:
 - `--output FILE` or `--output-dir DIRECTORY`
 - `--allow-output-in-target` for an explicitly approved output directory inside the target
 - `--no-compliance`
+- `--licenses` (scan only): include licence findings. They are off by default since 4.0 because they
+  are informational and none is fixable; without the flag the scan carries the coverage note
+  "Licence findings were not requested (use include_licenses / --licenses)." (informational, never a
+  coverage gap). `--scanner license` also requests them. The MCP tools take `include_licenses: true`
+  on `codeinspectus_scan`, and `codeinspectus_rescan` and `scans rerun` repeat the prior scan's choice.
+- `--accept-gaps <id[,id]>` (scan only): accept named coverage gaps such as `php-sast`, `deno-lock`,
+  `vendored-js` or `third-party-bundles` so they alone do not fail CI; coverage still reads `partial` and
+  the gaps stay listed. An unknown id is an input error (exit 2). Gap ids are documented in
+  [CI-POLICY.md](CI-POLICY.md#declared-coverage-gaps).
 
 Policy and Git scope options:
 
@@ -97,9 +106,11 @@ destination lookup, issue submission, or network request. `issue submit` is inte
 codeinspectus setup
 codeinspectus setup --status
 codeinspectus setup --all
-codeinspectus setup --select opengrep,gitleaks,trivy
+codeinspectus setup --select opengrep,gitleaks,trivy,osv-scanner
+codeinspectus setup --select osv-scanner --path REPOSITORY
+codeinspectus setup --select osv-scanner --osv-ecosystems npm,PyPI
 codeinspectus setup --reset
-codeinspectus repair-engines [ENGINE]
+codeinspectus repair-engines [ENGINE] [--osv-ecosystems LIST]
 codeinspectus install-engines [ENGINE]
 codeinspectus verify-engines
 codeinspectus pin-engines [options]
@@ -112,12 +123,41 @@ piped stdio still starts the MCP server. `setup` shows exact pinned binary asset
 labelled Trivy database disk estimate before approval. `--all` and `--select` are explicit
 noninteractive approvals. Saved choices prevent repeat prompting; `--reset` removes them.
 
+osv-scanner needs one OSV database per package ecosystem, downloaded only after approval from
+`osv-vulnerabilities.storage.googleapis.com`. The plan lists each database with its estimated size.
+
+- `--path REPOSITORY` reads lockfile and manifest file names under that directory (read-only and
+  bounded) and offers only the databases for the ecosystems it finds. It is a shortcut for naming
+  them, not a scan.
+- `--osv-ecosystems LIST` approves exactly the listed ecosystems and overrides `--path`. The list is
+  comma-separated and case-insensitive; the allowed names are `npm`, `PyPI`, `Packagist`, `Go`,
+  `crates.io`, `RubyGems`, `Maven`, `NuGet`, `Pub`, and `GitHub Actions` (a small database read by the
+  Synvoya Actions matcher, not by osv-scanner; quote the name). Distribution ecosystems are not allowed.
+  Databases are downloaded only when `osv-scanner` is among the selected components;
+  `--osv-ecosystems` without it is an error.
+- With neither option, `setup` installs the osv-scanner binary and downloads no database, except
+  that it refreshes any OSV database already installed that has gone stale.
+- `repair-engines --osv-ecosystems LIST` downloads exactly the listed OSV databases when they are
+  absent or not ready, and no other OSV database; which engines the same command repairs is the
+  next point. A bare `repair-engines` (no list) only refreshes OSV databases that are already
+  installed and stale; it never adds an ecosystem.
+- With no engine named, `repair-engines` covers every engine, so it can also install other
+  engines and refresh the Trivy database (about 1 GB on disk). Name the engine to avoid that:
+  `repair-engines osv-scanner --osv-ecosystems PyPI` touches only osv-scanner and the PyPI database.
+  The one exception is a missing osv-scanner that you declined in `setup`: a bare `repair-engines`
+  does not install it. Naming it, or passing `--osv-ecosystems`, installs it; once it is installed,
+  a bare `repair-engines` maintains it and its databases like any other engine.
+
+A scan that finds a lockfile for an ecosystem whose OSV database is not installed reports that
+ecosystem as `unavailable` and warns that setup is needed. It never reports it as clean.
+
 `install-engines` remains a compatibility alias. `pin-engines` is maintainer-only. Normal scans
-never repair or download engines implicitly. The managed Opengrep, Gitleaks, Trivy, and Cosign
-executables are never installed by npm lifecycle scripts. The official C2PA validator is an
-optional peer and is not installed by a normal CodeInspectus installation. Users may explicitly
-install `@contentauth/c2pa-node@0.9.3` alongside CodeInspectus when C2PA validation is required;
-without it, scans keep working and report candidate C2PA asset coverage as partial.
+never repair or download engines or OSV databases implicitly. The managed Opengrep, Gitleaks,
+Trivy, osv-scanner, and Cosign executables are never installed by npm lifecycle scripts. The
+official C2PA validator is an optional peer and is not installed by a normal CodeInspectus
+installation. Users may explicitly install `@contentauth/c2pa-node@0.9.3` alongside CodeInspectus
+when C2PA validation is required; without it, scans keep working and report candidate C2PA asset
+coverage as partial.
 The pinned Linux Opengrep release assets require glibc. On Alpine/musl, setup blocks Opengrep
 before download while leaving native rules, Gitleaks, and Trivy available; scans report the missing
 Opengrep surface as partial coverage.

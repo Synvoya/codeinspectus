@@ -34,8 +34,15 @@ import {
   FIREBASE_RULES_PARSER_COMPONENT,
   JAVASCRIPT_AI_PACK_DISPATCH_COMPONENT,
   JAVASCRIPT_BASELINE_PARSER_COMPONENT,
+  SYNVOYA_DATASET_COMPONENT,
+  SYNVOYA_MATCHER_COMPONENT,
   aiFindingComponents,
   aiSignaturesForComponents,
+  externalFindingComponents,
+  synvoyaFindingComponents,
+  synvoyaActionsFindingComponents,
+  SYNVOYA_ACTIONS_MATCHER_COMPONENT,
+  synvoyaStaticComponentSignatures,
   invocationSignature,
   rulesetSignature,
   sha256FileStreaming,
@@ -299,8 +306,9 @@ describe("component signatures", () => {
       return [ruleId, components, aiSignaturesForComponents(components)];
     });
 
+    // Intentional: javascript:bounded-structural-parser revision 2 (JSX retry, Yarn tooling skip).
     expect(signature(JSON.stringify(compatibilityProjection))).toBe(
-      "sha256:ffdee4da7384ca0f18627b6cf579d77046fddf187bc345835b13c6917363a0da",
+      "sha256:363e23c1f369bded71eba1734129db21ff6cbb52754a6c4fe51fc34b98155f9b",
     );
     expect(compatibilityProjection.every(([ruleId, components]) =>
       ruleId === "ci-ai-edge-fn-no-auth"
@@ -459,9 +467,9 @@ describe("Flutter detection manifest", () => {
     };
     const flutterRules = manifest.custom_rules.filter((rule) => rule.pack_id === "flutter");
 
-    expect(manifest.version).toBe("1.19.0");
-    expect(manifest.date).toBe("2026-08-13");
-    expect(manifest.custom_rules).toHaveLength(94);
+    expect(manifest.version).toBe("2.0.0");
+    expect(manifest.date).toBe("2026-11-05");
+    expect(manifest.custom_rules).toHaveLength(126);
     expect(flutterRules).toHaveLength(6);
     expect(flutterRules.map((rule) => ({
       id: rule.id,
@@ -476,5 +484,35 @@ describe("Flutter detection manifest", () => {
       severity: rule.severity,
       cwe: [...rule.cwe],
     })));
+  });
+});
+
+describe("Synvoya component signatures", () => {
+  const dataset = `sha256:${"a".repeat(64)}`;
+
+  test("a synvoya finding depends on the pipeline, the dataset and the matcher, and every one has a signature", () => {
+    const components = synvoyaFindingComponents();
+    expect(components).toEqual([PIPELINE_COMPONENT, SYNVOYA_DATASET_COMPONENT, SYNVOYA_MATCHER_COMPONENT]);
+    expect(externalFindingComponents("synvoya", "vulnerability")).toEqual(components);
+    // Plus one signed component per producer, which each finding adds for the producer(s) that made it.
+    const producers = [
+      "synvoya:runtime", "synvoya:images", "synvoya:products", "synvoya:inventory:osv-scanner", "synvoya:inventory:trivy",
+      "synvoya:vendored", "synvoya:sbom:osv-scanner", "synvoya:actions", "synvoya:actions-matcher",
+    ];
+    expect(Object.keys(synvoyaStaticComponentSignatures(dataset)).sort()).toEqual([...components, ...producers].sort());
+    for (const producer of producers) expect(synvoyaStaticComponentSignatures(dataset)[producer]).toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
+  test("an Actions advisory finding depends on the pipeline, the Actions matcher, its producer and the installed GitHub Actions database", () => {
+    expect(synvoyaActionsFindingComponents()).toEqual([
+      PIPELINE_COMPONENT, SYNVOYA_ACTIONS_MATCHER_COMPONENT, "synvoya:actions", "osv-scanner:vulnerability-db:GitHub Actions",
+    ]);
+    expect(synvoyaStaticComponentSignatures(dataset)[SYNVOYA_ACTIONS_MATCHER_COMPONENT]).toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
+  test("the dataset signature is the supplied digest, so another dataset changes the signature; a malformed digest is refused", () => {
+    expect(synvoyaStaticComponentSignatures(dataset)[SYNVOYA_DATASET_COMPONENT]).toBe(dataset);
+    expect(synvoyaStaticComponentSignatures(`sha256:${"b".repeat(64)}`)[SYNVOYA_DATASET_COMPONENT]).not.toBe(dataset);
+    expect(() => synvoyaStaticComponentSignatures("sha256:short")).toThrow(/Synvoya dataset signature/);
   });
 });

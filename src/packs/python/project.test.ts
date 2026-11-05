@@ -161,7 +161,8 @@ for code, *parameters in control_codes:
     const loaded = await loadPythonProject(directory, { maxSourceFiles: 2 });
 
     expect(loaded.files.map((file) => file.path)).toEqual(["b.py"]);
-    expect(loaded.limitations?.join(" ")).toMatch(/parser-invalid Python source a\.py/i);
+    // Pre-release field validation: an unparsed file is the declared gap native-parse-errors (a record).
+    expect(loaded.gaps).toEqual([{ id: "native-parse-errors", path: "a.py" }]);
     expect(loaded.limitations?.join(" ")).toMatch(/2-file project bound/i);
   });
 
@@ -176,7 +177,8 @@ for code, *parameters in control_codes:
     });
 
     expect(loaded.files).toEqual([]);
-    expect(loaded.limitations?.join(" ")).toMatch(/parser-invalid Python source a\.py/i);
+    // Pre-release field validation: an unparsed file is the declared gap native-parse-errors (a record).
+    expect(loaded.gaps).toEqual([{ id: "native-parse-errors", path: "a.py" }]);
     expect(loaded.limitations?.join(" ")).toMatch(/total-source project bound/i);
     expect(loaded.limitations?.join(" ")).not.toMatch(/b\.py/i);
   });
@@ -191,7 +193,8 @@ for code, *parameters in control_codes:
     const loaded = await loadPythonProject(directory, { maxTotalTokens: tokenCount });
 
     expect(loaded.files).toEqual([]);
-    expect(loaded.limitations?.join(" ")).toMatch(/parser-invalid Python source a\.py/i);
+    // Pre-release field validation: an unparsed file is the declared gap native-parse-errors (a record).
+    expect(loaded.gaps).toEqual([{ id: "native-parse-errors", path: "a.py" }]);
     expect(loaded.limitations?.join(" ")).toMatch(/token project bound/i);
     expect(loaded.limitations?.join(" ")).not.toMatch(/b\.py/i);
   });
@@ -206,7 +209,8 @@ for code, *parameters in control_codes:
     const loaded = await loadPythonProject(directory, { maxTotalCstNodes: nodeCount });
 
     expect(loaded.files).toEqual([]);
-    expect(loaded.limitations?.join(" ")).toMatch(/parser-invalid Python source a\.py/i);
+    // Pre-release field validation: an unparsed file is the declared gap native-parse-errors (a record).
+    expect(loaded.gaps).toEqual([{ id: "native-parse-errors", path: "a.py" }]);
     expect(loaded.limitations?.join(" ")).toMatch(/node project bound/i);
     expect(loaded.limitations?.join(" ")).not.toMatch(/b\.py/i);
   });

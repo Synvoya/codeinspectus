@@ -133,3 +133,20 @@ export function remediationForCwe(cwes: string[]): Remediation {
   }
   return { ...GENERIC, references: cwes.slice() };
 }
+
+/** Package-specific dependency guidance from the scanner's own installed and fixed versions. */
+export function dependencyRemediation(
+  name: string,
+  installed: string,
+  fixed: string[],
+  base: Remediation,
+): Remediation {
+  const [only] = fixed;
+  const to = fixed.length === 1 && only && /^\d/.test(only)
+    ? only
+    : `a fixed version (${fixed.join(", ")}${fixed.length > 1 ? "; choose the one on your release line" : ""})`;
+  const summary = fixed.length
+    ? `Upgrade ${name} from ${installed} to ${to}, then rebuild the lockfile.`
+    : `No fixed version of ${name} is listed for ${installed}. Remove or replace the package, or confirm the vulnerable code path is unreachable.`;
+  return { ...base, summary, steps: [summary, ...base.steps.slice(1)] };
+}

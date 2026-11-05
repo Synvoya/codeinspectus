@@ -4,23 +4,136 @@
  */
 
 import { z } from "zod";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { join, relative, sep } from "node:path";
+import { parse as parseYaml } from "yaml";
 import {
   DETECTION_DB_DIR,
   CODEINSPECTUS_AI_VERSION,
   CODEINSPECTUS_PUB_VERSION,
+  OPENGREP_RULES_DIR,
   type EngineName,
 } from "./config.js";
 import { readTrivyDbDate } from "./engines/trivy.js";
+import { log } from "./logger.js";
 import { inspectEngineSetup } from "./engine-health.js";
 import { nativePackInventory, registeredNativeAnalyzers } from "./packs/registry.js";
-import type { listRulesOutput, ruleInfoSchema } from "./schemas.js";
+import type { advisoryDatabaseInfoSchema, listRulesOutput, ruleInfoSchema } from "./schemas.js";
+import { loadSynvoyaDataset } from "./synvoya/dataset.js";
+import { SYNVOYA_FAMILY, SYNVOYA_FAMILY_DISPLAY, isSynvoyaFinding } from "./synvoya/family.js";
 import type { ListRulesInput } from "./schemas.js";
 import { inspectPubDatabase } from "./pub/database.js";
+import { inspectOsvDatabases, osvDbSourceUrl, readOsvDbRecord } from "./osv/database.js";
 
 type ListRulesResult = z.infer<typeof listRulesOutput>;
 type RuleInfo = z.infer<typeof ruleInfoSchema>;
+type SastRuleLanguages = NonNullable<ListRulesResult["sast_rule_languages"]>;
+
+/**
+ * Rule counts per declared language over the rule files Opengrep loads (every .yaml under the bundled
+ * rules directory), so the count cannot drift from what runs. Sorted by language.
+ */
+export async function opengrepRuleLanguages(dir: string = OPENGREP_RULES_DIR): Promise<SastRuleLanguages> {
+  const byLanguage = new Map<string, { rule_count: number; rulesets: Set<string> }>();
+  for (const entry of await readdir(dir, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile() || !/\.ya?ml$/.test(entry.name)) continue;
+    const path = join(entry.parentPath, entry.name);
+    const ruleset = relative(dir, entry.parentPath).split(sep)[0] || "(root)";
+    const doc = parseYaml(await readFile(path, "utf8")) as { rules?: Array<{ languages?: unknown }> } | null;
+    for (const rule of doc?.rules ?? []) {
+      for (const language of Array.isArray(rule.languages) ? rule.languages : []) {
+        if (typeof language !== "string") continue;
+        const count = byLanguage.get(language) ?? { rule_count: 0, rulesets: new Set<string>() };
+        count.rule_count++;
+        count.rulesets.add(ruleset);
+        byLanguage.set(language, count);
+      }
+    }
+  }
+  return [...byLanguage.entries()]
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([language, { rule_count, rulesets }]) => ({ language, rule_count, rulesets: [...rulesets].sort() }));
+}
+
+/** One human line for the per-language Opengrep rule counts. */
+export function sastRuleLanguagesLine(languages: SastRuleLanguages | undefined): string {
+  return languages?.length
+    ? `Opengrep rules by language: ${languages.map((entry) => `${entry.language} ${entry.rule_count}`).join(", ")}`
+    : "Opengrep rules by language: unavailable";
+}
+type AdvisoryDatabaseInfo = z.infer<typeof advisoryDatabaseInfoSchema>;
+type SynvoyaDatasetInfo = ListRulesResult["synvoya_dataset"];
+
+/** One human line for the dataset state; shown wherever list_rules is summarised, including when it failed to load. */
+export function synvoyaDatasetLine(info: SynvoyaDatasetInfo): string {
+  return info.state === "available"
+    ? `Synvoya gap advisories: ${info.version} (${info.date}), ${info.advisory_count} advisories`
+    : `Synvoya gap advisories: unavailable (${info.reason})`;
+}
+
+async function synvoyaDatasetInfo(): Promise<SynvoyaDatasetInfo> {
+  try {
+    const loaded = await loadSynvoyaDataset();
+    return loaded.ok
+      ? { state: "available", version: loaded.dataset.version, date: loaded.dataset.date, advisory_count: loaded.dataset.advisories.length }
+      : { state: "unavailable", reason: loaded.reason };
+  } catch (error) {
+    return { state: "unavailable", reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** Custom rules grouped for humans: the Synvoya family first, then each remaining engine under its raw id. */
+function groupRules(rules: readonly RuleInfo[]): ListRulesResult["rule_groups"] {
+  const synvoya = rules.filter((rule) => rule.engine_family === SYNVOYA_FAMILY);
+  const groups: ListRulesResult["rule_groups"] = [];
+  if (synvoya.length) {
+    groups.push({
+      group: SYNVOYA_FAMILY_DISPLAY,
+      engine_family: SYNVOYA_FAMILY,
+      rule_count: synvoya.length,
+      engines: [...new Set(synvoya.map((rule) => rule.engine))],
+    });
+  }
+  const others = new Map<RuleInfo["engine"], number>();
+  for (const rule of rules) if (rule.engine_family !== SYNVOYA_FAMILY) others.set(rule.engine, (others.get(rule.engine) ?? 0) + 1);
+  for (const [engine, count] of others) groups.push({ group: engine, rule_count: count, engines: [engine] });
+  return groups;
+}
+
+/** OSV aggregates sources under their own licenses (attribution only; not a legal review). */
+const OSV_DATA_LICENSE =
+  "Per source: CC-BY-4.0 (GitHub Advisory Database GHSA-, PyPA PYSEC-, OSS-Fuzz OSV-, Go GO-), " +
+  "Apache-2.0 (OpenSSF Malicious Packages MAL-), MIT (Drupal), CC0-1.0 (RustSec RUSTSEC-)";
+const OSV_DATA_ATTRIBUTION =
+  "OSV.dev and its sources: GitHub Advisory Database, PyPA Advisory Database, OSS-Fuzz, Go Vulnerability Database, " +
+  "OpenSSF Malicious Packages, Drupal and RustSec contributors";
+
+/** One entry per OSV database installed for osv-scanner; offline (a stat and a small record read each). */
+async function osvAdvisoryDatabases(): Promise<AdvisoryDatabaseInfo[]> {
+  const installed = await inspectOsvDatabases();
+  return Promise.all(installed.map(async ({ ecosystem, state, downloaded_at }): Promise<AdvisoryDatabaseInfo> => {
+    // A record that does not describe the archive on disk proves nothing about it: report no digest.
+    const record = state === "provenance_missing" ? undefined : await readOsvDbRecord(ecosystem);
+    return {
+      engine: "osv-scanner",
+      ecosystem,
+      state: state === "ready" ? "current" : state,
+      version: record?.last_modified ?? downloaded_at ?? "unknown",
+      ...(downloaded_at ? { checked_at: downloaded_at } : {}),
+      ...(record ? { content_digest: record.signature } : {}),
+      matching: "osv-scanner-offline",
+      source_url: osvDbSourceUrl(ecosystem),
+      source_database: "OSV.dev",
+      license: OSV_DATA_LICENSE,
+      attribution: OSV_DATA_ATTRIBUTION,
+      ...(state === "provenance_missing"
+        ? { note: "No install record matches this database archive, so results from it cannot be proven reproducible on rescan. Run `codeinspectus setup` to reinstall it." }
+        : state === "stale"
+          ? { note: "This database is older than the refresh window; run `codeinspectus setup` to refresh it." }
+          : {}),
+    };
+  }));
+}
 
 interface Manifest {
   version: string;
@@ -115,6 +228,9 @@ function validateNativeRuleOwnership(rules: readonly RuleInfo[]): void {
   }
 }
 
+/** Engines that belong wholly to the Synvoya family are labelled for humans; `engine` keeps the raw id. */
+const FAMILY_ROW = { display_name: SYNVOYA_FAMILY_DISPLAY, engine_family: SYNVOYA_FAMILY } as const;
+
 export async function listRules(input: ListRulesInput): Promise<ListRulesResult> {
   const loadedManifest = await loadManifest().catch(() => undefined);
   const manifest = loadedManifest ?? ({
@@ -137,45 +253,72 @@ export async function listRules(input: ListRulesInput): Promise<ListRulesResult>
     rule_count: pack.rules.registered,
   }));
 
-  const engineNames: EngineName[] = ["opengrep", "gitleaks", "trivy"];
-  const [engineSetup, trivyDbDate, pubDatabase] = await Promise.all([
+  const engineNames: EngineName[] = ["opengrep", "gitleaks", "trivy", "osv-scanner"];
+  const [engineSetup, trivyDbDate, pubDatabase, osvDatabases, synvoyaDataset, sastLanguages] = await Promise.all([
     inspectEngineSetup(),
     readTrivyDbDate(),
     inspectPubDatabase(),
+    osvAdvisoryDatabases(),
+    synvoyaDatasetInfo(),
+    opengrepRuleLanguages().catch((error: unknown) => {
+      log.warn("list_rules: could not read the bundled Opengrep rule files", error);
+      return undefined;
+    }),
   ]);
+  const opengrepRulesets = [...new Set((sastLanguages ?? []).flatMap((entry) => entry.rulesets))].sort();
+  const rulesets: Record<EngineName, string> = {
+    opengrep: opengrepRulesets.length ? opengrepRulesets.join(" + ") : "security-baseline",
+    gitleaks: "codeinspectus.toml + defaults",
+    trivy: "embedded + vuln DB",
+    "osv-scanner": "offline OSV databases (installed ecosystems only)",
+  };
 
   const engines = [
     ...engineNames.map((engine) => ({
       engine,
       version: engineSetup.engines.find((item) => item.engine === engine)?.version ?? "unknown",
       available: engineSetup.engines.find((item) => item.engine === engine)?.state === "ready",
-      ruleset: engine === "opengrep" ? "security-baseline" : engine === "gitleaks" ? "codeinspectus.toml + defaults" : "embedded + vuln DB",
+      ruleset: rulesets[engine],
     })),
     {
       engine: "codeinspectus-ai" as const,
+      ...FAMILY_ROW,
       version: CODEINSPECTUS_AI_VERSION,
       available: true,
       ruleset: "AI-code analyzers (§6)",
     },
     {
       engine: "codeinspectus-pub" as const,
+      ...FAMILY_ROW,
       version: CODEINSPECTUS_PUB_VERSION,
       available: pubDatabase.info.state === "current" || pubDatabase.info.state === "stale",
       ruleset: "bundled OSV Pub snapshot (exact enumerated versions)",
     },
+    {
+      engine: "synvoya" as const,
+      ...FAMILY_ROW,
+      version: synvoyaDataset.state === "available" ? synvoyaDataset.version : "unknown",
+      available: synvoyaDataset.state === "available",
+      ruleset: "bundled gap-advisory dataset (declared versions)",
+    },
   ];
 
-  let custom = manifest.custom_rules;
+  // Display grouping only: the raw engine and id of every rule stay as the manifest has them.
+  let custom: RuleInfo[] = manifest.custom_rules.map((rule) =>
+    isSynvoyaFinding({ engine: rule.engine, rule_id: rule.id }) ? { ...rule, engine_family: SYNVOYA_FAMILY } : rule);
   if (input.engine) custom = custom.filter((r) => r.engine === input.engine);
 
   return {
     detection_db_version: manifest.version,
     detection_db_date: manifest.date,
     engines,
+    synvoya_dataset: synvoyaDataset,
+    rule_groups: groupRules(custom),
+    ...(sastLanguages ? { sast_rule_languages: sastLanguages } : {}),
     ...(trivyDbDate ? { trivy_db_date: trivyDbDate } : {}),
     engine_setup: engineSetup,
     native_packs: nativePacks,
-    advisory_databases: [pubDatabase.info],
+    advisory_databases: [pubDatabase.info, ...osvDatabases],
     custom_rules: custom,
     custom_rule_count: custom.length,
     note: "Generic SAST remains available through managed engines. Selected JavaScript rules are first-party native with an explicit Opengrep fallback; other native packs target bounded AI-code and framework-specific issues.",

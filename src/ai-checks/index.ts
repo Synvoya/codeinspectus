@@ -4,6 +4,7 @@
  * pure TypeScript and require no external binary — they always run.
  */
 
+import type { NativeGapRecord } from "../native-gaps.js";
 import type {
   DetectedTechnology,
   DetectorPackCoverage,
@@ -38,11 +39,13 @@ export async function runAiChecks(
   componentSignatures: Record<string, string>;
   securityControlEvidence: SecurityControlEvidence[];
   packCoverage: DetectorPackCoverage[];
+  /** Declared coverage gaps the native analyzers emitted as structured records. */
+  gapRecords: NativeGapRecord[];
 }> {
   const t0 = Date.now();
   const detectedTechnologies = options.detectedTechnologies ??
     (await detectTechnologies(target)).detected_technologies;
-  const { analyzers, results, packCoverage } = await executeNativePacks(target, {
+  const { analyzers, results, packCoverage, gapRecords } = await executeNativePacks(target, {
     detectedTechnologies,
     packs: options.packs,
     scannerKinds: options.scannerKinds,
@@ -86,5 +89,6 @@ export async function runAiChecks(
     componentSignatures: aiSignaturesForComponents([...componentIds]),
     securityControlEvidence,
     packCoverage,
+    gapRecords,
   };
 }

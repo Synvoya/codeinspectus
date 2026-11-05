@@ -1,0 +1,1273 @@
+{
+  "scan_id": "scan-673fdc74-716f-47bf-9bf2-c03acdafc0f7",
+  "target": "/fixture/repo",
+  "started_at": "2026-10-30T13:33:36.219Z",
+  "duration_ms": 671,
+  "engines_run": [
+    "gitleaks@8.30.1",
+    "codeinspectus-ai@5.20.0"
+  ],
+  "engine_details": [
+    {
+      "engine": "opengrep",
+      "version": "unknown",
+      "available": false,
+      "ran": false,
+      "finding_count": 0,
+      "duration_ms": 5,
+      "note": "Engine 'opengrep' is not available. Run `codeinspectus setup` (or the codeinspectus_setup tool) once per machine to review, fetch and SHA-pin the engine binaries; downloads happen only after approval. Expected at: /fixture/home/.codeinspectus/bin/opengrep."
+    },
+    {
+      "engine": "gitleaks",
+      "version": "8.30.1",
+      "available": true,
+      "ran": true,
+      "finding_count": 2,
+      "duration_ms": 645
+    },
+    {
+      "engine": "trivy",
+      "version": "unknown",
+      "available": false,
+      "ran": false,
+      "finding_count": 0,
+      "duration_ms": 5,
+      "note": "Engine 'trivy' is not available. Run `codeinspectus setup` (or the codeinspectus_setup tool) once per machine to review, fetch and SHA-pin the engine binaries; downloads happen only after approval. Expected at: /fixture/home/.codeinspectus/bin/trivy."
+    },
+    {
+      "engine": "codeinspectus-ai",
+      "version": "5.20.0",
+      "available": true,
+      "ran": true,
+      "finding_count": 6,
+      "duration_ms": 32
+    }
+  ],
+  "offline": true,
+  "detected_technologies": [
+    {
+      "id": "typescript",
+      "kind": "language",
+      "confidence": "high",
+      "evidence": [
+        "src/agent.ts",
+        "src/components/PaymentForm.tsx",
+        "src/config.ts",
+        "src/db.ts",
+        "src/llm.ts"
+      ]
+    },
+    {
+      "id": "sql",
+      "kind": "language",
+      "confidence": "high",
+      "evidence": [
+        "supabase/migrations/0001_init.sql"
+      ]
+    },
+    {
+      "id": "supabase",
+      "kind": "framework",
+      "confidence": "high",
+      "evidence": [
+        "supabase/migrations/0001_init.sql"
+      ]
+    }
+  ],
+  "pack_coverage": [
+    {
+      "pack_id": "javascript-typescript",
+      "version": "1.9.0",
+      "scanner_kind": "ai",
+      "state": "ran",
+      "languages": [
+        "javascript",
+        "typescript",
+        "sql"
+      ],
+      "frameworks": [
+        "react",
+        "nextjs",
+        "express",
+        "vue",
+        "svelte",
+        "astro",
+        "supabase"
+      ],
+      "platforms": [],
+      "analyzers": {
+        "registered": 12,
+        "ran": 12
+      },
+      "rules": {
+        "registered": 29,
+        "ran": 29
+      },
+      "limitations": [
+        "Rule-specific static analysis only; listed languages and frameworks are not complete coverage claims.",
+        "Client-secret checks also inspect selected HTML and framework component files; runtime-control checks inspect selected repository configuration shapes.",
+        "Model-tool command execution analysis is intrafile, import-proven, and bounded to direct flow or one named local wrapper; cross-module dispatch and runtime sandbox/approval state are not resolved.",
+        "General model-output execution analysis is intrafile and bounded to recognized SDK output plus global eval/Function or import-proven shell-string APIs; custom wrappers, streams, indirect aliases, and runtime controls are not resolved.",
+        "Next.js admin-route analysis recognizes conventional Pages/App Router paths and handler-scoped terminating authentication plus server-role/permission denials; cross-file middleware and custom guard semantics are reported as coverage limits rather than guessed.",
+        "Express admin-route analysis requires an import-proven Express receiver, an immediate literal admin path, and a direct naked handler; ambiguous middleware, mounted routers, dynamic paths, imported handlers, and generated/minified/vendor assets stay silent.",
+        "Supabase Edge authentication analysis resolves literal per-function verify_jwt state and supported in-handler user, service, or signed-webhook checks; CLI deployment flags, dashboard overrides, custom wrappers, and deployed state are not resolved."
+      ]
+    },
+    {
+      "pack_id": "flutter",
+      "version": "1.1.0",
+      "scanner_kind": "ai",
+      "state": "not_applicable",
+      "languages": [
+        "dart"
+      ],
+      "frameworks": [
+        "flutter"
+      ],
+      "platforms": [],
+      "analyzers": {
+        "registered": 6,
+        "ran": 0
+      },
+      "rules": {
+        "registered": 6,
+        "ran": 0
+      },
+      "limitations": [
+        "Token-aware, source-ordered intrafile Dart analysis; it has no type resolution or path-sensitive branch merge and does not claim complete Flutter security coverage.",
+        "Generated files and test/example corpora are excluded from project-root scans unless scanned directly.",
+        "Unreadable Dart files, files over 2 MiB, and source beyond the 10,000-file/64 MiB project bounds are skipped and reported in pack coverage.",
+        "The pack analyzes repository evidence only and does not replace runtime mobile security testing."
+      ],
+      "note": "No detected project technology matched this native pack; its analyzers did not run."
+    },
+    {
+      "pack_id": "android",
+      "version": "1.0.0",
+      "scanner_kind": "ai",
+      "state": "not_applicable",
+      "languages": [
+        "xml"
+      ],
+      "frameworks": [],
+      "platforms": [
+        "android"
+      ],
+      "analyzers": {
+        "registered": 1,
+        "ran": 0
+      },
+      "rules": {
+        "registered": 4,
+        "ran": 0
+      },
+      "limitations": [
+        "Parses explicit repository AndroidManifest.xml and referenced Network Security Config XML, with bounded main-to-release overlay handling for the supported attributes and resources; it does not run Gradle or model arbitrary product flavors, build-type DSL, placeholders, the full manifest merger, runtime behavior, or complete Android security coverage.",
+        "Directory scans inspect only root, main, and release manifests; non-production demo, sample, example, debug, profile, test, dependency, generated, build, vendor, and cache trees are excluded.",
+        "Only literal @xml/... networkSecurityConfig references are resolved; unreferenced configurations are not claimed.",
+        "XML files over 1 MiB, discovery beyond 20,000 entries, 500 manifests, or 24 levels, and malformed or unreadable files are skipped and reported in pack coverage.",
+        "Symbolic links are skipped and never followed; the structured parser never resolves external or DTD-defined XML entities and never executes target content."
+      ],
+      "note": "No detected project technology matched this native pack; its analyzers did not run."
+    },
+    {
+      "pack_id": "ios",
+      "version": "1.0.0",
+      "scanner_kind": "ai",
+      "state": "not_applicable",
+      "languages": [
+        "xml"
+      ],
+      "frameworks": [],
+      "platforms": [
+        "ios"
+      ],
+      "analyzers": {
+        "registered": 1,
+        "ran": 0
+      },
+      "rules": {
+        "registered": 4,
+        "ran": 0
+      },
+      "limitations": [
+        "Parses explicit repository XML property lists and entitlements and resolves only literal Release/AppStore INFOPLIST_FILE and CODE_SIGN_ENTITLEMENTS project settings; it does not run Xcode, expand xcconfig/preprocessing/dynamic variables, inspect provisioning profiles, or claim complete iOS security coverage.",
+        "Non-production demo, sample, example, debug, profile, test, macOS/OS X, dependency, generated, build, Pods, and DerivedData trees are excluded from directory scans.",
+        "Binary, malformed, unreadable, or oversized configuration is skipped and reported; discovery is bounded to 50,000 entries, Xcode projects to 4 MiB each and 16 MiB total, and selected property lists to 256 files, 512 KiB each, and 8 MiB total.",
+        "Symbolic links are skipped and never followed; the structured parser never resolves external or DTD-defined XML entities and never executes target content."
+      ],
+      "note": "No detected project technology matched this native pack; its analyzers did not run."
+    },
+    {
+      "pack_id": "react-native",
+      "version": "1.0.0",
+      "scanner_kind": "ai",
+      "state": "not_applicable",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "frameworks": [
+        "react-native"
+      ],
+      "platforms": [],
+      "analyzers": {
+        "registered": 4,
+        "ran": 0
+      },
+      "rules": {
+        "registered": 4,
+        "ran": 0
+      },
+      "limitations": [
+        "Token-aware, source-ordered intrafile JavaScript/TypeScript/JSX analysis; it has no type checker, module graph, interprocedural state flow, or path-sensitive branch merge and does not claim complete React Native security coverage.",
+        "Only receivers and components proven by static imports/requires and bounded source-ordered aliases are analyzed; computed properties, dynamic imports, JSX spread props, and unresolved dynamic security values fail closed.",
+        "Generated, dependency, build, test, fixture, demo, sample, and example trees are excluded from project-root scans unless a supported source file is scanned directly.",
+        "Unreadable, malformed, symbolic-link, over-2 MiB, over-200,000-token, or over-64-level structurally nested files and source beyond the 50,000-entry/10,000-file/64 MiB/1,000,000-token/32-level project bounds are skipped and reported in pack coverage.",
+        "The pack analyzes repository evidence only, never executes target code, and does not replace runtime mobile security testing."
+      ],
+      "note": "No detected project technology matched this native pack; its analyzers did not run."
+    },
+    {
+      "pack_id": "expo",
+      "version": "1.0.0",
+      "scanner_kind": "ai",
+      "state": "not_applicable",
+      "languages": [
+        "javascript",
+        "typescript",
+        "json"
+      ],
+      "frameworks": [
+        "expo"
+      ],
+      "platforms": [],
+      "analyzers": {
+        "registered": 2,
+        "ran": 0
+      },
+      "rules": {
+        "registered": 2,
+        "ran": 0
+      },
+      "limitations": [
+        "Parses app.json/app.config.json and direct static app.config JavaScript/TypeScript object exports at the scan root and bounded nested package roots; it never imports, evaluates, transpiles, or executes target configuration.",
+        "Comments and trailing commas are supported, but spreads, functions, computed keys, branches, unresolved aliases, duplicate keys, ambiguous config files, and unsupported or malformed syntax encountered in the exported static-object subset suppress findings and are reported as coverage notes; unrelated module statements are not fully syntax-validated.",
+        "The secret rule covers sensitive non-EXPO_PUBLIC process.env references and one-hop const aliases in public Expo config paths; Expo's hooks, ios.config, android.config, and update code-signing fields are excluded.",
+        "The update rule covers explicit enabled/default-enabled non-local production HTTP URLs without a literal signing certificate; dynamic fields, HTTPS, local/private/reserved/example URLs, disabled updates, and signed updates are excluded.",
+        "Symbolic links and generated/corpus trees are skipped; discovery is bounded to 20,000 entries, 500 package roots, and 24 levels. Individual configs are limited to 1 MiB/100,000 tokens; aggregate package/config reads are limited to 4,096 files/4 MiB and static parsing to 250,000 tokens/25,000 properties."
+      ],
+      "note": "No detected project technology matched this native pack; its analyzers did not run."
+    },
+    {
+      "pack_id": "python-ai-api",
+      "version": "1.5.0",
+      "scanner_kind": "ai",
+      "state": "not_applicable",
+      "languages": [
+        "python"
+      ],
+      "frameworks": [
+        "fastapi",
+        "starlette",
+        "flask",
+        "django",
+        "jinja2",
+        "openai",
+        "anthropic",
+        "langchain"
+      ],
+      "platforms": [],
+      "analyzers": {
+        "registered": 10,
+        "ran": 0
+      },
+      "rules": {
+        "registered": 10,
+        "ran": 0
+      },
+      "limitations": [
+        "Token-aware, source-ordered intrafile Python analysis with a bounded Lezer syntax gate; it has no type checker, module graph, interprocedural flow, path-sensitive branch merge, or claim of complete Python security coverage.",
+        "The ten rules cover exact Django, Flask, FastAPI, Starlette, Jinja, OpenAI, Anthropic, LangChain, and Python OS-command source/sink shapes only; unsupported aliases, computed values, dynamic imports, spreads, generic dispatch, and flows beyond the documented bounded aliases fail closed.",
+        "Lezer-validated format strings are tokenized as opaque dynamic strings, so replacement expressions are not inspected; leading tab indentation remains unsupported and mixed tab-stop indentation is skipped and reported rather than risking conditional bindings being analyzed as executable direct scope.",
+        "Generated, migration, dependency, build, test, fixture, demo, sample, and example trees and conventional test files are excluded from project-root scans unless a supported source file is scanned directly.",
+        "Symbolic links, unsupported encodings, generated headers, unreadable or malformed files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/1,000,000-token/1,000,000-node/32-level project bounds are skipped and reported in pack coverage.",
+        "The pack parses repository evidence only, never imports or executes target Python, and does not replace dependency, runtime, or penetration testing."
+      ],
+      "note": "No detected project technology matched this native pack; its analyzers did not run."
+    },
+    {
+      "pack_id": "javascript-baseline",
+      "version": "1.0.0",
+      "scanner_kind": "sast",
+      "state": "ran",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "frameworks": [],
+      "platforms": [],
+      "analyzers": {
+        "registered": 1,
+        "ran": 1
+      },
+      "rules": {
+        "registered": 2,
+        "ran": 2
+      },
+      "limitations": [
+        "Two selected JavaScript/TypeScript crypto rules only; this is not complete SAST or language coverage.",
+        "Findings are reconciled against the bundled Opengrep rules before they surface; Opengrep remains the fallback on mismatches or native parser limitations.",
+        "Bounded structural parsing has no type checker, module graph, or interprocedural data flow and never executes target code."
+      ],
+      "note": "Opengrep did not run; promoted rules used the native fallback."
+    },
+    {
+      "pack_id": "go-ai",
+      "version": "1.0.0",
+      "scanner_kind": "ai",
+      "state": "not_applicable",
+      "languages": [
+        "go"
+      ],
+      "frameworks": [
+        "openai"
+      ],
+      "platforms": [],
+      "analyzers": {
+        "registered": 1,
+        "ran": 0
+      },
+      "rules": {
+        "registered": 1,
+        "ran": 0
+      },
+      "limitations": [
+        "Token-aware, source-ordered intrafile Go analysis without a type checker, module graph, path-sensitive branch merge, or claim of complete Go security coverage.",
+        "The rule covers exact official OpenAI Go Chat Completions tool-call arguments reaching import-proven os/exec shell interpreters; Anthropic, Gemini, custom model types, generic dispatch, renamed external wrappers, and cross-module flow fail closed.",
+        "Dataflow is bounded to direct aliases, encoding/json unmarshal, one local JSON parsing helper, and one local command wrapper; checked approval/allowlist rejection and validated replacement values suppress findings.",
+        "Generated, dependency, build, test, fixture, demo, sample, and example trees and conventional _test.go/generated files are excluded from project-root scans unless a supported source file is scanned directly.",
+        "Symbolic links, unsupported encodings, malformed strings/comments, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; individual structural expressions are capped at 64 KiB.",
+        "The pack parses repository evidence only, never builds or executes target Go, and does not replace dependency, runtime, sandbox, or penetration testing."
+      ],
+      "note": "No detected project technology matched this native pack; its analyzers did not run."
+    },
+    {
+      "pack_id": "java-ai",
+      "version": "1.0.0",
+      "scanner_kind": "ai",
+      "state": "not_applicable",
+      "languages": [
+        "java"
+      ],
+      "frameworks": [
+        "openai"
+      ],
+      "platforms": [],
+      "analyzers": {
+        "registered": 1,
+        "ran": 0
+      },
+      "rules": {
+        "registered": 1,
+        "ran": 0
+      },
+      "limitations": [
+        "Token-aware, source-ordered intrafile Java analysis without a type checker, module graph, path-sensitive branch merge, or claim of complete Java security coverage.",
+        "The rule covers exact official OpenAI Java tool-call argument types reaching an actually-started recognized ProcessBuilder or Runtime shell interpreter; Spring AI, LangChain4j, Azure OpenAI, other model types, generic dispatch, and cross-module flow fail closed.",
+        "Dataflow is bounded to direct aliases, one local parsing helper, and one local command wrapper; checked approval/allowlist rejection and validated replacement values suppress findings.",
+        "Generated, dependency, build, test, fixture, demo, sample, and top-level example trees and conventional Java test/generated files are excluded from project-root scans unless a supported source file is scanned directly.",
+        "Symbolic links, unsupported encodings, malformed strings/comments, Java text blocks, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; individual structural expressions are capped at 64 KiB.",
+        "The pack parses repository evidence only, never builds or executes target Java, and does not replace dependency, runtime, sandbox, or penetration testing."
+      ],
+      "note": "No detected project technology matched this native pack; its analyzers did not run."
+    },
+    {
+      "pack_id": "csharp-ai",
+      "version": "1.0.0",
+      "scanner_kind": "ai",
+      "state": "not_applicable",
+      "languages": [
+        "csharp"
+      ],
+      "frameworks": [
+        "openai"
+      ],
+      "platforms": [],
+      "analyzers": {
+        "registered": 1,
+        "ran": 0
+      },
+      "rules": {
+        "registered": 1,
+        "ran": 0
+      },
+      "limitations": [
+        "Token-aware, source-ordered intrafile C# analysis without a compiler, semantic model, project graph, path-sensitive branch merge, or claim of complete .NET security coverage.",
+        "The rule covers exact official OpenAI .NET ChatToolCall FunctionArguments reaching an actually-started recognized System.Diagnostics.Process shell; Azure OpenAI, Semantic Kernel, Microsoft.Extensions.AI, other model types, generic dispatch, and cross-project flow fail closed.",
+        "Dataflow is bounded to direct aliases, System.Text.Json dictionary/property extraction, one local parsing helper, and one local command wrapper; checked approval/allowlist rejection and validated replacement values suppress findings.",
+        "Generated, dependency, build, publish, test, fixture, demo, sample, and example trees and conventional C# test/generated files are excluded from project-root scans unless a supported source file is scanned directly.",
+        "Symbolic links, unsupported encodings, malformed strings/comments, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; raw string contents are treated as opaque and individual structural expressions are capped at 64 KiB.",
+        "The pack parses repository evidence only, never restores, builds, or executes target .NET code, and does not replace dependency, runtime, sandbox, or penetration testing."
+      ],
+      "note": "No detected project technology matched this native pack; its analyzers did not run."
+    },
+    {
+      "pack_id": "php-ai",
+      "version": "1.0.0",
+      "scanner_kind": "ai",
+      "state": "not_applicable",
+      "languages": [
+        "php"
+      ],
+      "frameworks": [
+        "openai"
+      ],
+      "platforms": [],
+      "analyzers": {
+        "registered": 1,
+        "ran": 0
+      },
+      "rules": {
+        "registered": 1,
+        "ran": 0
+      },
+      "limitations": [
+        "Bounded intrafile PHP analysis without a PHP parser, type resolver, Composer graph, path-sensitive branch merge, or claim of complete PHP security coverage.",
+        "The rule covers exact openai-php/client or openai-php/laravel package evidence and tool-call function arguments reaching exec, system, shell_exec, or passthru; other clients, generic callables, and cross-file flow fail closed.",
+        "Dataflow is bounded to direct aliases, associative json_decode extraction, one local parsing helper, one local command wrapper, and one exact mapped variadic method dispatch; checked approval/full-command allowlists and validated replacement values suppress findings.",
+        "Custom validation helpers are not assumed safe; first-token executable checks do not neutralize shell metacharacters in the remaining command string.",
+        "Generated, dependency, cache, build, test, fixture, demo, sample, and example trees and conventional PHP test/generated files are excluded from project-root scans unless a supported source file is scanned directly.",
+        "Symbolic links, unsupported encodings, heredoc/nowdoc or malformed strings/comments, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; structural expressions are capped at 64 KiB.",
+        "The pack parses repository evidence only, never installs dependencies or executes target PHP, and does not replace dependency, runtime, sandbox, or penetration testing."
+      ],
+      "note": "No detected project technology matched this native pack; its analyzers did not run."
+    },
+    {
+      "pack_id": "rust-ai",
+      "version": "1.0.0",
+      "scanner_kind": "ai",
+      "state": "not_applicable",
+      "languages": [
+        "rust"
+      ],
+      "frameworks": [
+        "openai"
+      ],
+      "platforms": [],
+      "analyzers": {
+        "registered": 1,
+        "ran": 0
+      },
+      "rules": {
+        "registered": 1,
+        "ran": 0
+      },
+      "limitations": [
+        "Token-aware, source-ordered intrafile Rust analysis without rustc, a Rust parser, type resolution, a Cargo graph, path-sensitive branch merge, or claim of complete Rust security coverage.",
+        "The rule covers exact community async-openai package evidence and recognized tool-call arguments reaching an import-proven standard/tokio process shell or a literal bollard Docker exec shell vector; other clients, generic dispatch, renamed external wrappers, and cross-crate flow fail closed.",
+        "Dataflow is bounded to direct aliases, serde_json extraction, one recognized generate_function_call result, and one local command wrapper; checked approval/allowlist rejection and validated replacement values suppress findings.",
+        "Generated, dependency, build, benchmark, test, fixture, demo, sample, and example trees and conventional Rust test/generated files are excluded from project-root scans unless a supported source file is scanned directly.",
+        "Symbolic links, unsupported encodings, malformed strings/comments, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; individual structural expressions are capped at 64 KiB.",
+        "The pack parses repository evidence only, never fetches crates, builds, or executes target Rust, and does not replace dependency, runtime, sandbox, container-isolation, or penetration testing."
+      ],
+      "note": "No detected project technology matched this native pack; its analyzers did not run."
+    },
+    {
+      "pack_id": "ruby-ai",
+      "version": "1.0.0",
+      "scanner_kind": "ai",
+      "state": "not_applicable",
+      "languages": [
+        "ruby"
+      ],
+      "frameworks": [
+        "openai"
+      ],
+      "platforms": [],
+      "analyzers": {
+        "registered": 1,
+        "ran": 0
+      },
+      "rules": {
+        "registered": 1,
+        "ran": 0
+      },
+      "limitations": [
+        "Source-ordered intrafile Ruby analysis without a Ruby parser, type resolver, Bundler graph, path-sensitive branch merge, or claim of complete Ruby security coverage.",
+        "The rule requires exact official openai production Gemfile or runtime gemspec evidence and covers Chat tool-call function arguments or explicitly typed Responses function-tool arguments reaching system, exec, IO.popen, or import-proven Open3 shell execution; lockfile-only and development-only dependencies, other clients, generic argument objects, backticks, percent-x literals, spawn APIs, and cross-file flow fail closed.",
+        "Dataflow is bounded to direct aliases, JSON.parse command extraction, one local parsing helper, and one local command wrapper; checked approval/full-command allowlists and validated replacement values suppress findings.",
+        "Generated, dependency, cache, build, test, spec, fixture, demo, sample, and example trees and conventional Ruby test/spec/generated files are excluded from project-root scans unless a supported source file is scanned directly.",
+        "Symbolic links, unsupported encodings, heredocs, malformed strings/comments, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; structural expressions are capped at 64 KiB.",
+        "The pack parses repository evidence only, never installs gems or executes target Ruby, and does not replace dependency, runtime, sandbox, or penetration testing."
+      ],
+      "note": "No detected project technology matched this native pack; its analyzers did not run."
+    },
+    {
+      "pack_id": "firebase",
+      "version": "1.0.0",
+      "scanner_kind": "ai",
+      "state": "not_applicable",
+      "languages": [
+        "firebase-rules",
+        "json"
+      ],
+      "frameworks": [],
+      "platforms": [
+        "firebase"
+      ],
+      "analyzers": {
+        "registered": 1,
+        "ran": 0
+      },
+      "rules": {
+        "registered": 3,
+        "ran": 0
+      },
+      "limitations": [
+        "Detects only literal unconditional public write grants in checked-in Cloud Firestore, Cloud Storage, and Realtime Database Security Rules; public reads, semantic helper functions, runtime policy state, IAM, App Check, and complete Firebase security coverage are outside this pack.",
+        "Cloud Firestore and Cloud Storage analysis requires exact service declarations and literal allow write/create/update/delete statements with no condition or a condition that is exactly true; other expressions fail closed.",
+        "Realtime Database analysis requires strict JSON and recognizes only .write values that are boolean true or the exact string true; dynamic expressions are not evaluated.",
+        "Directory scans inspect .rules files and database.rules.json while excluding test, example, sample, dependency, generated, build, vendor, and cache trees; custom non-.rules filenames are not discovered.",
+        "Files over 1 MiB and discovery beyond 1,000 rule files, 32 MiB total, 50,000 entries, or 32 levels are skipped and reported in pack coverage.",
+        "Symbolic links and symbolic-link ancestors are skipped and never followed; target code and Firebase tooling are never executed."
+      ],
+      "note": "No detected project technology matched this native pack; its analyzers did not run."
+    },
+    {
+      "pack_id": "github-actions",
+      "version": "1.0.0",
+      "scanner_kind": "ai",
+      "state": "not_applicable",
+      "languages": [
+        "yaml"
+      ],
+      "frameworks": [],
+      "platforms": [
+        "github-actions"
+      ],
+      "analyzers": {
+        "registered": 1,
+        "ran": 0
+      },
+      "rules": {
+        "registered": 2,
+        "ran": 0
+      },
+      "limitations": [
+        "Detects two exact GitHub Actions workflow risks: attacker-controlled GitHub context expressions embedded directly in run scripts, and pull_request_target workflows that check out and execute untrusted pull request code.",
+        "Expression injection covers a documented static set of issue, pull request, comment, review, page, commit, email, name, and head-ref properties; bracket notation, aliases, custom actions, generated scripts, and inter-step dataflow are outside this pack.",
+        "Pwn-request analysis requires pull_request_target, a recognized untrusted actions/checkout ref, checkout v1-v6 or explicit allow-unsafe-pr-checkout, the default workspace, and a subsequent recognized build/test/script command or local action.",
+        "workflow_run, issue_comment code fetches, downloaded artifacts, non-checkout git/gh fetches, non-default checkout paths, self-hosted runner isolation, deployed repository settings, organization policy, and complete CI/CD security coverage are outside this pack.",
+        "Only direct .github/workflows/*.yml and *.yaml files are parsed as strict YAML 1.2; malformed, unsupported, unreadable, symbolic-link, or oversized workflows fail closed and are reported in pack coverage.",
+        "Workflow reads are bounded to 1 MiB per file, 512 files, and 16 MiB total; target actions, expressions, scripts, and repository code are never evaluated or executed."
+      ],
+      "note": "No detected project technology matched this native pack; its analyzers did not run."
+    }
+  ],
+  "repository_trust": {
+    "schema_version": "1.0.0",
+    "coverage": {
+      "state": "partial",
+      "capabilities": [
+        {
+          "capability": "source_integrity",
+          "state": "ran",
+          "validators": [
+            "codeinspectus-source-integrity@1.0.0"
+          ],
+          "limitations": [
+            "Mixed-script identifier analysis is limited to a reviewed Greek/Cyrillic-to-ASCII confusable set in supported code extensions; it is not complete Unicode confusable coverage.",
+            "Context classification is deterministic and conservative; informational artifacts require human review and are never cleanup-eligible."
+          ]
+        },
+        {
+          "capability": "explicit_ai_attribution",
+          "state": "ran",
+          "validators": [
+            "codeinspectus-explicit-ai-attribution@1.0.0"
+          ],
+          "limitations": [
+            "Explicit statements and metadata are declarative evidence, not statistical proof of AI authorship or vendor origin."
+          ]
+        },
+        {
+          "capability": "content_provenance",
+          "state": "not_applicable",
+          "validators": [],
+          "limitations": [
+            "Remote C2PA manifests and revocation endpoints are never fetched during a scan; offline validation cannot establish online trust or revocation status.",
+            "C2PA absence is not proof that an asset is human-created, and C2PA presence is not automatically proof of AI generation."
+          ]
+        },
+        {
+          "capability": "statistical_watermark",
+          "state": "unavailable",
+          "validators": [],
+          "limitations": [
+            "Statistical watermark verification is not available without an authoritative, independently verifiable detector and calibrated operating thresholds."
+          ]
+        }
+      ],
+      "limitations": [
+        "Statistical watermark verification remains unavailable; V3.3 cleanup is limited to separately approved deterministic records and never performs statistical rewriting."
+      ]
+    },
+    "summary": {
+      "verified": 0,
+      "probable": 0,
+      "informational": 0,
+      "not_verifiable": 0,
+      "total": 0
+    },
+    "artifacts": []
+  },
+  "dependency_coverage": [
+    {
+      "ecosystem": "Pub",
+      "engine": "codeinspectus-pub",
+      "state": "not_applicable",
+      "lockfiles": {
+        "discovered": 0,
+        "analyzed": 0
+      },
+      "packages": {
+        "resolved": 0,
+        "eligible": 0,
+        "skipped": 0
+      },
+      "matching": "exact-enumerated-versions",
+      "limitations": [],
+      "note": "No Dart project signal was detected, so native Pub dependency analysis was not applicable."
+    }
+  ],
+  "summary": {
+    "critical": 2,
+    "high": 4,
+    "medium": 0,
+    "low": 0,
+    "info": 0,
+    "total": 6
+  },
+  "findings": [
+    {
+      "id": "CI-0001",
+      "fingerprint": "sha256:2f4ab4fbdf6acb9a44a91d6678f2989d976cd25c80505294934d5d1adbe2610b",
+      "title": "Hard-coded secret in client-reachable code",
+      "severity": "critical",
+      "engine": "codeinspectus-ai",
+      "engines": [
+        "gitleaks",
+        "codeinspectus-ai"
+      ],
+      "rule_id": "ci-ai-client-hardcoded-secret",
+      "cwe": [
+        "CWE-798",
+        "CWE-312"
+      ],
+      "owasp_web": [
+        "A02:2021",
+        "A07:2021"
+      ],
+      "owasp_llm": [
+        "LLM02:2025"
+      ],
+      "attack_techniques": [
+        "T1552",
+        "T1552.001"
+      ],
+      "location": {
+        "file": "src/config.ts",
+        "start_line": 5,
+        "end_line": 5,
+        "snippet": "[redacted potential secret: ci-ai-client-hardcoded-secret]"
+      },
+      "message": "[redacted potential secret: ci-ai-client-hardcoded-secret]",
+      "remediation": {
+        "summary": "Remove the hard-coded credential; load it from a server-side secret store and rotate the exposed value.",
+        "steps": [
+          "Delete the literal credential from source.",
+          "Move it to a server-side environment variable or a secrets manager (never a client-exposed env prefix).",
+          "Rotate/revoke the exposed credential — assume it is already compromised.",
+          "Add the file/path to secret-scanning so it cannot reappear."
+        ],
+        "code_suggestion": "const key = process.env.SERVICE_SECRET_KEY; // server-side only",
+        "references": [
+          "CWE-798",
+          "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
+        ]
+      },
+      "frameworks": [
+        {
+          "framework": "NIST_CSF_2.0",
+          "controls": [
+            "PR.AA-05",
+            "PR.DS-01"
+          ]
+        },
+        {
+          "framework": "ISO27001:2022",
+          "controls": [
+            "A.8.12",
+            "A.8.24",
+            "A.8.28"
+          ]
+        },
+        {
+          "framework": "SOC2",
+          "controls": [
+            "CC6.1"
+          ]
+        },
+        {
+          "framework": "CIS_v8.1",
+          "controls": [
+            "16.12",
+            "3.11"
+          ]
+        }
+      ],
+      "confidence": "high",
+      "is_secret": true,
+      "secret_value_hash": "sha256:91df778b893672d30b925564c70467e9c73a4e44c97193cc34d2dd2ec799cdf4",
+      "producer_components": [
+        "ai:client-secrets",
+        "codeinspectus-ai:invocation",
+        "codeinspectus:pipeline",
+        "gitleaks:binary",
+        "gitleaks:config",
+        "gitleaks:effective-ignore",
+        "gitleaks:invocation"
+      ],
+      "finding_kind": "secret"
+    },
+    {
+      "id": "CI-0002",
+      "fingerprint": "sha256:ec411f41a7ecedc6ec9ddf67598f4aff8b2e5b5ac69e6a72122f30096bb007bb",
+      "title": "RLS permits SELECT on sensitive table 'profiles' for anonymous and authenticated clients",
+      "severity": "critical",
+      "engine": "codeinspectus-ai",
+      "engines": [
+        "codeinspectus-ai"
+      ],
+      "rule_id": "ci-ai-rls-using-true",
+      "cwe": [
+        "CWE-863",
+        "CWE-285"
+      ],
+      "owasp_web": [
+        "A01:2021"
+      ],
+      "attack_techniques": [
+        "T1190",
+        "T1548"
+      ],
+      "location": {
+        "file": "supabase/migrations/0001_init.sql",
+        "start_line": 18,
+        "end_line": 18,
+        "snippet": "  using (true);"
+      },
+      "message": "The final applicable permissive and restrictive policy composition for SELECT is provably TRUE for anonymous and authenticated clients. The checked repository SQL therefore contains no row predicate for that operation and role. This does not prove deployed API reachability, table grants, migration application, or hosted configuration.",
+      "remediation": {
+        "summary": "Replace the open policy composition with operation-specific ownership or authorization predicates unless this access is deliberate.",
+        "steps": [
+          "Confirm which database roles should perform this operation.",
+          "Use auth.uid()-bound ownership or a server-controlled authorization predicate.",
+          "Review both permissive and restrictive policies for the same command and role.",
+          "Verify deployed grants and policy state separately."
+        ],
+        "references": [
+          "CWE-863",
+          "https://supabase.com/docs/guides/database/postgres/row-level-security"
+        ]
+      },
+      "frameworks": [
+        {
+          "framework": "NIST_CSF_2.0",
+          "controls": [
+            "PR.AA-05"
+          ]
+        },
+        {
+          "framework": "ISO27001:2022",
+          "controls": [
+            "A.8.26",
+            "A.8.28"
+          ]
+        },
+        {
+          "framework": "SOC2",
+          "controls": [
+            "CC6.1"
+          ]
+        },
+        {
+          "framework": "CIS_v8.1",
+          "controls": [
+            "16.10"
+          ]
+        }
+      ],
+      "confidence": "high",
+      "producer_components": [
+        "codeinspectus:pipeline",
+        "codeinspectus-ai:invocation",
+        "ai:supabase-rls-policy-state"
+      ],
+      "finding_kind": "ai"
+    },
+    {
+      "id": "CI-0003",
+      "fingerprint": "sha256:364bac67848239c024a8d5f2d5712e214cded1fa1dcb5c33359de1a9f28fbb42",
+      "title": "Model-produced tool argument reaches shell execution",
+      "severity": "high",
+      "engine": "codeinspectus-ai",
+      "engines": [
+        "codeinspectus-ai"
+      ],
+      "rule_id": "ci-ai-llm-tool-argument-command-execution",
+      "cwe": [
+        "CWE-78",
+        "CWE-1426"
+      ],
+      "owasp_web": [
+        "A03:2021"
+      ],
+      "owasp_llm": [
+        "LLM05:2025",
+        "LLM06:2025"
+      ],
+      "location": {
+        "file": "src/agent.ts",
+        "start_line": 9,
+        "end_line": 9,
+        "snippet": "  return exec(command);"
+      },
+      "message": "A model-produced tool/function argument appears to reach import-proven child_process.exec/execSync without a visible checked approval, allowlist, or validated replacement value. This is bounded static evidence; verify runtime approval and sandboxing manually.",
+      "remediation": {
+        "summary": "Treat model tool arguments as untrusted: validate against a strict schema and server-owned allowlist, require approval for sensitive actions, and avoid shell command strings.",
+        "steps": [
+          "Map a fixed tool name to a server-owned implementation; never let the model choose an executable or arbitrary shell string.",
+          "Validate every argument against an allowlist/schema and reject unknown properties or values.",
+          "Require explicit human approval before command execution and run allowed actions with least privilege in an isolated sandbox.",
+          "Prefer execFile/spawn with a fixed executable and separated argument array over exec/execSync."
+        ],
+        "references": [
+          "CWE-78",
+          "CWE-1426",
+          "https://genai.owasp.org/llmrisk/llm05-improper-output-handling/",
+          "https://genai.owasp.org/llmrisk/llm06-excessive-agency/"
+        ]
+      },
+      "frameworks": [
+        {
+          "framework": "NIST_CSF_2.0",
+          "controls": [
+            "PR.PS-06"
+          ]
+        },
+        {
+          "framework": "ISO27001:2022",
+          "controls": [
+            "A.8.26",
+            "A.8.28"
+          ]
+        },
+        {
+          "framework": "CIS_v8.1",
+          "controls": [
+            "16.1"
+          ]
+        }
+      ],
+      "confidence": "medium",
+      "producer_components": [
+        "codeinspectus:pipeline",
+        "codeinspectus-ai:invocation",
+        "ai:unsafe-tool-execution"
+      ],
+      "finding_kind": "ai"
+    },
+    {
+      "id": "CI-0004",
+      "fingerprint": "sha256:6261a681be71739ac4687769e41a74b06badaae92ff73abe55376da98b8b3d84",
+      "title": "Secret exposed via client-visible env prefix",
+      "severity": "high",
+      "engine": "codeinspectus-ai",
+      "engines": [
+        "codeinspectus-ai"
+      ],
+      "rule_id": "ci-ai-public-env-secret",
+      "cwe": [
+        "CWE-798",
+        "CWE-312"
+      ],
+      "owasp_web": [
+        "A02:2021",
+        "A07:2021"
+      ],
+      "owasp_llm": [
+        "LLM02:2025"
+      ],
+      "attack_techniques": [
+        "T1552",
+        "T1552.001"
+      ],
+      "location": {
+        "file": "src/components/PaymentForm.tsx",
+        "start_line": 6,
+        "end_line": 6,
+        "snippet": "  const stripeSecret = process.env.NEXT_PUBLIC_STRIPE_SECRET_KEY;"
+      },
+      "message": "Env var 'NEXT_PUBLIC_STRIPE_SECRET_KEY' uses a client-exposed prefix but names a secret — frameworks ship these to the browser. Move it to a server-only variable.",
+      "remediation": {
+        "summary": "Rename to a server-only env var (no public prefix) and read it only in server code; rotate if it ever shipped.",
+        "steps": [
+          "Remove the client-exposed prefix; use a server-only env var.",
+          "Access the value only in server-side code (API route / server action / edge function).",
+          "Rotate the secret if a build with this prefix was ever shipped."
+        ],
+        "references": [
+          "CWE-798",
+          "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
+        ]
+      },
+      "frameworks": [
+        {
+          "framework": "NIST_CSF_2.0",
+          "controls": [
+            "PR.AA-05",
+            "PR.DS-01"
+          ]
+        },
+        {
+          "framework": "ISO27001:2022",
+          "controls": [
+            "A.8.12",
+            "A.8.24",
+            "A.8.28"
+          ]
+        },
+        {
+          "framework": "SOC2",
+          "controls": [
+            "CC6.1"
+          ]
+        },
+        {
+          "framework": "CIS_v8.1",
+          "controls": [
+            "16.12",
+            "3.11"
+          ]
+        }
+      ],
+      "confidence": "medium",
+      "producer_components": [
+        "codeinspectus:pipeline",
+        "codeinspectus-ai:invocation",
+        "ai:client-secrets"
+      ],
+      "finding_kind": "ai"
+    },
+    {
+      "id": "CI-0005",
+      "fingerprint": "sha256:672246a8b1c88e886317dca6e77a96969da276939f85974e3a0bba3a0261f2d0",
+      "title": "Potential prompt-injection sink with tool/function-calling access",
+      "severity": "high",
+      "engine": "codeinspectus-ai",
+      "engines": [
+        "codeinspectus-ai"
+      ],
+      "rule_id": "ci-ai-prompt-injection-sink",
+      "cwe": [
+        "CWE-1427"
+      ],
+      "owasp_llm": [
+        "LLM01:2025",
+        "LLM06:2025"
+      ],
+      "location": {
+        "file": "src/llm.ts",
+        "start_line": 11,
+        "end_line": 11,
+        "snippet": "  const completion = await openai.chat.completions.create({"
+      },
+      "message": "Untrusted input appears to reach an LLM call at a higher-risk position. The same call grants the model tool/function-calling access, so a successful injection can trigger actions (excessive agency, LLM06). Prompt-injection detection is heuristic — verify manually.",
+      "remediation": {
+        "summary": "Keep untrusted content as data in a separate user-role message, never concatenated into the system prompt; validate it first; and gate any tool actions.",
+        "steps": [
+          "Do not concatenate request/user input into the system prompt or a single instruction string.",
+          "Place untrusted content in its own user-role message and validate it first.",
+          "For tool/function-calling, require confirmation before any sensitive action."
+        ],
+        "references": [
+          "CWE-1427",
+          "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
+        ]
+      },
+      "frameworks": [],
+      "confidence": "medium",
+      "producer_components": [
+        "codeinspectus:pipeline",
+        "codeinspectus-ai:invocation",
+        "ai:prompt-injection"
+      ],
+      "finding_kind": "ai"
+    },
+    {
+      "id": "CI-0006",
+      "fingerprint": "sha256:dc7bf373a90cff54f02a627b91a2fa3e623bbaad5ea96ac28aad78805e50229f",
+      "title": "Repository-defined public table 'payments' lacks Row Level Security",
+      "severity": "high",
+      "engine": "codeinspectus-ai",
+      "engines": [
+        "codeinspectus-ai"
+      ],
+      "rule_id": "ci-ai-rls-missing",
+      "cwe": [
+        "CWE-862",
+        "CWE-285"
+      ],
+      "owasp_web": [
+        "A01:2021"
+      ],
+      "attack_techniques": [
+        "T1190",
+        "T1548"
+      ],
+      "location": {
+        "file": "supabase/migrations/0001_init.sql",
+        "start_line": 22,
+        "end_line": 22,
+        "snippet": "create table public.payments ("
+      },
+      "message": "The checked repository defines public.payments and does not enable Row Level Security in the conclusive migration sequence. This is a repository-visible missing control, not proof that the deployed table is reachable through an API or granted to client roles.",
+      "remediation": {
+        "summary": "Enable RLS on public.payments, add least-privilege policies, and verify deployed grants separately.",
+        "steps": [
+          "ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;",
+          "Add command-specific policies with ownership or authorization predicates.",
+          "Verify the applied migration, table grants, and hosted API exposure outside repository analysis."
+        ],
+        "references": [
+          "CWE-862",
+          "https://supabase.com/docs/guides/database/postgres/row-level-security"
+        ]
+      },
+      "frameworks": [
+        {
+          "framework": "NIST_CSF_2.0",
+          "controls": [
+            "PR.AA-05"
+          ]
+        },
+        {
+          "framework": "ISO27001:2022",
+          "controls": [
+            "A.8.26",
+            "A.8.28"
+          ]
+        },
+        {
+          "framework": "SOC2",
+          "controls": [
+            "CC6.1"
+          ]
+        },
+        {
+          "framework": "CIS_v8.1",
+          "controls": [
+            "16.10"
+          ]
+        }
+      ],
+      "confidence": "medium",
+      "producer_components": [
+        "codeinspectus:pipeline",
+        "codeinspectus-ai:invocation",
+        "ai:supabase-rls-policy-state"
+      ],
+      "finding_kind": "ai"
+    }
+  ],
+  "truncated": false,
+  "total_findings_before_limit": 6,
+  "compliance_overview": {
+    "posture_score": 38,
+    "frameworks": [
+      {
+        "framework": "NIST_CSF_2.0",
+        "code_visible_controls": 5,
+        "controls_with_findings": 3
+      },
+      {
+        "framework": "ISO27001:2022",
+        "code_visible_controls": 7,
+        "controls_with_findings": 4
+      },
+      {
+        "framework": "SOC2",
+        "code_visible_controls": 5,
+        "controls_with_findings": 1
+      },
+      {
+        "framework": "CIS_v8.1",
+        "code_visible_controls": 7,
+        "controls_with_findings": 4
+      },
+      {
+        "framework": "EssentialEight",
+        "code_visible_controls": 1,
+        "controls_with_findings": 0
+      },
+      {
+        "framework": "OWASP_Web_2021",
+        "code_visible_controls": 8,
+        "controls_with_findings": 4
+      },
+      {
+        "framework": "OWASP_LLM_2025",
+        "code_visible_controls": 4,
+        "controls_with_findings": 4
+      }
+    ],
+    "disclaimer": "AI-drafted, reviewed by a cybersecurity practitioner (Synvoya) — code-level coverage only, not an audit or certification. Community review welcome."
+  },
+  "disclaimer": "AI-drafted, reviewed by a cybersecurity practitioner (Synvoya) — code-level coverage only, not an audit or certification. Community review welcome.",
+  "warnings": [
+    "opengrep did not run: Engine 'opengrep' is not available. Run `codeinspectus setup` (or the codeinspectus_setup tool) once per machine to review, fetch and SHA-pin the engine binaries; downloads happen only after approval. Expected at: /fixture/home/.codeinspectus/bin/opengrep.",
+    "trivy did not run: Engine 'trivy' is not available. Run `codeinspectus setup` (or the codeinspectus_setup tool) once per machine to review, fetch and SHA-pin the engine binaries; downloads happen only after approval. Expected at: /fixture/home/.codeinspectus/bin/trivy."
+  ],
+  "secret_coverage": "verified",
+  "component_signatures": {
+    "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
+    "gitleaks:binary": "sha256:ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f",
+    "gitleaks:config": "sha256:dcf36444c9a33afc76d0bafe7c7093b7d7eefc4ac584fcc346150d2d77eef628",
+    "gitleaks:invocation": "sha256:f2a3ca7981f453ae8338298352fd8b6f071247dd453a0cae5e0d9bbb74312517",
+    "gitleaks:effective-ignore": "sha256:e9b316460d2fa0ab93f13fc4610a72a229a6525c3b8b75fd7c63ed0fdbb3a4f7",
+    "codeinspectus-ai:invocation": "sha256:e093d967e10b23e4991c9bdaaa0f47aa4e0711317952117992dd71b8b50bbde2",
+    "ai:client-secrets": "sha256:d0e260fe6cad85019287e73c901f8f676b87f3122b5a05cf3c50c41b3b436a2e",
+    "ai:supabase-rls-policy-state": "sha256:e72465d212773e6f14692b02dd29138325c43a84b89258bd0e369db0b3630dc1",
+    "pack:javascript-typescript:dispatch": "sha256:a36dc3417da482762ea553e1bd272522e2f9257e5c78c5c8a6e8d685fd815b0c",
+    "javascript:bounded-structural-parser": "sha256:19126721d10ba84605e343ba3155b93d65b3ddd072fcf8f7b8c7c6e7ee296e69",
+    "ai:supabase-edge-auth": "sha256:c0a6cf981c2fc9647fdbef21a85b68c9d5eb2b0c232a4a48a6c0761fe6d10f94",
+    "ai:prompt-injection": "sha256:b6f65f3cc27fd8764a00952f756464e01649886e95c5a82a0179e591269d6f55",
+    "ai:unsafe-tool-execution": "sha256:2455b2dd308c7953a34ab376d588d38c567ab58af5bb7070cc518f6f153aa040",
+    "ai:llm-dynamic-execution": "sha256:a0b34eafe11f8d624dd324a1397d18c2497d18232add99851fbf226146aef4d4",
+    "ai:nextjs-admin-route": "sha256:7c141685ca5cd9745ca3452d0ed63006d65471704a7c2c29c0653a7d182046e5",
+    "ai:express-admin-route": "sha256:8e406a1cbe40c3bd2533d901ffebc7ad3176708e888174fbf9ca6bce7c4cdf07",
+    "ai:client-metadata-authz": "sha256:55ce9c28e236ff15cfb0413353dd6f38a4988991112eaac4a6e6d9d86b4dd0b3",
+    "ai:llm-dangerous-html": "sha256:4367893832be050c589d874b3c0f7bf65fc4ad32f555c22e441a3803a6e448e5",
+    "ai:client-error-leak": "sha256:6feedb1ce516f86275c1b19a7f7a7baad83f59979095765f2b89b04c8429a890",
+    "ai:sensitive-api-response": "sha256:e972d2ab6c4af75148374e418f740ad1fe9219e44943ea4bc6ffed88afcdb8eb",
+    "ai:unvalidated-request-write": "sha256:3f0f9b2de804c045f7c391fe99287ca4cb6edec2494a67a118b866f73ba417dc",
+    "ai:sensitive-log": "sha256:642191fa9c18ef3639d44c2e8b8317ed884c2453e0c02e6e083b3fa85b081034",
+    "ai:security-header-config": "sha256:c0fb641ebc7d408802c8a644f99e8f4c29d04f5d8518e652097cd0da5aeb144b",
+    "ai:csp-config": "sha256:65e584c79d4cfbba3383061b97b2cd039e9595155b6a6fbb3f439006d34dfa75",
+    "ai:referrer-policy-config": "sha256:02f30f0030f8e200ee51c38c8203757426823bb6fd738835f6a752de83f10fd8",
+    "ai:permissions-policy-config": "sha256:3878a7c1888af45235a481cd04645fdf7e6e77b7e5b65432d5cb48174c5e08dc",
+    "ai:session-cookie-config": "sha256:c1358d652f49f0b6b0dbf22eb34747220333da4d27f08f31187b7da440ec52af",
+    "ai:supabase-captcha-integration": "sha256:cc8bf3893957bbd5186bfc320537bff1e82b920999e4a6236463b01140d5f0fc",
+    "pack:javascript-baseline:dispatch": "sha256:01c2ed8d29e914ba0170b4d625ae6d82732c45310904b1f3c3ec3172d7fae3dd",
+    "native-sast:opengrep-reconciliation": "sha256:e3ccf2269f1d732403d8f4d4612ec9c98b8378ff467087961c6506f159fe57f2",
+    "sast:javascript-weak-hash": "sha256:f66c73218c0ca98a902b2352b60f334222e077105b853215c67b343948504c01",
+    "sast:javascript-weak-cipher": "sha256:f122f7a0640986927ea3488146a7efe798b67a46e46e4e6e5031367f279ccbe4"
+  },
+  "security_control_evidence": [
+    {
+      "control_id": "http.header.strict-transport-security",
+      "state": "not_verifiable_from_repository",
+      "providers": [],
+      "evidence_locations": [],
+      "limitation": "No authoritative repository evidence was found. A hosting provider, gateway, dashboard, or runtime layer may configure this control."
+    },
+    {
+      "control_id": "http.header.x-content-type-options",
+      "state": "not_verifiable_from_repository",
+      "providers": [],
+      "evidence_locations": [],
+      "limitation": "No authoritative repository evidence was found. A hosting provider, gateway, dashboard, or runtime layer may configure this control."
+    },
+    {
+      "control_id": "http.header.x-frame-options",
+      "state": "not_verifiable_from_repository",
+      "providers": [],
+      "evidence_locations": [],
+      "limitation": "No authoritative repository evidence was found. A hosting provider, gateway, dashboard, or runtime layer may configure this control."
+    },
+    {
+      "control_id": "http.header.content-security-policy",
+      "state": "not_verifiable_from_repository",
+      "providers": [],
+      "evidence_locations": [],
+      "limitation": "No authoritative repository evidence was found. A hosting provider, gateway, dashboard, or runtime layer may configure this control."
+    },
+    {
+      "control_id": "http.header.referrer-policy",
+      "state": "not_verifiable_from_repository",
+      "providers": [],
+      "evidence_locations": [],
+      "limitation": "No authoritative repository evidence was found. A hosting provider, gateway, dashboard, or runtime layer may configure this control."
+    },
+    {
+      "control_id": "http.header.permissions-policy",
+      "state": "not_verifiable_from_repository",
+      "providers": [],
+      "evidence_locations": [],
+      "limitation": "No authoritative repository evidence was found. A hosting provider, gateway, dashboard, or runtime layer may configure this control."
+    },
+    {
+      "control_id": "http.cookie.session-security",
+      "state": "not_verifiable_from_repository",
+      "providers": [],
+      "evidence_locations": [],
+      "limitation": "No authoritative repository evidence was found. A hosting provider, gateway, dashboard, or runtime layer may configure this control."
+    },
+    {
+      "control_id": "supabase.auth.captcha-token",
+      "state": "not_verifiable_from_repository",
+      "providers": [],
+      "evidence_locations": [],
+      "limitation": "No authoritative repository evidence was found. A hosting provider, gateway, dashboard, or runtime layer may configure this control."
+    }
+  ],
+  "engine_setup": {
+    "state": "repair_required",
+    "platform": "darwin-arm64",
+    "engines": [
+      {
+        "engine": "opengrep",
+        "version": "1.23.0",
+        "state": "missing",
+        "detail": "Engine 'opengrep' is not available. Run `codeinspectus setup` (or the codeinspectus_setup tool) once per machine to review, fetch and SHA-pin the engine binaries; downloads happen only after approval. Expected at: /fixture/home/.codeinspectus/bin/opengrep."
+      },
+      {
+        "engine": "gitleaks",
+        "version": "8.30.1",
+        "state": "ready"
+      },
+      {
+        "engine": "trivy",
+        "version": "0.71.2",
+        "state": "missing",
+        "detail": "Engine 'trivy' is not available. Run `codeinspectus setup` (or the codeinspectus_setup tool) once per machine to review, fetch and SHA-pin the engine binaries; downloads happen only after approval. Expected at: /fixture/home/.codeinspectus/bin/trivy."
+      }
+    ],
+    "trivy_db": {
+      "state": "missing"
+    },
+    "repair_command": "npx codeinspectus setup",
+    "network_required": true
+  },
+  "git_safety": {
+    "state": "no_git",
+    "recommendation": "No git repository detected here. Before applying any fixes, consider initializing git and committing a checkpoint so changes can be undone."
+  },
+  "scan_config": {
+    "max_findings": 200
+  },
+  "storage_schema_version": "2.0.0",
+  "canonical_findings": true
+}

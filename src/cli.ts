@@ -1,3 +1,4 @@
+import { COVERAGE_GAP_IDS, type CoverageGapId } from "./coverage-gaps.js";
 import { forStream } from "./util/terminal.js";
 import { removeActiveTemporaryDirectories } from "./util/temporary.js";
 import { randomUUID } from "node:crypto";
@@ -63,7 +64,9 @@ export interface CliDependencies {
     scanners?: ScannerKind[];
     max_findings?: number;
     include_compliance?: boolean;
+    include_licenses?: boolean;
     git_scope?: GitScopeRequest;
+    accept_gaps?: CoverageGapId[];
   }): Promise<ScanResult>;
   loadScan(scanId: string): Promise<StoredScanResult>;
   inspectTriage?(scan: StoredScanResult): Promise<TriageSnapshot>;
@@ -88,6 +91,17 @@ function takeValue(argv: readonly string[], index: number, option: string): stri
   const value = argv[index + 1];
   if (!value || value.startsWith("--")) throw new CliUsageError(`${option} requires a value.`);
   return value;
+}
+
+function parseAcceptedGaps(value: string): CoverageGapId[] {
+  const ids = value.split(",").map((entry) => entry.trim()).filter(Boolean);
+  if (!ids.length) throw new CliUsageError("--accept-gaps requires at least one gap id.");
+  for (const id of ids) {
+    if (!COVERAGE_GAP_IDS.includes(id as CoverageGapId)) {
+      throw new CliUsageError(`Unknown coverage gap id '${id}'. Expected one of: ${COVERAGE_GAP_IDS.join(", ")}.`);
+    }
+  }
+  return ids as CoverageGapId[];
 }
 
 function parseScanners(value: string): ScannerKind[] {
@@ -116,6 +130,7 @@ export function parseCliCommand(argv: readonly string[]): ParsedCliCommand {
   let outputFormat: CliOutputFormat | undefined;
   let allowOutputInTarget = false;
   let includeCompliance = true;
+  let includeLicenses = false;
   let failOnSeverity: Severity | undefined;
   let baselineScanId: string | undefined;
   let failOnNewSeverity: Severity | undefined;
@@ -123,10 +138,14 @@ export function parseCliCommand(argv: readonly string[]): ParsedCliCommand {
   let headRevision: string | undefined;
   let workingTree = false;
   let workingTreeBase: string | undefined;
+  const acceptedGaps: CoverageGapId[] = [];
 
   for (let index = 1; index < argv.length; index++) {
     const arg = argv[index]!;
-    if (arg === "--scanner" || arg === "--scanners") {
+    if (arg === "--accept-gaps") {
+      acceptedGaps.push(...parseAcceptedGaps(takeValue(argv, index, arg)));
+      index++;
+    } else if (arg === "--scanner" || arg === "--scanners") {
       scanners.push(...parseScanners(takeValue(argv, index, arg)));
       index++;
     } else if (arg === "--severity" || arg === "--severity-threshold") {
@@ -184,6 +203,8 @@ export function parseCliCommand(argv: readonly string[]): ParsedCliCommand {
       allowOutputInTarget = true;
     } else if (arg === "--no-compliance") {
       includeCompliance = false;
+    } else if (arg === "--licenses") {
+      includeLicenses = true;
     } else if (arg.startsWith("-")) {
       throw new CliUsageError(`Unknown option '${arg}'. See 'codeinspectus ${command} --help'.`);
     } else if (target) {
@@ -208,6 +229,8 @@ export function parseCliCommand(argv: readonly string[]): ParsedCliCommand {
     throw new CliUsageError("--fail-on-severity is available only for scan enforcement.");
   }
   if (command !== "scan" && (baselineScanId || failOnNewSeverity)) throw new CliUsageError("Baseline options are available only for scan.");
+  if (command !== "scan" && includeLicenses) throw new CliUsageError("--licenses is available only for scan.");
+  if (command !== "scan" && acceptedGaps.length) throw new CliUsageError("--accept-gaps is available only for scan.");
   if (command !== "scan" && (diffBase || headRevision || workingTree || workingTreeBase)) throw new CliUsageError("Git scope options are available only for scan.");
   if (diffBase && workingTree) throw new CliUsageError("Use either --diff/--head or --working-tree/--base, not both.");
   if (diffBase && !headRevision) throw new CliUsageError("--diff requires --head REVISION.");
@@ -230,6 +253,8 @@ export function parseCliCommand(argv: readonly string[]): ParsedCliCommand {
       ...(failOnSeverity ? { fail_on_severity: failOnSeverity } : {}),
       ...(baselineScanId ? { baseline_scan_id: baselineScanId } : {}),
       ...(failOnNewSeverity ? { fail_on_new_severity: failOnNewSeverity } : {}),
+      ...(acceptedGaps.length ? { accept_gaps: [...new Set(acceptedGaps)] } : {}),
+      ...(includeLicenses ? { include_licenses: true } : {}),
       ...(diffBase ? { git_scope: { mode: "commit_diff" as const, base: diffBase, head: headRevision! } }
         : workingTree ? { git_scope: { mode: "working_tree" as const, base: workingTreeBase! } } : {}),
       include_compliance: includeCompliance,
@@ -254,6 +279,8 @@ export function cliHelp(command?: "scan" | "preflight" | "export"): string {
     "  --output-dir <path>           Also write the result to this explicit directory.",
     "  --allow-output-in-target      Approve an --output-dir inside the scanned repository.",
     "  --no-compliance               Omit the compliance overview from scan output.",
+    "  --licenses                    Include licence findings (off by default; they are informational).",
+    "  --accept-gaps <id[,id]>       Accept named coverage gaps (e.g. php-sast) so they alone do not fail CI.",
   ];
   if (command) {
     if (command === "export") return [
@@ -295,7 +322,10 @@ export function cliHelp(command?: "scan" | "preflight" | "export"): string {
     ...common,
     "",
     "Scans are offline. Preflight never downloads, repairs, authenticates, scans, or writes.",
-    "Setup options: --status, --all, --select opengrep,gitleaks,trivy, --reset.",
+    "Setup options: --status, --all, --select opengrep,gitleaks,trivy,osv-scanner, --path <repo>, --osv-ecosystems npm,PyPI, --reset.",
+    "repair-engines option: --osv-ecosystems npm,PyPI downloads those OSV databases (explicit consent; scans never download).",
+    "  With no engine named, repair-engines also repairs every other engine and may refresh the ~1 GB Trivy DB;",
+    "  `repair-engines osv-scanner --osv-ecosystems npm,PyPI` touches only osv-scanner and those databases.",
     "No account. No telemetry.",
     "",
   ].join("\n");
@@ -342,7 +372,8 @@ async function writeAtomic(path: string, content: string): Promise<void> {
 
 function renderTextScan(result: ScanResult, config: CliScanConfiguration): string {
   const effectiveConfiguration = {
-    scanners: config.scanners ?? ALL_SCANNERS,
+    // Licences are opt-in (4.0): a default scan lists them only when --licenses asked for them.
+    scanners: config.scanners ?? ALL_SCANNERS.filter((scanner) => scanner !== "license" || config.include_licenses === true),
     severity_threshold: config.severity_threshold ?? "info",
     max_findings: config.max_findings ?? DEFAULT_MAX_FINDINGS,
     output_format: "text" as const,
@@ -500,13 +531,15 @@ export async function runCli(
         ...(parsed.configuration.max_findings ? { max_findings: parsed.configuration.max_findings } : {}),
         include_compliance: parsed.configuration.include_compliance ?? true,
         ...(parsed.configuration.git_scope ? { git_scope: parsed.configuration.git_scope } : {}),
+        ...(parsed.configuration.accept_gaps ? { accept_gaps: parsed.configuration.accept_gaps } : {}),
+        ...(parsed.configuration.include_licenses ? { include_licenses: true } : {}),
       });
       const stored = await dependencies.loadScan(result.scan_id);
       let baseline: BaselineComparison | undefined;
       if (parsed.configuration.baseline_scan_id) {
         const baselineScan = await dependencies.loadScan(parsed.configuration.baseline_scan_id);
         if (!baselineScan || baselineScan.scan_id !== parsed.configuration.baseline_scan_id) throw new CliUsageError(`No stored CodeInspectus scan found with id '${parsed.configuration.baseline_scan_id}'.`);
-        baseline = compareAgainstBaseline(baselineScan, stored);
+        baseline = compareAgainstBaseline(baselineScan, stored, stored.accepted_gaps ?? []);
       }
       const triage = await (dependencies.inspectTriage ?? inspectTriageStore)(stored);
       const policyDocument = createJsonExport(stored, {
@@ -524,9 +557,9 @@ export async function runCli(
       io.stdout(rendered);
       const policy = baseline
         ? parsed.configuration.fail_on_severity
-          ? (baseline.partial ? { exit_code: 2 as const, reason: "Baseline comparison is partial or unknown." } : evaluateCiPolicy(policyDocument, parsed.configuration.fail_on_severity))
+          ? (baseline.partial ? { exit_code: 2 as const, reason: "Baseline comparison is partial or unknown." } : evaluateCiPolicy(policyDocument, parsed.configuration.fail_on_severity, stored.accepted_gaps))
           : evaluateNewFindingPolicy(baseline, parsed.configuration.fail_on_new_severity)
-        : evaluateCiPolicy(policyDocument, parsed.configuration.fail_on_severity);
+        : evaluateCiPolicy(policyDocument, parsed.configuration.fail_on_severity, stored.accepted_gaps);
       if (policy.exit_code !== 0) io.stderr(`CodeInspectus policy: ${policy.reason}\n`);
       // A stale bundled advisory snapshot does not fail CI, so say so where CI logs are read.
       for (const coverage of result.dependency_coverage ?? []) {

@@ -41,6 +41,98 @@ describe("packaged V3 schemas", () => {
     expect(validate(document()), JSON.stringify(validate.errors)).toBe(true);
   });
 
+  test("an osv-scanner finding exports in the unchanged 3.0.0 shape: the structured package stays in the stored scan only", async () => {
+    const pkg = { ecosystem: "PyPI", name: "litellm", version: "1.107.0" };
+    const withPackage: StoredScanResult = { ...scan, findings: [{
+      ...scan.findings[0]!, engine: "osv-scanner", engines: ["osv-scanner"], rule_id: "MAL-2026-2144", cwe: ["CWE-506"],
+      location: { file: "requirements.txt", start_line: 1, end_line: 1 }, finding_kind: "vulnerability", package: pkg,
+      producer_components: ["codeinspectus:pipeline", "osv-scanner:binary", "osv-scanner:vulnerability-db:PyPI"],
+    }] };
+    const document = createJsonExport(withPackage);
+    expect(document.findings[0]).not.toHaveProperty("package");
+    expect(JSON.stringify(document)).not.toContain('"package"');
+    expect(withPackage.findings[0]!.package).toEqual(pkg);
+    for (const [path, value] of [
+      ["schemas/codeinspectus-export-3.0.0.schema.json", document],
+      ["schemas/codeinspectus-sarif-3.0.0.schema.json", createSarifExport(document)],
+    ] as const) {
+      const validate = await compilePackagedSchema(path);
+      expect(validate(value), JSON.stringify(validate.errors)).toBe(true);
+    }
+    // Same document as before package support: only the field the stored finding gained is absent.
+    const { package: _omitted, ...withoutPackage } = withPackage.findings[0]!;
+    expect(createJsonExport({ ...withPackage, findings: [withoutPackage] })).toEqual(document);
+  });
+
+  test("a synvoya-engine finding and a Synvoya-family finding export in the unchanged 3.0.0 shape", async () => {
+    const own = { ...scan.findings[0]!, location: { file: "Dockerfile", start_line: 1, end_line: 1 } };
+    const synvoya: StoredScanResult = { ...scan, findings: [
+      { ...own, engine: "synvoya", engines: ["synvoya"], rule_id: "GHSA-aaaa-bbbb-cccc", engine_family: "synvoya", producer_components: ["codeinspectus:pipeline"] },
+      { ...own, id: "f2", fingerprint: "fp2", engine: "codeinspectus-ai", engines: ["codeinspectus-ai"], rule_id: "ci-ai-public-env-secret", engine_family: "synvoya", producer_components: ["codeinspectus:pipeline"] },
+    ] };
+    const document = createJsonExport(synvoya);
+    // Raw ids are what a machine reads; the immutable 3.0.0 schema has no family field, so it stays out of the export.
+    expect(document.findings.map((finding) => [finding.engine, finding.rule_id])).toEqual([
+      ["synvoya", "GHSA-aaaa-bbbb-cccc"], ["codeinspectus-ai", "ci-ai-public-env-secret"],
+    ]);
+    expect(JSON.stringify(document)).not.toContain("engine_family");
+    expect(synvoya.findings[0]!.engine_family).toBe("synvoya");
+    for (const [path, value] of [
+      ["schemas/codeinspectus-export-3.0.0.schema.json", document],
+      ["schemas/codeinspectus-sarif-3.0.0.schema.json", createSarifExport(document)],
+    ] as const) {
+      const validate = await compilePackagedSchema(path);
+      expect(validate(value), JSON.stringify(validate.errors)).toBe(true);
+    }
+  });
+
+  // Task 5: export schema 3.0.0 is immutable, so declared and accepted gaps travel only as
+  // ordinary coverage evidence (`gap:<id>` components) that the packaged schema already allows.
+  test("a gap-bearing export validates against the packaged 3.0.0 schema", async () => {
+    const gapped: StoredScanResult = {
+      ...scan,
+      engine_details: [{ engine: "opengrep", version: "1.33.1", available: true, ran: true, finding_count: 1, duration_ms: 1 }],
+      coverage_gaps: [
+        { id: "php-sast", files: 2, examples: ["src/index.php", "src/view.php"] },
+        { id: "deno-lock", files: 1, examples: ["deno.lock"] },
+      ],
+      accepted_gaps: ["php-sast"],
+    };
+    const document = createJsonExport(gapped);
+    const validate = await compilePackagedSchema("schemas/codeinspectus-export-3.0.0.schema.json");
+    expect(validate(document), JSON.stringify(validate.errors)).toBe(true);
+    expect(document.coverage.aggregate).toBe("partial");
+    expect(document.coverage.evidence.filter((item) => item.component.startsWith("gap:"))).toEqual([
+      expect.objectContaining({ component: "gap:php-sast", state: "partial", detail: expect.stringMatching(/Accepted with accept_gaps/) }),
+      expect.objectContaining({ component: "gap:deno-lock", state: "partial" }),
+    ]);
+    // Field validation item 4: the accepted ids are machine-readable in the export.
+    expect(document.coverage.evidence.filter((item) => item.component.startsWith("accepted-gap:"))).toEqual([
+      expect.objectContaining({ category: "declared_scope", component: "accepted-gap:php-sast", state: "informational" }),
+    ]);
+  });
+
+  // Task 5: Opengrep's default ignore list and the native packs' Yarn-tooling skip are scope, not gaps:
+  // they are disclosed as informational evidence and leave aggregate coverage complete.
+  test("default skips are disclosed as informational coverage evidence", () => {
+    const disclosed: StoredScanResult = {
+      ...scan,
+      engine_details: [{ engine: "opengrep", version: "1.33.1", available: true, ran: true, finding_count: 1, duration_ms: 1 }],
+      pack_coverage: [{
+        pack_id: "javascript-baseline", version: "1.0.0", scanner_kind: "sast", state: "ran", languages: ["javascript"],
+        frameworks: [], platforms: [], analyzers: { registered: 1, ran: 1 }, rules: { registered: 2, ran: 2 }, limitations: [],
+      }],
+    };
+    const evidence = createJsonExport(disclosed).coverage.evidence;
+    expect(evidence).toContainEqual(expect.objectContaining({
+      component: "engine:opengrep", state: "informational", detail: expect.stringContaining("default.semgrepignore"),
+    }));
+    expect(evidence).toContainEqual(expect.objectContaining({
+      component: "pack:javascript-baseline", state: "informational", detail: expect.stringContaining(".yarn/releases"),
+    }));
+    expect(createJsonExport(scan).coverage.evidence.some((item) => item.state === "informational" && item.component === "engine:opengrep")).toBe(false);
+  });
+
   test("packaged JSON and SARIF schemas accept typed Git scope and reject malformed commits", async () => {
     const scoped: StoredScanResult = { ...scan, git_scope: {
       schema_version: "1.0.0", mode: "working_tree", repository: "/repo",

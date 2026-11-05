@@ -1,0 +1,675 @@
+{
+  "schema_version": "1.0.0",
+  "scan_id": "scan-673fdc74-716f-47bf-9bf2-c03acdafc0f7",
+  "coverage": {
+    "aggregate": "partial",
+    "evidence": [
+      {
+        "category": "component_execution",
+        "component": "engine:opengrep",
+        "state": "unknown",
+        "detail": "Engine 'opengrep' is not available. Run `codeinspectus setup` (or the codeinspectus_setup tool) once per machine to review, fetch and SHA-pin the engine binaries; downloads happen only after approval. Expected at: /fixture/home/.codeinspectus/bin/opengrep."
+      },
+      {
+        "category": "component_execution",
+        "component": "engine:gitleaks",
+        "state": "covered",
+        "detail": "gitleaks@8.30.1 ran and produced 2 normalized finding(s)."
+      },
+      {
+        "category": "component_execution",
+        "component": "engine:trivy",
+        "state": "unknown",
+        "detail": "Engine 'trivy' is not available. Run `codeinspectus setup` (or the codeinspectus_setup tool) once per machine to review, fetch and SHA-pin the engine binaries; downloads happen only after approval. Expected at: /fixture/home/.codeinspectus/bin/trivy."
+      },
+      {
+        "category": "component_execution",
+        "component": "engine:codeinspectus-ai",
+        "state": "covered",
+        "detail": "codeinspectus-ai@5.20.0 ran and produced 6 normalized finding(s)."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:javascript-typescript",
+        "state": "covered",
+        "detail": "12/12 analyzers and 29/29 rules ran."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:javascript-typescript",
+        "state": "informational",
+        "detail": "Rule-specific static analysis only; listed languages and frameworks are not complete coverage claims."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:javascript-typescript",
+        "state": "informational",
+        "detail": "Client-secret checks also inspect selected HTML and framework component files; runtime-control checks inspect selected repository configuration shapes."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:javascript-typescript",
+        "state": "informational",
+        "detail": "Model-tool command execution analysis is intrafile, import-proven, and bounded to direct flow or one named local wrapper; cross-module dispatch and runtime sandbox/approval state are not resolved."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:javascript-typescript",
+        "state": "informational",
+        "detail": "General model-output execution analysis is intrafile and bounded to recognized SDK output plus global eval/Function or import-proven shell-string APIs; custom wrappers, streams, indirect aliases, and runtime controls are not resolved."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:javascript-typescript",
+        "state": "informational",
+        "detail": "Next.js admin-route analysis recognizes conventional Pages/App Router paths and handler-scoped terminating authentication plus server-role/permission denials; cross-file middleware and custom guard semantics are reported as coverage limits rather than guessed."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:javascript-typescript",
+        "state": "informational",
+        "detail": "Express admin-route analysis requires an import-proven Express receiver, an immediate literal admin path, and a direct naked handler; ambiguous middleware, mounted routers, dynamic paths, imported handlers, and generated/minified/vendor assets stay silent."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:javascript-typescript",
+        "state": "informational",
+        "detail": "Supabase Edge authentication analysis resolves literal per-function verify_jwt state and supported in-handler user, service, or signed-webhook checks; CLI deployment flags, dashboard overrides, custom wrappers, and deployed state are not resolved."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:flutter",
+        "state": "not_applicable",
+        "detail": "No detected project technology matched this native pack; its analyzers did not run."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:flutter",
+        "state": "informational",
+        "detail": "Token-aware, source-ordered intrafile Dart analysis; it has no type resolution or path-sensitive branch merge and does not claim complete Flutter security coverage."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:flutter",
+        "state": "informational",
+        "detail": "Generated files and test/example corpora are excluded from project-root scans unless scanned directly."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:flutter",
+        "state": "informational",
+        "detail": "Unreadable Dart files, files over 2 MiB, and source beyond the 10,000-file/64 MiB project bounds are skipped and reported in pack coverage."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:flutter",
+        "state": "informational",
+        "detail": "The pack analyzes repository evidence only and does not replace runtime mobile security testing."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:android",
+        "state": "not_applicable",
+        "detail": "No detected project technology matched this native pack; its analyzers did not run."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:android",
+        "state": "informational",
+        "detail": "Parses explicit repository AndroidManifest.xml and referenced Network Security Config XML, with bounded main-to-release overlay handling for the supported attributes and resources; it does not run Gradle or model arbitrary product flavors, build-type DSL, placeholders, the full manifest merger, runtime behavior, or complete Android security coverage."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:android",
+        "state": "informational",
+        "detail": "Directory scans inspect only root, main, and release manifests; non-production demo, sample, example, debug, profile, test, dependency, generated, build, vendor, and cache trees are excluded."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:android",
+        "state": "informational",
+        "detail": "Only literal @xml/... networkSecurityConfig references are resolved; unreferenced configurations are not claimed."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:android",
+        "state": "informational",
+        "detail": "XML files over 1 MiB, discovery beyond 20,000 entries, 500 manifests, or 24 levels, and malformed or unreadable files are skipped and reported in pack coverage."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:android",
+        "state": "informational",
+        "detail": "Symbolic links are skipped and never followed; the structured parser never resolves external or DTD-defined XML entities and never executes target content."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:ios",
+        "state": "not_applicable",
+        "detail": "No detected project technology matched this native pack; its analyzers did not run."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:ios",
+        "state": "informational",
+        "detail": "Parses explicit repository XML property lists and entitlements and resolves only literal Release/AppStore INFOPLIST_FILE and CODE_SIGN_ENTITLEMENTS project settings; it does not run Xcode, expand xcconfig/preprocessing/dynamic variables, inspect provisioning profiles, or claim complete iOS security coverage."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:ios",
+        "state": "informational",
+        "detail": "Non-production demo, sample, example, debug, profile, test, macOS/OS X, dependency, generated, build, Pods, and DerivedData trees are excluded from directory scans."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:ios",
+        "state": "informational",
+        "detail": "Binary, malformed, unreadable, or oversized configuration is skipped and reported; discovery is bounded to 50,000 entries, Xcode projects to 4 MiB each and 16 MiB total, and selected property lists to 256 files, 512 KiB each, and 8 MiB total."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:ios",
+        "state": "informational",
+        "detail": "Symbolic links are skipped and never followed; the structured parser never resolves external or DTD-defined XML entities and never executes target content."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:react-native",
+        "state": "not_applicable",
+        "detail": "No detected project technology matched this native pack; its analyzers did not run."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:react-native",
+        "state": "informational",
+        "detail": "Token-aware, source-ordered intrafile JavaScript/TypeScript/JSX analysis; it has no type checker, module graph, interprocedural state flow, or path-sensitive branch merge and does not claim complete React Native security coverage."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:react-native",
+        "state": "informational",
+        "detail": "Only receivers and components proven by static imports/requires and bounded source-ordered aliases are analyzed; computed properties, dynamic imports, JSX spread props, and unresolved dynamic security values fail closed."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:react-native",
+        "state": "informational",
+        "detail": "Generated, dependency, build, test, fixture, demo, sample, and example trees are excluded from project-root scans unless a supported source file is scanned directly."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:react-native",
+        "state": "informational",
+        "detail": "Unreadable, malformed, symbolic-link, over-2 MiB, over-200,000-token, or over-64-level structurally nested files and source beyond the 50,000-entry/10,000-file/64 MiB/1,000,000-token/32-level project bounds are skipped and reported in pack coverage."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:react-native",
+        "state": "informational",
+        "detail": "The pack analyzes repository evidence only, never executes target code, and does not replace runtime mobile security testing."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:expo",
+        "state": "not_applicable",
+        "detail": "No detected project technology matched this native pack; its analyzers did not run."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:expo",
+        "state": "informational",
+        "detail": "Parses app.json/app.config.json and direct static app.config JavaScript/TypeScript object exports at the scan root and bounded nested package roots; it never imports, evaluates, transpiles, or executes target configuration."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:expo",
+        "state": "informational",
+        "detail": "Comments and trailing commas are supported, but spreads, functions, computed keys, branches, unresolved aliases, duplicate keys, ambiguous config files, and unsupported or malformed syntax encountered in the exported static-object subset suppress findings and are reported as coverage notes; unrelated module statements are not fully syntax-validated."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:expo",
+        "state": "informational",
+        "detail": "The secret rule covers sensitive non-EXPO_PUBLIC process.env references and one-hop const aliases in public Expo config paths; Expo's hooks, ios.config, android.config, and update code-signing fields are excluded."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:expo",
+        "state": "informational",
+        "detail": "The update rule covers explicit enabled/default-enabled non-local production HTTP URLs without a literal signing certificate; dynamic fields, HTTPS, local/private/reserved/example URLs, disabled updates, and signed updates are excluded."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:expo",
+        "state": "informational",
+        "detail": "Symbolic links and generated/corpus trees are skipped; discovery is bounded to 20,000 entries, 500 package roots, and 24 levels. Individual configs are limited to 1 MiB/100,000 tokens; aggregate package/config reads are limited to 4,096 files/4 MiB and static parsing to 250,000 tokens/25,000 properties."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:python-ai-api",
+        "state": "not_applicable",
+        "detail": "No detected project technology matched this native pack; its analyzers did not run."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:python-ai-api",
+        "state": "informational",
+        "detail": "Token-aware, source-ordered intrafile Python analysis with a bounded Lezer syntax gate; it has no type checker, module graph, interprocedural flow, path-sensitive branch merge, or claim of complete Python security coverage."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:python-ai-api",
+        "state": "informational",
+        "detail": "The ten rules cover exact Django, Flask, FastAPI, Starlette, Jinja, OpenAI, Anthropic, LangChain, and Python OS-command source/sink shapes only; unsupported aliases, computed values, dynamic imports, spreads, generic dispatch, and flows beyond the documented bounded aliases fail closed."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:python-ai-api",
+        "state": "informational",
+        "detail": "Lezer-validated format strings are tokenized as opaque dynamic strings, so replacement expressions are not inspected; leading tab indentation remains unsupported and mixed tab-stop indentation is skipped and reported rather than risking conditional bindings being analyzed as executable direct scope."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:python-ai-api",
+        "state": "informational",
+        "detail": "Generated, migration, dependency, build, test, fixture, demo, sample, and example trees and conventional test files are excluded from project-root scans unless a supported source file is scanned directly."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:python-ai-api",
+        "state": "informational",
+        "detail": "Symbolic links, unsupported encodings, generated headers, unreadable or malformed files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/1,000,000-token/1,000,000-node/32-level project bounds are skipped and reported in pack coverage."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:python-ai-api",
+        "state": "informational",
+        "detail": "The pack parses repository evidence only, never imports or executes target Python, and does not replace dependency, runtime, or penetration testing."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:javascript-baseline",
+        "state": "covered",
+        "detail": "Opengrep did not run; promoted rules used the native fallback."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:javascript-baseline",
+        "state": "informational",
+        "detail": "Two selected JavaScript/TypeScript crypto rules only; this is not complete SAST or language coverage."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:javascript-baseline",
+        "state": "informational",
+        "detail": "Findings are reconciled against the bundled Opengrep rules before they surface; Opengrep remains the fallback on mismatches or native parser limitations."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:javascript-baseline",
+        "state": "informational",
+        "detail": "Bounded structural parsing has no type checker, module graph, or interprocedural data flow and never executes target code."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:go-ai",
+        "state": "not_applicable",
+        "detail": "No detected project technology matched this native pack; its analyzers did not run."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:go-ai",
+        "state": "informational",
+        "detail": "Token-aware, source-ordered intrafile Go analysis without a type checker, module graph, path-sensitive branch merge, or claim of complete Go security coverage."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:go-ai",
+        "state": "informational",
+        "detail": "The rule covers exact official OpenAI Go Chat Completions tool-call arguments reaching import-proven os/exec shell interpreters; Anthropic, Gemini, custom model types, generic dispatch, renamed external wrappers, and cross-module flow fail closed."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:go-ai",
+        "state": "informational",
+        "detail": "Dataflow is bounded to direct aliases, encoding/json unmarshal, one local JSON parsing helper, and one local command wrapper; checked approval/allowlist rejection and validated replacement values suppress findings."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:go-ai",
+        "state": "informational",
+        "detail": "Generated, dependency, build, test, fixture, demo, sample, and example trees and conventional _test.go/generated files are excluded from project-root scans unless a supported source file is scanned directly."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:go-ai",
+        "state": "informational",
+        "detail": "Symbolic links, unsupported encodings, malformed strings/comments, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; individual structural expressions are capped at 64 KiB."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:go-ai",
+        "state": "informational",
+        "detail": "The pack parses repository evidence only, never builds or executes target Go, and does not replace dependency, runtime, sandbox, or penetration testing."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:java-ai",
+        "state": "not_applicable",
+        "detail": "No detected project technology matched this native pack; its analyzers did not run."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:java-ai",
+        "state": "informational",
+        "detail": "Token-aware, source-ordered intrafile Java analysis without a type checker, module graph, path-sensitive branch merge, or claim of complete Java security coverage."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:java-ai",
+        "state": "informational",
+        "detail": "The rule covers exact official OpenAI Java tool-call argument types reaching an actually-started recognized ProcessBuilder or Runtime shell interpreter; Spring AI, LangChain4j, Azure OpenAI, other model types, generic dispatch, and cross-module flow fail closed."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:java-ai",
+        "state": "informational",
+        "detail": "Dataflow is bounded to direct aliases, one local parsing helper, and one local command wrapper; checked approval/allowlist rejection and validated replacement values suppress findings."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:java-ai",
+        "state": "informational",
+        "detail": "Generated, dependency, build, test, fixture, demo, sample, and top-level example trees and conventional Java test/generated files are excluded from project-root scans unless a supported source file is scanned directly."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:java-ai",
+        "state": "informational",
+        "detail": "Symbolic links, unsupported encodings, malformed strings/comments, Java text blocks, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; individual structural expressions are capped at 64 KiB."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:java-ai",
+        "state": "informational",
+        "detail": "The pack parses repository evidence only, never builds or executes target Java, and does not replace dependency, runtime, sandbox, or penetration testing."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:csharp-ai",
+        "state": "not_applicable",
+        "detail": "No detected project technology matched this native pack; its analyzers did not run."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:csharp-ai",
+        "state": "informational",
+        "detail": "Token-aware, source-ordered intrafile C# analysis without a compiler, semantic model, project graph, path-sensitive branch merge, or claim of complete .NET security coverage."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:csharp-ai",
+        "state": "informational",
+        "detail": "The rule covers exact official OpenAI .NET ChatToolCall FunctionArguments reaching an actually-started recognized System.Diagnostics.Process shell; Azure OpenAI, Semantic Kernel, Microsoft.Extensions.AI, other model types, generic dispatch, and cross-project flow fail closed."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:csharp-ai",
+        "state": "informational",
+        "detail": "Dataflow is bounded to direct aliases, System.Text.Json dictionary/property extraction, one local parsing helper, and one local command wrapper; checked approval/allowlist rejection and validated replacement values suppress findings."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:csharp-ai",
+        "state": "informational",
+        "detail": "Generated, dependency, build, publish, test, fixture, demo, sample, and example trees and conventional C# test/generated files are excluded from project-root scans unless a supported source file is scanned directly."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:csharp-ai",
+        "state": "informational",
+        "detail": "Symbolic links, unsupported encodings, malformed strings/comments, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; raw string contents are treated as opaque and individual structural expressions are capped at 64 KiB."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:csharp-ai",
+        "state": "informational",
+        "detail": "The pack parses repository evidence only, never restores, builds, or executes target .NET code, and does not replace dependency, runtime, sandbox, or penetration testing."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:php-ai",
+        "state": "not_applicable",
+        "detail": "No detected project technology matched this native pack; its analyzers did not run."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:php-ai",
+        "state": "informational",
+        "detail": "Bounded intrafile PHP analysis without a PHP parser, type resolver, Composer graph, path-sensitive branch merge, or claim of complete PHP security coverage."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:php-ai",
+        "state": "informational",
+        "detail": "The rule covers exact openai-php/client or openai-php/laravel package evidence and tool-call function arguments reaching exec, system, shell_exec, or passthru; other clients, generic callables, and cross-file flow fail closed."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:php-ai",
+        "state": "informational",
+        "detail": "Dataflow is bounded to direct aliases, associative json_decode extraction, one local parsing helper, one local command wrapper, and one exact mapped variadic method dispatch; checked approval/full-command allowlists and validated replacement values suppress findings."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:php-ai",
+        "state": "informational",
+        "detail": "Custom validation helpers are not assumed safe; first-token executable checks do not neutralize shell metacharacters in the remaining command string."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:php-ai",
+        "state": "informational",
+        "detail": "Generated, dependency, cache, build, test, fixture, demo, sample, and example trees and conventional PHP test/generated files are excluded from project-root scans unless a supported source file is scanned directly."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:php-ai",
+        "state": "informational",
+        "detail": "Symbolic links, unsupported encodings, heredoc/nowdoc or malformed strings/comments, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; structural expressions are capped at 64 KiB."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:php-ai",
+        "state": "informational",
+        "detail": "The pack parses repository evidence only, never installs dependencies or executes target PHP, and does not replace dependency, runtime, sandbox, or penetration testing."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:rust-ai",
+        "state": "not_applicable",
+        "detail": "No detected project technology matched this native pack; its analyzers did not run."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:rust-ai",
+        "state": "informational",
+        "detail": "Token-aware, source-ordered intrafile Rust analysis without rustc, a Rust parser, type resolution, a Cargo graph, path-sensitive branch merge, or claim of complete Rust security coverage."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:rust-ai",
+        "state": "informational",
+        "detail": "The rule covers exact community async-openai package evidence and recognized tool-call arguments reaching an import-proven standard/tokio process shell or a literal bollard Docker exec shell vector; other clients, generic dispatch, renamed external wrappers, and cross-crate flow fail closed."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:rust-ai",
+        "state": "informational",
+        "detail": "Dataflow is bounded to direct aliases, serde_json extraction, one recognized generate_function_call result, and one local command wrapper; checked approval/allowlist rejection and validated replacement values suppress findings."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:rust-ai",
+        "state": "informational",
+        "detail": "Generated, dependency, build, benchmark, test, fixture, demo, sample, and example trees and conventional Rust test/generated files are excluded from project-root scans unless a supported source file is scanned directly."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:rust-ai",
+        "state": "informational",
+        "detail": "Symbolic links, unsupported encodings, malformed strings/comments, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; individual structural expressions are capped at 64 KiB."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:rust-ai",
+        "state": "informational",
+        "detail": "The pack parses repository evidence only, never fetches crates, builds, or executes target Rust, and does not replace dependency, runtime, sandbox, container-isolation, or penetration testing."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:ruby-ai",
+        "state": "not_applicable",
+        "detail": "No detected project technology matched this native pack; its analyzers did not run."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:ruby-ai",
+        "state": "informational",
+        "detail": "Source-ordered intrafile Ruby analysis without a Ruby parser, type resolver, Bundler graph, path-sensitive branch merge, or claim of complete Ruby security coverage."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:ruby-ai",
+        "state": "informational",
+        "detail": "The rule requires exact official openai production Gemfile or runtime gemspec evidence and covers Chat tool-call function arguments or explicitly typed Responses function-tool arguments reaching system, exec, IO.popen, or import-proven Open3 shell execution; lockfile-only and development-only dependencies, other clients, generic argument objects, backticks, percent-x literals, spawn APIs, and cross-file flow fail closed."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:ruby-ai",
+        "state": "informational",
+        "detail": "Dataflow is bounded to direct aliases, JSON.parse command extraction, one local parsing helper, and one local command wrapper; checked approval/full-command allowlists and validated replacement values suppress findings."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:ruby-ai",
+        "state": "informational",
+        "detail": "Generated, dependency, cache, build, test, spec, fixture, demo, sample, and example trees and conventional Ruby test/spec/generated files are excluded from project-root scans unless a supported source file is scanned directly."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:ruby-ai",
+        "state": "informational",
+        "detail": "Symbolic links, unsupported encodings, heredocs, malformed strings/comments, unreadable files, files over 2 MiB, and source beyond the 50,000-entry/10,000-file/64 MiB/32-level project bounds are skipped; structural expressions are capped at 64 KiB."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:ruby-ai",
+        "state": "informational",
+        "detail": "The pack parses repository evidence only, never installs gems or executes target Ruby, and does not replace dependency, runtime, sandbox, or penetration testing."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:firebase",
+        "state": "not_applicable",
+        "detail": "No detected project technology matched this native pack; its analyzers did not run."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:firebase",
+        "state": "informational",
+        "detail": "Detects only literal unconditional public write grants in checked-in Cloud Firestore, Cloud Storage, and Realtime Database Security Rules; public reads, semantic helper functions, runtime policy state, IAM, App Check, and complete Firebase security coverage are outside this pack."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:firebase",
+        "state": "informational",
+        "detail": "Cloud Firestore and Cloud Storage analysis requires exact service declarations and literal allow write/create/update/delete statements with no condition or a condition that is exactly true; other expressions fail closed."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:firebase",
+        "state": "informational",
+        "detail": "Realtime Database analysis requires strict JSON and recognizes only .write values that are boolean true or the exact string true; dynamic expressions are not evaluated."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:firebase",
+        "state": "informational",
+        "detail": "Directory scans inspect .rules files and database.rules.json while excluding test, example, sample, dependency, generated, build, vendor, and cache trees; custom non-.rules filenames are not discovered."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:firebase",
+        "state": "informational",
+        "detail": "Files over 1 MiB and discovery beyond 1,000 rule files, 32 MiB total, 50,000 entries, or 32 levels are skipped and reported in pack coverage."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:firebase",
+        "state": "informational",
+        "detail": "Symbolic links and symbolic-link ancestors are skipped and never followed; target code and Firebase tooling are never executed."
+      },
+      {
+        "category": "component_execution",
+        "component": "pack:github-actions",
+        "state": "not_applicable",
+        "detail": "No detected project technology matched this native pack; its analyzers did not run."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:github-actions",
+        "state": "informational",
+        "detail": "Detects two exact GitHub Actions workflow risks: attacker-controlled GitHub context expressions embedded directly in run scripts, and pull_request_target workflows that check out and execute untrusted pull request code."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:github-actions",
+        "state": "informational",
+        "detail": "Expression injection covers a documented static set of issue, pull request, comment, review, page, commit, email, name, and head-ref properties; bracket notation, aliases, custom actions, generated scripts, and inter-step dataflow are outside this pack."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:github-actions",
+        "state": "informational",
+        "detail": "Pwn-request analysis requires pull_request_target, a recognized untrusted actions/checkout ref, checkout v1-v6 or explicit allow-unsafe-pr-checkout, the default workspace, and a subsequent recognized build/test/script command or local action."
+      },
+      {
+        "category": "declared_scope",
+        "component": "pack:github-actions",
+        "state": "informational",
+        "detail": "workflow_run, issue_comment code fetches, downloaded artifacts, non-checkout git/gh fetches, non-default checkout paths, self-hosted runner isolation, deployed repository settings, organization policy, and complete CI/CD security coverage are outside this pack."
+      },
+      {
+        "category": "incompatible_surface",
+        "component": "pack:github-actions",
+        "state": "informational",
+        "detail": "Only direct .github/workflows/*.yml and *.yaml files are parsed as strict YAML 1.2; malformed, unsupported, unreadable, symbolic-link, or oversized workflows fail closed and are reported in pack coverage."
+      },
+      {
+        "category": "bounded_input",
+        "component": "pack:github-actions",
+        "state": "informational",
+        "detail": "Workflow reads are bounded to 1 MiB per file, 512 files, and 16 MiB total; target actions, expressions, scripts, and repository code are never evaluated or executed."
+      },
+      {
+        "category": "component_execution",
+        "component": "dependency:codeinspectus-pub:Pub",
+        "state": "not_applicable",
+        "detail": "No Dart project signal was detected, so native Pub dependency analysis was not applicable."
+      },
+      {
+        "category": "declared_scope",
+        "component": "scan-pipeline",
+        "state": "partial",
+        "detail": "opengrep did not run: Engine 'opengrep' is not available. Run `codeinspectus setup` (or the codeinspectus_setup tool) once per machine to review, fetch and SHA-pin the engine binaries; downloads happen only after approval. Expected at: /fixture/home/.codeinspectus/bin/opengrep."
+      },
+      {
+        "category": "declared_scope",
+        "component": "scan-pipeline",
+        "state": "partial",
+        "detail": "trivy did not run: Engine 'trivy' is not available. Run `codeinspectus setup` (or the codeinspectus_setup tool) once per machine to review, fetch and SHA-pin the engine binaries; downloads happen only after approval. Expected at: /fixture/home/.codeinspectus/bin/trivy."
+      }
+    ]
+  }
+}

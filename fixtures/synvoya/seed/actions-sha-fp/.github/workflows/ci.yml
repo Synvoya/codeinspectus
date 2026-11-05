@@ -1,0 +1,6 @@
+on: push
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: tj-actions/changed-files@0e58ed8671d6b60d0890c21b07f8835ace038e67

@@ -1,8 +1,9 @@
+import { defaultScopeNotes, describeCoverageGap } from "../coverage-gaps.js";
 import { SERVER_VERSION } from "../config.js";
 import { redactSecretText, redactSnippet } from "../redact.js";
 import type { StoredScanResult } from "../store.js";
 import { createUnavailableRepositoryTrust } from "../repository-trust/schemas.js";
-import type { Finding, ScannerKind } from "../types.js";
+import type { DependencyCoverage, Finding, ScannerKind } from "../types.js";
 import type { Severity } from "../types.js";
 import type { BaselineComparison } from "../baseline.js";
 import type { TriageSnapshot } from "../triage.js";
@@ -39,6 +40,18 @@ function redactRecognizedSecretsDeep<T>(value: T): T {
     return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, redactRecognizedSecretsDeep(entry)])) as T;
   }
   return value;
+}
+
+/**
+ * Native Pub covers Pub, so when it ran (even partially) an osv-scanner Pub entry that could not check
+ * Pub (`unavailable`, or `partial` when its lockfile was not extracted) is a note, not a coverage gap.
+ * Every other osv-scanner gap stays one.
+ */
+function osvPubNoteOnly(coverage: readonly DependencyCoverage[]): (entry: DependencyCoverage) => boolean {
+  const nativePub = coverage.some((entry) =>
+    entry.engine === "codeinspectus-pub" && (entry.state === "ran" || entry.state === "partial"));
+  return (entry) => nativePub && entry.engine === "osv-scanner" && entry.ecosystem === "Pub" &&
+    (entry.state === "unavailable" || entry.state === "partial");
 }
 
 export function assessAggregateCoverage(scan: StoredScanResult): {
@@ -122,11 +135,20 @@ export function assessAggregateCoverage(scan: StoredScanResult): {
       });
     }
   }
+  const dependencyCoverage = scan.dependency_coverage ?? [];
+  const noteOnly = osvPubNoteOnly(dependencyCoverage);
+  const osvCoverage = dependencyCoverage.filter((entry) => entry.engine === "osv-scanner");
+  // osv-scanner that checked nothing only because native-covered Pub was all it found is a note too.
+  const osvNotRunIsNote = osvCoverage.length > 0 && osvCoverage.every(noteOnly);
   for (const engine of scan.engine_details) {
     evidence.push({
       category: "component_execution",
       component: `engine:${engine.engine}`,
-      state: engine.ran ? "covered" : engine.available ? "partial" : "unknown",
+      state: engine.ran
+        ? "covered"
+        : engine.engine === "osv-scanner" && osvNotRunIsNote
+          ? "informational"
+          : engine.available ? "partial" : "unknown",
       detail: engine.ran
         ? `${engine.engine}@${engine.version} ran and produced ${engine.finding_count} normalized finding(s).`
         : engine.note ?? `${engine.engine}@${engine.version} did not run.`,
@@ -167,16 +189,19 @@ export function assessAggregateCoverage(scan: StoredScanResult): {
       });
     }
   }
-  for (const dependency of scan.dependency_coverage ?? []) {
-    const state: CoverageEvidence["state"] = dependency.state === "ran"
-      ? "covered"
-      : dependency.state === "not_applicable"
-        ? "not_applicable"
-        : dependency.state === "not_run"
-          ? "excluded"
-          : dependency.state === "unavailable"
-            ? "unknown"
-            : "partial";
+  for (const dependency of dependencyCoverage) {
+    const note = noteOnly(dependency);
+    const state: CoverageEvidence["state"] = note
+      ? "informational"
+      : dependency.state === "ran"
+        ? "covered"
+        : dependency.state === "not_applicable"
+          ? "not_applicable"
+          : dependency.state === "not_run"
+            ? "excluded"
+            : dependency.state === "unavailable"
+              ? "unknown"
+              : "partial";
     pushUnique(evidence, {
       category: "component_execution",
       component: `dependency:${dependency.engine}:${dependency.ecosystem}`,
@@ -198,10 +223,34 @@ export function assessAggregateCoverage(scan: StoredScanResult): {
         category: "dependency_limitation",
         component: `dependency:${dependency.engine}:${dependency.ecosystem}`,
         // A complete run's notes (snapshot age, non-matching disclosures) are context, not gaps.
-        state: dependency.state === "ran" ? "informational" : "partial",
+        state: dependency.state === "ran" || note ? "informational" : "partial",
         detail: limitation,
       });
     }
+  }
+  // Declared gaps (stable ids) stay partial even when accepted; CI policy decides whether they block.
+  const accepted = new Set<string>(scan.accepted_gaps ?? []);
+  // Field validation item 4: export 3.0.0 has no configuration field for the accepted ids, so each is
+  // recorded as an informational evidence item with the machine-readable component `accepted-gap:<id>`.
+  for (const id of accepted) {
+    evidence.push({
+      category: "declared_scope",
+      component: `accepted-gap:${id}`,
+      state: "informational",
+      detail: `The gap id ${id} was accepted with accept_gaps for this run; accepted gaps stay partial and their inputs unanalysed.`,
+    });
+  }
+  for (const gap of scan.coverage_gaps ?? []) {
+    evidence.push({
+      category: "declared_scope",
+      component: `gap:${gap.id}`,
+      state: "partial",
+      detail: describeCoverageGap(gap, accepted.has(gap.id)),
+    });
+  }
+  // Scans stored before coverage_notes existed get the default scope notes derived here.
+  for (const note of [...(scan.coverage_notes ?? []), ...defaultScopeNotes(scan)]) {
+    pushUnique(evidence, { category: "declared_scope", component: note.component, state: "informational", detail: note.detail });
   }
   if (requested.includes("secret") && scan.secret_coverage !== "verified") {
     evidence.push({
@@ -234,13 +283,16 @@ export function assessAggregateCoverage(scan: StoredScanResult): {
 
 /** Shared public-output projection for commands that expose stored findings. */
 export function redactFindingForOutput(finding: Finding, aggregate: AggregateCoverage): JsonExport["findings"][number] {
+  // Published export 3.0.0 is immutable and has neither `package` nor `engine_family`: both stay in the stored
+  // scan and in-process findings only. `engine` and `rule_id` keep the raw ids.
+  const { package: _package, engine_family: _engineFamily, ...exported } = finding;
   const producerComponents = finding.producer_components?.length
     ? [...finding.producer_components]
     : (finding.engines.length ? finding.engines : [finding.engine]).map((engine) => `engine:${engine}`);
   const secret = finding.is_secret === true;
   const scrub = (value: string): string => redactSnippet(value);
   return redactRecognizedSecretsDeep({
-    ...finding,
+    ...exported,
     title: redactSnippet(finding.title),
     message: secret ? redactSecretText(finding.message, finding.rule_id) : scrub(finding.message),
     location: {

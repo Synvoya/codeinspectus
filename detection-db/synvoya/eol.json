@@ -1,0 +1,2349 @@
+{
+  "entries": [
+    {
+      "product": "node",
+      "cycle": "26",
+      "eol": "2029-04-30",
+      "latest": "26.13.0",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "25",
+      "eol": "2026-06-01",
+      "latest": "25.9.0",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "24",
+      "eol": "2028-04-30",
+      "latest": "24.22.2",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "23",
+      "eol": "2025-06-01",
+      "latest": "23.11.1",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "22",
+      "eol": "2027-04-30",
+      "latest": "22.23.4",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "21",
+      "eol": "2024-06-01",
+      "latest": "21.7.3",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "20",
+      "eol": "2026-04-30",
+      "latest": "20.20.2",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "19",
+      "eol": "2023-06-01",
+      "latest": "19.9.0",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "18",
+      "eol": "2025-04-30",
+      "latest": "18.20.8",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "17",
+      "eol": "2022-06-01",
+      "latest": "17.9.1",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "16",
+      "eol": "2023-09-11",
+      "latest": "16.20.2",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "15",
+      "eol": "2021-06-01",
+      "latest": "15.14.0",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "14",
+      "eol": "2023-04-30",
+      "latest": "14.21.3",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "13",
+      "eol": "2020-06-01",
+      "latest": "13.14.0",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "12",
+      "eol": "2022-04-30",
+      "latest": "12.22.12",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "11",
+      "eol": "2019-06-30",
+      "latest": "11.15.0",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "10",
+      "eol": "2021-04-30",
+      "latest": "10.24.1",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "9",
+      "eol": "2018-06-30",
+      "latest": "9.11.2",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "8",
+      "eol": "2019-12-31",
+      "latest": "8.17.0",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "7",
+      "eol": "2017-06-30",
+      "latest": "7.10.1",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "6",
+      "eol": "2019-04-30",
+      "latest": "6.17.1",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "5",
+      "eol": "2016-06-30",
+      "latest": "5.12.0",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "node",
+      "cycle": "4",
+      "eol": "2018-04-30",
+      "latest": "4.9.1",
+      "source": "https://endoflife.date/nodejs"
+    },
+    {
+      "product": "php",
+      "cycle": "8.5",
+      "eol": "2029-12-31",
+      "latest": "8.5.12",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "8.4",
+      "eol": "2028-12-31",
+      "latest": "8.4.27",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "8.3",
+      "eol": "2027-12-31",
+      "latest": "8.3.36",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "8.2",
+      "eol": "2026-12-31",
+      "latest": "8.2.35",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "8.1",
+      "eol": "2025-12-31",
+      "latest": "8.1.34",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "8.0",
+      "eol": "2023-11-26",
+      "latest": "8.0.30",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "7.4",
+      "eol": "2022-11-28",
+      "latest": "7.4.33",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "7.3",
+      "eol": "2021-12-06",
+      "latest": "7.3.33",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "7.2",
+      "eol": "2020-11-30",
+      "latest": "7.2.34",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "7.1",
+      "eol": "2019-12-01",
+      "latest": "7.1.33",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "7.0",
+      "eol": "2019-01-10",
+      "latest": "7.0.33",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "5.6",
+      "eol": "2018-12-31",
+      "latest": "5.6.40",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "5.5",
+      "eol": "2016-07-21",
+      "latest": "5.5.38",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "5.4",
+      "eol": "2015-09-14",
+      "latest": "5.4.45",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "5.3",
+      "eol": "2014-08-14",
+      "latest": "5.3.29",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "5.2",
+      "eol": "2011-01-06",
+      "latest": "5.2.17",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "5.1",
+      "eol": "2006-08-24",
+      "latest": "5.1.6",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "4.4",
+      "eol": "2008-08-07",
+      "latest": "4.4.9",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "5.0",
+      "eol": "2005-09-05",
+      "latest": "5.0.5",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "4.3",
+      "eol": "2005-03-31",
+      "latest": "4.3.11",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "4.2",
+      "eol": "2002-09-06",
+      "latest": "4.2.3",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "4.1",
+      "eol": "2002-03-12",
+      "latest": "4.1.2",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "php",
+      "cycle": "4.0",
+      "eol": "2001-06-23",
+      "latest": "4.0.6",
+      "source": "https://endoflife.date/php"
+    },
+    {
+      "product": "python",
+      "cycle": "3.15",
+      "eol": "2031-10-31",
+      "latest": "3.15.2",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "3.14",
+      "eol": "2030-10-31",
+      "latest": "3.14.10",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "3.13",
+      "eol": "2029-10-31",
+      "latest": "3.13.18",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "3.12",
+      "eol": "2028-10-31",
+      "latest": "3.12.16",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "3.11",
+      "eol": "2027-10-31",
+      "latest": "3.11.18",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "3.10",
+      "eol": "2026-10-01",
+      "latest": "3.10.22",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "3.9",
+      "eol": "2025-10-31",
+      "latest": "3.9.25",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "3.8",
+      "eol": "2024-10-07",
+      "latest": "3.8.20",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "3.7",
+      "eol": "2023-06-27",
+      "latest": "3.7.17",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "3.6",
+      "eol": "2021-12-23",
+      "latest": "3.6.15",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "3.5",
+      "eol": "2020-09-30",
+      "latest": "3.5.10",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "3.4",
+      "eol": "2019-03-18",
+      "latest": "3.4.10",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "3.3",
+      "eol": "2017-09-29",
+      "latest": "3.3.7",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "3.2",
+      "eol": "2016-02-20",
+      "latest": "3.2.6",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "2.7",
+      "eol": "2020-01-01",
+      "latest": "2.7.18",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "3.1",
+      "eol": "2012-04-09",
+      "latest": "3.1.5",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "3.0",
+      "eol": "2009-06-27",
+      "latest": "3.0.1",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "python",
+      "cycle": "2.6",
+      "eol": "2013-10-29",
+      "latest": "2.6.9",
+      "source": "https://endoflife.date/python"
+    },
+    {
+      "product": "ruby",
+      "cycle": "4.0",
+      "eol": "2029-03-31",
+      "latest": "4.0.9",
+      "source": "https://endoflife.date/ruby"
+    },
+    {
+      "product": "ruby",
+      "cycle": "3.4",
+      "eol": "2028-03-31",
+      "latest": "3.4.12",
+      "source": "https://endoflife.date/ruby"
+    },
+    {
+      "product": "ruby",
+      "cycle": "3.3",
+      "eol": "2027-03-31",
+      "latest": "3.3.13",
+      "source": "https://endoflife.date/ruby"
+    },
+    {
+      "product": "ruby",
+      "cycle": "3.2",
+      "eol": "2026-03-31",
+      "latest": "3.2.11",
+      "source": "https://endoflife.date/ruby"
+    },
+    {
+      "product": "ruby",
+      "cycle": "3.1",
+      "eol": "2025-03-26",
+      "latest": "3.1.7",
+      "source": "https://endoflife.date/ruby"
+    },
+    {
+      "product": "ruby",
+      "cycle": "3.0",
+      "eol": "2024-04-23",
+      "latest": "3.0.7",
+      "source": "https://endoflife.date/ruby"
+    },
+    {
+      "product": "ruby",
+      "cycle": "2.7",
+      "eol": "2023-03-31",
+      "latest": "2.7.8",
+      "source": "https://endoflife.date/ruby"
+    },
+    {
+      "product": "ruby",
+      "cycle": "2.6",
+      "eol": "2022-03-31",
+      "latest": "2.6.10",
+      "source": "https://endoflife.date/ruby"
+    },
+    {
+      "product": "ruby",
+      "cycle": "2.5",
+      "eol": "2021-03-31",
+      "latest": "2.5.9",
+      "source": "https://endoflife.date/ruby"
+    },
+    {
+      "product": "ruby",
+      "cycle": "2.4",
+      "eol": "2020-03-31",
+      "latest": "2.4.10",
+      "source": "https://endoflife.date/ruby"
+    },
+    {
+      "product": "ruby",
+      "cycle": "2.3",
+      "eol": "2019-03-31",
+      "latest": "2.3.8",
+      "source": "https://endoflife.date/ruby"
+    },
+    {
+      "product": "ruby",
+      "cycle": "2.2",
+      "eol": "2018-03-31",
+      "latest": "2.2.10",
+      "source": "https://endoflife.date/ruby"
+    },
+    {
+      "product": "ruby",
+      "cycle": "2.1",
+      "eol": "2017-03-31",
+      "latest": "2.1.10",
+      "source": "https://endoflife.date/ruby"
+    },
+    {
+      "product": "ruby",
+      "cycle": "2.0",
+      "eol": "2016-02-24",
+      "latest": "2.0.0p648",
+      "source": "https://endoflife.date/ruby"
+    },
+    {
+      "product": "ruby",
+      "cycle": "1.9",
+      "eol": "2015-02-23",
+      "latest": "1.9.3p551",
+      "source": "https://endoflife.date/ruby"
+    },
+    {
+      "product": "go",
+      "cycle": "1.25",
+      "eol": "2026-08-19",
+      "latest": "1.25.14",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "go",
+      "cycle": "1.24",
+      "eol": "2026-02-10",
+      "latest": "1.24.13",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "go",
+      "cycle": "1.23",
+      "eol": "2025-08-12",
+      "latest": "1.23.12",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "go",
+      "cycle": "1.22",
+      "eol": "2025-02-11",
+      "latest": "1.22.12",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "go",
+      "cycle": "1.21",
+      "eol": "2024-08-13",
+      "latest": "1.21.13",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "go",
+      "cycle": "1.20",
+      "eol": "2024-02-06",
+      "latest": "1.20.14",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "go",
+      "cycle": "1.19",
+      "eol": "2023-09-06",
+      "latest": "1.19.13",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "go",
+      "cycle": "1.18",
+      "eol": "2023-02-01",
+      "latest": "1.18.10",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "go",
+      "cycle": "1.17",
+      "eol": "2022-08-02",
+      "latest": "1.17.13",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "go",
+      "cycle": "1.16",
+      "eol": "2022-03-15",
+      "latest": "1.16.15",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "go",
+      "cycle": "1.15",
+      "eol": "2021-08-16",
+      "latest": "1.15.15",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "go",
+      "cycle": "1.14",
+      "eol": "2021-02-16",
+      "latest": "1.14.15",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "go",
+      "cycle": "1.13",
+      "eol": "2020-08-11",
+      "latest": "1.13.15",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "go",
+      "cycle": "1.12",
+      "eol": "2020-02-25",
+      "latest": "1.12.17",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "go",
+      "cycle": "1.11",
+      "eol": "2019-09-03",
+      "latest": "1.11.13",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "go",
+      "cycle": "1.10",
+      "eol": "2019-02-25",
+      "latest": "1.10.8",
+      "source": "https://endoflife.date/go"
+    },
+    {
+      "product": "dotnet",
+      "cycle": "10.0",
+      "eol": "2028-11-14",
+      "latest": "10.0.13",
+      "source": "https://endoflife.date/dotnet"
+    },
+    {
+      "product": "dotnet",
+      "cycle": "9.0",
+      "eol": "2026-11-10",
+      "latest": "9.0.21",
+      "source": "https://endoflife.date/dotnet"
+    },
+    {
+      "product": "dotnet",
+      "cycle": "8.0",
+      "eol": "2026-11-10",
+      "latest": "8.0.32",
+      "source": "https://endoflife.date/dotnet"
+    },
+    {
+      "product": "dotnet",
+      "cycle": "7.0",
+      "eol": "2024-05-14",
+      "latest": "7.0.20",
+      "source": "https://endoflife.date/dotnet"
+    },
+    {
+      "product": "dotnet",
+      "cycle": "6.0",
+      "eol": "2024-11-12",
+      "latest": "6.0.36",
+      "source": "https://endoflife.date/dotnet"
+    },
+    {
+      "product": "dotnet",
+      "cycle": "5.0",
+      "eol": "2022-05-10",
+      "latest": "5.0.17",
+      "source": "https://endoflife.date/dotnet"
+    },
+    {
+      "product": "dotnet",
+      "cycle": "3.1",
+      "eol": "2022-12-13",
+      "latest": "3.1.32",
+      "source": "https://endoflife.date/dotnet"
+    },
+    {
+      "product": "dotnet",
+      "cycle": "3.0",
+      "eol": "2020-03-03",
+      "latest": "3.0.3",
+      "source": "https://endoflife.date/dotnet"
+    },
+    {
+      "product": "dotnet",
+      "cycle": "2.2",
+      "eol": "2019-12-23",
+      "latest": "2.2.8",
+      "source": "https://endoflife.date/dotnet"
+    },
+    {
+      "product": "dotnet",
+      "cycle": "2.1",
+      "eol": "2021-08-21",
+      "latest": "2.1.30",
+      "source": "https://endoflife.date/dotnet"
+    },
+    {
+      "product": "dotnet",
+      "cycle": "2.0",
+      "eol": "2018-10-01",
+      "latest": "2.0.9",
+      "source": "https://endoflife.date/dotnet"
+    },
+    {
+      "product": "dotnet",
+      "cycle": "1.1",
+      "eol": "2019-06-27",
+      "latest": "1.1.13",
+      "source": "https://endoflife.date/dotnet"
+    },
+    {
+      "product": "dotnet",
+      "cycle": "1.0",
+      "eol": "2019-06-27",
+      "latest": "1.0.16",
+      "source": "https://endoflife.date/dotnet"
+    },
+    {
+      "product": "java",
+      "cycle": "27",
+      "eol": "2027-03-23",
+      "latest": "27.0.1.0.2+1",
+      "source": "https://endoflife.date/eclipse-temurin"
+    },
+    {
+      "product": "java",
+      "cycle": "26",
+      "eol": "2026-09-22",
+      "latest": "26.0.2.1+1",
+      "source": "https://endoflife.date/eclipse-temurin"
+    },
+    {
+      "product": "java",
+      "cycle": "25",
+      "eol": "2031-09-30",
+      "latest": "25.0.5+8",
+      "source": "https://endoflife.date/eclipse-temurin"
+    },
+    {
+      "product": "java",
+      "cycle": "24",
+      "eol": "2025-09-22",
+      "latest": "24.0.2+12",
+      "source": "https://endoflife.date/eclipse-temurin"
+    },
+    {
+      "product": "java",
+      "cycle": "23",
+      "eol": "2025-03-18",
+      "latest": "23.0.2+7",
+      "source": "https://endoflife.date/eclipse-temurin"
+    },
+    {
+      "product": "java",
+      "cycle": "22",
+      "eol": "2024-09-17",
+      "latest": "22.0.2+9",
+      "source": "https://endoflife.date/eclipse-temurin"
+    },
+    {
+      "product": "java",
+      "cycle": "21",
+      "eol": "2029-12-31",
+      "latest": "21.0.13+9",
+      "source": "https://endoflife.date/eclipse-temurin"
+    },
+    {
+      "product": "java",
+      "cycle": "20",
+      "eol": "2023-09-19",
+      "latest": "20.0.2+9",
+      "source": "https://endoflife.date/eclipse-temurin"
+    },
+    {
+      "product": "java",
+      "cycle": "19",
+      "eol": "2023-03-31",
+      "latest": "19.0.2+7",
+      "source": "https://endoflife.date/eclipse-temurin"
+    },
+    {
+      "product": "java",
+      "cycle": "18",
+      "eol": "2022-09-30",
+      "latest": "18.0.2.1+1",
+      "source": "https://endoflife.date/eclipse-temurin"
+    },
+    {
+      "product": "java",
+      "cycle": "17",
+      "eol": "2027-10-31",
+      "latest": "17.0.21+9",
+      "source": "https://endoflife.date/eclipse-temurin"
+    },
+    {
+      "product": "java",
+      "cycle": "11",
+      "eol": "2027-10-31",
+      "latest": "11.0.32.1+1",
+      "source": "https://endoflife.date/eclipse-temurin"
+    },
+    {
+      "product": "java",
+      "cycle": "16",
+      "eol": "2021-09-30",
+      "latest": "16.0.2+7",
+      "source": "https://endoflife.date/eclipse-temurin"
+    },
+    {
+      "product": "java",
+      "cycle": "8",
+      "eol": "2030-12-31",
+      "latest": "8u504",
+      "source": "https://endoflife.date/eclipse-temurin"
+    },
+    {
+      "product": "mysql",
+      "cycle": "26.7",
+      "eol": "2026-10-20",
+      "latest": "26.7.1",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "9.7",
+      "eol": "2034-04-30",
+      "latest": "9.7.4",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "9.6",
+      "eol": "2026-04-21",
+      "latest": "9.6.1",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "9.5",
+      "eol": "2026-01-20",
+      "latest": "9.5.2",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "9.4",
+      "eol": "2025-10-21",
+      "latest": "9.4.2",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "9.3",
+      "eol": "2025-07-22",
+      "latest": "9.3.2",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "9.2",
+      "eol": "2025-04-15",
+      "latest": "9.2.2",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "9.1",
+      "eol": "2025-01-21",
+      "latest": "9.1.2",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "9.0",
+      "eol": "2024-10-15",
+      "latest": "9.0.1",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "8.4",
+      "eol": "2032-04-30",
+      "latest": "8.4.13",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "8.3",
+      "eol": "2024-04-30",
+      "latest": "8.3.0",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "8.2",
+      "eol": "2024-01-16",
+      "latest": "8.2.0",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "8.1",
+      "eol": "2023-10-25",
+      "latest": "8.1.0",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "8.0",
+      "eol": "2026-04-30",
+      "latest": "8.0.46",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "5.7",
+      "eol": "2023-10-31",
+      "latest": "5.7.44",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "5.6",
+      "eol": "2021-02-28",
+      "latest": "5.6.51",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "5.5",
+      "eol": "2018-12-31",
+      "latest": "5.5.63",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "5.1",
+      "eol": "2013-12-31",
+      "latest": "5.1.73",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "5.0",
+      "eol": "2011-12-31",
+      "latest": "5.0.96",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "4.1",
+      "eol": "2009-12-31",
+      "latest": "4.1.24",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "4.0",
+      "eol": "2008-09-30",
+      "latest": "4.0.30",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mysql",
+      "cycle": "3.23",
+      "eol": "2006-12-31",
+      "latest": "3.23.58",
+      "source": "https://endoflife.date/mysql"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "13.0",
+      "eol": "2026-12-31",
+      "latest": "13.0.2",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "12.3",
+      "eol": "2029-06-12",
+      "latest": "12.3.3",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "12.2",
+      "eol": "2026-05-28",
+      "latest": "12.2.2",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "12.1",
+      "eol": "2026-02-13",
+      "latest": "12.1.2",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "12.0",
+      "eol": "2025-11-18",
+      "latest": "12.0.2",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "11.8",
+      "eol": "2028-06-04",
+      "latest": "11.8.9",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "11.7",
+      "eol": "2025-05-12",
+      "latest": "11.7.2",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "11.6",
+      "eol": "2025-02-13",
+      "latest": "11.6.2",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "11.5",
+      "eol": "2024-11-21",
+      "latest": "11.5.2",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "11.4",
+      "eol": "2029-05-29",
+      "latest": "11.4.13",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "11.3",
+      "eol": "2024-05-29",
+      "latest": "11.3.2",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "11.2",
+      "eol": "2024-11-21",
+      "latest": "11.2.6",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "11.1",
+      "eol": "2024-08-21",
+      "latest": "11.1.6",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "11.0",
+      "eol": "2024-06-06",
+      "latest": "11.0.6",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "10.11",
+      "eol": "2028-02-16",
+      "latest": "10.11.19",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "10.10",
+      "eol": "2023-11-17",
+      "latest": "10.10.7",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "10.9",
+      "eol": "2023-08-22",
+      "latest": "10.9.8",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "10.8",
+      "eol": "2023-05-20",
+      "latest": "10.8.8",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "10.7",
+      "eol": "2023-02-09",
+      "latest": "10.7.8",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "10.6",
+      "eol": "2026-07-06",
+      "latest": "10.6.28",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "10.5",
+      "eol": "2025-06-24",
+      "latest": "10.5.29",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "10.4",
+      "eol": "2024-06-18",
+      "latest": "10.4.34",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "10.3",
+      "eol": "2023-05-25",
+      "latest": "10.3.39",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "10.2",
+      "eol": "2022-05-23",
+      "latest": "10.2.44",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "10.1",
+      "eol": "2020-10-17",
+      "latest": "10.1.48",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "10.0",
+      "eol": "2019-03-31",
+      "latest": "10.0.38",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "5.5",
+      "eol": "2020-04-11",
+      "latest": "5.5.68",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "5.3",
+      "eol": "2017-03-01",
+      "latest": "5.3.12",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "5.2",
+      "eol": "2015-11-10",
+      "latest": "5.2.14",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "mariadb",
+      "cycle": "5.1",
+      "eol": "2015-02-01",
+      "latest": "5.1.67",
+      "source": "https://endoflife.date/mariadb"
+    },
+    {
+      "product": "postgres",
+      "cycle": "18",
+      "eol": "2030-11-14",
+      "latest": "18.6",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "18",
+      "eol": "2030-11-14",
+      "latest": "18.6",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "17",
+      "eol": "2029-11-08",
+      "latest": "17.11",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "17",
+      "eol": "2029-11-08",
+      "latest": "17.11",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "16",
+      "eol": "2028-11-09",
+      "latest": "16.15",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "16",
+      "eol": "2028-11-09",
+      "latest": "16.15",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "15",
+      "eol": "2027-11-11",
+      "latest": "15.19",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "15",
+      "eol": "2027-11-11",
+      "latest": "15.19",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "14",
+      "eol": "2026-11-12",
+      "latest": "14.24",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "14",
+      "eol": "2026-11-12",
+      "latest": "14.24",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "13",
+      "eol": "2025-11-13",
+      "latest": "13.23",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "13",
+      "eol": "2025-11-13",
+      "latest": "13.23",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "12",
+      "eol": "2024-11-21",
+      "latest": "12.22",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "12",
+      "eol": "2024-11-21",
+      "latest": "12.22",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "11",
+      "eol": "2023-11-09",
+      "latest": "11.22",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "11",
+      "eol": "2023-11-09",
+      "latest": "11.22",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "10",
+      "eol": "2022-11-10",
+      "latest": "10.23",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "10",
+      "eol": "2022-11-10",
+      "latest": "10.23",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "9.6",
+      "eol": "2021-11-11",
+      "latest": "9.6.24",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "9.6",
+      "eol": "2021-11-11",
+      "latest": "9.6.24",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "9.5",
+      "eol": "2021-02-11",
+      "latest": "9.5.25",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "9.5",
+      "eol": "2021-02-11",
+      "latest": "9.5.25",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "9.4",
+      "eol": "2020-02-13",
+      "latest": "9.4.26",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "9.4",
+      "eol": "2020-02-13",
+      "latest": "9.4.26",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "9.3",
+      "eol": "2018-11-08",
+      "latest": "9.3.25",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "9.3",
+      "eol": "2018-11-08",
+      "latest": "9.3.25",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "9.2",
+      "eol": "2017-11-09",
+      "latest": "9.2.24",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "9.2",
+      "eol": "2017-11-09",
+      "latest": "9.2.24",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "9.1",
+      "eol": "2016-10-27",
+      "latest": "9.1.24",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "9.1",
+      "eol": "2016-10-27",
+      "latest": "9.1.24",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "9.0",
+      "eol": "2015-10-08",
+      "latest": "9.0.23",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "9.0",
+      "eol": "2015-10-08",
+      "latest": "9.0.23",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "8.4",
+      "eol": "2014-07-24",
+      "latest": "8.4.22",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "8.4",
+      "eol": "2014-07-24",
+      "latest": "8.4.22",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "8.3",
+      "eol": "2013-02-07",
+      "latest": "8.3.23",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "8.3",
+      "eol": "2013-02-07",
+      "latest": "8.3.23",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "8.2",
+      "eol": "2011-12-05",
+      "latest": "8.2.23",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "8.2",
+      "eol": "2011-12-05",
+      "latest": "8.2.23",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "8.1",
+      "eol": "2010-11-08",
+      "latest": "8.1.23",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "8.1",
+      "eol": "2010-11-08",
+      "latest": "8.1.23",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "8.0",
+      "eol": "2010-10-01",
+      "latest": "8.0.26",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "8.0",
+      "eol": "2010-10-01",
+      "latest": "8.0.26",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "7.4",
+      "eol": "2010-10-01",
+      "latest": "7.4.30",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "7.4",
+      "eol": "2010-10-01",
+      "latest": "7.4.30",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "7.3",
+      "eol": "2007-11-27",
+      "latest": "7.3.21",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "7.3",
+      "eol": "2007-11-27",
+      "latest": "7.3.21",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "7.2",
+      "eol": "2007-02-04",
+      "latest": "7.2.8",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "7.2",
+      "eol": "2007-02-04",
+      "latest": "7.2.8",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "7.1",
+      "eol": "2006-04-13",
+      "latest": "7.1.3",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "7.1",
+      "eol": "2006-04-13",
+      "latest": "7.1.3",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "7.0",
+      "eol": "2005-05-08",
+      "latest": "7.0.3",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "7.0",
+      "eol": "2005-05-08",
+      "latest": "7.0.3",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "6.5",
+      "eol": "2004-06-09",
+      "latest": "6.5.3",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "6.5",
+      "eol": "2004-06-09",
+      "latest": "6.5.3",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "6.4",
+      "eol": "2003-10-30",
+      "latest": "6.4.2",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "6.4",
+      "eol": "2003-10-30",
+      "latest": "6.4.2",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgres",
+      "cycle": "6.3",
+      "eol": "2003-03-01",
+      "latest": "6.3.2",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "postgresql",
+      "cycle": "6.3",
+      "eol": "2003-03-01",
+      "latest": "6.3.2",
+      "source": "https://endoflife.date/postgresql"
+    },
+    {
+      "product": "redis",
+      "cycle": "8.2",
+      "eol": "2030-09-01",
+      "latest": "8.2.11",
+      "source": "https://endoflife.date/redis"
+    },
+    {
+      "product": "redis",
+      "cycle": "8.0",
+      "eol": "2026-12-01",
+      "latest": "8.0.6",
+      "source": "https://endoflife.date/redis"
+    },
+    {
+      "product": "redis",
+      "cycle": "7.4",
+      "eol": "2029-12-01",
+      "latest": "7.4.12",
+      "source": "https://endoflife.date/redis"
+    },
+    {
+      "product": "redis",
+      "cycle": "7.2",
+      "eol": "2029-12-01",
+      "latest": "7.2.17",
+      "source": "https://endoflife.date/redis"
+    },
+    {
+      "product": "redis",
+      "cycle": "7.0",
+      "eol": "2024-07-29",
+      "latest": "7.0.15",
+      "source": "https://endoflife.date/redis"
+    },
+    {
+      "product": "redis",
+      "cycle": "6.2",
+      "eol": "2027-04-01",
+      "latest": "6.2.24",
+      "source": "https://endoflife.date/redis"
+    },
+    {
+      "product": "redis",
+      "cycle": "6.0",
+      "eol": "2022-05-31",
+      "latest": "6.0.20",
+      "source": "https://endoflife.date/redis"
+    },
+    {
+      "product": "redis",
+      "cycle": "5.0",
+      "eol": "2022-04-27",
+      "latest": "5.0.14",
+      "source": "https://endoflife.date/redis"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "9.0",
+      "eol": "2031-10-31",
+      "latest": "9.0.4",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "8.3",
+      "eol": "2029-10-31",
+      "latest": "8.3.13",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "8.2",
+      "eol": "2026-07-31",
+      "latest": "8.2.12",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "8.1",
+      "eol": "2025-09-30",
+      "latest": "8.1.3",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "8.0",
+      "eol": "2029-10-31",
+      "latest": "8.0.34",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "7.3",
+      "eol": "2024-10-02",
+      "latest": "7.3.4",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "7.2",
+      "eol": "2024-03-27",
+      "latest": "7.2.2",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "7.1",
+      "eol": "2024-01-23",
+      "latest": "7.1.1",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "7.0",
+      "eol": "2027-08-31",
+      "latest": "7.0.45",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "6.3",
+      "eol": "2023-08-31",
+      "latest": "6.3.2",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "6.2",
+      "eol": "2023-04-24",
+      "latest": "6.2.1",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "6.1",
+      "eol": "2023-02-09",
+      "latest": "6.1.1",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "6.0",
+      "eol": "2025-07-31",
+      "latest": "6.0.29",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "5.3",
+      "eol": "2022-07-19",
+      "latest": "5.3.2",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "5.2",
+      "eol": "2022-03-23",
+      "latest": "5.2.1",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "5.1",
+      "eol": "2022-01-19",
+      "latest": "5.1.1",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "5.0",
+      "eol": "2024-10-31",
+      "latest": "5.0.34",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "4.4",
+      "eol": "2024-02-29",
+      "latest": "4.4.31",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "4.2",
+      "eol": "2023-04-30",
+      "latest": "4.2.25",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "4.0",
+      "eol": "2022-04-30",
+      "latest": "4.0.28",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "3.6",
+      "eol": "2021-04-30",
+      "latest": "3.6.23",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "3.4",
+      "eol": "2020-01-31",
+      "latest": "3.4.24",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "3.2",
+      "eol": "2018-09-30",
+      "latest": "3.2.22",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "3.0",
+      "eol": "2018-02-28",
+      "latest": "3.0.15",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "2.6",
+      "eol": "2016-10-31",
+      "latest": "2.6.12",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "2.4",
+      "eol": "2013-03-31",
+      "latest": "2.4.14",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "2.2",
+      "eol": "2014-02-28",
+      "latest": "2.2.7",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "2.0",
+      "eol": "2013-03-31",
+      "latest": "2.0.9",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "1.8",
+      "eol": "2012-09-30",
+      "latest": "1.8.5",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "1.6",
+      "eol": "2012-02-28",
+      "latest": "1.6.5",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "1.4",
+      "eol": "2012-09-30",
+      "latest": "1.4.5",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "1.2",
+      "eol": "2011-06-30",
+      "latest": "1.2.5",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "mongodb",
+      "cycle": "1.0",
+      "eol": "2010-08-31",
+      "latest": "1.0.1",
+      "source": "https://endoflife.date/mongodb"
+    },
+    {
+      "product": "elasticsearch",
+      "cycle": "9.3",
+      "eol": "2026-08-04",
+      "latest": "9.3.8",
+      "source": "https://endoflife.date/elasticsearch"
+    },
+    {
+      "product": "elasticsearch",
+      "cycle": "9.2",
+      "eol": "2026-05-05",
+      "latest": "9.2.8",
+      "source": "https://endoflife.date/elasticsearch"
+    },
+    {
+      "product": "elasticsearch",
+      "cycle": "9.1",
+      "eol": "2026-02-03",
+      "latest": "9.1.10",
+      "source": "https://endoflife.date/elasticsearch"
+    },
+    {
+      "product": "elasticsearch",
+      "cycle": "8.19",
+      "eol": "2027-07-15",
+      "latest": "8.19.24",
+      "source": "https://endoflife.date/elasticsearch"
+    },
+    {
+      "product": "elasticsearch",
+      "cycle": "8.18",
+      "eol": "2025-10-21",
+      "latest": "8.18.8",
+      "source": "https://endoflife.date/elasticsearch"
+    },
+    {
+      "product": "elasticsearch",
+      "cycle": "9.0",
+      "eol": "2025-10-23",
+      "latest": "9.0.8",
+      "source": "https://endoflife.date/elasticsearch"
+    },
+    {
+      "product": "elasticsearch",
+      "cycle": "8.17",
+      "eol": "2025-08-12",
+      "latest": "8.17.10",
+      "source": "https://endoflife.date/elasticsearch"
+    },
+    {
+      "product": "elasticsearch",
+      "cycle": "8.16",
+      "eol": "2025-04-15",
+      "latest": "8.16.6",
+      "source": "https://endoflife.date/elasticsearch"
+    },
+    {
+      "product": "elasticsearch",
+      "cycle": "7",
+      "eol": "2026-01-15",
+      "latest": "7.17.29",
+      "source": "https://endoflife.date/elasticsearch"
+    },
+    {
+      "product": "elasticsearch",
+      "cycle": "6",
+      "eol": "2022-02-10",
+      "latest": "6.8.23",
+      "source": "https://endoflife.date/elasticsearch"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "4.4",
+      "eol": "2027-07-31",
+      "latest": "4.4.0",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "4.3",
+      "eol": "2027-01-31",
+      "latest": "4.3.7",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "4.2",
+      "eol": "2026-07-31",
+      "latest": "4.2.9",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "4.1",
+      "eol": "2026-01-30",
+      "latest": "4.1.8",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "4.0",
+      "eol": "2025-04-30",
+      "latest": "4.0.9",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "3.13",
+      "eol": "2024-09-30",
+      "latest": "3.13.7",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "3.12",
+      "eol": "2024-02-29",
+      "latest": "3.12.14",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "3.11",
+      "eol": "2023-06-01",
+      "latest": "3.11.28",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "3.10",
+      "eol": "2022-09-28",
+      "latest": "3.10.25",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "3.9",
+      "eol": "2023-01-31",
+      "latest": "3.9.29",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "3.8",
+      "eol": "2022-07-31",
+      "latest": "3.8.35",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "3.7",
+      "eol": "2020-09-30",
+      "latest": "3.7.28",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "3.6",
+      "eol": "2018-05-31",
+      "latest": "3.6.16",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "3.5",
+      "eol": "2016-10-31",
+      "latest": "3.5.8",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "3.4",
+      "eol": "2015-10-31",
+      "latest": "3.4.4",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "3.3",
+      "eol": "2015-03-31",
+      "latest": "3.3.5",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "3.2",
+      "eol": "2014-10-31",
+      "latest": "3.2.4",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "3.1",
+      "eol": "2014-04-30",
+      "latest": "3.1.5",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "rabbitmq",
+      "cycle": "3.0",
+      "eol": "2013-11-30",
+      "latest": "3.0.4",
+      "source": "https://endoflife.date/rabbitmq"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.29",
+      "eol": "2026-05-13",
+      "latest": "1.29.8",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.28",
+      "eol": "2026-04-14",
+      "latest": "1.28.3",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.27",
+      "eol": "2025-06-24",
+      "latest": "1.27.5",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.26",
+      "eol": "2025-04-23",
+      "latest": "1.26.3",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.25",
+      "eol": "2024-05-29",
+      "latest": "1.25.5",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.24",
+      "eol": "2024-04-23",
+      "latest": "1.24.0",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.23",
+      "eol": "2023-05-23",
+      "latest": "1.23.4",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.22",
+      "eol": "2023-04-11",
+      "latest": "1.22.1",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.21",
+      "eol": "2022-06-21",
+      "latest": "1.21.6",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.20",
+      "eol": "2022-05-24",
+      "latest": "1.20.2",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.19",
+      "eol": "2021-05-25",
+      "latest": "1.19.10",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.18",
+      "eol": "2021-04-20",
+      "latest": "1.18.0",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.17",
+      "eol": "2020-05-26",
+      "latest": "1.17.10",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.16",
+      "eol": "2020-04-20",
+      "latest": "1.16.1",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.15",
+      "eol": "2019-05-21",
+      "latest": "1.15.12",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.14",
+      "eol": "2019-04-23",
+      "latest": "1.14.2",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.13",
+      "eol": "2018-06-05",
+      "latest": "1.13.12",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.12",
+      "eol": "2018-04-17",
+      "latest": "1.12.2",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.11",
+      "eol": "2017-04-25",
+      "latest": "1.11.13",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.10",
+      "eol": "2017-04-12",
+      "latest": "1.10.3",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.9",
+      "eol": "2016-05-24",
+      "latest": "1.9.15",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.8",
+      "eol": "2016-04-26",
+      "latest": "1.8.1",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.7",
+      "eol": "2015-04-28",
+      "latest": "1.7.12",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.6",
+      "eol": "2015-04-21",
+      "latest": "1.6.3",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.5",
+      "eol": "2014-04-24",
+      "latest": "1.5.13",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.4",
+      "eol": "2014-04-24",
+      "latest": "1.4.7",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.3",
+      "eol": "2013-05-07",
+      "latest": "1.3.16",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.2",
+      "eol": "2013-04-24",
+      "latest": "1.2.9",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.1",
+      "eol": "2012-05-15",
+      "latest": "1.1.19",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "nginx",
+      "cycle": "1.0",
+      "eol": "2012-04-23",
+      "latest": "1.0.15",
+      "source": "https://endoflife.date/nginx"
+    },
+    {
+      "product": "httpd",
+      "cycle": "2.2",
+      "eol": "2017-07-11",
+      "latest": "2.2.34",
+      "source": "https://endoflife.date/apache-http-server"
+    },
+    {
+      "product": "httpd",
+      "cycle": "2.0",
+      "eol": "2013-07-10",
+      "latest": "2.0.65",
+      "source": "https://endoflife.date/apache-http-server"
+    },
+    {
+      "product": "httpd",
+      "cycle": "1.3",
+      "eol": "2010-02-03",
+      "latest": "1.3.42",
+      "source": "https://endoflife.date/apache-http-server"
+    }
+  ]
+}

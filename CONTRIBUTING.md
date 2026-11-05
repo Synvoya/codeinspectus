@@ -51,9 +51,9 @@ npm run eval       # drives the built MCP server over stdio against fixtures/vul
 - `npm test` is the fast inner loop. It runs the real analyzers over the committed
   `fixtures/secret-rls-corpus` (true-positive **and** false-positive cases) and locks redaction,
   dedup, SARIF normalization, and file-routing behaviour. It needs **no** engine binaries.
-- `npm run eval` should report **53 passed, 0 failed** with the engines installed. Engine-
-  dependent evals **auto-skip** if you haven't run
-  `repair-engines` — a **skip is acceptable, a fail is not.**
+- `npm run eval` should report **62 passed, 0 failed** with every engine and the OSV PyPI database
+  installed (and the OSV crates.io database absent). Engine-dependent evals **auto-skip** if you
+  haven't run `repair-engines` — a **skip is acceptable, a fail is not.**
 - A green `npm test` + `npm run eval` on your machine is the same gate the maintainer applies.
 
 ---
@@ -153,8 +153,8 @@ hides AI guesses.
 These invariants are what make CodeInspectus trustworthy. A change that violates any of them
 will not be merged, however useful it otherwise is:
 
-1. **No engine fork.** Opengrep, Gitleaks, and Trivy are called as pinned subprocesses — never
-   forked or patched.
+1. **No engine fork.** Opengrep, Gitleaks, Trivy, and osv-scanner are called as pinned
+   subprocesses — never forked or patched.
 2. **SHA-pin + verify before exec.** Every engine binary is SHA256-pinned in
    `engines.lock.json` and its hash is verified before it runs.
 3. **Fail-closed verification.** An unpinned or mismatched binary is refused, not run. Trust

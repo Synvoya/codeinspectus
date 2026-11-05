@@ -1,11 +1,13 @@
 /**
- * Bounded, dependency-free JavaScript/TypeScript/JSX structural layer.
+ * Bounded JavaScript/TypeScript/JSX structural layer over a real parser (design §10.9).
  *
- * This is deliberately smaller than a compiler AST. Comments, quoted strings,
- * templates, and regular-expression literals are atomic; brackets are paired;
- * consumers operate on imports, definitions, calls, and JSX props. Unsupported
- * or malformed shapes fail closed instead of falling back to source regexes.
+ * `@babel/parser` reads each file (javascript-parse.ts); a file is accepted only when it parses, and
+ * its token stream is the parser's own. Consumers operate on imports, definitions, calls, and JSX
+ * props over that stream, with brackets paired. Unsupported or malformed files fail closed instead of
+ * falling back to source regexes.
  */
+
+import { parseJavaScriptTokens } from "./javascript-parse.js";
 
 export type JsTokenKind = "identifier" | "string" | "template" | "number" | "regex" | "symbol";
 
@@ -17,6 +19,8 @@ export interface JsToken {
   end: number;
   line: number;
   staticValue?: string;
+  /** A `<` the parser read as the start of a JSX tag (never a comparison or a type argument). */
+  jsx?: true;
 }
 
 export interface JsDocument {
@@ -27,6 +31,13 @@ export interface JsDocument {
   balanced: boolean;
   lexicalIssues: string[];
   hasDynamicJsxSpread: boolean;
+  /**
+   * Token index pairs `[first, last]` of every unbraced if/else/for/while/with body, from the parser's
+   * AST (isConditionallyExecuted).
+   */
+  conditionalBodies?: readonly number[];
+  /** Over the native parsing caps and never parsed: loaders record the gap oversized-files. */
+  oversized?: true;
 }
 
 export interface JsExpression {
@@ -89,397 +100,12 @@ export interface JsDefinition {
   origin?: ImportOrigin;
 }
 
-const IDENTIFIER_START = /[A-Za-z_$]/;
-const IDENTIFIER_CONTINUE = /[A-Za-z0-9_$]/;
-const DIGIT = /[0-9]/;
-const MULTI_SYMBOLS = [
-  "===", "!==", ">>>", "**=", "&&=", "||=", "??=", "...", "=>", "==", "!=",
-  "<=", ">=", "&&", "||", "??", "?.", "++", "--", "+=", "-=", "*=", "/=",
-  "%=", "**", "<<", ">>", "&=", "|=", "^=", "</", "/>",
-] as const;
 export const REACT_NATIVE_MAX_JS_TOKENS = 200_000;
 export const REACT_NATIVE_MAX_JS_NESTING = 64;
-const MAX_TEMPLATE_NESTING = 64;
 
-function identifierStart(char: string | undefined): boolean {
-  return char !== undefined && IDENTIFIER_START.test(char);
-}
-
-function identifierContinue(char: string | undefined): boolean {
-  return char !== undefined && IDENTIFIER_CONTINUE.test(char);
-}
-
-function digit(char: string | undefined): boolean {
-  return char !== undefined && DIGIT.test(char);
-}
-
-function readQuoted(
-  source: string,
-  start: number,
-  line: number,
-): { token: JsToken; next: number; line: number; terminated: boolean } {
-  const quote = source[start]!;
-  let cursor = start + 1;
-  let currentLine = line;
-  let value = "";
-  while (cursor < source.length) {
-    const char = source[cursor]!;
-    if (char === "\\") {
-      const escaped = source[cursor + 1];
-      if (escaped === "\n") currentLine++;
-      if (escaped !== undefined) value += source.slice(cursor, cursor + 2);
-      cursor += 2;
-      continue;
-    }
-    if (char === quote) {
-      const end = cursor + 1;
-      return {
-        token: {
-          kind: "string",
-          value: source.slice(start, end),
-          staticValue: decodeQuotedValue(value),
-          raw: source.slice(start, end),
-          start,
-          end,
-          line,
-        },
-        next: end,
-        line: currentLine,
-        terminated: true,
-      };
-    }
-    if (char === "\n") {
-      return {
-        token: {
-          kind: "string",
-          value: source.slice(start),
-          raw: source.slice(start),
-          start,
-          end: source.length,
-          line,
-        },
-        next: source.length,
-        line: currentLine + 1,
-        terminated: false,
-      };
-    }
-    value += char;
-    cursor++;
-  }
-  return {
-    token: {
-      kind: "string",
-      value: source.slice(start),
-      raw: source.slice(start),
-      start,
-      end: source.length,
-      line,
-    },
-    next: source.length,
-    line: currentLine,
-    terminated: false,
-  };
-}
-
-function decodeQuotedValue(value: string): string {
-  return value.replace(/\\(?:u\{([0-9A-Fa-f]+)\}|u([0-9A-Fa-f]{4})|x([0-9A-Fa-f]{2})|([\\'"bfnrtv0]))/g,
-    (_match, unicodePoint: string | undefined, unicode: string | undefined, hex: string | undefined, simple: string | undefined) => {
-      const digits = unicodePoint ?? unicode ?? hex;
-      if (digits) {
-        const codePoint = Number.parseInt(digits, 16);
-        return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : "";
-      }
-      const escapes: Record<string, string> = {
-        "\\": "\\", "'": "'", "\"": "\"", b: "\b", f: "\f", n: "\n",
-        r: "\r", t: "\t", v: "\v", "0": "\0",
-      };
-      return escapes[simple ?? ""] ?? simple ?? "";
-    });
-}
-
-function readTemplate(
-  source: string,
-  start: number,
-  line: number,
-  nesting = 0,
-): { token: JsToken; next: number; line: number; terminated: boolean } {
-  if (nesting > MAX_TEMPLATE_NESTING) {
-    return {
-      token: {
-        kind: "template",
-        value: source.slice(start),
-        raw: source.slice(start),
-        start,
-        end: source.length,
-        line,
-      },
-      next: source.length,
-      line,
-      terminated: false,
-    };
-  }
-  let cursor = start + 1;
-  let currentLine = line;
-  let dynamic = false;
-  let escaped = false;
-  let interpolationDepth = 0;
-  while (cursor < source.length) {
-    const char = source[cursor]!;
-    if (char === "\n") currentLine++;
-    if (escaped) {
-      escaped = false;
-      cursor++;
-      continue;
-    }
-    if (char === "\\") {
-      escaped = true;
-      cursor++;
-      continue;
-    }
-    if (interpolationDepth > 0 && (char === "'" || char === "\"")) {
-      const quoted = readQuoted(source, cursor, currentLine);
-      cursor = quoted.next;
-      currentLine = quoted.line;
-      continue;
-    }
-    if (interpolationDepth > 0 && char === "`") {
-      const nested = readTemplate(source, cursor, currentLine, nesting + 1);
-      cursor = nested.next;
-      currentLine = nested.line;
-      if (!nested.terminated) break;
-      continue;
-    }
-    if (interpolationDepth > 0 && char === "/" && source[cursor + 1] === "/") {
-      cursor += 2;
-      while (cursor < source.length && source[cursor] !== "\n") cursor++;
-      continue;
-    }
-    if (interpolationDepth > 0 && char === "/" && source[cursor + 1] === "*") {
-      cursor += 2;
-      while (cursor < source.length && !(source[cursor] === "*" && source[cursor + 1] === "/")) {
-        if (source[cursor] === "\n") currentLine++;
-        cursor++;
-      }
-      cursor = Math.min(source.length, cursor + 2);
-      continue;
-    }
-    if (char === "$" && source[cursor + 1] === "{") {
-      dynamic = true;
-      interpolationDepth++;
-      cursor += 2;
-      continue;
-    }
-    if (interpolationDepth > 0 && char === "{") {
-      interpolationDepth++;
-      cursor++;
-      continue;
-    }
-    if (interpolationDepth > 0 && char === "}") {
-      interpolationDepth--;
-      cursor++;
-      continue;
-    }
-    if (char === "`" && interpolationDepth === 0) {
-      const end = cursor + 1;
-      const body = source.slice(start + 1, cursor);
-      return {
-        token: {
-          kind: "template",
-          value: source.slice(start, end),
-          ...(dynamic ? {} : { staticValue: decodeQuotedValue(body) }),
-          raw: source.slice(start, end),
-          start,
-          end,
-          line,
-        },
-        next: end,
-        line: currentLine,
-        terminated: true,
-      };
-    }
-    cursor++;
-  }
-  return {
-    token: {
-      kind: "template",
-      value: source.slice(start),
-      raw: source.slice(start),
-      start,
-      end: source.length,
-      line,
-    },
-    next: source.length,
-    line: currentLine,
-    terminated: false,
-  };
-}
-
-function canStartRegex(previous: JsToken | undefined): boolean {
-  if (!previous) return true;
-  if (previous.kind === "identifier" && ![
-    "return", "throw", "case", "delete", "void", "typeof", "instanceof", "in", "of", "yield", "await",
-  ].includes(previous.value)) return false;
-  if (previous.kind === "number" || previous.kind === "string" || previous.kind === "template" || previous.kind === "regex") {
-    return false;
-  }
-  return ![")", "]", "}", "++", "--"].includes(previous.value);
-}
-
-function readRegex(
-  source: string,
-  start: number,
-  line: number,
-): { token: JsToken; next: number; terminated: boolean } {
-  let cursor = start + 1;
-  let escaped = false;
-  let characterClass = false;
-  while (cursor < source.length && source[cursor] !== "\n") {
-    const char = source[cursor]!;
-    if (escaped) {
-      escaped = false;
-    } else if (char === "\\") {
-      escaped = true;
-    } else if (char === "[") {
-      characterClass = true;
-    } else if (char === "]") {
-      characterClass = false;
-    } else if (char === "/" && !characterClass) {
-      cursor++;
-      while (/[A-Za-z]/.test(source[cursor] ?? "")) cursor++;
-      return {
-        token: {
-          kind: "regex",
-          value: source.slice(start, cursor),
-          raw: source.slice(start, cursor),
-          start,
-          end: cursor,
-          line,
-        },
-        next: cursor,
-        terminated: true,
-      };
-    }
-    cursor++;
-  }
-  return {
-    token: {
-      kind: "symbol",
-      value: "/",
-      raw: "/",
-      start,
-      end: start + 1,
-      line,
-    },
-    next: start + 1,
-    terminated: false,
-  };
-}
-
-export function lexJavaScript(
-  source: string,
-  maxTokens = REACT_NATIVE_MAX_JS_TOKENS,
-): { tokens: JsToken[]; issues: string[] } {
-  if (!Number.isSafeInteger(maxTokens) || maxTokens < 1) {
-    throw new Error("Invalid JavaScript/TypeScript token bound.");
-  }
-  const tokens: JsToken[] = [];
-  const issues: string[] = [];
-  const appendToken = (token: JsToken): boolean => {
-    if (tokens.length >= maxTokens) {
-      issues.push(`JavaScript/TypeScript token bound exceeded (${maxTokens}).`);
-      return false;
-    }
-    tokens.push(token);
-    return true;
-  };
-  let cursor = 0;
-  let line = 1;
-  if (source.startsWith("#!")) {
-    while (cursor < source.length && source[cursor] !== "\n") cursor++;
-  }
-
-  scan: while (cursor < source.length) {
-    const char = source[cursor]!;
-    const next = source[cursor + 1];
-    if (char === "\n") {
-      line++;
-      cursor++;
-      continue;
-    }
-    if (/\s/.test(char)) {
-      cursor++;
-      continue;
-    }
-    if (char === "/" && next === "/") {
-      cursor += 2;
-      while (cursor < source.length && source[cursor] !== "\n") cursor++;
-      continue;
-    }
-    if (char === "/" && next === "*") {
-      const startLine = line;
-      cursor += 2;
-      let terminated = false;
-      while (cursor < source.length) {
-        if (source[cursor] === "\n") line++;
-        if (source[cursor] === "*" && source[cursor + 1] === "/") {
-          cursor += 2;
-          terminated = true;
-          break;
-        }
-        cursor++;
-      }
-      if (!terminated) issues.push(`Unterminated block comment at line ${startLine}.`);
-      continue;
-    }
-    if (char === "'" || char === "\"") {
-      const result = readQuoted(source, cursor, line);
-      if (!appendToken(result.token)) break scan;
-      if (!result.terminated) issues.push(`Unterminated quoted string at line ${line}.`);
-      cursor = result.next;
-      line = result.line;
-      continue;
-    }
-    if (char === "`") {
-      const result = readTemplate(source, cursor, line);
-      if (!appendToken(result.token)) break scan;
-      if (!result.terminated) issues.push(`Unterminated template literal at line ${line}.`);
-      cursor = result.next;
-      line = result.line;
-      continue;
-    }
-    if (char === "/" && canStartRegex(tokens.at(-1))) {
-      const result = readRegex(source, cursor, line);
-      if (!appendToken(result.token)) break scan;
-      if (!result.terminated) issues.push(`Unterminated regular-expression literal at line ${line}.`);
-      cursor = result.next;
-      continue;
-    }
-    if (identifierStart(char)) {
-      const start = cursor++;
-      while (identifierContinue(source[cursor])) cursor++;
-      const raw = source.slice(start, cursor);
-      if (!appendToken({ kind: "identifier", value: raw, raw, start, end: cursor, line })) break scan;
-      continue;
-    }
-    if (digit(char)) {
-      const start = cursor++;
-      while (/[A-Fa-f0-9_xXobOB.eE+-]/.test(source[cursor] ?? "")) cursor++;
-      const raw = source.slice(start, cursor);
-      if (!appendToken({ kind: "number", value: raw, raw, start, end: cursor, line })) break scan;
-      continue;
-    }
-    const symbol = MULTI_SYMBOLS.find((candidate) => source.startsWith(candidate, cursor)) ?? char;
-    if (!appendToken({
-      kind: "symbol",
-      value: symbol,
-      raw: symbol,
-      start: cursor,
-      end: cursor + symbol.length,
-      line,
-    })) break scan;
-    cursor += symbol.length;
-  }
-  return { tokens, issues };
+/** ECMAScript line terminators (LF, CR, U+2028, U+2029), for the per-line cap. */
+function lineTerminator(char: string | undefined): boolean {
+  return char === "\n" || char === "\r" || char === " " || char === " ";
 }
 
 function balance(tokens: readonly JsToken[]): { pairs: Map<number, number>; balanced: boolean; maxDepth: number } {
@@ -489,7 +115,9 @@ function balance(tokens: readonly JsToken[]): { pairs: Map<number, number>; bala
   let valid = true;
   let maxDepth = 0;
   for (let index = 0; index < tokens.length; index++) {
-    const value = tokens[index]!.value;
+    const token = tokens[index]!;
+    if (token.kind !== "symbol") continue;
+    const value = token.value;
     if (value === "(" || value === "[" || value === "{") {
       stack.push({ token: value, index });
       maxDepth = Math.max(maxDepth, stack.length);
@@ -510,20 +138,76 @@ function balance(tokens: readonly JsToken[]): { pairs: Map<number, number>; bala
   return { pairs, balanced: valid && stack.length === 0, maxDepth };
 }
 
+/** Review I-2: per-file caps on native parsing, so the worst case stays bounded. */
+export const NATIVE_LEX_MAX_CHARS = 2 * 1024 * 1024;
+export const NATIVE_LEX_MAX_LINE_CHARS = 64 * 1024;
+
+function overLexingCaps(content: string): boolean {
+  if (content.length > NATIVE_LEX_MAX_CHARS) return true;
+  let lineStart = 0;
+  for (let index = 0; index <= content.length; index++) {
+    if (index < content.length && !lineTerminator(content[index])) continue;
+    if (index - lineStart > NATIVE_LEX_MAX_LINE_CHARS) return true;
+    lineStart = index + 1;
+  }
+  return false;
+}
+
+/** First token index whose start is at or after `offset` (tokens are in source order). */
+function firstTokenAtOrAfter(tokens: readonly JsToken[], offset: number): number {
+  let low = 0;
+  let high = tokens.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (tokens[middle]!.start < offset) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+/** Source ranges `[start, end)` to token index pairs `[first, last]`; empty ranges are dropped. */
+function tokenRanges(tokens: readonly JsToken[], ranges: readonly number[]): number[] {
+  const result: number[] = [];
+  for (let index = 0; index + 1 < ranges.length; index += 2) {
+    const first = firstTokenAtOrAfter(tokens, ranges[index]!);
+    const last = firstTokenAtOrAfter(tokens, ranges[index + 1]!) - 1;
+    if (first <= last) result.push(first, last);
+  }
+  return result;
+}
+
 export function parseJavaScriptSource(path: string, content: string): JsDocument {
-  const { tokens, issues } = lexJavaScript(content);
-  const paired = balance(tokens);
+  if (overLexingCaps(content)) {
+    return {
+      path,
+      content,
+      tokens: [],
+      pairs: new Map(),
+      balanced: false,
+      lexicalIssues: [`Over the native parsing caps (${NATIVE_LEX_MAX_CHARS} characters, ${NATIVE_LEX_MAX_LINE_CHARS} per line).`],
+      hasDynamicJsxSpread: false,
+      oversized: true,
+    };
+  }
+  const parsed = parseJavaScriptTokens(path, content, REACT_NATIVE_MAX_JS_TOKENS);
+  const issues = [...parsed.issues];
+  const paired = balance(parsed.tokens);
   if (paired.maxDepth > REACT_NATIVE_MAX_JS_NESTING) {
     issues.push(`JavaScript/TypeScript structural nesting bound exceeded (${REACT_NATIVE_MAX_JS_NESTING}).`);
+  } else if (!issues.length && !paired.balanced) {
+    // The parser accepted the file, so its brackets pair; anything else is an adapter defect (fail closed).
+    issues.push("JavaScript/TypeScript tokens do not pair.");
   }
+  const balanced = issues.length === 0;
   const document: JsDocument = {
     path,
     content,
-    tokens,
-    pairs: paired.pairs,
-    balanced: paired.balanced && issues.length === 0,
+    tokens: balanced ? parsed.tokens : [],
+    pairs: balanced ? paired.pairs : new Map(),
+    balanced,
     lexicalIssues: issues,
     hasDynamicJsxSpread: false,
+    ...(balanced ? { conditionalBodies: tokenRanges(parsed.tokens, parsed.conditionalBodies) } : {}),
   };
   document.hasDynamicJsxSpread = jsxElements(document).some((element) => element.hasSpread);
   return document;
@@ -611,37 +295,56 @@ export function jsCalls(document: JsDocument): JsCall[] {
 
 const memberAssignmentCache = new WeakMap<JsDocument, JsMemberAssignment[]>();
 
-function sameScope(left: readonly number[], right: readonly number[]): boolean {
-  return left.length === right.length && left.every((open, index) => right[index] === open);
+const conditionalCache = new WeakMap<JsDocument, Uint8Array>();
+
+/**
+ * Which tokens are conditionally executed, for the whole document in one linear pass (review I-2: the
+ * per-token rescan was quadratic over a file's assignments). A token is conditional when it sits in an
+ * unbraced if/else/for/while/with body at that body's own brace level (bodies come from the parser's
+ * AST), or when an `&&`, `||`, `??` or `?` precedes it in the same statement.
+ */
+function conditionalTokens(document: JsDocument): Uint8Array {
+  const cached = conditionalCache.get(document);
+  if (cached) return cached;
+  const tokens = document.tokens;
+  const flags = new Uint8Array(tokens.length);
+  const depth = new Int32Array(tokens.length);
+  let level = 0;
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index]!;
+    if (token.kind === "symbol" && token.value === "}" && level > 0) level--;
+    depth[index] = level;
+    if (token.kind === "symbol" && token.value === "{") level++;
+  }
+  const bodies = document.conditionalBodies ?? [];
+  const opens: Array<[number, number]> = [];
+  const closes: Array<[number, number]> = [];
+  for (let index = 0; index + 1 < bodies.length; index += 2) {
+    const first = bodies[index]!;
+    opens.push([first, depth[first]!]);
+    closes.push([bodies[index + 1]! + 1, depth[first]!]);
+  }
+  opens.sort((left, right) => left[0] - right[0]);
+  closes.sort((left, right) => left[0] - right[0]);
+  const active = new Int32Array(REACT_NATIVE_MAX_JS_NESTING + 2);
+  let openCursor = 0;
+  let closeCursor = 0;
+  let shortCircuits = 0;
+  for (let index = 0; index < tokens.length; index++) {
+    while (closeCursor < closes.length && closes[closeCursor]![0] <= index) active[closes[closeCursor++]![1]]!--;
+    while (openCursor < opens.length && opens[openCursor]![0] <= index) active[opens[openCursor++]![1]]!++;
+    if (active[depth[index]!]! > 0 || shortCircuits > 0) flags[index] = 1;
+    const value = tokens[index]!.value;
+    if (value === ";" || value === "{" || value === "}") shortCircuits = 0;
+    else if (value === "&&" || value === "||" || value === "??" || value === "?") shortCircuits++;
+  }
+  conditionalCache.set(document, flags);
+  return flags;
 }
 
 /** True when a token is governed by an unbraced branch/loop or short-circuit expression. */
 export function isConditionallyExecuted(document: JsDocument, tokenIndex: number): boolean {
-  const tokens = document.tokens;
-  const targetScope = lexicalScopeAt(document, tokenIndex);
-  const controls = new Set(["if", "for", "while", "with"]);
-  for (let index = 0; index < tokenIndex; index++) {
-    if (!controls.has(tokens[index]!.value) || tokens[index + 1]?.value !== "(") continue;
-    if (!sameScope(lexicalScopeAt(document, index), targetScope)) continue;
-    const close = document.pairs.get(index + 1);
-    if (close === undefined || close >= tokenIndex) continue;
-    const bodyStart = close + 1;
-    if (tokens[bodyStart]?.value === "{") continue;
-    const bodyEnd = statementExpressionEnd(document, bodyStart);
-    if (tokenIndex >= bodyStart && tokenIndex < bodyEnd) return true;
-  }
-  for (let index = 0; index < tokenIndex; index++) {
-    if (tokens[index]!.value !== "else" || !sameScope(lexicalScopeAt(document, index), targetScope)) continue;
-    const bodyStart = index + 1;
-    if (tokens[bodyStart]?.value === "{") continue;
-    const bodyEnd = statementExpressionEnd(document, bodyStart);
-    if (tokenIndex >= bodyStart && tokenIndex < bodyEnd) return true;
-  }
-  let statementStart = tokenIndex - 1;
-  while (statementStart >= 0 && ![";", "{", "}"].includes(tokens[statementStart]!.value)) statementStart--;
-  return tokens.slice(statementStart + 1, tokenIndex).some((token) =>
-    ["&&", "||", "??", "?"].includes(token.value)
-  );
+  return conditionalTokens(document)[tokenIndex] === 1;
 }
 
 export function jsMemberAssignments(document: JsDocument): JsMemberAssignment[] {
@@ -756,23 +459,26 @@ export function jsxElements(document: JsDocument): JsxElement[] {
   }
   const elements: JsxElement[] = [];
   const tokens = document.tokens;
+  // Review I-2: where the scan for a tag's `>` ends, from each start index: it skips paired brackets
+  // and stops at `>`, `/>`, `;` or an unpaired opener. Computed once from the right; scanning again
+  // for every `<Name` was quadratic on `x<A<A<A…`.
+  const scanEnd = new Int32Array(tokens.length + 1);
+  scanEnd[tokens.length] = tokens.length;
+  for (let index = tokens.length - 1; index >= 0; index--) {
+    const value = tokens[index]!.value;
+    if (value === "{" || value === "(" || value === "[") {
+      const close = document.pairs.get(index);
+      scanEnd[index] = close === undefined || close <= index ? index : scanEnd[close + 1]!;
+    } else {
+      scanEnd[index] = value === ">" || value === "/>" || value === ";" ? index : scanEnd[index + 1]!;
+    }
+  }
   for (let index = 0; index < tokens.length - 1; index++) {
-    if (tokens[index]!.value !== "<" || tokens[index + 1]?.kind !== "identifier") continue;
+    // Only a `<` the parser read as a JSX tag starts an element; a type argument `<Config>` never does.
+    if (!tokens[index]!.jsx || tokens[index + 1]?.kind !== "identifier") continue;
     const ref = jsxReference(tokens, index + 1);
     if (!ref || !/^[A-Z]/.test(ref.reference.at(-1) ?? "")) continue;
-    let closeIndex = ref.end;
-    while (closeIndex < tokens.length) {
-      const value = tokens[closeIndex]!.value;
-      if (value === "{" || value === "(" || value === "[") {
-        const close = document.pairs.get(closeIndex);
-        if (close === undefined) break;
-        closeIndex = close + 1;
-        continue;
-      }
-      if (value === ">" || value === "/>") break;
-      if (value === ";") break;
-      closeIndex++;
-    }
+    const closeIndex = scanEnd[ref.end]!;
     if (closeIndex >= tokens.length || ![">", "/>"].includes(tokens[closeIndex]!.value)) continue;
 
     const props: JsxProp[] = [];

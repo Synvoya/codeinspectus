@@ -1,0 +1,26 @@
+{
+  "results": [
+    {
+      "source": {
+        "path": "<target>/Package.resolved",
+        "type": "lockfile"
+      },
+      "packages": [
+        {
+          "package": {
+            "name": "github.com/apple/swift-argument-parser",
+            "version": "1.2.3",
+            "ecosystem": "SwiftURL",
+            "purl": "pkg:swift/github.com%2Fapple%2Fswift-argument-parser@1.2.3"
+          }
+        }
+      ]
+    }
+  ],
+  "experimental_config": {
+    "licenses": {
+      "summary": false,
+      "allowlist": null
+    }
+  }
+}

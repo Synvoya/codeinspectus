@@ -1,0 +1,67 @@
+# Synvoya Node.js pack (original Apache-2.0 rules; see LICENSE-PROVENANCE.md). ASCII-only.
+# Insecure defaults shipped in deploy files (design 10.7): a secret-named setting whose value is a
+# replace-me placeholder that a deployment can go live with. Plain "secret" / "password" values are
+# not matched: field triage found them in debug-only database compose files, not in app defaults. Generic (regex) matching keeps Helm templates and
+# other non-YAML-clean files from becoming parse errors. Example, sample, template, development and
+# test variants of these files are meant to hold placeholders and are excluded by name.
+rules:
+  - id: syn-node-placeholder-secret-deploy
+    languages: [generic]
+    severity: WARNING
+    message: >
+      A secret setting in this deploy file holds a placeholder value (such as changeme or
+      replace-me). Installs that start from this file run with a secret everyone knows, which lets
+      anyone sign sessions or tokens or log in. Leave the value empty so startup fails, or generate
+      it at install time, and document how to set it.
+    metadata:
+      cwe: "CWE-1188: Initialization of a Resource with an Insecure Default"
+      owasp: "A05:2021 - Security Misconfiguration"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-node
+      references:
+        - https://cwe.mitre.org/data/definitions/1188.html
+        - https://cwe.mitre.org/data/definitions/798.html
+    # Basename globs only (Opengrep matches rule paths against the absolute path).
+    paths:
+      include:
+        - "docker-compose*.yml"
+        - "docker-compose*.yaml"
+        - "compose*.yml"
+        - "compose*.yaml"
+        - "Dockerfile"
+        - "*.Dockerfile"
+        - "app.json"
+        - "render.yaml"
+        - "fly.toml"
+        - "values.yaml"
+      exclude:
+        - "*.example.yml"
+        - "*.example.yaml"
+        - "*-example.yml"
+        - "*-example.yaml"
+        - "*.sample.yml"
+        - "*.sample.yaml"
+        - "*-sample.yml"
+        - "*-sample.yaml"
+        - "*.template.yml"
+        - "*.template.yaml"
+        - "*-template.yml"
+        - "*-template.yaml"
+        - "*.dev.yml"
+        - "*.dev.yaml"
+        - "*-dev.yml"
+        - "*-dev.yaml"
+        - "*.local.yml"
+        - "*.local.yaml"
+        - "*-local.yml"
+        - "*-local.yaml"
+        - "*.test.yml"
+        - "*.test.yaml"
+        - "*-test.yml"
+        - "*-test.yaml"
+        - "*.ci.yml"
+        - "*.ci.yaml"
+        - "*-ci.yml"
+        - "*-ci.yaml"
+    pattern-regex: (?im)^[ \t]*(?:-[ \t]*)?(?:ENV[ \t]+)?["']?[A-Z0-9_]*(?:SECRET|PASSWORD|PASSWD|TOKEN|SALT|API_KEY|PRIVATE_KEY|APP_KEY|JWT_KEY|SIGNING_KEY|ENCRYPTION_KEY)[A-Z0-9_]*["']?[ \t]*[:=][ \t]*["']?(?:change[-_ ]?me[-\w]*|change[-_ ]?this[-\w]*|changethis|please[-_ ]?change[-\w]*|replace[-_ ]?me[-\w]*|replace[-_]this[-\w]*|your[-_][-\w]*(?:secret|key|password|token)[-\w]*|keyboard cat|insecure[-_][-\w]*)["']?[ \t]*$

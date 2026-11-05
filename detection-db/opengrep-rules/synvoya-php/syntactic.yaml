@@ -1,0 +1,202 @@
+# Synvoya PHP pack -- original Apache-2.0 rules (see LICENSE-PROVENANCE.md). ASCII-only.
+# Syntactic rules (each matches the risky construct itself): weak password hashing, predictable
+# security tokens and disabled TLS verification. (The XXE and preg_replace /e rules failed the
+# holdout gate and are held in experimental/.)
+rules:
+  - id: syn-php-weak-password-hash
+    languages: [php]
+    severity: WARNING
+    message: >-
+      Password hashed with a fast general-purpose hash (MD5/SHA-1). These hashes are cracked at
+      billions of guesses per second; store passwords with password_hash() (bcrypt/Argon2), or
+      wp_hash_password() in WordPress.
+    metadata:
+      cwe: "CWE-916: Use of Password Hash With Insufficient Computational Effort"
+      owasp: "A02:2021 - Cryptographic Failures"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks: [php, laravel, symfony, wordpress]
+    # Only a password being stored or checked at login: the hashed value is a password (by name) and
+    # the result is assigned to a password field, put under a password key, or compared with a stored
+    # value. Token, reset, policy, cache and key names are not passwords.
+    patterns:
+      - pattern-either:
+          # stored: $user->password = md5($pass); $password_hash = sha1(...);
+          - patterns:
+              - pattern-either:
+                  - pattern: $LHS = md5($X, ...);
+                  - pattern: $LHS = sha1($X, ...);
+                  - pattern: $LHS = hash("=~/^(?i)(md5|sha1)$/", $X, ...);
+              - metavariable-regex:
+                  metavariable: $LHS
+                  regex: ^.*(?:(?i:passw(?:or)?d|passphrase)|(?:^|[^A-Za-z])(?i:pass|pwd|pw)(?:[^A-Za-z]|$)|[a-z](?:Pass|Pwd)(?:[^a-z]|$))
+              - metavariable-regex:
+                  metavariable: $LHS
+                  regex: ^(?!.*(?i:passw(?:or)?d_?(?:reset|token|polic|rules?|hint|confirm|key|cache|json|length|strength|expir)|(?:reset|token|cache|polic)\w*_?passw(?:or)?d|uniqid|\brand\(|mt_rand|random|wp_generate_password|bin2hex|nonce|realm))
+          # stored under a password key: ['user_pass' => md5($pass)]
+          - patterns:
+              - pattern-either:
+                  - pattern: |
+                      [..., $K => md5($X, ...), ...]
+                  - pattern: |
+                      [..., $K => sha1($X, ...), ...]
+                  - pattern: |
+                      [..., $K => hash("=~/^(?i)(md5|sha1)$/", $X, ...), ...]
+              - metavariable-regex:
+                  metavariable: $K
+                  regex: (?i)^["'](?:password|passwd|pass|pwd|user_pass|user_password|password_hash|pass_hash)["']$
+          # stored later through an intermediate: $hash = md5($pass); ... ['pw' => $hash] / insert / ->password
+          - patterns:
+              - pattern-either:
+                  - pattern-inside: |
+                      $V = md5($X, ...);
+                      ...
+                  - pattern-inside: |
+                      $V = sha1($X, ...);
+                      ...
+              - pattern-either:
+                  - patterns:
+                      - pattern: $OBJ->$PROP = $V;
+                      - metavariable-regex:
+                          metavariable: $PROP
+                          regex: (?i)^\w*(?:passw(?:or)?d|pass|pwd)\w*$
+                  - patterns:
+                      - pattern: |
+                          [..., $K => $V, ...]
+                      - metavariable-regex:
+                          metavariable: $K
+                          regex: (?i)^["'](?:password|passwd|pass|pwd|pw|user_pass|user_password|password_hash|pass_hash)["']$
+                  - pattern: $DB->insert($TABLE, [..., $K2 => $V, ...], ...)
+                  - pattern: $DB->update($TABLE, [..., $K2 => $V, ...], ...)
+          # checked at login: md5($_POST['pass']) === $row['password']
+          - patterns:
+              - pattern-either:
+                  - pattern: $H($X, ...) == $STORED
+                  - pattern: $H($X, ...) === $STORED
+                  - pattern: $H($X, ...) != $STORED
+                  - pattern: $H($X, ...) !== $STORED
+                  - pattern: $STORED == $H($X, ...)
+                  - pattern: $STORED === $H($X, ...)
+                  - pattern: hash_equals($STORED, $H($X, ...))
+              - metavariable-regex:
+                  metavariable: $H
+                  regex: ^(?:md5|sha1)$
+      - metavariable-regex:
+          metavariable: $X
+          regex: ^.*(?:(?i:passw(?:or)?d|passphrase)|(?:^|[^A-Za-z])(?i:pass|pwd|pw)(?:[^A-Za-z]|$)|[a-z](?:Pass|Pwd)(?:[^a-z]|$))
+      - metavariable-regex:
+          metavariable: $X
+          regex: ^(?!.*(?i:passw(?:or)?d_?(?:reset|token|polic|rules?|hint|confirm|key|cache|json|length|strength|expir)|(?:reset|token|cache|polic)\w*_?passw(?:or)?d|uniqid|\brand\(|mt_rand|random|wp_generate_password|bin2hex|nonce|realm))
+      # Protocols that mandate an MD5 digest of the password on the wire (POP3 APOP, CRAM-MD5,
+      # HTTP Digest) are not password storage.
+      - pattern-not-inside: $F("=~/^(?i)(APOP|CRAM-MD5|DIGEST-MD5)/", ...)
+      - pattern-not-inside: $OBJ->$F("=~/^(?i)(APOP|CRAM-MD5|DIGEST-MD5)/", ...)
+
+  - id: syn-php-tls-verification-disabled
+    languages: [php]
+    severity: WARNING
+    message: >-
+      TLS certificate verification is turned off for an outgoing request, so anyone on the network
+      path can impersonate the server and read or change the traffic. Keep verification on and
+      point to a CA bundle if the server uses a private CA.
+    metadata:
+      cwe: "CWE-295: Improper Certificate Validation"
+      owasp: "A02:2021 - Cryptographic Failures"
+      category: security
+      confidence: HIGH
+      synvoya_pack: synvoya-php
+      frameworks: [php, laravel, symfony, wordpress]
+    patterns:
+      - pattern-either:
+          - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYPEER, false)
+          - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYPEER, 0)
+          - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYHOST, false)
+          - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYHOST, 0)
+          - pattern: |
+              [..., CURLOPT_SSL_VERIFYPEER => false, ...]
+          - pattern: |
+              [..., CURLOPT_SSL_VERIFYPEER => 0, ...]
+          - pattern: |
+              [..., CURLOPT_SSL_VERIFYHOST => false, ...]
+          - pattern: |
+              [..., CURLOPT_SSL_VERIFYHOST => 0, ...]
+          - pattern: |
+              [..., "sslverify" => false, ...]
+          - pattern: |
+              [..., "verify_peer" => false, ...]
+          - pattern: |
+              [..., "verify_peer_name" => false, ...]
+          - pattern: |
+              new $CLIENT([..., "verify" => false, ...])
+          - pattern: |
+              $CLIENT->$METHOD($M, $U, [..., "verify" => false, ...])
+          - pattern: |
+              $HTTP::withOptions([..., "verify" => false, ...])
+          - pattern: $HTTP::withoutVerifying()
+          - pattern: $PENDING->withoutVerifying()
+
+      # Verification switched off only for local development (App::environment('local'), isLocal(),
+      # a debug flag) is a developer setting, not a deployed one.
+      - pattern-not-inside: |
+          if (<... $APP::environment(...) ...>) { ... }
+      - pattern-not-inside: |
+          if (<... app()->environment(...) ...>) { ... }
+      - pattern-not-inside: |
+          if (<... $APP->environment(...) ...>) { ... }
+      - pattern-not-inside: |
+          if (<... $APP::isLocal() ...>) { ... }
+      - pattern-not-inside: |
+          if (<... $APP->isLocal() ...>) { ... }
+      - pattern-not-inside: |
+          if (<... app()->isLocal() ...>) { ... }
+      - pattern-not-inside: |
+          if (<... WP_DEBUG ...>) { ... }
+
+  - id: syn-php-insecure-random-token
+    languages:
+      - php
+    severity: WARNING
+    message: Security token built from a predictable generator (rand, mt_rand, uniqid, lcg_value or str_shuffle). Their output can be guessed or reproduced; use random_bytes()/random_int() (bin2hex(random_bytes(32))), Str::random() in Laravel or wp_generate_password() in WordPress.
+    metadata:
+      cwe: "CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator (PRNG)"
+      owasp: A02:2021 - Cryptographic Failures
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks:
+        - php
+        - laravel
+        - symfony
+        - wordpress
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-either:
+                  - pattern: $T = <... $RNG(...) ...>;
+                  - pattern: $T .= <... $RNG(...) ...>;
+              - metavariable-regex:
+                  metavariable: $T
+                  regex: (?i)^.*(?:token|nonce|secret|salt|otp|csrf|api_?key|apikey|passw(?:or)?d|reset_?(?:code|key|hash)|verification_?(?:code|key)|verify_?(?:code|key)|activation_?(?:code|key)|confirm(?:ation)?_?(?:code|key|token)|auth_?(?:code|key)|session_?id|remember_?(?:token|me))
+              - metavariable-regex:
+                  metavariable: $T
+                  regex: (?i)^(?!.*(?:count|length|len|size|num|index|idx|type|name|label|field|column|lifetime|expir|ttl|timeout|prefix|url|path|file|cache)[^\[]*$)
+          - patterns:
+              - pattern: |
+                  [..., $K => <... $RNG(...) ...>, ...]
+              - metavariable-regex:
+                  metavariable: $K
+                  regex: (?i)^["'](?:token|nonce|secret|salt|otp|csrf|csrf_token|api_?key|password|reset_(?:code|key|token)|verification_(?:code|token)|activation_(?:code|key)|confirm_(?:code|token)|auth_code|remember_token)["']$
+          - patterns:
+              - pattern-inside: |
+                  function $FN(...) { ... }
+              - pattern: return <... $RNG(...) ...>;
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: (?i)^.*(?:token|nonce|secret|salt|otp|csrf|apikey|api_key|password|resetcode|reset_code|verificationcode|verification_code)
+      - metavariable-regex:
+          metavariable: $RNG
+          regex: ^(?:rand|mt_rand|uniqid|lcg_value|str_shuffle|array_rand)$
+      # uniqid() with a non-empty descriptive prefix names an internal identifier (cache or query
+      # scope); an empty prefix ('') is no mitigation and is still reported.
+      - pattern-not: $T = uniqid("=~/^.+$/", ...);

@@ -3,6 +3,7 @@
  *
  * User modes:
  *   repair-engines                   Offline-plan, then repair only unhealthy engines/DB state.
+ *   repair-engines --osv-ecosystems  Also download the named OSV ecosystem databases (explicit consent).
  *   install-engines                  Backward-compatible alias; also refreshes the Trivy DB.
  *
  * Maintainer mode:
@@ -11,7 +12,8 @@
  *
  * Pinning a platform = download asset -> verify authenticity (MANDATORY, fail-closed:
  * cosign for opengrep; cosign sigstore bundle over checksums for trivy; checksum
- * match for gitleaks) -> extract the binary -> record the EXTRACTED binary's
+ * match for gitleaks; checksum match plus a cosign-verified SLSA provenance
+ * attestation for osv-scanner) -> extract the binary -> record the EXTRACTED binary's
  * SHA256 + provenance in engines.lock.json. cosign verification is platform-agnostic
  * (it verifies the artifact, not a running process), so foreign-platform binaries
  * can be pinned from any machine; only the CURRENT platform's binary is placed in
@@ -42,12 +44,14 @@ import {
   type PlatformEntry,
   type Provenance,
 } from "./engines/lockfile.js";
-import { hasCosign, verifyCertSig, verifyBundle } from "./engines/signature.js";
+import { hasCosign, verifyCertSig, verifyBundle, verifySlsaAttestation } from "./engines/signature.js";
 import { sha256FileStreaming, writeTrivyDbContentDigest } from "./provenance.js";
 import { inspectEngineSetup } from "./engine-health.js";
-import type { EngineSetupStatus } from "./types.js";
+import { installOsvEcosystemDb } from "./osv/database.js";
+import { OSV_ECOSYSTEMS, parseOsvEcosystems, type OsvEcosystem } from "./osv/ecosystems.js";
+import type { EngineArtifactState, EngineSetupStatus } from "./types.js";
 
-const ENGINE_ORDER: EngineName[] = ["opengrep", "gitleaks", "trivy"];
+const ENGINE_ORDER: EngineName[] = ["opengrep", "gitleaks", "trivy", "osv-scanner"];
 
 export interface InstallIo {
   stdout(text: string): void;
@@ -163,7 +167,11 @@ async function getVerifiedChecksums(
     io.stdout(`  ✓ ${engine}: cosign sigstore bundle verified over ${meta.checksums_asset} (identity: ${identity}).`);
     await cacheArtifacts(engine, [checksumsPath, bundlePath]);
   } else {
-    io.stdout(`  i ${engine}: checksums fetched (gitleaks publishes no cosign signature; checksum-only).`);
+    io.stdout(
+      meta.signature === "checksums+slsa"
+        ? `  i ${engine}: checksums fetched (authenticity comes from the SLSA attestation of each asset).`
+        : `  i ${engine}: checksums fetched (${engine} publishes no cosign signature; checksum-only).`,
+    );
     await cacheArtifacts(engine, [checksumsPath]);
   }
   const parsed = parseChecksums(await readFile(checksumsPath, "utf8"));
@@ -216,7 +224,21 @@ async function atomicInstallBinary(source: string, dest: string): Promise<void> 
   }
 }
 
-async function pinEnginePlatform(
+/** Per-engine SLSA attestation bundle: downloaded once into staging, then reused per platform. */
+async function getAttestationBundle(
+  engine: EngineName,
+  meta: EngineLockEntry,
+  staging: string,
+): Promise<string> {
+  if (!meta.attestation_asset) throw new Error(`${engine}: no attestation asset configured (fail-closed).`);
+  const bundlePath = join(staging, `${engine}-${meta.attestation_asset}`);
+  if (!await stat(bundlePath).then(() => true).catch(() => false)) {
+    await download(`${meta.release_base}/${meta.attestation_asset}`, bundlePath);
+  }
+  return bundlePath;
+}
+
+export async function pinEnginePlatform(
   engine: EngineName,
   plat: string,
   lock: Lockfile,
@@ -258,7 +280,7 @@ async function pinEnginePlatform(
     if (install) await cacheArtifacts(engine, [sigPath, certPath]);
     provenance = { method: "cosign", verified: true, at, identity, issuer };
   } else {
-    // gitleaks (checksums) / trivy (checksums+sigstore): verify checksum match.
+    // gitleaks (checksums) / trivy (checksums+sigstore) / osv-scanner (checksums+slsa): verify checksum match.
     const checksums = await getVerifiedChecksums(engine, meta, identities, cosignBin, staging, checksumsCache, io);
     const expected = checksums.get(entry.asset);
     if (!expected) throw new Error(`${engine} [${plat}]: '${entry.asset}' not in checksums; cannot verify (fail-closed).`);
@@ -267,10 +289,29 @@ async function pinEnginePlatform(
       throw new Error(`${engine} [${plat}]: archive checksum MISMATCH (expected ${expected}, got ${actualArchive}). Fail-closed.`);
     }
     io.stdout(`  ✓ archive checksum matches ${meta.signature === "checksums+sigstore" ? "signed " : ""}checksums.`);
-    provenance =
-      meta.signature === "checksums+sigstore"
-        ? { method: "cosign", verified: true, at, identity: identities[engine], issuer: identities.issuer }
-        : { method: "checksums", verified: true, at };
+    if (meta.signature === "checksums+slsa") {
+      // osv-scanner: the checksum only proves the asset matches the published list; the SLSA
+      // attestation proves the binary was built by the pinned workflow in the pinned repository.
+      if (!cosignBin) throw new Error(`${engine} requires cosign but it is not installed (fail-closed).`);
+      const identity = identities[engine];
+      const issuer = identities.issuer;
+      const workflowRepository = lock.slsa_workflow_repositories?.[engine];
+      if (!identity || !issuer) throw new Error(`${engine}: no pinned cosign identity/issuer (fail-closed).`);
+      if (!workflowRepository) throw new Error(`${engine}: no pinned SLSA workflow repository (fail-closed).`);
+      const bundlePath = await getAttestationBundle(engine, meta, staging);
+      const r = await verifySlsaAttestation({ blob: archivePath, bundlePath, identity, issuer, workflowRepository });
+      if (!r.ok) {
+        throw new Error(`${engine} [${plat}]: SLSA attestation verification FAILED — ${r.detail} (fail-closed; not pinned).`);
+      }
+      io.stdout(`  ✓ SLSA provenance attestation verified (repository: ${workflowRepository}).`);
+      if (install) await cacheArtifacts(engine, [bundlePath]);
+      provenance = { method: "slsa", verified: true, at, identity, issuer };
+    } else {
+      provenance =
+        meta.signature === "checksums+sigstore"
+          ? { method: "cosign", verified: true, at, identity: identities[engine], issuer: identities.issuer }
+          : { method: "checksums", verified: true, at };
+    }
   }
 
   // Extract the binary, compute its SHA256 (the verify-before-exec pin).
@@ -382,9 +423,23 @@ async function populateTrivyDb(io: InstallIo): Promise<string | undefined> {
   }
 }
 
+/**
+ * Whether installing this engine needs Cosign. Every verification method except plain checksums does,
+ * and an engine missing from the lockfile fails safe to "yes". Setup and repair share this rule so a
+ * plan never promises an install that repair would refuse.
+ */
+export function engineNeedsCosign(lock: Lockfile, engine: EngineName): boolean {
+  return lock.engines[engine]?.signature !== "checksums";
+}
+
+/** Engine states a repair cannot fix: the packaged pin or the platform is the problem. */
+export const UNREPAIRABLE_ENGINE_STATES: ReadonlySet<EngineArtifactState> = new Set(["unsupported_platform", "unpinned", "lockfile_error"]);
+
 export interface EngineRepairPlan {
   engines: EngineName[];
   refresh_trivy_db: boolean;
+  /** OSV ecosystem databases to download, in allow-list order. */
+  osv_ecosystems: OsvEcosystem[];
   blockers: string[];
 }
 
@@ -392,13 +447,14 @@ export function planEngineRepair(
   status: EngineSetupStatus,
   selected: EngineName[] = ENGINE_ORDER,
   forceDbRefresh = false,
+  osvEcosystems: readonly OsvEcosystem[] = [],
 ): EngineRepairPlan {
   const selectedSet = new Set(selected);
   const blockers = status.engines
     .filter(
       (engine) =>
         selectedSet.has(engine.engine) &&
-        ["unsupported_platform", "unpinned", "lockfile_error"].includes(engine.state),
+        UNREPAIRABLE_ENGINE_STATES.has(engine.state),
     )
     .map((engine) =>
       engine.state === "unsupported_platform"
@@ -410,34 +466,69 @@ export function planEngineRepair(
       (engine) =>
         selectedSet.has(engine.engine) &&
         engine.state !== "ready" &&
-        !["unsupported_platform", "unpinned", "lockfile_error"].includes(engine.state),
+        !UNREPAIRABLE_ENGINE_STATES.has(engine.state),
     )
     .map((engine) => engine.engine);
   const trivySelected = selectedSet.has("trivy");
   const trivySupported = !status.engines.some(
     (engine) => engine.engine === "trivy" && engine.state === "unsupported_platform",
   );
+
+  // OSV databases follow osv-scanner: out of scope or unusable means no database work. Within scope, an
+  // explicitly requested ecosystem is downloaded when absent or not ready (or when a refresh is forced).
+  // An explicit list is exactly what the user approved and is never widened; only a bare repair (no list)
+  // refreshes installed databases that went stale or lost their record, as it does the Trivy DB.
+  const osvUsable = selectedSet.has("osv-scanner") && !status.engines.some(
+    (engine) => engine.engine === "osv-scanner" && UNREPAIRABLE_ENGINE_STATES.has(engine.state),
+  );
+  const requested = new Set(osvEcosystems);
+  const installed = new Map((status.osv_databases ?? []).map((database) => [database.ecosystem, database.state]));
+  const osv_ecosystems = osvUsable
+    ? OSV_ECOSYSTEMS.filter((ecosystem) => {
+        const state = installed.get(ecosystem);
+        if (requested.has(ecosystem)) return forceDbRefresh || state !== "ready";
+        return requested.size === 0 && state !== undefined && state !== "ready";
+      })
+    : [];
+
   return {
     engines,
     refresh_trivy_db:
       trivySelected && trivySupported && (forceDbRefresh || status.trivy_db.state !== "ready"),
+    osv_ecosystems,
     blockers,
   };
 }
 
-function parseRepairArgs(args: string[]): { selected: EngineName[]; refreshDb: boolean } {
+export function parseRepairArgs(
+  args: string[],
+): { selected: EngineName[]; refreshDb: boolean; osvEcosystems: OsvEcosystem[] } {
   const refreshDb = args.includes("--refresh-db");
-  const unknown = args.filter(
+  let osvEcosystems: OsvEcosystem[] = [];
+  let rest = args;
+  const flagIndex = args.indexOf("--osv-ecosystems");
+  if (flagIndex >= 0) {
+    const value = args[flagIndex + 1];
+    if (!value || value.startsWith("--")) {
+      throw new Error(`--osv-ecosystems needs a comma-separated list from: ${OSV_ECOSYSTEMS.join(", ")}.`);
+    }
+    osvEcosystems = parseOsvEcosystems(value);
+    rest = args.filter((_, index) => index !== flagIndex && index !== flagIndex + 1);
+  }
+  const unknown = rest.filter(
     (arg) => arg !== "--refresh-db" && !ENGINE_ORDER.includes(arg as EngineName),
   );
   if (unknown.length) {
     throw new Error(
       `Unknown repair-engines argument(s): ${unknown.join(", ")}. ` +
-      "Use --refresh-db or an engine name (opengrep, gitleaks, trivy).",
+      "Use --refresh-db, --osv-ecosystems <list>, or an engine name (opengrep, gitleaks, trivy, osv-scanner).",
     );
   }
-  const selected = args.filter((arg) => ENGINE_ORDER.includes(arg as EngineName)) as EngineName[];
-  return { selected: selected.length ? [...new Set(selected)] : ENGINE_ORDER, refreshDb };
+  const selected = rest.filter((arg) => ENGINE_ORDER.includes(arg as EngineName)) as EngineName[];
+  if (osvEcosystems.length && selected.length && !selected.includes("osv-scanner")) {
+    throw new Error("--osv-ecosystems needs osv-scanner in scope: add `osv-scanner` or drop the engine names.");
+  }
+  return { selected: selected.length ? [...new Set(selected)] : ENGINE_ORDER, refreshDb, osvEcosystems };
 }
 
 const REPAIR_LOCK = join(MANAGED_ROOT, ".repair-engines.lock");
@@ -488,14 +579,28 @@ async function acquireRepairLock(): Promise<() => Promise<void>> {
   };
 }
 
+/** Whether setup saved a decline of osv-scanner. setup.ts imports this module, so it is loaded on demand. */
+async function osvScannerDeclined(): Promise<boolean> {
+  const { savedSetupChoice } = await import("./setup.js");
+  return (await savedSetupChoice("osv-scanner")) === "declined";
+}
+
 /** User-facing, incremental repair. Never mutates the packaged engines.lock.json. */
 export async function repairEngines(args: string[], io: InstallIo = DEFAULT_INSTALL_IO): Promise<void> {
-  const { selected, refreshDb } = parseRepairArgs(args);
-  const fullScope = selected.length === ENGINE_ORDER.length;
+  const parsed = parseRepairArgs(args);
+  const { refreshDb, osvEcosystems } = parsed;
+  const fullScope = parsed.selected.length === ENGINE_ORDER.length;
   const firstStatus = await inspectEngineSetup();
-  let plan = planEngineRepair(firstStatus, selected, refreshDb);
+  // osv-scanner is additive: a bare repair (no engine names, no OSV list) does not install a missing one that
+  // setup saved as declined. Naming it, or passing --osv-ecosystems, still installs it; one already installed
+  // (a pin mismatch, stale databases) is maintained as usual.
+  const osvMissing = firstStatus.engines.some((engine) => engine.engine === "osv-scanner" && engine.state === "missing");
+  const declined = fullScope && osvMissing && !args.includes("osv-scanner") && !osvEcosystems.length && await osvScannerDeclined();
+  const selected = declined ? parsed.selected.filter((engine) => engine !== "osv-scanner") : parsed.selected;
+  if (declined) io.stdout("• osv-scanner was declined in setup and is skipped; run `repair-engines osv-scanner` to install it.");
+  let plan = planEngineRepair(firstStatus, selected, refreshDb, osvEcosystems);
   if (plan.blockers.length) throw new Error(plan.blockers.join("; "));
-  if (!plan.engines.length && !plan.refresh_trivy_db) {
+  if (!plan.engines.length && !plan.refresh_trivy_db && !plan.osv_ecosystems.length) {
     io.stdout(
       fullScope
         ? "✓ Engine setup ready. Shipped pins, managed binaries, and Trivy DB state need no repair."
@@ -508,9 +613,9 @@ export async function repairEngines(args: string[], io: InstallIo = DEFAULT_INST
   try {
     // Re-evaluate under the lock so two near-simultaneous processes never repeat
     // a download based on the same stale preflight.
-    plan = planEngineRepair(await inspectEngineSetup(), selected, refreshDb);
+    plan = planEngineRepair(await inspectEngineSetup(), selected, refreshDb, osvEcosystems);
     if (plan.blockers.length) throw new Error(plan.blockers.join("; "));
-    if (!plan.engines.length && !plan.refresh_trivy_db) {
+    if (!plan.engines.length && !plan.refresh_trivy_db && !plan.osv_ecosystems.length) {
       io.stdout(
         fullScope
           ? "✓ Engine setup was repaired by another process; nothing to do."
@@ -523,7 +628,10 @@ export async function repairEngines(args: string[], io: InstallIo = DEFAULT_INST
     const current = platformKey();
     io.stdout("CodeInspectus repair-engines — explicit install-time network step.");
     io.stdout(`Host platform: ${current}  Managed dir: ${MANAGED_ROOT}`);
-    io.stdout(`Repair plan: engines ${plan.engines.join(", ") || "(none)"}; Trivy DB ${plan.refresh_trivy_db ? "refresh" : "unchanged"}.\n`);
+    io.stdout(
+      `Repair plan: engines ${plan.engines.join(", ") || "(none)"}; Trivy DB ${plan.refresh_trivy_db ? "refresh" : "unchanged"}; ` +
+      `OSV databases ${plan.osv_ecosystems.join(", ") || "unchanged"}.\n`,
+    );
 
     await mkdir(MANAGED_BIN, { recursive: true });
     await mkdir(MANAGED_TRIVY_CACHE, { recursive: true });
@@ -531,13 +639,11 @@ export async function repairEngines(args: string[], io: InstallIo = DEFAULT_INST
     await mkdir(staging, { recursive: true });
     try {
       const identities = (lock.sigstore_identities ?? {}) as Record<string, string>;
-      const needsCosign = plan.engines.some(
-        (engine) => lock.engines[engine]?.signature !== "checksums",
-      );
+      const needsCosign = plan.engines.some((engine) => engineNeedsCosign(lock, engine));
       const cosignBin = needsCosign ? await hasCosign() : false;
       if (needsCosign && !cosignBin) {
         throw new Error(
-          "cosign is required to verify the selected Opengrep/Trivy release artifacts. " +
+          "cosign is required to verify the selected Opengrep/Trivy/OSV-Scanner release artifacts. " +
           "Install cosign, then rerun repair-engines.",
         );
       }
@@ -558,13 +664,19 @@ export async function repairEngines(args: string[], io: InstallIo = DEFAULT_INST
         );
       }
       if (plan.refresh_trivy_db) await populateTrivyDb(io);
+      // Databases go last: they are useless without a verified osv-scanner, and unlike the binaries they
+      // have no publisher signature to check, only TLS plus the SHA-256 recorded at install.
+      for (const ecosystem of plan.osv_ecosystems) await installOsvEcosystemDb(ecosystem, io);
     } finally {
       await rm(staging, { recursive: true, force: true }).catch(() => {});
     }
 
     const finalStatus = await inspectEngineSetup();
-    const finalPlan = planEngineRepair(finalStatus, selected, false);
-    if (finalPlan.blockers.length || finalPlan.engines.length || finalPlan.refresh_trivy_db) {
+    const finalPlan = planEngineRepair(finalStatus, selected, false, osvEcosystems);
+    if (
+      finalPlan.blockers.length || finalPlan.engines.length || finalPlan.refresh_trivy_db ||
+      finalPlan.osv_ecosystems.length
+    ) {
       throw new Error(
         `Repair finished but preflight is still ${finalStatus.state}. ` +
         "Inspect `codeinspectus_list_rules` engine_setup details and retry.",
@@ -628,7 +740,7 @@ export async function pinEngines(args: string[]): Promise<void> {
   const identities = (lock.sigstore_identities ?? {}) as Record<string, string>;
   const cosignBin = await hasCosign();
   if (!cosignBin) {
-    err("cosign is NOT installed. Signature verification is mandatory for opengrep and trivy;");
+    err("cosign is NOT installed. Signature verification is mandatory for opengrep, trivy and osv-scanner;");
     err("those engines will FAIL to pin until cosign is available. Install: `brew install cosign`.\n");
   }
 
@@ -698,7 +810,12 @@ export async function verifyEnginesCli(): Promise<void> {
         err(`  ✗ ${engine} v${r.version}: SHA pin OK but NO recorded provenance — reinstall the package or contact the maintainer (fail-closed).`);
         continue;
       }
-      const provLabel = prov.method === "cosign" ? `cosign-verified (${prov.identity})` : "checksum-verified";
+      const provLabel =
+        prov.method === "cosign"
+          ? `cosign-verified (${prov.identity})`
+          : prov.method === "slsa"
+            ? `SLSA-attested (${prov.identity})`
+            : "checksum-verified";
       out(`  ✓ ${engine} v${r.version}: SHA pin OK (${r.sha256.slice(0, 16)}…), ${provLabel} at install (${prov.at}).`);
       if (deep) {
         const ok = await deepVerify(engine, lock);
@@ -746,6 +863,18 @@ async function deepVerify(engine: EngineName, lock: Lockfile): Promise<boolean> 
       bundlePath: join(dir, `${meta.checksums_asset}.sigstore.json`),
       identity: identity!,
       issuer: issuer!,
+    });
+    return r.ok;
+  }
+  if (meta.signature === "checksums+slsa") {
+    const workflowRepository = lock.slsa_workflow_repositories?.[engine];
+    if (!meta.attestation_asset || !identity || !issuer || !workflowRepository) return false;
+    const r = await verifySlsaAttestation({
+      blob: join(MANAGED_BIN, process.platform === "win32" ? `${entry.binary}.exe` : entry.binary),
+      bundlePath: join(dir, meta.attestation_asset),
+      identity,
+      issuer,
+      workflowRepository,
     });
     return r.ok;
   }

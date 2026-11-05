@@ -1,0 +1,4 @@
+APP_NAME=Shop
+APP_ENV=production
+APP_DEBUG=true
+APP_URL=https://shop.example.com

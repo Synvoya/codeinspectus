@@ -1,3 +1,4 @@
+import type { NativeGapRecord } from "../native-gaps.js";
 import { javascriptPack } from "./javascript.js";
 import { flutterPack } from "./flutter-pack.js";
 import { androidPack } from "./android-pack.js";
@@ -15,6 +16,7 @@ import { rubyAiPack } from "./ruby-ai-pack.js";
 import { firebasePack } from "./firebase-pack.js";
 import { githubActionsPack } from "./github-actions-pack.js";
 import type { DetectedTechnology, DetectorPackCoverage } from "../types.js";
+import { withJavaScriptParseCache } from "./react-native/javascript-parse.js";
 import type {
   NativeDetectorPack,
   NativePackExecution,
@@ -108,6 +110,7 @@ function coverageForExecution(
   applicablePackIds: ReadonlySet<string>,
   analyzers: readonly RegisteredNativeAnalyzer[],
   results: NativePackExecution["results"],
+  gapRecords: NativeGapRecord[],
 ): DetectorPackCoverage[] {
   return packs.map((pack) => {
     const inventory = inventoryForPack(pack);
@@ -137,6 +140,10 @@ function coverageForExecution(
     const executionNotes = [...new Set(successful.flatMap(({ result }) =>
       result?.status === "fulfilled" ? [...(result.value.notes ?? [])] : []
     ))].sort();
+    // Structured gap records (never free-text notes) are declared gaps and do not make the pack partial.
+    for (const { result } of successful) {
+      if (result?.status === "fulfilled") for (const record of result.value.gaps ?? []) gapRecords.push(record);
+    }
     const state: DetectorPackCoverage["state"] =
       analyzersRan === analyzersRegistered && analyzersRegistered > 0
         ? executionNotes.length ? "partial" : "ran"
@@ -181,12 +188,15 @@ export async function executeNativePacks(
   );
   const applicablePackIds = new Set(applicablePacks.map((pack) => pack.id));
   const analyzers = registeredNativeAnalyzers(target, applicablePacks);
-  const results = await Promise.allSettled(analyzers.map((analyzer) => analyzer.run()));
+  // One JavaScript/TypeScript parse cache per execution, shared by its analyzers and cleared at the end.
+  const results = await withJavaScriptParseCache(() => Promise.allSettled(analyzers.map((analyzer) => analyzer.run())));
+  const gapRecords: NativeGapRecord[] = [];
   return {
     analyzers,
     results,
+    gapRecords,
     packCoverage: [
-      ...coverageForExecution(selectedPacks, applicablePackIds, analyzers, results),
+      ...coverageForExecution(selectedPacks, applicablePackIds, analyzers, results, gapRecords),
       ...nativePackNotRunCoverage("This pack's scanner class was excluded by this scan's scanner filter.", packs.filter((pack) => !selectedKinds.has(pack.scannerKind))),
     ].sort((left, right) => packs.findIndex((pack) => pack.id === left.pack_id) - packs.findIndex((pack) => pack.id === right.pack_id)),
   };

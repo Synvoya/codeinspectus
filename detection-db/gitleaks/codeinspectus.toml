@@ -22,6 +22,83 @@ description = "Supabase publishable API key — public by design."
 regexTarget = "match"
 regexes = ['''(?:^|[^A-Za-z0-9_-])sb_publishable_[A-Za-z0-9_-]{22}_[A-Za-z0-9_-]{8}(?:$|[^A-Za-z0-9_-])''']
 
+# ── Precision pass (design §10.6). Field triage of 27 repositories found Gitleaks' inherited
+# generic-api-key rule reporting values that are identifiers or public by design. Each allowlist
+# below names one such class, is scoped to the rule that produced it, and never covers a value
+# that can authenticate. Test, example and documentation files are not allowlisted: file routing
+# reports their generic secrets at low severity instead (design §4.6).
+
+# Doctrine-style generated schema identifiers in migrations (IDX_/UNIQ_/FK_ + 16 hex digits). PK_ is left
+# out: Doctrine does not generate it and `pk_<hex>` is a common live-key prefix.
+[[allowlists]]
+description = "Generated database index, unique-key and foreign-key names (IDX_/UNIQ_/FK_ + 16 hex) — schema identifiers, not credentials."
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''(?i)^(?:idx|uniq|fk)_[0-9a-f]{16}$''']
+
+# Conda pins (`- package=version=build`), only in conda environment files.
+[[allowlists]]
+description = "Conda environment pins (`- name=version=build`) — package build strings, not credentials."
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+regexes = ['''^\s*-\s*[A-Za-z0-9_.\-]+=[0-9][A-Za-z0-9_.+!*\-]*=[A-Za-z0-9_.]+\s*$''']
+paths = ['''(?:^|[\\/])(?:environment|env|conda[A-Za-z0-9_.\-]*)\.ya?ml$''']
+
+# OAuth client and directory tenant ids are public identifiers; the matching secret is never a UUID.
+[[allowlists]]
+description = "OAuth client id or tenant id holding a UUID — public identifiers, not credentials."
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''(?i)(?:client|tenant)[_-]?id['"]?\s*(?:=>|[:=])\s*['"]?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}''']
+
+# reCAPTCHA site keys are embedded in public pages by design; the secret key is not named "site key".
+[[allowlists]]
+description = "reCAPTCHA site key (named site/website key) — public by design."
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''(?i)(?:site|website)[_-]?key['"]?\s*(?:=>|[:=,])\s*(?:env\([^),]{0,80},\s*)?['"]?6L[0-9A-Za-z_-]{38}(?:$|[^0-9A-Za-z_-])''']
+
+# Google's published reCAPTCHA v2 test key pair (developers.google.com/recaptcha/docs/faq).
+[[allowlists]]
+description = "Google's published reCAPTCHA test site and secret keys — documented test values for every developer."
+regexTarget = "match"
+regexes = ['''6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI''', '''6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe''']
+
+# Upstash QStash local development server defaults: the token is base64 of
+# {"UserID":"defaultUser","Password":"defaultPassword"} and is printed by the dev server with its keys.
+[[allowlists]]
+description = "Upstash QStash local development server default token and signing keys — fixed dev-server values."
+regexTarget = "match"
+regexes = [
+  '''eyJVc2VySUQiOiJkZWZhdWx0VXNlciIsIlBhc3N3b3JkIjoiZGVmYXVsdFBhc3N3b3JkIn0=''',
+  '''sig_7kYjw48mhY7kAjqNGcy6cr29RJ6r''',
+  '''sig_5ZB6DVzB1wjE8S6rZ7eenA8Pdnhs''',
+]
+
+# Stripe publishable keys are meant for the browser; secret (sk_) and restricted (rk_) keys are not covered.
+[[allowlists]]
+description = "Stripe publishable key (pk_test_/pk_live_) — public by design."
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''^pk_(?:test|live)_[0-9A-Za-z]{10,}$''']
+
+# Firebase app config files carry the project's browser API key, public by design (CG-05).
+[[allowlists]]
+description = "Google API key inside a Firebase app config file (google-services.json, GoogleService-Info.plist) — public by design."
+targetRules = ["gcp-api-key"]
+paths = ['''(?:^|[\\/])google-services\.json$''', '''(?:^|[\\/])GoogleService-Info\.plist$''']
+
+# Once gcp-api-key is allowlisted there, the generic rule reports the same AIza value; silence only that
+# value shape in those files, so any other generic secret in them (a client secret) is still reported.
+[[allowlists]]
+description = "The same Firebase browser API key (AIza…) seen by the generic rule inside a Firebase app config file."
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^AIza[0-9A-Za-z_\-]{35}$''']
+paths = ['''(?:^|[\\/])google-services\.json$''', '''(?:^|[\\/])GoogleService-Info\.plist$''']
+
 [[rules]]
 id = "codeinspectus-stripe-live-secret"
 description = "Stripe live-mode secret key (high impact if leaked)"
@@ -46,3 +123,16 @@ id = "codeinspectus-anthropic-key"
 description = "Anthropic API key"
 regex = '''sk-ant-[A-Za-z0-9_-]{20,}'''
 keywords = ["sk-ant-"]
+
+# Synvoya PHP pack (design 4.5): a Laravel application key committed in a deployable environment
+# file. Anyone holding APP_KEY can forge encrypted cookies and signed URLs (and, with older Laravel
+# cookie serialization, reach object injection). Example/test env files (.env.example, .env.testing,
+# .env.ci, ...) are deliberately outside the path filter. A Gitleaks rule, not an Opengrep one, so
+# the value is redacted by Gitleaks itself (--redact=100).
+[[rules]]
+id = "codeinspectus-laravel-app-key"
+description = "Laravel APP_KEY (application encryption key) in a deployable .env file"
+regex = '''(?m)^[ \t]*(?:export[ \t]+)?APP_KEY[ \t]*=[ \t]*["']?(base64:[A-Za-z0-9+/]{32,}={0,2})'''
+secretGroup = 1
+path = '''(?:^|[\\/])\.env(?:\.(?:production|prod|staging))?$'''
+keywords = ["app_key"]

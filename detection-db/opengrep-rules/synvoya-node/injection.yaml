@@ -1,0 +1,488 @@
+# Synvoya Node.js pack (original Apache-2.0 rules; see LICENSE-PROVENANCE.md). ASCII-only.
+# Injection reached from server request input (Express, Koa, Fastify, Next.js route handlers and
+# server actions, NestJS parameter decorators). Every rule here is taint mode; the request-input
+# source block is repeated per rule on purpose (Opengrep has no shared source definitions).
+# Shapes the ci-baseline-* rules already report are excluded from the sinks, so one line never
+# carries two findings for the same weakness.
+rules:
+  - id: syn-node-command-injection
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Request input reaches a command that a shell interprets. Shell metacharacters in the value
+      run extra commands on the server. Call execFile or spawn with an argument array and no
+      shell option, and allow-list the values that may be passed.
+    metadata:
+      cwe: "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-node
+      references:
+        - https://cwe.mitre.org/data/definitions/78.html
+    # Minified / bundled browser files are not server code, and taint analysis of a big bundle can
+    # run past Opengrep's per-file timeout. Only file-basename globs: Opengrep matches rule paths
+    # against the absolute path, so a folder name here could match a parent of the project.
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.min.mjs"
+        - "*-min.js"
+        - "*.bundle.js"
+        - "*-bundle.js"
+        - "*.chunk.js"
+    mode: taint
+    pattern-sources:
+      # Next.js: `const|let|var { x } = (await request.json()) as T` (taint is otherwise lost at the cast).
+      - patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  const {..., $FIELD, ...} = (await $REQ.json()) as $TYPE;
+                  ...
+              - pattern-inside: |
+                  let {..., $FIELD, ...} = (await $REQ.json()) as $TYPE;
+                  ...
+              - pattern-inside: |
+                  var {..., $FIELD, ...} = (await $REQ.json()) as $TYPE;
+                  ...
+          - pattern: $FIELD
+      # H3 / Nuxt readers, only when they are h3's: imported from h3 / #imports / nitropack (named,
+      # aliased or namespace; Opengrep resolves the import) ...
+      - patterns:
+          - pattern: $NS.$H3FN($EVENT, ...)
+          - metavariable-regex:
+              metavariable: $NS
+              regex: ^(h3|#imports|nitropack|nitropack/runtime)$
+          - metavariable-regex:
+              metavariable: $H3FN
+              regex: ^(readBody|readFormData|readRawBody|getQuery|getRouterParam|getRouterParams)$
+      # ... or called with the event parameter of a defineEventHandler / eventHandler handler (inline,
+      # object form or passed by reference; Nuxt auto-imports) or of a function typed H3Event.
+      - patterns:
+          - pattern-either:
+              - pattern-inside: $DEFINE(($EVENT) => { ... })
+              - pattern-inside: $DEFINE(async ($EVENT) => { ... })
+              - pattern-inside: '$DEFINE(($EVENT: $T) => { ... })'
+              - pattern-inside: '$DEFINE(async ($EVENT: $T) => { ... })'
+              - pattern-inside: $DEFINE(function ($EVENT) { ... })
+              - pattern-inside: $DEFINE(async function ($EVENT) { ... })
+              - pattern-inside: '$DEFINE({..., handler: ($EVENT) => { ... }, ...})'
+              - pattern-inside: '$DEFINE({..., handler: async ($EVENT) => { ... }, ...})'
+              - pattern-inside: '$DEFINE({..., handler: async function ($EVENT) { ... }, ...})'
+              - pattern-inside: |
+                  function $H($EVENT) { ... }
+                  ...
+                  $DEFINE($H)
+              - pattern-inside: |
+                  async function $H($EVENT) { ... }
+                  ...
+                  $DEFINE($H)
+              - pattern-inside: |
+                  $H = ($EVENT) => { ... };
+                  ...
+                  $DEFINE($H)
+              - pattern-inside: |
+                  $H = async ($EVENT) => { ... };
+                  ...
+                  $DEFINE($H)
+          - metavariable-regex:
+              metavariable: $DEFINE
+              regex: ^(defineEventHandler|eventHandler|defineCachedEventHandler)$
+          - pattern: $H3FN($EVENT, ...)
+          - metavariable-regex:
+              metavariable: $H3FN
+              regex: ^(readBody|readFormData|readRawBody|getQuery|getRouterParam|getRouterParams)$
+      - patterns:
+          - pattern-either:
+              - pattern-inside: 'function $F(..., $EVENT: H3Event, ...) { ... }'
+              - pattern-inside: 'async function $F(..., $EVENT: H3Event, ...) { ... }'
+              - pattern-inside: '($EVENT: H3Event) => { ... }'
+              - pattern-inside: 'async ($EVENT: H3Event) => { ... }'
+          - pattern: $H3FN($EVENT, ...)
+          - metavariable-regex:
+              metavariable: $H3FN
+              regex: ^(readBody|readFormData|readRawBody|getQuery|getRouterParam|getRouterParams)$
+      # Hono: c.req.* only on a route handler's context parameter (inline or by reference) or on a
+      # parameter typed Context.
+      - patterns:
+          - pattern-either:
+              - pattern-inside: $APP.$VERB(..., ($HC) => { ... })
+              - pattern-inside: $APP.$VERB(..., async ($HC) => { ... })
+              - pattern-inside: $APP.$VERB(..., function ($HC) { ... })
+              - pattern-inside: $APP.$VERB(..., async function ($HC) { ... })
+              - pattern-inside: |
+                  function $H($HC) { ... }
+                  ...
+                  $APP.$VERB(..., $H)
+              - pattern-inside: |
+                  async function $H($HC) { ... }
+                  ...
+                  $APP.$VERB(..., $H)
+              - pattern-inside: |
+                  $H = ($HC) => { ... };
+                  ...
+                  $APP.$VERB(..., $H)
+              - pattern-inside: |
+                  $H = async ($HC) => { ... };
+                  ...
+                  $APP.$VERB(..., $H)
+          - metavariable-regex:
+              metavariable: $VERB
+              regex: ^(get|post|put|patch|delete|all|on|use|options|head)$
+          - pattern-either:
+              - pattern: $HC.req.query(...)
+              - pattern: $HC.req.queries(...)
+              - pattern: $HC.req.param(...)
+              - pattern: $HC.req.json()
+              - pattern: $HC.req.parseBody(...)
+              - pattern: $HC.req.formData()
+              - pattern: $HC.req.text()
+      - patterns:
+          - pattern-either:
+              - pattern-inside: 'function $F(..., $HC: Context, ...) { ... }'
+              - pattern-inside: 'async function $F(..., $HC: Context, ...) { ... }'
+              - pattern-inside: '($HC: Context) => { ... }'
+              - pattern-inside: 'async ($HC: Context) => { ... }'
+          - pattern-either:
+              - pattern: $HC.req.query(...)
+              - pattern: $HC.req.queries(...)
+              - pattern: $HC.req.param(...)
+              - pattern: $HC.req.json()
+              - pattern: $HC.req.parseBody(...)
+              - pattern: $HC.req.formData()
+              - pattern: $HC.req.text()
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.query
+              - pattern: $REQ.body
+              - pattern: $REQ.params
+              - pattern: $REQ.headers
+              - pattern: $REQ.cookies
+              - pattern: $REQ.nextUrl.searchParams
+              - pattern: $REQ.json()
+              - pattern: $REQ.formData()
+              - pattern: $REQ.text()
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|request|ctx|ctx\.request|context)$
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.param(...)
+              - pattern: $REQ.header(...)
+              - pattern: $REQ.get(...)
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|ctx)$
+      - pattern: new URL($REQ.url).searchParams
+      - patterns:
+          - pattern-inside: |
+              function $F(..., $FD: FormData, ...) { ... }
+          - pattern: $FD.get(...)
+      - patterns:
+          - pattern-inside: |
+              class $C {
+                ...
+                $M(..., @$DEC(...) $ARG, ...) { ... }
+                ...
+              }
+          - metavariable-regex:
+              metavariable: $DEC
+              regex: ^(Body|Query|Param|Headers)$
+          - pattern: $ARG
+      - patterns:
+          - pattern-inside: |
+              "use server";
+              ...
+          - pattern-inside: |
+              export async function $ACTION(..., $ARG, ...) { ... }
+          - focus-metavariable: $ARG
+    pattern-sanitizers:
+      - pattern: parseInt(...)
+      - pattern: parseFloat(...)
+      - pattern: Number(...)
+      - pattern: $X.length
+      # shell-quote's quote([...]) escapes for the shell - only when it is shell-quote's.
+      - patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  import { ..., quote, ... } from "shell-quote";
+                  ...
+              - pattern-inside: |
+                  const { ..., quote, ... } = require("shell-quote");
+                  ...
+          - pattern: quote(...)
+      - pattern: require("shell-quote").quote(...)
+    pattern-sinks:
+      # Every sink excludes exactly the four patterns of ci-baseline-command-injection, copied
+      # verbatim ($BASE is that rule's $CP), and nothing else: a call the baseline reports is not
+      # reported twice, and a call it cannot see (promisified, multi-argument, indirect) stays a sink.
+      # Opengrep resolves imports, so `exec` imported by name, alias or node: specifier resolves to
+      # child_process and the baseline patterns match it too; fixtures/coverage-honesty-corpus/
+      # opengrep-rules/ci-baseline-command-injection/tp/ proves each of those forms fires the baseline
+      # (eval E75). A function merely named exec (./runner, ./db, a GraphQL client) is never a sink.
+      - patterns:
+          - pattern-either:
+              - pattern: $CP.exec($C, ...)
+              - pattern: $CP.execSync($C, ...)
+          # child_process handles; imported exec/execSync names resolve to child_process.
+          - metavariable-regex:
+              metavariable: $CP
+              regex: (?i)^(.*child_process.*|cp|childProcess)$
+          - pattern-not: $BASE.exec("..." + ...)
+          - pattern-not: $BASE.exec(`...${...}...`)
+          - pattern-not: $BASE.execSync("..." + ...)
+          - pattern-not: $BASE.execSync(`...${...}...`)
+          - focus-metavariable: $C
+      - patterns:
+          - pattern-either:
+              - pattern: $EXECA.command($C, ...)
+              - pattern: $EXECA.commandSync($C, ...)
+              - pattern: execaCommand($C, ...)
+              - pattern: execaCommandSync($C, ...)
+          - focus-metavariable: $C
+      # child_process exec / execSync wrapped with util.promisify under any name.
+      - patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  $RUN = $UTIL.promisify($CP.$EXEC);
+                  ...
+              - pattern-inside: |
+                  $RUN = promisify($CP.$EXEC);
+                  ...
+          - metavariable-regex:
+              metavariable: $CP
+              regex: (?i)^(.*child_process.*|cp|childProcess)$
+          - metavariable-regex:
+              metavariable: $EXEC
+              regex: ^(exec|execSync)$
+          - pattern: $RUN($C, ...)
+          - focus-metavariable: $C
+      - patterns:
+          - pattern-either:
+              - pattern: '$CP.spawn($C, ..., {..., shell: true, ...})'
+              - pattern: '$CP.spawnSync($C, ..., {..., shell: true, ...})'
+              - pattern: 'spawn($C, ..., {..., shell: true, ...})'
+              - pattern: 'spawnSync($C, ..., {..., shell: true, ...})'
+          - focus-metavariable: $C
+
+  - id: syn-node-code-injection-vm
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Request input reaches code that the node:vm module or a string timer compiles and runs.
+      node:vm is not a security boundary, so the caller can run arbitrary code in the server
+      process. Do not compile request data; map it to fixed operations instead.
+    metadata:
+      cwe: "CWE-94: Improper Control of Generation of Code ('Code Injection')"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-node
+      references:
+        - https://cwe.mitre.org/data/definitions/94.html
+        - https://nodejs.org/api/vm.html
+    # Minified / bundled browser files are not server code, and taint analysis of a big bundle can
+    # run past Opengrep's per-file timeout. Only file-basename globs: Opengrep matches rule paths
+    # against the absolute path, so a folder name here could match a parent of the project.
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.min.mjs"
+        - "*-min.js"
+        - "*.bundle.js"
+        - "*-bundle.js"
+        - "*.chunk.js"
+    mode: taint
+    pattern-sources:
+      # Next.js: `const|let|var { x } = (await request.json()) as T` (taint is otherwise lost at the cast).
+      - patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  const {..., $FIELD, ...} = (await $REQ.json()) as $TYPE;
+                  ...
+              - pattern-inside: |
+                  let {..., $FIELD, ...} = (await $REQ.json()) as $TYPE;
+                  ...
+              - pattern-inside: |
+                  var {..., $FIELD, ...} = (await $REQ.json()) as $TYPE;
+                  ...
+          - pattern: $FIELD
+      # H3 / Nuxt readers, only when they are h3's: imported from h3 / #imports / nitropack (named,
+      # aliased or namespace; Opengrep resolves the import) ...
+      - patterns:
+          - pattern: $NS.$H3FN($EVENT, ...)
+          - metavariable-regex:
+              metavariable: $NS
+              regex: ^(h3|#imports|nitropack|nitropack/runtime)$
+          - metavariable-regex:
+              metavariable: $H3FN
+              regex: ^(readBody|readFormData|readRawBody|getQuery|getRouterParam|getRouterParams)$
+      # ... or called with the event parameter of a defineEventHandler / eventHandler handler (inline,
+      # object form or passed by reference; Nuxt auto-imports) or of a function typed H3Event.
+      - patterns:
+          - pattern-either:
+              - pattern-inside: $DEFINE(($EVENT) => { ... })
+              - pattern-inside: $DEFINE(async ($EVENT) => { ... })
+              - pattern-inside: '$DEFINE(($EVENT: $T) => { ... })'
+              - pattern-inside: '$DEFINE(async ($EVENT: $T) => { ... })'
+              - pattern-inside: $DEFINE(function ($EVENT) { ... })
+              - pattern-inside: $DEFINE(async function ($EVENT) { ... })
+              - pattern-inside: '$DEFINE({..., handler: ($EVENT) => { ... }, ...})'
+              - pattern-inside: '$DEFINE({..., handler: async ($EVENT) => { ... }, ...})'
+              - pattern-inside: '$DEFINE({..., handler: async function ($EVENT) { ... }, ...})'
+              - pattern-inside: |
+                  function $H($EVENT) { ... }
+                  ...
+                  $DEFINE($H)
+              - pattern-inside: |
+                  async function $H($EVENT) { ... }
+                  ...
+                  $DEFINE($H)
+              - pattern-inside: |
+                  $H = ($EVENT) => { ... };
+                  ...
+                  $DEFINE($H)
+              - pattern-inside: |
+                  $H = async ($EVENT) => { ... };
+                  ...
+                  $DEFINE($H)
+          - metavariable-regex:
+              metavariable: $DEFINE
+              regex: ^(defineEventHandler|eventHandler|defineCachedEventHandler)$
+          - pattern: $H3FN($EVENT, ...)
+          - metavariable-regex:
+              metavariable: $H3FN
+              regex: ^(readBody|readFormData|readRawBody|getQuery|getRouterParam|getRouterParams)$
+      - patterns:
+          - pattern-either:
+              - pattern-inside: 'function $F(..., $EVENT: H3Event, ...) { ... }'
+              - pattern-inside: 'async function $F(..., $EVENT: H3Event, ...) { ... }'
+              - pattern-inside: '($EVENT: H3Event) => { ... }'
+              - pattern-inside: 'async ($EVENT: H3Event) => { ... }'
+          - pattern: $H3FN($EVENT, ...)
+          - metavariable-regex:
+              metavariable: $H3FN
+              regex: ^(readBody|readFormData|readRawBody|getQuery|getRouterParam|getRouterParams)$
+      # Hono: c.req.* only on a route handler's context parameter (inline or by reference) or on a
+      # parameter typed Context.
+      - patterns:
+          - pattern-either:
+              - pattern-inside: $APP.$VERB(..., ($HC) => { ... })
+              - pattern-inside: $APP.$VERB(..., async ($HC) => { ... })
+              - pattern-inside: $APP.$VERB(..., function ($HC) { ... })
+              - pattern-inside: $APP.$VERB(..., async function ($HC) { ... })
+              - pattern-inside: |
+                  function $H($HC) { ... }
+                  ...
+                  $APP.$VERB(..., $H)
+              - pattern-inside: |
+                  async function $H($HC) { ... }
+                  ...
+                  $APP.$VERB(..., $H)
+              - pattern-inside: |
+                  $H = ($HC) => { ... };
+                  ...
+                  $APP.$VERB(..., $H)
+              - pattern-inside: |
+                  $H = async ($HC) => { ... };
+                  ...
+                  $APP.$VERB(..., $H)
+          - metavariable-regex:
+              metavariable: $VERB
+              regex: ^(get|post|put|patch|delete|all|on|use|options|head)$
+          - pattern-either:
+              - pattern: $HC.req.query(...)
+              - pattern: $HC.req.queries(...)
+              - pattern: $HC.req.param(...)
+              - pattern: $HC.req.json()
+              - pattern: $HC.req.parseBody(...)
+              - pattern: $HC.req.formData()
+              - pattern: $HC.req.text()
+      - patterns:
+          - pattern-either:
+              - pattern-inside: 'function $F(..., $HC: Context, ...) { ... }'
+              - pattern-inside: 'async function $F(..., $HC: Context, ...) { ... }'
+              - pattern-inside: '($HC: Context) => { ... }'
+              - pattern-inside: 'async ($HC: Context) => { ... }'
+          - pattern-either:
+              - pattern: $HC.req.query(...)
+              - pattern: $HC.req.queries(...)
+              - pattern: $HC.req.param(...)
+              - pattern: $HC.req.json()
+              - pattern: $HC.req.parseBody(...)
+              - pattern: $HC.req.formData()
+              - pattern: $HC.req.text()
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.query
+              - pattern: $REQ.body
+              - pattern: $REQ.params
+              - pattern: $REQ.headers
+              - pattern: $REQ.cookies
+              - pattern: $REQ.nextUrl.searchParams
+              - pattern: $REQ.json()
+              - pattern: $REQ.formData()
+              - pattern: $REQ.text()
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|request|ctx|ctx\.request|context)$
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.param(...)
+              - pattern: $REQ.header(...)
+              - pattern: $REQ.get(...)
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|ctx)$
+      - pattern: new URL($REQ.url).searchParams
+      - patterns:
+          - pattern-inside: |
+              function $F(..., $FD: FormData, ...) { ... }
+          - pattern: $FD.get(...)
+      - patterns:
+          - pattern-inside: |
+              class $C {
+                ...
+                $M(..., @$DEC(...) $ARG, ...) { ... }
+                ...
+              }
+          - metavariable-regex:
+              metavariable: $DEC
+              regex: ^(Body|Query|Param|Headers)$
+          - pattern: $ARG
+      - patterns:
+          - pattern-inside: |
+              "use server";
+              ...
+          - pattern-inside: |
+              export async function $ACTION(..., $ARG, ...) { ... }
+          - focus-metavariable: $ARG
+    pattern-sanitizers:
+      - pattern: parseInt(...)
+      - pattern: parseFloat(...)
+      - pattern: Number(...)
+      - pattern: JSON.stringify(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $VM.runInContext($C, ...)
+              - pattern: $VM.runInNewContext($C, ...)
+              - pattern: $VM.runInThisContext($C, ...)
+              - pattern: $VM.compileFunction($C, ...)
+              - pattern: new $VM.Script($C, ...)
+              - pattern: new $VM.SourceTextModule($C, ...)
+              - pattern: runInContext($C, ...)
+              - pattern: runInNewContext($C, ...)
+              - pattern: runInThisContext($C, ...)
+              - pattern: compileFunction($C, ...)
+              - pattern: new Script($C, ...)
+          - focus-metavariable: $C
+      - patterns:
+          - pattern-either:
+              - pattern: setTimeout($C, ...)
+              - pattern: setInterval($C, ...)
+          - pattern-not: setTimeout(function (...) { ... }, ...)
+          - pattern-not: setTimeout((...) => $BODY, ...)
+          - pattern-not: setInterval(function (...) { ... }, ...)
+          - pattern-not: setInterval((...) => $BODY, ...)
+          - focus-metavariable: $C

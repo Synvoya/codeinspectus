@@ -252,7 +252,7 @@ so confidence is generally one notch lower for the same control.
 | | SOC2 CC6.6 | **low** | "Boundary protection" | (a) **Weak** — boundary protection is network-edge; web-misconfig is only loosely related. Unverified. |
 | | CIS 16.1 | medium | "Secure Application Development Process" | (b) Wants a GRC/audit eye. |
 | | OWASP A05:2021 | high | "Security Misconfiguration" (View 1349 — confirmed) | (a) Canonical; View ID confirmed. |
-| **vulnerable_component** (1035/1395/937) | ISO A.8.8 | high | "Management of technical vulnerabilities" | (a) SCA *is* technical-vulnerability management. |
+| **vulnerable_component** (1035/1104/1395/937) | ISO A.8.8 | high | "Management of technical vulnerabilities" | (a) SCA *is* technical-vulnerability management. |
 | | NIST ID.RA-01 | high | "Vulnerabilities in assets are identified, validated, and recorded" | (a) Direct — SCA identifies vulnerabilities. |
 | | SOC2 CC7.1 | high | "Detection…to identify…susceptibilities to newly discovered vulnerabilities" | (a) Direct — vuln detection. |
 | | CIS 7.1 | high | "Establish and Maintain a Vulnerability Management Process" | (a) Direct. |

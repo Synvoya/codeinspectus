@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "version": "2026.11.05.2",
+  "date": "2026-11-05",
+  "files": {
+    "advisories.json": "sha256:3e9bf2d9b01f99a84b89f09b847c6ce1397dbc52ce940b558b90ee4597bbb649",
+    "aliases.json": "sha256:977b0e30df018171f31d873da15940f7486ee586a9a73a76adff7da11dade156",
+    "eol.json": "sha256:8b8d4214522cfa680fea8ec7e4fdf036fea1a43b5d67149b9de3c761aae0f9ed",
+    "libraries.json": "sha256:1fb63975d81ec96ba95fa75a9830153bb0af3074a93c67b5c3df62eb7141f554"
+  }
+}

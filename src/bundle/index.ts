@@ -4,7 +4,7 @@ import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { CODEINSPECTUS_AI_VERSION, DETECTION_DB_DIR, SERVER_VERSION, type EngineName } from "../config.js";
+import { CODEINSPECTUS_AI_VERSION, DETECTION_DB_DIR, SERVER_VERSION } from "../config.js";
 import { createJsonExport, redactFindingForOutput } from "../export/model.js";
 import { createSarifExport } from "../export/sarif.js";
 import { EXPORT_SCHEMA_VERSION, aggregateCoverageEnvelopeSchema, jsonExportSchema, sarifExportSchema } from "../export/schemas.js";
@@ -19,10 +19,12 @@ import { sha256Hex } from "../util/hash.js";
 import {
   BUNDLE_SCHEMA_URI,
   BUNDLE_SCHEMA_VERSION,
+  COMMODITY_ENGINES,
   bundleCoverageSchema,
   bundleFindingsSchema,
   bundleManifestSchema,
   type BundleManifest,
+  type CurrentBundleManifest,
 } from "./schemas.js";
 
 const MAX_ARTIFACT_BYTES = 16 * 1024 * 1024;
@@ -148,10 +150,10 @@ async function detectionDatabase(): Promise<{ version: string; date: string }> {
   return { version: parsed.version, date: parsed.date };
 }
 
-async function commodityEngines(scan: StoredScanResult): Promise<BundleManifest["commodity_engines"]> {
+async function commodityEngines(scan: StoredScanResult): Promise<CurrentBundleManifest["commodity_engines"]> {
   const lock = await loadLockfile();
   const key = scan.engine_setup?.platform ?? platformKey();
-  return (["opengrep", "gitleaks", "trivy"] as EngineName[]).map((engine) => {
+  return COMMODITY_ENGINES.map((engine) => {
     const detail = scan.engine_details.find((entry) => entry.engine === engine);
     const health = scan.engine_setup?.engines.find((entry) => entry.engine === engine);
     const pin = getPlatformEntry(lock, engine, key)?.sha256;
@@ -189,7 +191,7 @@ async function buildBundle(scanInput: StoredScanResult, sealedAt = new Date().to
     "artifacts/scan-record.json": jsonBytes(scan),
     "artifacts/export.json": jsonBytes(exportDocument),
   };
-  const manifestWithoutSeal: Omit<BundleManifest, "seal"> = {
+  const manifestWithoutSeal: Omit<CurrentBundleManifest, "seal"> = {
     $schema: BUNDLE_SCHEMA_URI,
     schema_version: BUNDLE_SCHEMA_VERSION,
     bundle_id: `bundle-${randomUUID()}`,
@@ -208,7 +210,8 @@ async function buildBundle(scanInput: StoredScanResult, sealedAt = new Date().to
         : {}),
     },
     scan_id: scan.scan_id,
-    ...(scan.scan_config ? { scan_configuration: scan.scan_config } : {}),
+    // Bundle manifests keep their 3.x shape: the licence choice is recorded by the scan's coverage note.
+    ...(scan.scan_config ? { scan_configuration: (({ include_licenses: _licences, ...configuration }) => configuration)(scan.scan_config) } : {}),
     scan_scope: scan.git_scope ?? { mode: "whole_target", target: scan.target },
     timestamps: { started_at: scan.started_at, completed_at: completedAt(scan), sealed_at: sealedAt },
     artifacts: EXPECTED_ARTIFACTS.map((path) => ({ path, media_type: MEDIA_TYPES[path], bytes: files[path].length, sha256: sha256Hex(files[path]) })),
@@ -314,6 +317,9 @@ export async function verifySealedBundle(inputDirectory: string): Promise<Verifi
 
   const findings = bundleFindingsSchema.parse(JSON.parse(contents["findings.json"].toString("utf8")));
   const coverage = bundleCoverageSchema.parse(JSON.parse(contents["coverage.json"].toString("utf8")));
+  if (findings.schema_version !== manifest.schema_version || coverage.schema_version !== manifest.schema_version) {
+    throw new Error("Bundle findings or coverage schema version does not match the manifest.");
+  }
   const rawSarif = JSON.parse(contents["results.sarif"].toString("utf8")) as unknown;
   const rawExport = JSON.parse(contents["artifacts/export.json"].toString("utf8")) as unknown;
   const scan = storedScanResultSchema.parse(JSON.parse(contents["artifacts/scan-record.json"].toString("utf8"))) as unknown as StoredScanResult;

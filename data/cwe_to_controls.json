@@ -1134,6 +1134,7 @@
     "vulnerable_component": {
       "cwes": [
         "CWE-1035",
+        "CWE-1104",
         "CWE-1395",
         "CWE-937"
       ],

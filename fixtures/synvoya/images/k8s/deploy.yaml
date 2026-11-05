@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: settings
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  template:
+    spec:
+      containers:
+        - name: a
+          image: mcr.microsoft.com/dotnet/runtime:6.0.30
+        - name: b
+          image: eclipse-temurin:21.0.4_7-jdk
+      initContainers:
+        - name: c
+          image: busybox
+---
+name: not-kubernetes
+image: node:12

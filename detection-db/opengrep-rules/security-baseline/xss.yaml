@@ -16,17 +16,881 @@ rules:
       owasp: "A03:2021 - Injection"
       category: security
       confidence: MEDIUM
+    # Precision pass (design 10.6): a sink write alone is not reported. Field triage found the
+    # writes overwhelmingly carry escaped, sanitised, same-origin or constant markup, so the written
+    # value must now contain a DOM-XSS source: a URL part a link can set (hash, search, href,
+    # pathname), the document URL or referrer, window.name, or a postMessage payload inside a
+    # message handler, outside a named HTML sanitizer (DOMPurify, sanitize-html, escapeHtml, he). It
+    # may reach the sink directly or through one or two variables (URLSearchParams/URL objects) whose
+    # assignments do not sanitise, URL-encode or compare it. A plain pattern, not
+    # taint mode: taint mode timed out on large hand-written and vendored browser bundles in the
+    # field. Markup of other origin (fetched JSON, stored content) is a known gap; a value looked up
+    # in a constant table by a URL part (TITLES[location.pathname]) is a known false positive.
+    # Speed: Opengrep skips a file that names no sink (innerHTML, outerHTML, insertAdjacentHTML,
+    # document.write) only while it can derive that file prefilter from the rule. Each arm's own
+    # pattern-inside, metavariable-regex and metavariable-pattern clauses multiply in that analysis; past
+    # its limit Opengrep silently drops the prefilter and every pattern below runs on every JS/TS file
+    # (baseline Opengrep time x2.7 on the field repos). So arms that differ only in their source share one
+    # arm (the location parts are spelled out there), and elsewhere the location-part regex sits inside the
+    # $X metavariable-pattern. After editing, `opengrep-core -prefilter_of_rules xss.yaml` must not print
+    # "filter":"None" for this rule (eval E136 checks that a file without a sink is never matched).
     patterns:
       - pattern-either:
-          - pattern: $EL.innerHTML = $X
-          - pattern: $EL.outerHTML = $X
-          - pattern: $EL.insertAdjacentHTML($POS, $X)
-          - pattern: document.write($X)
-          - pattern: document.writeln($X)
-      # Literal-string assignments/args are author-written constants, not user
-      # input -- exclude them across every sink for consistent false-positive control.
-      - pattern-not: $EL.innerHTML = "..."
-      - pattern-not: $EL.outerHTML = "..."
-      - pattern-not: $EL.insertAdjacentHTML($POS, "...")
-      - pattern-not: document.write("...")
-      - pattern-not: document.writeln("...")
+          # A source written straight into the sink.
+          - patterns:
+              - pattern-either:
+                  - pattern: $EL.innerHTML = $X
+                  - pattern: $EL.innerHTML += $X
+                  - pattern: $EL.outerHTML = $X
+                  - pattern: $EL.insertAdjacentHTML($POS, $X)
+                  - pattern: document.write($X)
+                  - pattern: document.writeln($X)
+              - metavariable-pattern:
+                  metavariable: $X
+                  pattern-either:
+                    - patterns:
+                        - pattern-either:
+                            - pattern: location.$PART
+                            - pattern: $W.location.$PART
+                        - metavariable-regex:
+                            metavariable: $PART
+                            regex: ^(hash|search|href|pathname)$
+                        - pattern-not-inside: DOMPurify.sanitize(...)
+                        - pattern-not-inside: dompurify.sanitize(...)
+                        - pattern-not-inside: purify.sanitize(...)
+                        - pattern-not-inside: sanitizeHtml(...)
+                        - pattern-not-inside: escapeHtml(...)
+                        - pattern-not-inside: he.encode(...)
+                        - pattern-not-inside: he.escape(...)
+                    - patterns:
+                        - pattern-either:
+                            - pattern: document.URL
+                            - pattern: document.documentURI
+                            - pattern: document.baseURI
+                            - pattern: document.referrer
+                            - pattern: window.name
+                        - pattern-not-inside: DOMPurify.sanitize(...)
+                        - pattern-not-inside: dompurify.sanitize(...)
+                        - pattern-not-inside: purify.sanitize(...)
+                        - pattern-not-inside: sanitizeHtml(...)
+                        - pattern-not-inside: escapeHtml(...)
+                        - pattern-not-inside: he.encode(...)
+                        - pattern-not-inside: he.escape(...)
+          # One hop: a variable assigned from a source, not sanitised, URL-encoded or compared there.
+          - patterns:
+              - pattern-either:
+                  - pattern: $EL.innerHTML = $X
+                  - pattern: $EL.innerHTML += $X
+                  - pattern: $EL.outerHTML = $X
+                  - pattern: $EL.insertAdjacentHTML($POS, $X)
+                  - pattern: document.write($X)
+                  - pattern: document.writeln($X)
+              - pattern-either:
+                  - pattern-inside: |
+                      $V = <... location.hash ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = <... location.search ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = <... location.href ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = <... location.pathname ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = <... $W.location.hash ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = <... $W.location.search ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = <... $W.location.href ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = <... $W.location.pathname ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = <... document.URL ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = <... document.documentURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = <... document.baseURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = <... document.referrer ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = <... window.name ...>;
+                      ...
+              - pattern-not-inside: |
+                  $V = DOMPurify.sanitize(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = dompurify.sanitize(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = purify.sanitize(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = sanitizeHtml(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = escapeHtml(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = he.encode(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = he.escape(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = encodeURIComponent(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = $A === $B;
+                  ...
+              - pattern-not-inside: |
+                  $V = $A !== $B;
+                  ...
+              - pattern-not-inside: |
+                  $V = $A == $B;
+                  ...
+              - pattern-not-inside: |
+                  $V = $A != $B;
+                  ...
+              - metavariable-pattern:
+                  metavariable: $X
+                  patterns:
+                    - pattern: $V
+                    - pattern-not-inside: DOMPurify.sanitize(...)
+                    - pattern-not-inside: dompurify.sanitize(...)
+                    - pattern-not-inside: purify.sanitize(...)
+                    - pattern-not-inside: sanitizeHtml(...)
+                    - pattern-not-inside: escapeHtml(...)
+                    - pattern-not-inside: he.encode(...)
+                    - pattern-not-inside: he.escape(...)
+          # A safely assigned variable later reassigned from a source.
+          - patterns:
+              - pattern-either:
+                  - pattern: $EL.innerHTML = $X
+                  - pattern: $EL.innerHTML += $X
+                  - pattern: $EL.outerHTML = $X
+                  - pattern: $EL.insertAdjacentHTML($POS, $X)
+                  - pattern: document.write($X)
+                  - pattern: document.writeln($X)
+              - pattern-either:
+                  - pattern-inside: |
+                      $V = DOMPurify.sanitize(...);
+                      ...
+                      $V = <... location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = DOMPurify.sanitize(...);
+                      ...
+                      $V = <... $W.location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = dompurify.sanitize(...);
+                      ...
+                      $V = <... location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = dompurify.sanitize(...);
+                      ...
+                      $V = <... $W.location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = purify.sanitize(...);
+                      ...
+                      $V = <... location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = purify.sanitize(...);
+                      ...
+                      $V = <... $W.location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = sanitizeHtml(...);
+                      ...
+                      $V = <... location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = sanitizeHtml(...);
+                      ...
+                      $V = <... $W.location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = escapeHtml(...);
+                      ...
+                      $V = <... location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = escapeHtml(...);
+                      ...
+                      $V = <... $W.location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = he.encode(...);
+                      ...
+                      $V = <... location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = he.encode(...);
+                      ...
+                      $V = <... $W.location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = he.escape(...);
+                      ...
+                      $V = <... location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = he.escape(...);
+                      ...
+                      $V = <... $W.location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = encodeURIComponent(...);
+                      ...
+                      $V = <... location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = encodeURIComponent(...);
+                      ...
+                      $V = <... $W.location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A === $B;
+                      ...
+                      $V = <... location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A === $B;
+                      ...
+                      $V = <... $W.location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A !== $B;
+                      ...
+                      $V = <... location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A !== $B;
+                      ...
+                      $V = <... $W.location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A == $B;
+                      ...
+                      $V = <... location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A == $B;
+                      ...
+                      $V = <... $W.location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A != $B;
+                      ...
+                      $V = <... location.$PART ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A != $B;
+                      ...
+                      $V = <... $W.location.$PART ...>;
+                      ...
+              - metavariable-pattern:
+                  metavariable: $X
+                  patterns:
+                    - pattern: $V
+                    - pattern-not-inside: DOMPurify.sanitize(...)
+                    - pattern-not-inside: dompurify.sanitize(...)
+                    - pattern-not-inside: purify.sanitize(...)
+                    - pattern-not-inside: sanitizeHtml(...)
+                    - pattern-not-inside: escapeHtml(...)
+                    - pattern-not-inside: he.encode(...)
+                    - pattern-not-inside: he.escape(...)
+                    - metavariable-regex:
+                        metavariable: $PART
+                        regex: ^(hash|search|href|pathname)$
+          - patterns:
+              - pattern-either:
+                  - pattern: $EL.innerHTML = $X
+                  - pattern: $EL.innerHTML += $X
+                  - pattern: $EL.outerHTML = $X
+                  - pattern: $EL.insertAdjacentHTML($POS, $X)
+                  - pattern: document.write($X)
+                  - pattern: document.writeln($X)
+              - pattern-either:
+                  - pattern-inside: |
+                      $V = DOMPurify.sanitize(...);
+                      ...
+                      $V = <... document.URL ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = DOMPurify.sanitize(...);
+                      ...
+                      $V = <... document.documentURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = DOMPurify.sanitize(...);
+                      ...
+                      $V = <... document.baseURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = DOMPurify.sanitize(...);
+                      ...
+                      $V = <... document.referrer ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = DOMPurify.sanitize(...);
+                      ...
+                      $V = <... window.name ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = dompurify.sanitize(...);
+                      ...
+                      $V = <... document.URL ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = dompurify.sanitize(...);
+                      ...
+                      $V = <... document.documentURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = dompurify.sanitize(...);
+                      ...
+                      $V = <... document.baseURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = dompurify.sanitize(...);
+                      ...
+                      $V = <... document.referrer ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = dompurify.sanitize(...);
+                      ...
+                      $V = <... window.name ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = purify.sanitize(...);
+                      ...
+                      $V = <... document.URL ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = purify.sanitize(...);
+                      ...
+                      $V = <... document.documentURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = purify.sanitize(...);
+                      ...
+                      $V = <... document.baseURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = purify.sanitize(...);
+                      ...
+                      $V = <... document.referrer ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = purify.sanitize(...);
+                      ...
+                      $V = <... window.name ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = sanitizeHtml(...);
+                      ...
+                      $V = <... document.URL ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = sanitizeHtml(...);
+                      ...
+                      $V = <... document.documentURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = sanitizeHtml(...);
+                      ...
+                      $V = <... document.baseURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = sanitizeHtml(...);
+                      ...
+                      $V = <... document.referrer ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = sanitizeHtml(...);
+                      ...
+                      $V = <... window.name ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = escapeHtml(...);
+                      ...
+                      $V = <... document.URL ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = escapeHtml(...);
+                      ...
+                      $V = <... document.documentURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = escapeHtml(...);
+                      ...
+                      $V = <... document.baseURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = escapeHtml(...);
+                      ...
+                      $V = <... document.referrer ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = escapeHtml(...);
+                      ...
+                      $V = <... window.name ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = he.encode(...);
+                      ...
+                      $V = <... document.URL ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = he.encode(...);
+                      ...
+                      $V = <... document.documentURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = he.encode(...);
+                      ...
+                      $V = <... document.baseURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = he.encode(...);
+                      ...
+                      $V = <... document.referrer ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = he.encode(...);
+                      ...
+                      $V = <... window.name ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = he.escape(...);
+                      ...
+                      $V = <... document.URL ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = he.escape(...);
+                      ...
+                      $V = <... document.documentURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = he.escape(...);
+                      ...
+                      $V = <... document.baseURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = he.escape(...);
+                      ...
+                      $V = <... document.referrer ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = he.escape(...);
+                      ...
+                      $V = <... window.name ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = encodeURIComponent(...);
+                      ...
+                      $V = <... document.URL ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = encodeURIComponent(...);
+                      ...
+                      $V = <... document.documentURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = encodeURIComponent(...);
+                      ...
+                      $V = <... document.baseURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = encodeURIComponent(...);
+                      ...
+                      $V = <... document.referrer ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = encodeURIComponent(...);
+                      ...
+                      $V = <... window.name ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A === $B;
+                      ...
+                      $V = <... document.URL ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A === $B;
+                      ...
+                      $V = <... document.documentURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A === $B;
+                      ...
+                      $V = <... document.baseURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A === $B;
+                      ...
+                      $V = <... document.referrer ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A === $B;
+                      ...
+                      $V = <... window.name ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A !== $B;
+                      ...
+                      $V = <... document.URL ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A !== $B;
+                      ...
+                      $V = <... document.documentURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A !== $B;
+                      ...
+                      $V = <... document.baseURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A !== $B;
+                      ...
+                      $V = <... document.referrer ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A !== $B;
+                      ...
+                      $V = <... window.name ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A == $B;
+                      ...
+                      $V = <... document.URL ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A == $B;
+                      ...
+                      $V = <... document.documentURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A == $B;
+                      ...
+                      $V = <... document.baseURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A == $B;
+                      ...
+                      $V = <... document.referrer ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A == $B;
+                      ...
+                      $V = <... window.name ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A != $B;
+                      ...
+                      $V = <... document.URL ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A != $B;
+                      ...
+                      $V = <... document.documentURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A != $B;
+                      ...
+                      $V = <... document.baseURI ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A != $B;
+                      ...
+                      $V = <... document.referrer ...>;
+                      ...
+                  - pattern-inside: |
+                      $V = $A != $B;
+                      ...
+                      $V = <... window.name ...>;
+                      ...
+              - metavariable-pattern:
+                  metavariable: $X
+                  patterns:
+                    - pattern: $V
+                    - pattern-not-inside: DOMPurify.sanitize(...)
+                    - pattern-not-inside: dompurify.sanitize(...)
+                    - pattern-not-inside: purify.sanitize(...)
+                    - pattern-not-inside: sanitizeHtml(...)
+                    - pattern-not-inside: escapeHtml(...)
+                    - pattern-not-inside: he.encode(...)
+                    - pattern-not-inside: he.escape(...)
+          # Two hops: a URL object or parameter set built from the URL, then a value read from it;
+          # neither assignment sanitises, URL-encodes or compares it.
+          - patterns:
+              - pattern-either:
+                  - pattern: $EL.innerHTML = $X
+                  - pattern: $EL.innerHTML += $X
+                  - pattern: $EL.outerHTML = $X
+                  - pattern: $EL.insertAdjacentHTML($POS, $X)
+                  - pattern: document.write($X)
+                  - pattern: document.writeln($X)
+              - pattern-either:
+                  - pattern-inside: |
+                      $V1 = <... location.hash ...>;
+                      ...
+                      $V = <... $V1 ...>;
+                      ...
+                  - pattern-inside: |
+                      $V1 = <... location.search ...>;
+                      ...
+                      $V = <... $V1 ...>;
+                      ...
+                  - pattern-inside: |
+                      $V1 = <... location.href ...>;
+                      ...
+                      $V = <... $V1 ...>;
+                      ...
+                  - pattern-inside: |
+                      $V1 = <... location.pathname ...>;
+                      ...
+                      $V = <... $V1 ...>;
+                      ...
+                  - pattern-inside: |
+                      $V1 = <... $W.location.hash ...>;
+                      ...
+                      $V = <... $V1 ...>;
+                      ...
+                  - pattern-inside: |
+                      $V1 = <... $W.location.search ...>;
+                      ...
+                      $V = <... $V1 ...>;
+                      ...
+                  - pattern-inside: |
+                      $V1 = <... $W.location.href ...>;
+                      ...
+                      $V = <... $V1 ...>;
+                      ...
+                  - pattern-inside: |
+                      $V1 = <... $W.location.pathname ...>;
+                      ...
+                      $V = <... $V1 ...>;
+                      ...
+              - pattern-not-inside: |
+                  $V1 = DOMPurify.sanitize(...);
+                  ...
+              - pattern-not-inside: |
+                  $V1 = dompurify.sanitize(...);
+                  ...
+              - pattern-not-inside: |
+                  $V1 = purify.sanitize(...);
+                  ...
+              - pattern-not-inside: |
+                  $V1 = sanitizeHtml(...);
+                  ...
+              - pattern-not-inside: |
+                  $V1 = escapeHtml(...);
+                  ...
+              - pattern-not-inside: |
+                  $V1 = he.encode(...);
+                  ...
+              - pattern-not-inside: |
+                  $V1 = he.escape(...);
+                  ...
+              - pattern-not-inside: |
+                  $V1 = encodeURIComponent(...);
+                  ...
+              - pattern-not-inside: |
+                  $V1 = $A === $B;
+                  ...
+              - pattern-not-inside: |
+                  $V1 = $A !== $B;
+                  ...
+              - pattern-not-inside: |
+                  $V1 = $A == $B;
+                  ...
+              - pattern-not-inside: |
+                  $V1 = $A != $B;
+                  ...
+              - pattern-not-inside: |
+                  $V = DOMPurify.sanitize(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = dompurify.sanitize(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = purify.sanitize(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = sanitizeHtml(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = escapeHtml(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = he.encode(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = he.escape(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = encodeURIComponent(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = $A === $B;
+                  ...
+              - pattern-not-inside: |
+                  $V = $A !== $B;
+                  ...
+              - pattern-not-inside: |
+                  $V = $A == $B;
+                  ...
+              - pattern-not-inside: |
+                  $V = $A != $B;
+                  ...
+              - metavariable-pattern:
+                  metavariable: $X
+                  patterns:
+                    - pattern: $V
+                    - pattern-not-inside: DOMPurify.sanitize(...)
+                    - pattern-not-inside: dompurify.sanitize(...)
+                    - pattern-not-inside: purify.sanitize(...)
+                    - pattern-not-inside: sanitizeHtml(...)
+                    - pattern-not-inside: escapeHtml(...)
+                    - pattern-not-inside: he.encode(...)
+                    - pattern-not-inside: he.escape(...)
+          # A postMessage payload copied to a variable inside a message handler.
+          - patterns:
+              - pattern-either:
+                  - pattern: $EL.innerHTML = $X
+                  - pattern: $EL.innerHTML += $X
+                  - pattern: $EL.outerHTML = $X
+                  - pattern: $EL.insertAdjacentHTML($POS, $X)
+                  - pattern: document.write($X)
+                  - pattern: document.writeln($X)
+              - pattern-either:
+                  - pattern-inside: |
+                      $T.addEventListener("message", function ($EVENT) { ... }, ...)
+                  - pattern-inside: |
+                      $T.addEventListener("message", ($EVENT) => { ... }, ...)
+                  - pattern-inside: |
+                      $T.onmessage = function ($EVENT) { ... }
+                  - pattern-inside: |
+                      $T.onmessage = ($EVENT) => { ... }
+              - pattern-inside: |
+                  $V = <... $EVENT.data ...>;
+                  ...
+              - pattern-not-inside: |
+                  $V = DOMPurify.sanitize(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = dompurify.sanitize(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = purify.sanitize(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = sanitizeHtml(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = escapeHtml(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = he.encode(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = he.escape(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = encodeURIComponent(...);
+                  ...
+              - pattern-not-inside: |
+                  $V = $A === $B;
+                  ...
+              - pattern-not-inside: |
+                  $V = $A !== $B;
+                  ...
+              - pattern-not-inside: |
+                  $V = $A == $B;
+                  ...
+              - pattern-not-inside: |
+                  $V = $A != $B;
+                  ...
+              - metavariable-pattern:
+                  metavariable: $X
+                  patterns:
+                    - pattern: $V
+                    - pattern-not-inside: DOMPurify.sanitize(...)
+                    - pattern-not-inside: dompurify.sanitize(...)
+                    - pattern-not-inside: purify.sanitize(...)
+                    - pattern-not-inside: sanitizeHtml(...)
+                    - pattern-not-inside: escapeHtml(...)
+                    - pattern-not-inside: he.encode(...)
+                    - pattern-not-inside: he.escape(...)
+          # A destructured postMessage payload: ({ data }) => ...
+          - patterns:
+              - pattern-either:
+                  - pattern: $EL.innerHTML = $X
+                  - pattern: $EL.innerHTML += $X
+                  - pattern: $EL.outerHTML = $X
+                  - pattern: $EL.insertAdjacentHTML($POS, $X)
+                  - pattern: document.write($X)
+                  - pattern: document.writeln($X)
+              - pattern-either:
+                  - pattern-inside: |
+                      $T.addEventListener("message", function ({ data }) { ... }, ...)
+                  - pattern-inside: |
+                      $T.addEventListener("message", ({ data }) => { ... }, ...)
+                  - pattern-inside: |
+                      $T.onmessage = ({ data }) => { ... }
+              - metavariable-pattern:
+                  metavariable: $X
+                  patterns:
+                    - pattern: data
+                    - pattern-not-inside: DOMPurify.sanitize(...)
+                    - pattern-not-inside: dompurify.sanitize(...)
+                    - pattern-not-inside: purify.sanitize(...)
+                    - pattern-not-inside: sanitizeHtml(...)
+                    - pattern-not-inside: escapeHtml(...)
+                    - pattern-not-inside: he.encode(...)
+                    - pattern-not-inside: he.escape(...)
+          # A postMessage payload inside a message handler.
+          - patterns:
+              - pattern-either:
+                  - pattern: $EL.innerHTML = $X
+                  - pattern: $EL.innerHTML += $X
+                  - pattern: $EL.outerHTML = $X
+                  - pattern: $EL.insertAdjacentHTML($POS, $X)
+                  - pattern: document.write($X)
+                  - pattern: document.writeln($X)
+              - pattern-either:
+                  - pattern-inside: |
+                      $T.addEventListener("message", function ($EVENT) { ... }, ...)
+                  - pattern-inside: |
+                      $T.addEventListener("message", ($EVENT) => { ... }, ...)
+                  - pattern-inside: |
+                      $T.onmessage = function ($EVENT) { ... }
+                  - pattern-inside: |
+                      $T.onmessage = ($EVENT) => { ... }
+              - metavariable-pattern:
+                  metavariable: $X
+                  patterns:
+                    - pattern: $EVENT.data
+                    - pattern-not-inside: DOMPurify.sanitize(...)
+                    - pattern-not-inside: dompurify.sanitize(...)
+                    - pattern-not-inside: purify.sanitize(...)
+                    - pattern-not-inside: sanitizeHtml(...)
+                    - pattern-not-inside: escapeHtml(...)
+                    - pattern-not-inside: he.encode(...)
+                    - pattern-not-inside: he.escape(...)

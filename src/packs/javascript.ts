@@ -109,7 +109,7 @@ function createJavaScriptAnalyzers(target: string): readonly NativeAnalyzer[] {
         const result = await runNextjsAdminRouteAnalysis(target);
         return {
           findings: result.findings,
-          ...(result.notes.length ? { notes: result.notes } : {}),
+          ...(result.gaps.length ? { gaps: result.gaps } : {}),
         };
       },
     },
@@ -126,6 +126,7 @@ function createJavaScriptAnalyzers(target: string): readonly NativeAnalyzer[] {
         return {
           findings: result.findings,
           ...(result.notes.length ? { notes: result.notes } : {}),
+          ...(result.gaps.length ? { gaps: result.gaps } : {}),
         };
       },
     },
@@ -190,13 +191,14 @@ function createJavaScriptAnalyzers(target: string): readonly NativeAnalyzer[] {
 export const javascriptPack: NativeDetectorPack = {
   id: "javascript-typescript",
   // Pack semantics are unchanged when the aggregate native engine gains other packs.
-  version: "1.9.0",
+  version: "1.10.0",
   scannerKind: "ai",
   languages: ["javascript", "typescript", "sql"],
   frameworks: ["react", "nextjs", "express", "vue", "svelte", "astro", "supabase"],
   platforms: [],
   limitations: [
     "Rule-specific static analysis only; listed languages and frameworks are not complete coverage claims.",
+    "The Next.js and Express admin-route and Supabase Edge analyzers read each JavaScript/TypeScript file with a full parser (@babel/parser) and skip a file it cannot parse as the gap native-parse-errors; their rules are intrafile token and syntax patterns with no type checker or data flow, so code written to avoid a pattern (an alias, a wrapper, a computed call) can still avoid it. The other checks in this pack match bounded source patterns. When the SAST scanner runs, Opengrep's parser also scans the same files for generic sinks.",
     "Client-secret checks also inspect selected HTML and framework component files; runtime-control checks inspect selected repository configuration shapes.",
     "Model-tool command execution analysis is intrafile, import-proven, and bounded to direct flow or one named local wrapper; cross-module dispatch and runtime sandbox/approval state are not resolved.",
     "General model-output execution analysis is intrafile and bounded to recognized SDK output plus global eval/Function or import-proven shell-string APIs; custom wrappers, streams, indirect aliases, and runtime controls are not resolved.",

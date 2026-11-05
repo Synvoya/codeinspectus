@@ -1,0 +1,29 @@
+{
+  "results": [
+    {
+      "source": {
+        "path": "<target>/conan.lock",
+        "type": "lockfile"
+      },
+      "packages": [
+        {
+          "package": {
+            "name": "zlib",
+            "version": "1.2.11",
+            "ecosystem": "ConanCenter",
+            "purl": "pkg:conan/zlib@1.2.11"
+          },
+          "dependency_groups": [
+            "requires"
+          ]
+        }
+      ]
+    }
+  ],
+  "experimental_config": {
+    "licenses": {
+      "summary": false,
+      "allowlist": null
+    }
+  }
+}

@@ -159,13 +159,46 @@ describe("CLI parser", () => {
       .toEqual({ mode: "working_tree", base: "HEAD" });
   });
 
+  test("parses named coverage gaps to accept, deduplicated", () => {
+    expect(parseCliCommand(["scan", ".", "--accept-gaps", "php-sast,deno-lock", "--accept-gaps", "php-sast"]).configuration.accept_gaps)
+      .toEqual(["php-sast", "deno-lock"]);
+  });
+
+  test("--licenses opts in to licence findings; scans do not request them otherwise", async () => {
+    expect(parseCliCommand(["scan", "."]).configuration.include_licenses).toBeUndefined();
+    expect(parseCliCommand(["scan", ".", "--licenses"]).configuration.include_licenses).toBe(true);
+
+    const scanInputs: unknown[] = [];
+    const deps = dependencies({ scan: vi.fn(async (input) => { scanInputs.push(input); return emptyScan(); }) });
+    await runCli(["scan", ".", "--format", "json"], ioCapture().io, deps);
+    expect(scanInputs.at(-1)).not.toHaveProperty("include_licenses");
+    await runCli(["scan", ".", "--format", "json", "--licenses"], ioCapture().io, deps);
+    expect(scanInputs.at(-1)).toMatchObject({ include_licenses: true });
+    expect(cliHelp("scan")).toMatch(/--licenses\s+Include licence findings/);
+  });
+
+  test("the text header lists license as a default scanner only with --licenses", async () => {
+    const plain = ioCapture();
+    await runCli(["scan", "."], plain.io, dependencies());
+    expect(plain.stdout.join("")).toContain("Configuration: scanners=sast,secret,vuln,misconfig,ai |");
+    const withLicences = ioCapture();
+    await runCli(["scan", ".", "--licenses"], withLicences.io, dependencies());
+    expect(withLicences.stdout.join("")).toContain("Configuration: scanners=sast,secret,vuln,misconfig,license,ai |");
+    const named = ioCapture();
+    await runCli(["scan", ".", "--scanner", "sast,license"], named.io, dependencies());
+    expect(named.stdout.join("")).toContain("Configuration: scanners=sast,license |");
+  });
+
   test.each([
+    [["preflight", ".", "--licenses"], /--licenses is available only for scan/i],
     [["unknown"], /unknown subcommand/i],
     [["scan"], /requires a file or directory/i],
     [["scan", ".", "--wat"], /unknown option/i],
     [["scan", ".", "--output", "a.json", "--output-dir", "reports"], /either --output.*--output-dir/i],
     [["scan", ".", "--max-findings", "0"], /positive safe integer/i],
     [["scan", ".", "--scanner", "magic"], /unknown scanner/i],
+    [["scan", ".", "--accept-gaps", "php-sast,everything"], /unknown coverage gap id 'everything'/i],
+    [["preflight", ".", "--accept-gaps", "php-sast"], /--accept-gaps is available only for scan/i],
     [["scan", ".", "--fail-on-severity", "urgent"], /invalid fail-on severity/i],
     [["scan", ".", "--diff", "HEAD"], /--diff requires --head/i],
     [["scan", ".", "--head", "HEAD"], /--head requires --diff/i],
@@ -212,6 +245,28 @@ describe("CLI stdout/stderr and execution", () => {
     expect(capture.stderr.join("")).toContain(`CodeInspectus notice: ${note}`);
   });
 
+  // Task 5 (Hibi, 2026-10-31): a declared gap fails CI with exit 2 by default; naming it in
+  // --accept-gaps passes coverage while the report still reads partial and lists the gap.
+  test("a declared gap exits 2 unless --accept-gaps names it", async () => {
+    const gaps = [{ id: "php-sast" as const, files: 3, examples: ["a.php", "b.php", "c.php"] }];
+    const scanInputs: unknown[] = [];
+    const deps = (accepted?: "php-sast"[]) => dependencies({
+      scan: vi.fn(async (input) => { scanInputs.push(input); return emptyScan(); }),
+      loadScan: vi.fn(async () => ({ ...storedScan(), coverage_gaps: gaps, ...(accepted ? { accepted_gaps: accepted } : {}) })),
+    });
+
+    const plain = ioCapture();
+    expect(await runCli(["scan", ".", "--format", "json"], plain.io, deps())).toBe(2);
+    expect(plain.stderr.join("")).toMatch(/Aggregate coverage is partial/);
+
+    const accepted = ioCapture();
+    expect(await runCli(["scan", ".", "--format", "json", "--accept-gaps", "php-sast"], accepted.io, deps(["php-sast"]))).toBe(0);
+    expect(scanInputs.at(-1)).toMatchObject({ accept_gaps: ["php-sast"] });
+    const report = JSON.parse(accepted.stdout.join(""));
+    expect(report.coverage.aggregate).toBe("partial");
+    expect(report.coverage.evidence).toContainEqual(expect.objectContaining({ component: "gap:php-sast", state: "partial" }));
+  });
+
   test("baseline new-finding enforcement retains the full raw report and counts only proven new findings", async () => {
     const capture = ioCapture();
     const baselineId = "scan-00000000-0000-4000-8000-000000000001";
@@ -230,6 +285,35 @@ describe("CLI stdout/stderr and execution", () => {
     expect(output.findings).toHaveLength(2);
     expect(output.baseline.summary).toEqual({ New: 1, Existing: 1, "Not rechecked / unknown": 0 });
     expect(output.scan.configuration).toMatchObject({ policy_mode: "new_findings_enforcement", fail_on_new_severity: "high", baseline_scan_id: baselineId });
+  });
+
+  // Review I-1: --accept-gaps also applies with --baseline (new-finding and severity enforcement).
+  test("an accepted gap does not fail a baseline comparison", async () => {
+    const baselineId = "scan-00000000-0000-4000-8000-000000000001";
+    const gaps = { coverage_gaps: [{ id: "php-sast" as const, files: 1, examples: ["index.php"] }] };
+    const existing = { ...cliFinding("existing", "high"), producer_components: ["opengrep@1"] };
+    const baseline = { ...storedScan("/repo", [existing]), ...gaps, scan_id: baselineId, started_at: "2026-07-28T00:00:00.000Z", component_signatures: { "opengrep@1": "v1" } };
+    const fresh = (accepted: boolean) => ({ ...storedScan("/repo", [existing]), ...gaps, ...(accepted ? { accepted_gaps: ["php-sast" as const] } : {}), component_signatures: { "opengrep@1": "v1" } });
+    const deps = (accepted: boolean) => dependencies({
+      scan: vi.fn(async () => ({ ...emptyScan(), findings: [existing] })),
+      loadScan: vi.fn(async (id) => id === baselineId ? baseline : fresh(accepted)),
+    });
+    const run = async (accepted: boolean, policy: string[]) => {
+      const capture = ioCapture();
+      const code = await runCli(["scan", ".", "--baseline", baselineId, ...policy, "--format", "json",
+        ...(accepted ? ["--accept-gaps", "php-sast"] : [])], capture.io, deps(accepted));
+      return { code, output: JSON.parse(capture.stdout.join("")), stderr: capture.stderr.join("") };
+    };
+
+    const plain = await run(false, ["--fail-on-new-severity", "high"]);
+    expect(plain.code).toBe(2);
+    expect(plain.stderr).toMatch(/Baseline coverage is partial/);
+    const accepted = await run(true, ["--fail-on-new-severity", "high"]);
+    expect(accepted.code).toBe(0);
+    expect(accepted.output.baseline).toMatchObject({ coverage: "complete", summary: { New: 0, Existing: 1, "Not rechecked / unknown": 0 } });
+    expect(accepted.output.coverage.aggregate).toBe("partial");
+    expect((await run(true, ["--fail-on-severity", "high"])).code).toBe(1);
+    expect((await run(false, ["--fail-on-severity", "high"])).code).toBe(2);
   });
 
   test("preflight JSON writes only stdout and returns zero when ready", async () => {

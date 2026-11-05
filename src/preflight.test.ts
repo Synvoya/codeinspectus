@@ -139,4 +139,37 @@ describe("offline preflight", () => {
     });
     expect(result.engine_integrity[0]).toMatchObject({ state: "missing", hash_provenance: "unverified" });
   });
+
+  test("vuln scope lists osv-scanner as an additive engine: missing, it warns but does not block readiness", async () => {
+    vi.mocked(inspectEngineSetup).mockResolvedValue({
+      state: "repair_required",
+      platform: "test-x64",
+      engines: [
+        { engine: "opengrep", version: "1", state: "ready" },
+        { engine: "gitleaks", version: "1", state: "ready" },
+        { engine: "trivy", version: "1", state: "ready" },
+        { engine: "osv-scanner", version: "2.7.0", state: "missing" },
+      ],
+      trivy_db: { state: "ready" },
+      repair_command: "npx codeinspectus setup",
+      network_required: true,
+    });
+    const root = await temporaryRoot();
+    await writeFile(join(root, "requirements.txt"), "requests==2.19.0\n");
+
+    const result = await runPreflight(root, { scanners: ["vuln"] });
+
+    expect(result).toMatchObject({ ready: true, repair: { required_for_selected_scope: false, network_required: false } });
+    expect(result.engine_integrity.find((engine) => engine.engine === "osv-scanner")).toMatchObject({
+      selected: true,
+      state: "missing",
+      hash_provenance: "unverified",
+    });
+    expect(result.scanner_applicability.find((scanner) => scanner.scanner === "vuln")?.components.join(" ")).toMatch(/osv-scanner/);
+    expect(result.warnings.join(" ")).toMatch(/osv-scanner.*codeinspectus setup/);
+
+    const sastOnly = await runPreflight(root, { scanners: ["sast"] });
+    expect(sastOnly.engine_integrity.find((engine) => engine.engine === "osv-scanner")?.selected).toBe(false);
+    expect(sastOnly.warnings.join(" ")).not.toMatch(/osv-scanner/);
+  });
 });

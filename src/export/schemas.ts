@@ -31,7 +31,9 @@ export const aggregateCoverageEnvelopeSchema = z.object({
   evidence: z.array(coverageEvidenceSchema),
 });
 
-export const exportFindingSchema = findingSchema.extend({
+// Export 3.0.0 predates the structured `package` and the `engine_family` display field (both kept in stored
+// scans and scan output only), so neither is part of this contract.
+export const exportFindingSchema = findingSchema.omit({ package: true, engine_family: true }).extend({
   producer_components: z.array(z.string()).min(1),
   coverage_context: z.object({
     aggregate: aggregateCoverageSchema,

@@ -19,7 +19,7 @@ function resultWithSignal(): ScanResult {
     target: "/tmp/repo",
     started_at: "2026-07-19T00:00:00.000Z",
     duration_ms: 1,
-    engines_run: ["trivy@0.71.2"],
+    engines_run: ["trivy@0.76.1"],
     engine_details: [],
     offline: true,
     detected_technologies: [],

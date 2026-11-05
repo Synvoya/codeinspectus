@@ -28,7 +28,7 @@ vi.mock("./lockfile.js", async (importOriginal) => {
       if (!harness.lock) throw new Error("resolver test lockfile was not initialized");
       return harness.lock;
     }),
-    getPlatformEntry: (lock: Lockfile, engine: "opengrep" | "gitleaks" | "trivy") =>
+    getPlatformEntry: (lock: Lockfile, engine: "opengrep" | "gitleaks" | "trivy" | "osv-scanner") =>
       lock.engines[engine]?.platforms["test-x64"],
   };
 });
@@ -48,7 +48,7 @@ beforeEach(async () => {
     generated_at: null,
     engines: {
       opengrep: {
-        version: "1.23.0",
+        version: "1.33.1",
         repo: "example/opengrep",
         release_base: "https://example.invalid",
         signature: "cosign",
@@ -71,12 +71,28 @@ beforeEach(async () => {
         platforms: {},
       },
       trivy: {
-        version: "0.71.2",
+        version: "0.76.1",
         repo: "example/trivy",
         release_base: "https://example.invalid",
         signature: "checksums+sigstore",
         checksums_asset: "checksums.txt",
         platforms: {},
+      },
+      "osv-scanner": {
+        version: "2.7.0",
+        repo: "example/osv-scanner",
+        release_base: "https://example.invalid",
+        signature: "checksums+slsa",
+        checksums_asset: "osv-scanner_SHA256SUMS",
+        attestation_asset: "multiple.intoto.jsonl",
+        platforms: {
+          "test-x64": {
+            asset: "osv-scanner_test",
+            archive: "raw",
+            binary: "osv-scanner",
+            sha256: originalSha,
+          },
+        },
       },
     },
   };
@@ -98,5 +114,20 @@ describe("engine resolution cache", () => {
     await expect(resolveEngine("opengrep")).rejects.toMatchObject({
       reason: "hash_mismatch",
     });
+  });
+
+  test("osv-scanner is resolved by its engine name and checked against its pin", async () => {
+    const osvName = process.platform === "win32" ? "osv-scanner.exe" : "osv-scanner";
+    await writeFile(join(harness.root, "bin", osvName), original, { mode: 0o755 });
+    await expect(resolveEngine("osv-scanner")).resolves.toMatchObject({
+      version: "2.7.0",
+      sha256: originalSha,
+      path: join(harness.root, "bin", osvName),
+    });
+
+    harness.lock!.engines["osv-scanner"].platforms["test-x64"]!.sha256 = null;
+    await rm(join(harness.root, "bin", osvName));
+    await writeFile(join(harness.root, "bin", osvName), replacement, { mode: 0o755 });
+    await expect(resolveEngine("osv-scanner")).rejects.toMatchObject({ reason: "unpinned" });
   });
 });

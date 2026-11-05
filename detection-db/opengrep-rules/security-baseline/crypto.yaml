@@ -3,7 +3,10 @@
 rules:
   - id: ci-baseline-weak-hash
     languages: [javascript, typescript]
-    severity: WARNING
+    # Precision pass (design 10.6): 0 of 13 field hits hashed a credential (cache keys, checksums,
+    # ids), so this is a low/low hygiene finding. Kept in parity with the native javascript-baseline
+    # rule (E34); requiring a credential context belongs with the native parser rewrite.
+    severity: INFO
     message: >
       Weak hashing algorithm (MD5/SHA1) used. Use SHA-256+ or a password KDF
       (bcrypt/scrypt/argon2) for credentials.
@@ -11,7 +14,7 @@ rules:
       cwe: "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
       owasp: "A02:2021 - Cryptographic Failures"
       category: security
-      confidence: MEDIUM
+      confidence: LOW
     patterns:
       - pattern-either:
           - pattern: $C.createHash("md5")
@@ -48,7 +51,6 @@ rules:
       confidence: LOW
     patterns:
       - pattern-either:
-          - pattern: $T = Math.random()
           - pattern: const $V = Math.random()
       - metavariable-pattern:
           metavariable: $V

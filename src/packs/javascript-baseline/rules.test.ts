@@ -38,9 +38,12 @@ describe("JavaScript baseline shadow candidates", () => {
     expect(result.findings.filter((finding) => finding.rule_id === JAVASCRIPT_WEAK_HASH_RULE_ID)).toHaveLength(3);
     expect(result.findings.filter((finding) => finding.rule_id === JAVASCRIPT_WEAK_CIPHER_RULE_ID)).toHaveLength(4);
     for (const finding of result.findings) {
+      // Design 10.6 precision pass: weak-hash is a low/low hygiene finding (0 of 13 field hits were
+      // credential hashing); weak-cipher keeps medium/medium.
+      const weakHash = finding.rule_id === JAVASCRIPT_WEAK_HASH_RULE_ID;
       expect(finding).toMatchObject({
-        severity: "medium",
-        confidence: "medium",
+        severity: weakHash ? "low" : "medium",
+        confidence: weakHash ? "low" : "medium",
         cwe: ["CWE-327"],
         owasp_web: ["A02:2021"],
         finding_kind: "sast",
@@ -62,7 +65,7 @@ describe("JavaScript baseline shadow candidates", () => {
       `,
     }));
 
-    expect(result).toEqual({ findings: [], limitations: [] });
+    expect(result).toEqual({ findings: [], limitations: [], gaps: [] });
   });
 
   test("retains duplicate same-line multiplicity and multiline end ranges", async () => {

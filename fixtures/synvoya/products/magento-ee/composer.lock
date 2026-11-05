@@ -1,0 +1,14 @@
+{
+    "_readme": ["This file locks the dependencies of your project to a known state"],
+    "packages": [
+        {
+            "name": "magento/product-enterprise-edition",
+            "version": "2.4.6-p3",
+            "type": "metapackage"
+        }
+    ],
+    "packages-dev": [
+
+    ],
+    "platform": {}
+}

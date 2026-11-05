@@ -8,3 +8,10 @@ engines and the Cosign verification helper. Those executables are downloaded
 from their upstream release sources after approval and are not included in the
 CodeInspectus npm package. See THIRD-PARTY-NOTICES.md for engine, verifier, data,
 and runtime-dependency attribution.
+
+The osv-scanner engine reads OSV.dev vulnerability data that users download
+after approval from OSV's own bucket. That data is not re-hosted by CodeInspectus.
+It remains under the licenses of its sources: GitHub Advisory Database, PyPA
+Advisory Database, OSS-Fuzz and the Go Vulnerability Database (CC BY 4.0),
+OpenSSF Malicious Packages (Apache-2.0), Drupal (MIT) and RustSec (CC0 1.0).
+Attribution: OSV.dev and those sources' contributors.

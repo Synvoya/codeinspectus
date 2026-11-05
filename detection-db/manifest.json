@@ -1,12 +1,12 @@
 {
   "name": "CodeInspectus Detection Database",
-  "version": "1.19.0",
-  "date": "2026-08-13",
+  "version": "2.0.0",
+  "date": "2026-11-05",
   "description": "CodeInspectus's curated first-party detections. Native packs cover bounded AI/framework checks plus selected reconciled SAST rules; separately downloaded external engines remain additive fallbacks and broader scanners.",
   "engine_versions": {
-    "opengrep": "1.23.0",
+    "opengrep": "1.33.1",
     "gitleaks": "8.30.1",
-    "trivy": "0.71.2",
+    "trivy": "0.76.1",
     "codeinspectus-pub": "1.0.0"
   },
   "opengrep_rulesets": [
@@ -15,6 +15,18 @@
       "source": "codeinspectus-apache-2.0",
       "license": "Apache-2.0",
       "note": "CodeInspectus's original Apache-2.0-licensed Opengrep security ruleset (see detection-db/opengrep-rules/security-baseline/LICENSE-PROVENANCE.md). Not derived from the Commons-Clause opengrep-rules or the Semgrep-Rules-License semgrep-rules corpora. Narrower than the full upstream registry; coverage grows through reviewed intake."
+    },
+    {
+      "name": "synvoya-php",
+      "source": "codeinspectus-apache-2.0",
+      "license": "Apache-2.0",
+      "note": "Synvoya PHP pack: original Apache-2.0 Opengrep rules for plain PHP, Laravel, Symfony and WordPress, written from first principles (see detection-db/opengrep-rules/synvoya-php/LICENSE-PROVENANCE.md). Precision-gated on field repositories; rules that failed the gate are not shipped."
+    },
+    {
+      "name": "synvoya-node",
+      "source": "codeinspectus-apache-2.0",
+      "license": "Apache-2.0",
+      "note": "Synvoya's original Apache-2.0 Node.js ruleset (syn-node-*; see detection-db/opengrep-rules/synvoya-node/LICENSE-PROVENANCE.md): taint-mode request-input rules for Express, Koa, Fastify, Next.js and NestJS plus framework configuration and insecure-default checks. Written from first principles, not derived from the semgrep-rules or opengrep-rules corpora; shipped rules passed the field precision gate (design 4.5), failing ones stay in the unshipped opengrep-rules-experimental/ folder."
     }
   ],
   "custom_rules": [
@@ -898,6 +910,114 @@
       "source": "codeinspectus-custom"
     },
     {
+      "id": "syn-node-jwt-verify-no-algorithms",
+      "engine": "opengrep",
+      "name": "jsonwebtoken verify() without an algorithms allow-list",
+      "kind": "sast",
+      "cwe": ["CWE-347"],
+      "owasp_web": ["A07:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-node-jwt-decode-without-verify",
+      "engine": "opengrep",
+      "name": "Request token read with jsonwebtoken decode() and never verified",
+      "kind": "sast",
+      "cwe": ["CWE-345"],
+      "owasp_web": ["A07:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-node-session-cookie-insecure",
+      "engine": "opengrep",
+      "name": "Session middleware cookie with secure/httpOnly disabled",
+      "kind": "sast",
+      "cwe": ["CWE-614", "CWE-1004"],
+      "owasp_web": ["A05:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-node-nestjs-validation-pipe-no-whitelist",
+      "engine": "opengrep",
+      "name": "Global NestJS ValidationPipe without whitelist",
+      "kind": "sast",
+      "cwe": ["CWE-915"],
+      "owasp_web": ["A08:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-node-trust-proxy-unconditional",
+      "engine": "opengrep",
+      "name": "Framework trusts every proxy hop unconditionally",
+      "kind": "sast",
+      "cwe": ["CWE-348"],
+      "owasp_web": ["A05:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-node-placeholder-secret-deploy",
+      "engine": "opengrep",
+      "name": "Placeholder secret in a deploy file",
+      "kind": "sast",
+      "cwe": ["CWE-1188", "CWE-798"],
+      "owasp_web": ["A05:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-node-unsafe-deserialization",
+      "engine": "opengrep",
+      "name": "Deserializer that can rebuild functions (node-serialize, js-yaml full schema)",
+      "kind": "sast",
+      "cwe": ["CWE-502"],
+      "owasp_web": ["A08:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-node-zip-slip",
+      "engine": "opengrep",
+      "name": "Zip slip: archive entry name written outside the extraction folder",
+      "kind": "sast",
+      "cwe": ["CWE-22"],
+      "owasp_web": ["A01:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-node-command-injection",
+      "engine": "opengrep",
+      "name": "Command injection: request input reaches a shell command (JS/TS)",
+      "kind": "sast",
+      "cwe": ["CWE-78"],
+      "owasp_web": ["A03:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-node-code-injection-vm",
+      "engine": "opengrep",
+      "name": "Code injection: request input compiled by node:vm or a string timer",
+      "kind": "sast",
+      "cwe": ["CWE-94"],
+      "owasp_web": ["A03:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-node-prototype-pollution-key",
+      "engine": "opengrep",
+      "name": "Prototype pollution: request input chooses a nested property name",
+      "kind": "sast",
+      "cwe": ["CWE-1321"],
+      "owasp_web": ["A08:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-node-prototype-pollution-merge",
+      "engine": "opengrep",
+      "name": "Prototype pollution: recursive merge helper without __proto__ guard",
+      "kind": "sast",
+      "cwe": ["CWE-1321"],
+      "owasp_web": ["A08:2021"],
+      "source": "codeinspectus-custom"
+    },
+    {
       "id": "codeinspectus-stripe-live-secret",
       "engine": "gitleaks",
       "name": "Stripe live-mode secret key",
@@ -925,6 +1045,166 @@
       "id": "codeinspectus-anthropic-key",
       "engine": "gitleaks",
       "name": "Anthropic API key",
+      "kind": "secret",
+      "cwe": ["CWE-798"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-sql-injection",
+      "engine": "opengrep",
+      "name": "SQL injection from request input (PHP, Laravel, Symfony, WordPress)",
+      "kind": "sast",
+      "cwe": ["CWE-89"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-command-injection",
+      "engine": "opengrep",
+      "name": "OS command injection from request input (PHP)",
+      "kind": "sast",
+      "cwe": ["CWE-78"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-code-injection",
+      "engine": "opengrep",
+      "name": "Code injection: request input evaluated or chooses the function (PHP)",
+      "kind": "sast",
+      "cwe": ["CWE-94"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-unserialize-input",
+      "engine": "opengrep",
+      "name": "unserialize() of request input (PHP object injection)",
+      "kind": "sast",
+      "cwe": ["CWE-502"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-ssrf",
+      "engine": "opengrep",
+      "name": "Server-side request forgery: request input chooses the outgoing host (PHP)",
+      "kind": "sast",
+      "cwe": ["CWE-918"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-extract-request-input",
+      "engine": "opengrep",
+      "name": "extract()/parse_str() of request input overwrites variables (PHP)",
+      "kind": "sast",
+      "cwe": ["CWE-621"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-upload-client-filename",
+      "engine": "opengrep",
+      "name": "Upload stored under the client's file name or extension (PHP)",
+      "kind": "sast",
+      "cwe": ["CWE-434"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-blade-raw-request-output",
+      "engine": "opengrep",
+      "name": "Blade {!! !!} prints request input unescaped (Laravel)",
+      "kind": "sast",
+      "cwe": ["CWE-79"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-weak-password-hash",
+      "engine": "opengrep",
+      "name": "Password hashed with MD5/SHA-1 (PHP)",
+      "kind": "sast",
+      "cwe": ["CWE-916"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-tls-verification-disabled",
+      "engine": "opengrep",
+      "name": "TLS certificate verification disabled (PHP)",
+      "kind": "sast",
+      "cwe": ["CWE-295"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-env-app-debug-enabled",
+      "engine": "opengrep",
+      "name": "APP_DEBUG=true in a deployable .env file (Laravel, Symfony)",
+      "kind": "sast",
+      "cwe": ["CWE-489"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-symfony-prod-debug",
+      "engine": "opengrep",
+      "name": "Symfony production env or config enables dev mode",
+      "kind": "sast",
+      "cwe": ["CWE-489"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-symfony-front-controller-debug",
+      "engine": "opengrep",
+      "name": "Symfony front controller boots dev/debug unconditionally",
+      "kind": "sast",
+      "cwe": ["CWE-489"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-wp-rest-route-public-write",
+      "engine": "opengrep",
+      "name": "WordPress REST write route open to everyone with no handler check",
+      "kind": "sast",
+      "cwe": ["CWE-862"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-wp-ajax-handler-no-auth-check",
+      "engine": "opengrep",
+      "name": "WordPress admin-ajax handler changes data without nonce or capability check",
+      "kind": "sast",
+      "cwe": ["CWE-862"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-wp-debug-display-enabled",
+      "engine": "opengrep",
+      "name": "wp-config.php displays PHP errors to visitors",
+      "kind": "sast",
+      "cwe": ["CWE-209"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-file-inclusion",
+      "engine": "opengrep",
+      "name": "File inclusion from request input (PHP)",
+      "kind": "sast",
+      "cwe": ["CWE-98"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-phar-path-input",
+      "engine": "opengrep",
+      "name": "phar:// wrapper reachable through a request path (PHP before 8.0)",
+      "kind": "sast",
+      "cwe": ["CWE-502"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "syn-php-insecure-random-token",
+      "engine": "opengrep",
+      "name": "Security token from a predictable generator (PHP)",
+      "kind": "sast",
+      "cwe": ["CWE-338"],
+      "source": "codeinspectus-custom"
+    },
+    {
+      "id": "codeinspectus-laravel-app-key",
+      "engine": "gitleaks",
+      "name": "Laravel APP_KEY in a deployable .env file",
       "kind": "secret",
       "cwe": ["CWE-798"],
       "source": "codeinspectus-custom"

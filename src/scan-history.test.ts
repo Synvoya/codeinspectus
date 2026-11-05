@@ -171,6 +171,58 @@ describe("arbitrary conservative comparison states", () => {
     expect(result.history_provenance).toMatchObject({ same_canonical_target: true, reopened_proof: "complete" });
   });
 
+  // Final review I-1: scans partial only through gaps they accepted are a sound comparison foundation.
+  test("each scan's own accepted gaps let absence prove Resolved and New", () => {
+    const gap = { coverage_gaps: [{ id: "php-sast" as const, files: 1, examples: ["src/index.php"] }] };
+    const accepted = { ...gap, accepted_gaps: ["php-sast" as const] };
+    const kept = finding("kept", "component");
+    const fixed = finding("fixed", "component");
+    const added = finding("added", "new");
+    const compare = (oldOverrides: Partial<StoredScanResult>, newOverrides: Partial<StoredScanResult>) => {
+      const old = scan(1, "2026-07-01T00:00:00.000Z", [kept, fixed], oldOverrides);
+      const fresh = scan(2, "2026-07-02T00:00:00.000Z", [finding("kept", "component"), added], newOverrides);
+      return compareScanHistory(old, fresh, snapshot([fresh, old]));
+    };
+
+    const both = compare(accepted, accepted);
+    expect(both.summary).toEqual({ New: 1, Reopened: 0, Persisting: 1, Resolved: 1, "Not rechecked / unknown": 0 });
+    expect(both.partial).toBe(false);
+    expect(both.history_provenance.notes).toContain(
+      "One or both compared scans are partial only through accepted gaps for code no bundled SAST rule reads (php-sast); " +
+        "no engine reports SAST findings there in either scan.",
+    );
+
+    const notAccepted = compare(gap, gap);
+    expect(notAccepted.summary).toMatchObject({ New: 0, Resolved: 0, "Not rechecked / unknown": 2 });
+    // OLD accepted the gap but NEW did not: NEW is still partial, so absence proves nothing.
+    expect(compare(accepted, gap).summary).toMatchObject({ Resolved: 0, "Not rechecked / unknown": 2 });
+    // An accepted id that names a different gap does not help.
+    const otherId = { ...gap, accepted_gaps: ["deno-lock" as const] };
+    expect(compare(otherId, otherId).summary).toMatchObject({ Resolved: 0 });
+  });
+
+  // Re-review N-1: sast-parse-errors and the lockfile gaps remove input an engine analyzed in OLD, so
+  // accepting them must not let absence from NEW read as Resolved.
+  test.each([
+    ["an Opengrep finding and an accepted sast-parse-errors gap", "opengrep", "sast-parse-errors", "src/x.ts"],
+    ["a Trivy finding and an accepted no-lockfile-npm gap", "trivy", "no-lockfile-npm", "package.json"],
+  ] as const)("%s is never Resolved", (_label, engine, gapId, file) => {
+    const base = finding("vuln", "component");
+    const old = scan(1, "2026-07-01T00:00:00.000Z", [{ ...base, engine, engines: [engine], location: { ...base.location, file } }]);
+    const fresh = scan(2, "2026-07-02T00:00:00.000Z", [], {
+      coverage_gaps: [{ id: gapId, files: 1, examples: [file] }],
+      accepted_gaps: [gapId],
+    });
+
+    const result = compareScanHistory(old, fresh, snapshot([fresh, old]));
+
+    expect(result.summary).toMatchObject({ Resolved: 0, "Not rechecked / unknown": 1 });
+    expect(result.partial).toBe(true);
+    expect(result.history_provenance.notes).toContain(
+      `Accepted gaps ${gapId} remove input an engine may have analyzed in the other scan, so they do not make a history comparison complete.`,
+    );
+  });
+
   test("a new rule/component absent from OLD is unknown, never New or Reopened", () => {
     const old = scan(1, "2026-07-01T00:00:00.000Z", [], { component_signatures: { component: "v1" } });
     const newScan = scan(2, "2026-07-02T00:00:00.000Z", [finding("new-rule", "new-component")], {

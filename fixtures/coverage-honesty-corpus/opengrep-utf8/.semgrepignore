@@ -1,0 +1,3 @@
+# Generated assets — keep them out of SAST
+node_modules/
+*.min.js

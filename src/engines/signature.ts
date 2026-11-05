@@ -1,8 +1,8 @@
 /**
  * Cosign keyless signature verification (PRD §0.2).
  *
- * MANDATORY + FAIL-CLOSED for opengrep and trivy: a binary is trusted only if its
- * publisher signature verifies against the pinned OIDC identity + issuer. If
+ * MANDATORY + FAIL-CLOSED for opengrep, trivy and osv-scanner: a binary is trusted only if its
+ * publisher signature or provenance attestation verifies against the pinned OIDC identity + issuer. If
  * cosign is missing, the signature artifacts are absent, or verification fails,
  * the caller must refuse to install/trust the binary.
  *
@@ -10,6 +10,9 @@
  *   the blob is the raw binary asset.
  * - trivy:    a sigstore bundle (`*.sigstore.json`) over `checksums.txt`; the
  *   authenticated checksums then gate the archive SHA.
+ * - osv-scanner: a SLSA provenance attestation bundle (`multiple.intoto.jsonl`) that
+ *   covers every release asset; verified against the raw binary with the pinned
+ *   generator identity, issuer and source workflow repository.
  */
 
 import { spawn } from "node:child_process";
@@ -121,6 +124,36 @@ export async function verifyBundle(opts: {
     opts.identity,
     "--certificate-oidc-issuer",
     opts.issuer,
+    opts.blob,
+  ]);
+  const ok = code === 0 && /Verified OK/i.test(out);
+  return { ok, detail: ok ? "cosign Verified OK" : `cosign FAILED: ${out.trim().slice(0, 400)}` };
+}
+
+/**
+ * osv-scanner-style verification: SLSA v0.2 provenance attestation bundle for a blob.
+ * `workflowRepository` binds the certificate to the source repository that built it,
+ * not only to the (shared) SLSA generator workflow identity.
+ */
+export async function verifySlsaAttestation(opts: {
+  blob: string;
+  bundlePath: string;
+  identity: string;
+  issuer: string;
+  workflowRepository: string;
+}): Promise<SigResult> {
+  const { code, out } = await runCosign([
+    "verify-blob-attestation",
+    "--bundle",
+    opts.bundlePath,
+    "--type",
+    "slsaprovenance02",
+    "--certificate-identity",
+    opts.identity,
+    "--certificate-oidc-issuer",
+    opts.issuer,
+    "--certificate-github-workflow-repository",
+    opts.workflowRepository,
     opts.blob,
   ]);
   const ok = code === 0 && /Verified OK/i.test(out);

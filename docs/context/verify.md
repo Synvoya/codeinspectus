@@ -21,8 +21,76 @@ npm run eval         # drives the built server over MCP stdio
 Expected: all non-skipped evals PASS. Engine-dependent evals (E16 Opengrep SQLi,
 E17 Trivy SCA, E18 Opengrep CORS precision, and E34-E36 Opengrep/native parity)
 auto-SKIP when the binary/DB cannot run — that is acceptable, a FAIL is not. The
-suite currently has 59 evals; with Trivy active but Opengrep unavailable the expected
-result is 54 passed, 0 failed, 5 skipped. E17 skips only without the Trivy DB. E22,
+suite currently has 110 evals (E01-E92 plus E100-E103, E110-E112, E120-E121, E130-E137). Measured
+on 2026-11-05 after the 4.0 final-review fixes: with all four engines and their databases installed
+(OSV npm, PyPI, Packagist, Go and GitHub Actions), 110 passed, 0 failed, 0 skipped.
+The no-engine count for 110 evals was not re-measured for 4.0; at 87 evals (2026-11-03) it was 63 passed,
+0 failed, 24 skipped (every skip is engine-dependent; E82, E83, E85 and E86 need no engine and E84
+skips). Engine evals need a `HOME` holding `~/.codeinspectus`; run them from the main checkout or a
+copy with that `HOME`. In a worktree whose `HOME` was blocked, E83 and E84 timed out (a worktree
+artefact, per the M4 ledger, not a product failure). Evals added for 4.0: E87-E92 (vendored
+libraries, GitHub Actions, Go toolchain), E100-E103 and E110-E112 (every PHP and Node.js pack rule on its
+TP and FP fixtures; no line carries both a baseline and a Node pack finding), E120-E121 (third-party
+routing, Gitleaks allowlists), E130-E132 (native parser), E133 (licence opt-in) and E134-E135 (pack pass
+skips bundles; a glob-named file never hides siblings). Partial installs fall between the two: E59/E60 skip without the
+PyPI OSV database, and E61 skips without osv-scanner or when the OSV crates.io database is installed. E17 and E64 skip only without the Trivy DB; E64 requires
+every Trivy dependency finding to name its package and, when Trivy reports a fixed version, to
+name the upgrade in its remediation (a Trivy finding merged into an osv-scanner one is checked in
+osv-scanner's wording: package in the title, `Upgrade <name> ` remediation). E62 scans with
+no host locale and must run Opengrep on a UTF-8 `.semgrepignore`; E63 requires a repository
+`.semgrepignore` to leave Opengrep's file selection unchanged. Both skip only without Opengrep.
+E65 requires valid JSX text with an apostrophe or a bare slash to keep both JavaScript packs `ran`;
+it must not skip.
+E66 runs Gitleaks on a relative `.gitleaksignore` entry (finding kept, secret coverage `verified`)
+and on an absolute one, plain and NEL-prefixed (finding hidden, coverage `unverified`); it skips only
+without Gitleaks.
+E67 adds a 2.8 MB `.yarn/releases/*.cjs` at runtime and requires both JavaScript packs to read `ran`
+with no oversized-source note; it must not skip.
+E68 writes `trivy.yaml`, `.trivyignore` and `trivy-secret.yaml` into a scanned copy of vulnerable-app
+and requires Trivy's vulnerability, misconfiguration and secret findings anyway; it skips only
+without the Trivy DB. E69 scans a single file whose directory holds a `.gitleaksignore` naming it
+and requires the Gitleaks finding; it skips only without Gitleaks. E70 adds a file over Opengrep's
+1,000,000-byte limit, a syntax error and a 1.1 MB PNG, and requires the "Opengrep SAST coverage partial" warning to
+count and name the first, the `sast-parse-errors` gap to name the second, and an informational
+`engine:opengrep` note (never the warning) to name the PNG; it skips only without Opengrep. E71 scans copies of `opengrep-ignore-suppress`
+under `build/`, `tests/` and `node_modules/` folders and requires the planted `eval()` (and the
+default `*.min.js` exclusion) in each; it guards the internal
+`SEMGREP_R2C_INTERNAL_EXPLICIT_SEMGREPIGNORE` variable and skips only without Opengrep. E72 builds a
+git repository whose `.gitignore` matches a committed (force-added) and an untracked file and
+requires Opengrep findings in both; it skips only without Opengrep. E73 scans
+`coverage-honesty-corpus/coverage-gaps` and requires the four declared gap ids with counts and
+examples, `accepted_gaps` listing only what `accept_gaps` named, and an unknown id rejected; it must
+not skip. E74 starts the server with `SEMGREP_BASELINE_REF=HEAD`, `TRIVY_SEVERITY=CRITICAL`,
+`TRIVY_CONFIG` and `GITLEAKS_CONFIG` set and requires the Opengrep, non-critical Trivy and Gitleaks
+findings of a committed vulnerable-app copy; it skips only without the Trivy DB. E75 scans
+`coverage-honesty-corpus/opengrep-rules`, which holds one folder per bundled Opengrep rule id, and
+requires each rule to fire on its `tp/` files only, no Opengrep skip or error warning (an
+"Internal matching error" counts), and the folders to match the bundled rule ids; add a folder with
+`tp/` cases when you add a rule. It skips only without Opengrep. E76 scans a secret file under
+`node_modules/`, `bower_components/`, `vendor/bundle/` and `lib/python3.12/site-packages/` folders and
+requires the Gitleaks finding with `verified` coverage, and a single file under `node_modules/` to read
+`unverified`; it skips only without Gitleaks. E77 commits planted code under `.vercel/output/` and
+`.next/` and requires the Opengrep finding in the first (only BUILD_DIRS are skipped) and none in the
+second; it skips only without Opengrep. E78 scans `coverage-honesty-corpus/dev-deps` (npm
+devDependency handlebars, Composer `packages-dev` phpunit, production lodash and guzzle) and requires
+the development packages' findings, titled `, dev dependency)` (also when osv-scanner's finding survives
+the merge), and the production ones unmarked; it
+skips only without the Trivy DB. E79 builds a temporary repository with an unparsable `src/broken.ts`, a
+directory symlink, a `wpackagist-plugin/*` composer.lock entry and a workflow `uses:` reference, and
+requires the gaps `native-parse-errors`, `symlinked-paths`, `wordpress-plugins` and `actions-unchecked`
+with exact examples, `accepted_gaps` listing all four, and both JavaScript packs reading `ran`; it must
+not skip. E82-E86 cover the Synvoya gap layer (`docs/SYNVOYA.md`). E82 scans `fixtures/synvoya/evals/gap-declarations`
+(`node:22.1.0-alpine`, `.nvmrc 20`, `"php": "8.1.*"`, Magento EE 2.4.7-p2) and requires the Node, PHP and
+Adobe verify-hotfix findings with their fixes; E83 starts the server from a COPY of the built package
+whose `advisories.json` was edited and requires the engine `unavailable`, the warning, and a rescan that
+reports the prior Synvoya findings `not_rechecked`; E85 requires `node:22-alpine` to give an info
+coverage note and no finding. E86 starts a second server with
+`CODEINSPECTUS_INTERNAL_SYNVOYA_DEADLINE_MS=0` over a temporary `HOME` and requires the rescan to report
+the prior findings `not_rechecked`, never `resolved`. All four must not skip. E84 scans
+`fixtures/synvoya/evals/trivy-covered` and requires one upstream `node-forge` finding with the
+Synvoya fix added and its id, fingerprint and producers equal to a scan with Synvoya unavailable; it
+skips only without the Trivy DB (or when the installed DB does not list the covered CVE yet).
+E22,
 E53, and E54 cover Supabase Edge, Next.js admin, and Express admin auth/authz. E55/E56
 cover exact source-integrity evidence, vendor-neutral classification, read-only behavior,
 and bidirectional same-path trust-artifact rescans; both must not skip.
@@ -125,7 +193,7 @@ npx vitest run \
   src/provenance.test.ts \
   src/repository-trust/*.test.ts
 ```
-Expected: all focused tests pass; manifest `1.19.0` owns exactly 72 native rule IDs (29
+Expected: all focused tests pass; manifest `2.0.0` owns exactly 72 native rule IDs (29
 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, 2 Expo, 10 Python AI/API,
 1 Go AI, 1 Java AI, 1 C# AI, 1 PHP AI, 1 Rust AI, 1 Ruby AI, 3 Firebase configuration,
 2 GitHub Actions workflow, and 2 JavaScript baseline SAST) across sixteen packs and 45 analyzers;
@@ -226,7 +294,7 @@ npm run shadow:opengrep -- --require-hit \
   fixtures/opengrep-shadow-corpus/fixed
 ```
 
-Expected: Opengrep `1.23.0` is available; TP is exact 6/6, FP/fixed are 0/0, direct-file and
+Expected: Opengrep `1.33.1` is available; TP is exact 6/6, FP/fixed are 0/0, direct-file and
 project-root identities agree, metadata mismatches are empty, and no candidate loader limitation is
 present. E34 repeats the engine-backed parity contract. E35/E36 prove native-only surfaced
 provenance, SAST/AI scanner filtering, and same-path fixed/reintroduced rescan behavior while the

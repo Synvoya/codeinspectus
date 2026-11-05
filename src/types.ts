@@ -4,7 +4,10 @@
  * TS types describe the internal model the orchestrator passes around.
  */
 
+import type { EngineName } from "./config.js";
+import type { OsvEcosystem } from "./osv/ecosystems.js";
 import type { RepositoryTrustChanges, RepositoryTrustDocument } from "./repository-trust/schemas.js";
+import type { CoverageGap, CoverageGapId, CoverageNote } from "./coverage-gaps.js";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -22,8 +25,13 @@ export type Engine =
   | "opengrep"
   | "gitleaks"
   | "trivy"
+  | "osv-scanner"
   | "codeinspectus-ai"
-  | "codeinspectus-pub";
+  | "codeinspectus-pub"
+  | "synvoya";
+
+/** Display-only grouping of CodeInspectus-owned detection ("Synvoya (CodeInspectus)"). Never an identity input. */
+export type EngineFamily = "synvoya";
 
 export type ScannerKind = "sast" | "secret" | "vuln" | "misconfig" | "license" | "ai";
 
@@ -59,6 +67,11 @@ export interface Finding {
   engine: Engine;
   /** Every engine that reported this finding (after dedup merge). */
   engines: Engine[];
+  /**
+   * Display family, set once after dedup (src/synvoya/family.ts). Additive and optional: `engine`,
+   * `rule_id`, the id and the fingerprint never depend on it, so baselines and rescans match without it.
+   */
+  engine_family?: EngineFamily;
   rule_id: string;
   /** Equivalent advisory identifiers used to deduplicate the same vulnerability across scanners. */
   vulnerability_aliases?: string[];
@@ -85,6 +98,15 @@ export interface Finding {
   finding_kind?: FindingKind;
   /** Relationship to an optional Git change scope. Omitted for whole-target scans. */
   scope_role?: "primary" | "supporting_context";
+  /** The dependency a vulnerability finding is about, so dedup never merges different packages. */
+  package?: FindingPackage;
+}
+
+/** A resolved dependency: ecosystem as OSV names it (e.g. "PyPI"), name as the lockfile reports it. */
+export interface FindingPackage {
+  ecosystem: string;
+  name: string;
+  version: string;
 }
 
 export interface SeveritySummary {
@@ -163,10 +185,11 @@ export interface DetectorPackCoverage {
   note?: string;
 }
 
-/** First-party dependency analysis coverage, separate from source detector packs. */
+/** Dependency analysis coverage per ecosystem, separate from source detector packs. */
 export interface DependencyCoverage {
-  ecosystem: "Pub";
-  engine: "codeinspectus-pub";
+  /** OSV ecosystem name ("Pub", "PyPI", ...), or the raw name osv-scanner reported for an unsupported one. */
+  ecosystem: string;
+  engine: "codeinspectus-pub" | "osv-scanner";
   state: "ran" | "partial" | "not_run" | "not_applicable" | "unavailable";
   lockfiles: {
     discovered: number;
@@ -179,7 +202,7 @@ export interface DependencyCoverage {
   };
   database_version?: string;
   database_checked_at?: string;
-  matching: "exact-enumerated-versions";
+  matching: "exact-enumerated-versions" | "osv-scanner-offline";
   limitations: string[];
   note?: string;
 }
@@ -194,13 +217,20 @@ export type EngineArtifactState =
   | "unsupported_platform";
 
 export interface EngineArtifactHealth {
-  engine: "opengrep" | "gitleaks" | "trivy";
+  engine: EngineName;
   version: string;
   state: EngineArtifactState;
   detail?: string;
 }
 
 export type TrivyDbHealthState = "ready" | "missing" | "provenance_missing" | "stale";
+
+/** One installed OSV ecosystem database. Ecosystems with no archive are not listed: they are optional. */
+export interface OsvDatabaseHealth {
+  ecosystem: OsvEcosystem;
+  state: "ready" | "provenance_missing" | "stale";
+  downloaded_at?: string;
+}
 
 /**
  * Machine-level setup advisory. This is local metadata, never a vulnerability
@@ -214,6 +244,8 @@ export interface EngineSetupStatus {
     state: TrivyDbHealthState;
     downloaded_at?: string;
   };
+  /** Installed OSV ecosystem databases. Absent in results stored before OSV support. */
+  osv_databases?: OsvDatabaseHealth[];
   repair_command?: string;
   network_required: boolean;
 }
@@ -335,12 +367,28 @@ export interface ScanResult {
   compliance_overview?: ComplianceOverview;
   disclaimer: string;
   warnings: string[];
-  /** Secret-scanner coverage status. Unverified when Gitleaks did not run or .gitleaksignore exists. */
+  /** Secret-scanner coverage status. Unverified when Gitleaks did not run or a .gitleaksignore entry can match. */
   secret_coverage?: "verified" | "unverified";
   /** Redacted metadata only: channel names, counts, and relative file paths. */
   secret_suppression?: SecretSuppressionMetadata;
+  /** Inputs no bundled engine analyzes (stable ids); each makes aggregate coverage partial. */
+  coverage_gaps?: CoverageGap[];
+  /** Gap ids the caller accepted for CI (`accept_gaps`); accepted gaps stay listed in coverage_gaps. */
+  accepted_gaps?: CoverageGapId[];
+  /** Informational scope disclosures that are not gaps and never lower coverage. */
+  coverage_notes?: CoverageNote[];
   /** Component id -> content/semantic signature. Optional only for legacy stored scans. */
   component_signatures?: Record<string, string>;
+  /**
+   * Per Synvoya producer (`runtime`, `images`, `products`, `vendored` readers; `inventory:osv-scanner`,
+   * `inventory:trivy`; `sbom:osv-scanner`, the osv-scanner run over vendored libraries), the target-relative
+   * files it fully checked in this scan. Rescan proof only: a prior
+   * Synvoya finding resolves only when every producer it records (`synvoya:<producer>` producer
+   * components) lists its file here; otherwise (skipped, read in part, unresolvable, removed, moved, or the
+   * set omitted) it is not re-checked. Kept in the canonical (stored) scan; not in the display projection
+   * or the export.
+   */
+  synvoya_checked?: Partial<Record<"runtime" | "images" | "products" | "inventory:osv-scanner" | "inventory:trivy" | "vendored" | "sbom:osv-scanner" | "actions", string[]>>;
   /** Code-visible runtime-control evidence. Metadata only; never affects posture scores. */
   security_control_evidence?: SecurityControlEvidence[];
   /** Actionable advisory when a completed Trivy vuln scan lacks install-time DB provenance. */
@@ -370,6 +418,11 @@ export interface ScanConfig {
   severity_threshold?: Severity;
   /** The effective max_findings cap actually applied. */
   max_findings: number;
+  /**
+   * Whether Trivy licence findings were requested (4.0: opt-in). Absent on scans stored before 4.0, which always
+   * ran licences unless a scanner filter left them out; use `scanIncludedLicenses`.
+   */
+  include_licenses?: boolean;
 }
 
 export interface RescanResult {

@@ -1,8 +1,8 @@
 /**
  * Scan orchestrator (PRD §3 data flow):
- *   run engines (Opengrep/Gitleaks/Trivy) + AI-code checks as subprocesses/analyzers
- *   → normalize each SARIF into the CWE-keyed schema
- *   → dedup (global + Trivy⨯Gitleaks secret overlap)
+ *   run engines (Opengrep/Gitleaks/Trivy/osv-scanner) + AI-code checks as subprocesses/analyzers
+ *   → normalize each SARIF into the CWE-keyed schema (osv-scanner and native Pub emit findings directly)
+ *   → dedup (global + Trivy⨯Gitleaks secret overlap + package-aware vulnerability merge)
  *   → compliance-tag each finding
  *   → sort, threshold, paginate → §5 envelope.
  *
@@ -36,27 +36,61 @@ import { saveScan } from "./store.js";
 import { runOpengrep } from "./engines/opengrep.js";
 import { runGitleaks } from "./engines/gitleaks.js";
 import { runTrivy, type TrivyScanner } from "./engines/trivy.js";
+import { runOsvScanner } from "./engines/osv-scanner.js";
+import { osvContribution } from "./osv/contribution.js";
+import { detectOsvLockfiles } from "./osv/ecosystems.js";
 import type { EngineOutput } from "./engines/types.js";
 import { runAiChecks } from "./ai-checks/index.js";
 import { nativePackNotRunCoverage } from "./packs/registry.js";
-import { detectTechnologies } from "./technology-detection.js";
-import { normalizeEngineOutput } from "./sarif/normalize.js";
-import { routeScanFindings } from "./file-routing.js";
+import { detectionVisitsLinkTarget, detectTechnologies } from "./technology-detection.js";
+import { normalizeEngineOutput, splitMagentoPatchFixed, type MagentoPatchSuppression } from "./sarif/normalize.js";
+import { routeScanFindings, type RouteStats } from "./file-routing.js";
 import { detectGitSafety } from "./git-safety.js";
 import { dedupFindings } from "./dedup.js";
+import { withEngineFamily } from "./synvoya/family.js";
 import { isConfigurationFile, scrubCredentialContext } from "./redact.js";
 import { tagFindings } from "./compliance/mapper.js";
 import { buildComplianceOverview } from "./compliance/report.js";
 import { hasUnverifiedSecretCoverage, secretSuppressionWarnings } from "./gitleaks-suppression.js";
+import { detectTrivyInlineIgnores, trivyInlineIgnoreWarning } from "./trivy-suppression.js";
+import { escapeScanDisplayText } from "./display-path.js";
+import { nativeGaps } from "./native-gaps.js";
 import { PIPELINE_COMPONENT, staticComponentSignatures } from "./provenance.js";
 import { trivyDbProvenanceSignal } from "./trivy-db-provenance.js";
 import { inspectEngineSetup } from "./engine-health.js";
 import { runPubScan } from "./pub/scanner.js";
+import { runSynvoyaScan, synvoyaUpstreamInputs } from "./synvoya/scanner.js";
+import { enrichUpstream, foldSbomDuplicates } from "./synvoya/enrich.js";
 import { PROMOTED_OPENGREP_RULE_IDS, reconcileNativeSast } from "./native-sast-reconciliation.js";
 import { requireSafeScanTarget } from "./path-safety.js";
+import { actionsUncheckedGap, COVERAGE_GAP_IDS, defaultScopeNotes, discoverCoverageGaps, type CoverageGap, type CoverageNote } from "./coverage-gaps.js";
 
 function wants(input: ScanInput, scanner: string): boolean {
   return !input.scanners || input.scanners.length === 0 || input.scanners.includes(scanner as never);
+}
+
+/** The coverage note a scan carries when licence findings were left out because nobody asked for them. */
+export const LICENSES_NOT_REQUESTED_NOTE: CoverageNote = {
+  component: "scanner:license",
+  detail: "Licence findings were not requested (use include_licenses / --licenses).",
+};
+
+/**
+ * Licences are opt-in (4.0): `include_licenses`, or `license` named in `scanners`. A scanner filter that leaves
+ * `license` out still wins, as it always did.
+ */
+function wantsLicenses(input: ScanInput): boolean {
+  return input.scanners?.includes("license") === true || (input.include_licenses === true && wants(input, "license"));
+}
+
+/**
+ * Whether a stored scan ran licence checks, which a rescan repeats. Scans stored before 4.0 have no recorded
+ * choice: they ran licences unless their scanner filter left them out.
+ */
+export function scanIncludedLicenses(scan: Pick<ScanResult, "scan_config">): boolean {
+  const config = scan.scan_config;
+  if (config?.include_licenses !== undefined) return config.include_licenses;
+  return !config?.scanners?.length || config.scanners.includes("license");
 }
 
 function emptySummary(): SeveritySummary {
@@ -70,6 +104,20 @@ function summarize(findings: Finding[]): SeveritySummary {
     s.total++;
   }
   return s;
+}
+
+/** The coverage note for Trivy Magento findings provably fixed at the installed `-pN` release: count, package, file, advisories. */
+function magentoPatchNote(suppressed: readonly MagentoPatchSuppression[]): string {
+  const groups = new Map<string, string[]>();
+  for (const entry of suppressed) {
+    const key = `${entry.name} ${entry.version} in ${entry.file}`;
+    groups.set(key, [...(groups.get(key) ?? []), entry.rule_id]);
+  }
+  const shown = [...groups].slice(0, 5).map(([key, ids]) => `${key} (${ids.length > 3 ? `${ids.slice(0, 3).join(", ")} and ${ids.length - 3} more` : ids.join(", ")})`);
+  const more = groups.size > 5 ? `; and ${groups.size - 5} more package(s)` : "";
+  const count = suppressed.length;
+  return `Trivy orders Magento -pN patch releases before their base release, so it matched ${count} ${count === 1 ? "advisory" : "advisories"} ` +
+    `that Magento ordering shows fixed at the installed release; ${count === 1 ? "it is" : "they are"} not reported: ${shown.join("; ")}${more}.`;
 }
 
 function sortFindings(findings: Finding[]): Finding[] {
@@ -104,6 +152,57 @@ export interface ScanExecution {
   display: ScanResult;
 }
 
+/**
+ * Design §10.6: the file router's third-party routing, disclosed as scope notes. Code findings in the
+ * path scope Opengrep's default ignore list already skips (a case-sensitive vendor/ folder, *.min.js)
+ * are not reported; code findings in scripts that only look like copied libraries (by content or
+ * folder name) are reported at low. Secret, credential-class and dependency findings are never routed.
+ */
+export function routingNotes(
+  stats: Pick<RouteStats, "third_party_code" | "third_party_files" | "third_party_lowered" | "third_party_lowered_files"> &
+    Partial<Pick<RouteStats, "context_lowered" | "context_lowered_rules" | "context_kept_reused">>,
+): CoverageNote[] {
+  const notes: CoverageNote[] = [];
+  const list = (files: string[]) => {
+    const shown = files.slice(0, 20);
+    return shown.join(", ") + (files.length > shown.length ? ` and ${files.length - shown.length} more` : "");
+  };
+  if (stats.third_party_code) {
+    notes.push({
+      component: "routing:third-party-code",
+      detail: `${stats.third_party_code} code finding(s) in ${stats.third_party_files.length} vendor/ or *.min.js script(s) are not ` +
+        `reported (${list(stats.third_party_files)}): the same scope Opengrep's default ignore list skips. Secret and dependency ` +
+        "findings in those files are still reported.",
+    });
+  }
+  if (stats.third_party_lowered) {
+    notes.push({
+      component: "routing:third-party-lowered",
+      detail: `${stats.third_party_lowered} code finding(s) in ${stats.third_party_lowered_files.length} script(s) that look like ` +
+        `copied libraries (a licence banner, a UMD wrapper, a minified body or a vendors-style folder) are reported at low severity with a ` +
+        `"Third-party code" label (${list(stats.third_party_lowered_files)}).`,
+    });
+  }
+  const reused = stats.context_kept_reused ?? 0;
+  if (stats.context_lowered || reused) {
+    const byRule = Object.entries(stats.context_lowered_rules ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([rule, count]) => `${rule} ${count}`).join(", ");
+    notes.push({
+      component: "routing:test-example-context",
+      detail: (stats.context_lowered
+        ? `${stats.context_lowered} finding(s) in test, fixture, example or documentation files are reported at low severity ` +
+          `with a "Test/example context" label, never dropped (${byRule}). Only Gitleaks' generic rules (generic-api-key, ` +
+          "curl-auth-header, curl-auth-user) and generic code findings are lowered; every named-provider secret, private key, " +
+          "malware and vulnerability finding keeps its severity everywhere."
+        : "No finding was lowered for test or example context.") +
+        (reused
+          ? ` ${reused} test or example secret(s) kept their severity because the same value also appears in a non-test file.`
+          : ""),
+    });
+  }
+  return notes;
+}
+
 export async function projectScanForDisplay(
   canonical: ScanResult,
   input: Pick<ScanInput, "severity_threshold" | "max_findings" | "include_compliance">,
@@ -115,8 +214,10 @@ export async function projectScanForDisplay(
   }
   const totalBeforeLimit = visible.length;
   const limited = visible.slice(0, input.max_findings ?? DEFAULT_MAX_FINDINGS);
+  // Rescan proof data only; kept out of the agent-facing view to protect its context window.
+  const { synvoya_checked: _checked, ...shown } = canonical;
   const display: ScanResult = {
-    ...canonical,
+    ...shown,
     summary: summarize(visible),
     findings: limited,
     truncated: limited.length < totalBeforeLimit,
@@ -147,14 +248,16 @@ export async function executeScan(
     warnings.push(`Repository-trust detectors unavailable: ${error instanceof Error ? error.message : "unknown detector failure"}`);
     return createUnavailableRepositoryTrust();
   });
+  const gapProbe = discoverCoverageGaps(target);
   const tmpDir = await mkdtemp(join(tmpdir(), "ci-scan-"));
 
   try {
     // Decide which engines/scanners to run from the scanner filter.
     const runSast = wants(input, "sast");
     const runSecret = wants(input, "secret");
+    const runLicenses = wantsLicenses(input);
     const trivyScanners: TrivyScanner[] = (["vuln", "misconfig", "secret", "license"] as TrivyScanner[]).filter(
-      (s) => wants(input, s),
+      (s) => (s === "license" ? runLicenses : wants(input, s)),
     );
     const runAi = wants(input, "ai");
     const runVuln = wants(input, "vuln");
@@ -163,7 +266,8 @@ export async function executeScan(
     const tasks: Array<Promise<EngineOutput | (EngineOutput & { trivyDbDate?: string })>> = [];
     if (runSast) tasks.push(runOpengrep(target, tmpDir));
     if (runSecret) tasks.push(runGitleaks(target, tmpDir));
-    let trivyTask: Promise<EngineOutput & { trivyDbDate?: string }> | undefined;
+    let trivyTask: ReturnType<typeof runTrivy> | undefined;
+    const trivyIgnoreProbe = trivyScanners.includes("misconfig") ? detectTrivyInlineIgnores(target) : undefined;
     if (trivyScanners.length) {
       trivyTask = runTrivy(target, tmpDir, trivyScanners);
       tasks.push(trivyTask);
@@ -182,19 +286,52 @@ export async function executeScan(
     // infer a language hidden behind an unreadable/symlinked subtree; the Pub loader must get a
     // chance to report that omission as partial rather than the envelope saying not_applicable.
     const pubTask = runVuln ? runPubScan(target) : undefined;
+    // Offline against the per-ecosystem OSV databases setup installed; additive to Trivy and native Pub.
+    const osvTask = runVuln ? runOsvScanner(target, tmpDir) : undefined;
+    // Bounded, name-only walk, run alongside the engines; used only to reconcile an osv-scanner run that happened.
+    const osvLockfilesTask = runVuln ? detectOsvLockfiles(target) : undefined;
+    // Synvoya gap layer (same gate as Pub): its readers start now, alongside the engines; evaluation
+    // waits for the package inventory osv-scanner and Trivy produce in this scan (design §8 item 2).
+    const synvoyaUpstream = runVuln
+      ? Promise.all([trivyTask, osvTask]).then(([trivy, osv]) =>
+          synvoyaUpstreamInputs({ trivy, trivyVulnerabilityScan: trivyScanners.includes("vuln"), osv }))
+      : undefined;
+    const synvoyaTask = synvoyaUpstream
+      ? runSynvoyaScan(target, synvoyaUpstream.then((inputs) => inputs.inventory), synvoyaUpstream.then((inputs) => inputs.dates), { tmpDir })
+      : undefined;
 
-    const [engineOutputs, nativeResult, technologyDetection, pubResult, repositoryTrust] = await Promise.all([
+    const [engineOutputs, nativeResult, technologyDetection, pubResult, repositoryTrust, osvResult, osvLockfiles, synvoyaResult] = await Promise.all([
       Promise.all(tasks),
       nativeTask ?? Promise.resolve(undefined),
       technologyProbe,
       pubTask ?? Promise.resolve(undefined),
       repositoryTrustProbe,
+      osvTask ?? Promise.resolve(undefined),
+      osvLockfilesTask ?? Promise.resolve([]),
+      synvoyaTask ?? Promise.resolve(undefined),
     ]);
 
-    if (technologyDetection.limitations.length) {
+    // A skipped symbolic link whose real target detection visits inside the root is the declared gap
+    // symlinked-paths (Ruling 30); any other link, and every other detection limit, stays partial.
+    const visitedLinks = new Set<string>();
+    for (const limitation of technologyDetection.limitations) {
+      if (limitation.reason === "symlink_skipped" && await detectionVisitsLinkTarget(target, limitation.path)) {
+        visitedLinks.add(limitation.path);
+      }
+    }
+    const isVisitedLink = (limitation: { reason: string; path: string }) =>
+      limitation.reason === "symlink_skipped" && visitedLinks.has(limitation.path);
+    const detectionLimits = technologyDetection.limitations.filter((limitation) => !isVisitedLink(limitation));
+    const nativeGapEntries = [
+      ...technologyDetection.limitations
+        .filter(isVisitedLink)
+        .map((limitation) => ({ id: "symlinked-paths" as const, path: limitation.path })),
+      ...(nativeResult?.gapRecords ?? []),
+    ];
+    if (detectionLimits.length) {
       warnings.push(
         "Technology detection was partial: " +
-          technologyDetection.limitations
+          detectionLimits
             .map((limitation) => `${limitation.path} (${limitation.reason})`)
             .join(", "),
       );
@@ -234,10 +371,24 @@ export async function executeScan(
         `Native Pub dependency coverage ${activePubResult.coverage.state}: ${activePubResult.coverage.note ?? "see dependency_coverage limitations"}`,
       );
     }
+    const osv = osvResult
+      ? osvContribution(
+          osvResult,
+          // Lockfile detection is only for reconciling a run that happened; it never invents osv coverage.
+          osvResult.info.available ? osvLockfiles : [],
+          activePubResult?.coverage.state === "ran" || activePubResult?.coverage.state === "partial",
+        )
+      : undefined;
+    if (osv) {
+      dependencyCoverage.push(...osv.coverage);
+      warnings.push(...osv.warnings);
+    }
 
     // Normalize engine SARIF → findings; track per-engine raw counts.
     let allFindings: Finding[] = [];
     const engineDetails: EngineRunInfo[] = [];
+    const engineGaps: CoverageGap[] = nativeGaps(nativeGapEntries);
+    const engineNotes: CoverageNote[] = [];
     let trivyDbDate: string | undefined;
     let secretCoverage: "verified" | "unverified" | undefined;
     let secretSuppression: SecretSuppressionMetadata | undefined;
@@ -259,7 +410,7 @@ export async function executeScan(
         trivyVulnerabilityScanRan = true;
       }
       if (out.engine === "gitleaks" && out.secretSuppression) {
-        secretCoverage = out.ran && !hasUnverifiedSecretCoverage(out.secretSuppression)
+        secretCoverage = out.ran && !hasUnverifiedSecretCoverage(out.secretSuppression) && !out.coverageWarnings?.length
           ? "verified"
           : "unverified";
         if (out.secretSuppression.channels.length) {
@@ -278,6 +429,11 @@ export async function executeScan(
         ...(out.note ? { note: out.note } : {}),
       });
       if (!out.ran && out.note) warnings.push(`${out.engine} did not run: ${out.note}`);
+      if (out.ran) {
+        warnings.push(...(out.coverageWarnings ?? []));
+        engineGaps.push(...(out.coverageGaps ?? []));
+        for (const detail of out.coverageNotes ?? []) engineNotes.push({ component: `engine:${out.engine}`, detail });
+      }
     }
 
     if (nativeResult) {
@@ -315,20 +471,56 @@ export async function executeScan(
       Object.assign(componentSignatures, activePubResult.componentSignatures);
       engineDetails.push(activePubResult.info);
     }
+    if (osvResult && osv?.include) {
+      allFindings.push(...osvResult.findings);
+      Object.assign(componentSignatures, osvResult.componentSignatures);
+      engineDetails.push(osv.info);
+    }
 
-    // Trivy matches Pub advisories by package name only. A git-sourced, custom-hosted, path or SDK
-    // package with a pub.dev name is a different package, so its Trivy matches are name collisions.
+    // Trivy orders Magento `-pN` patch releases as pre-releases (field N2): an advisory Magento ordering shows
+    // fixed at the installed release is not reported, and the coverage notes name it (never a silent drop).
+    const magentoPatch = splitMagentoPatchFixed(allFindings);
+    allFindings = magentoPatch.kept;
+
+    // Trivy and osv-scanner match Pub advisories by package name only. A git-sourced, custom-hosted,
+    // path or SDK package with a pub.dev name is a different package, so those matches are name collisions.
     if (activePubResult?.nonOfficialPackages.length) {
       const excluded = new Set(activePubResult.nonOfficialPackages.map((pkg) => `${pkg.lockfile}\u0000${pkg.name}`));
       const before = allFindings.length;
       allFindings = allFindings.filter((finding) => {
-        if (finding.engine !== "trivy" || !finding.location.file.endsWith("pubspec.lock")) return true;
-        const name = /^Package: (\S+)/.exec(finding.message)?.[1];
+        if ((finding.engine !== "trivy" && finding.engine !== "osv-scanner") || !finding.location.file.endsWith("pubspec.lock")) return true;
+        const name = finding.package?.name;
         return !(name && excluded.has(`${finding.location.file}\u0000${name}`));
       });
       if (allFindings.length < before) {
-        warnings.push(`${before - allFindings.length} Trivy Pub advisory match(es) were package-name collisions with git-sourced, custom-hosted, path or SDK packages and are not reported.`);
+        warnings.push(`${before - allFindings.length} Trivy or osv-scanner Pub advisory match(es) were package-name collisions with git-sourced, custom-hosted, path or SDK packages and are not reported.`);
       }
+    }
+
+    // Synvoya: enrich, never merge (PRD §9.1 rule 3). A Synvoya package finding an upstream engine
+    // already reports only adds its fix to that finding's remediation; the rest stand alone.
+    let synvoyaRow: EngineRunInfo | undefined;
+    if (synvoyaResult) {
+      // osv-scanner's findings for vendored libraries join the upstream findings (a duplicate of one an
+      // upstream engine reports in the same file is folded), so a Synvoya package finding enriches them too.
+      const sbom = foldSbomDuplicates(allFindings, synvoyaResult.sbomFindings);
+      allFindings = allFindings.concat(sbom.kept);
+      for (const gap of synvoyaResult.coverageGaps) engineGaps.push(gap);
+      const enrichment = enrichUpstream(allFindings, synvoyaResult.findings);
+      allFindings = [...enrichment.upstream, ...enrichment.standalone];
+      Object.assign(componentSignatures, synvoyaResult.componentSignatures);
+      const folded = synvoyaResult.findings.length - enrichment.standalone.length;
+      const foldedNote = folded > 0
+        ? ` ${folded} Synvoya finding(s) duplicated an upstream finding; ${enrichment.enriched} matching upstream finding(s) gained its fix instead.`
+        : "";
+      synvoyaRow = {
+        ...synvoyaResult.info,
+        // Recounted after routing and dedup below, so the row matches the findings shown.
+        finding_count: enrichment.standalone.length,
+        ...(synvoyaResult.info.note || foldedNote ? { note: `${synvoyaResult.info.note ?? ""}${foldedNote}`.trim() } : {}),
+      };
+      engineDetails.push(synvoyaRow);
+      warnings.push(...synvoyaResult.warnings);
     }
 
     // CG-30 git-aware file routing: classify each finding by WHERE it lives (node_modules /
@@ -353,7 +545,10 @@ export async function executeScan(
     }
 
     // Dedup (global + secret overlap), then compliance-tag.
-    const { findings: deduped, stats } = dedupFindings(routed);
+    const { findings: dedupedRaw, stats } = dedupFindings(routed);
+    // Display family only: runs once, after dedup, so no key, fingerprint or id ever sees it.
+    const deduped = dedupedRaw.map(withEngineFamily);
+    if (synvoyaRow) synvoyaRow.finding_count = deduped.filter((finding) => finding.engines.includes("synvoya")).length;
     if (stats.merged > 0) log.debug(`dedup merged ${stats.merged} overlapping findings`);
     // Single chokepoint before persistence and every presentation surface: context windows can
     // carry neighbouring or truncated credentials that per-engine redaction cannot localize.
@@ -361,6 +556,8 @@ export async function executeScan(
       const scrub = { literalValues: isConfigurationFile(finding.location.file) };
       if (finding.location.snippet) finding.location.snippet = scrubCredentialContext(finding.location.snippet, scrub);
       finding.message = scrubCredentialContext(finding.message, scrub);
+      // Synvoya titles quote the declared version as written in the repository.
+      if (finding.engine === "synvoya") finding.title = scrubCredentialContext(finding.title, scrub);
     }
     await tagFindings(deduped);
 
@@ -388,8 +585,39 @@ export async function executeScan(
       componentSignatures,
     );
 
+    // Review I-6: Trivy honours in-source ignore comments it cannot be told to disregard.
+    const trivyIgnores = await trivyIgnoreProbe;
+    const trivyIgnoreWarning = trivyIgnores && engineDetails.some((engine) => engine.engine === "trivy" && engine.ran)
+      ? trivyInlineIgnoreWarning(trivyIgnores)
+      : undefined;
+    if (trivyIgnoreWarning) warnings.push(trivyIgnoreWarning);
+
+    // A gap only matters for a scanner class this scan runs: SAST gaps with sast, lockfile gaps with vuln.
+    const gapDiscovery = await gapProbe;
+    if (gapDiscovery.limitation) warnings.push(gapDiscovery.limitation);
+    // Once the Synvoya Actions matcher ran, actions-unchecked keeps only the references it could not evaluate.
+    const actionsCoverage = synvoyaResult?.actionsCoverage;
+    const actionsGap = actionsCoverage
+      ? actionsUncheckedGap([...(gapDiscovery.actionReferences ?? []), ...actionsCoverage.references], actionsCoverage.evaluated)
+      : undefined;
+    const coverageGaps = [
+      ...gapDiscovery.gaps
+        .filter((gap) => !(actionsCoverage && gap.id === "actions-unchecked"))
+        .filter((gap) => wants(input, gap.id.endsWith("-sast") ? "sast" : "vuln")),
+      ...(actionsGap ? [actionsGap] : []),
+      ...engineGaps,
+    ].sort((left, right) => COVERAGE_GAP_IDS.indexOf(left.id) - COVERAGE_GAP_IDS.indexOf(right.id));
+    const coverageNotes: CoverageNote[] = [...defaultScopeNotes({ engine_details: engineDetails, pack_coverage: packCoverage }), ...engineNotes];
+    // A user choice, like the scanner filter: a note, never a coverage gap.
+    if (wants(input, "license") && !runLicenses) coverageNotes.push(LICENSES_NOT_REQUESTED_NOTE);
+    if (runSast && gapDiscovery.scriptNote) coverageNotes.push({ component: "scope:scripts", detail: gapDiscovery.scriptNote });
+    // Synvoya notes quote repository text (image references, declared versions): the same scrub as snippets.
+    for (const detail of synvoyaResult?.notes ?? []) coverageNotes.push({ component: "engine:synvoya", detail: scrubCredentialContext(detail) });
+    if (magentoPatch.suppressed.length) coverageNotes.push({ component: "engine:trivy", detail: magentoPatchNote(magentoPatch.suppressed) });
+    coverageNotes.push(...routingNotes(routeStats));
     const engineSetup = await inspectEngineSetup();
-    const canonical: ScanResult = {
+    // Fix round 3: notes and warnings that can embed repository paths are escaped once, here.
+    const canonical: ScanResult = escapeScanDisplayText({
       scan_id: `scan-${randomUUID()}`,
       target,
       ...(targetInspection.repository_root ? { repository_root: targetInspection.repository_root } : {}),
@@ -411,7 +639,11 @@ export async function executeScan(
       warnings,
       ...(secretCoverage ? { secret_coverage: secretCoverage } : {}),
       ...(secretSuppression ? { secret_suppression: secretSuppression } : {}),
+      ...(coverageGaps.length ? { coverage_gaps: coverageGaps } : {}),
+      ...(input.accept_gaps?.length ? { accepted_gaps: [...new Set(input.accept_gaps)] } : {}),
+      ...(coverageNotes.length ? { coverage_notes: coverageNotes } : {}),
       component_signatures: componentSignatures,
+      ...(synvoyaResult?.info.ran ? { synvoya_checked: synvoyaResult.evidence.checked } : {}),
       ...(nativeResult?.securityControlEvidence.length
         ? { security_control_evidence: nativeResult.securityControlEvidence }
         : {}),
@@ -425,8 +657,9 @@ export async function executeScan(
         ...(input.scanners && input.scanners.length ? { scanners: input.scanners } : {}),
         ...(input.severity_threshold ? { severity_threshold: input.severity_threshold } : {}),
         max_findings: max,
+        include_licenses: runLicenses,
       },
-    };
+    });
 
     canonical.compliance_overview = await buildComplianceOverview(sorted);
     if (options.persist !== false) await saveScan(canonical, { canonicalFindings: true });

@@ -1,5 +1,6 @@
 /** Read-only, bounded Python project loading shared by Python native packs. */
 
+import type { NativeGapRecord } from "../../native-gaps.js";
 import { constants, type BigIntStats, type Dirent } from "node:fs";
 import { lstat, open, opendir, type FileHandle } from "node:fs/promises";
 import { basename, dirname, extname, join, parse, relative, resolve } from "node:path";
@@ -34,6 +35,8 @@ export interface PythonProject {
   root: string;
   files: PythonDocument[];
   limitations?: string[];
+  /** Declared gaps hit while loading (native-gaps.ts). */
+  gaps?: NativeGapRecord[];
 }
 
 export type PythonProjectInput = string | PythonProject | Promise<PythonProject>;
@@ -282,13 +285,14 @@ function documentLimitations(document: PythonDocument): string[] {
   if (document.tabIndentationUnsupported) {
     return [`Skipped Python source ${document.path} containing unsupported tab indentation.`];
   }
-  if (document.syntaxError) {
-    return [`Skipped parser-invalid Python source ${document.path}.`];
-  }
-  if (!document.balanced) {
-    return [`Skipped structurally malformed Python source ${document.path}.`];
-  }
+  // Parser-invalid and structurally malformed sources are the declared gap native-parse-errors.
   return [];
+}
+
+/** An unparsed Python file is the declared gap native-parse-errors, recorded where it is detected. */
+function documentGap(document: PythonDocument): NativeGapRecord | undefined {
+  if (documentLimitations(document).length) return undefined;
+  return document.syntaxError || !document.balanced ? { id: "native-parse-errors", path: document.path } : undefined;
 }
 
 async function loadUncached(
@@ -298,6 +302,11 @@ async function loadUncached(
   const bounds = normalizedBounds(boundOverrides);
   const absoluteTarget = resolve(target);
   const limitations = limitationCollector();
+  const gaps: NativeGapRecord[] = [];
+  const recordGap = (document: PythonDocument) => {
+    const gap = documentGap(document);
+    if (gap) gaps.push(gap);
+  };
   if (await hasSymbolicLinkAncestor(absoluteTarget)) {
     return {
       target: absoluteTarget,
@@ -345,6 +354,7 @@ async function loadUncached(
     }
     if (loaded.limitation) limitations.add(loaded.limitation);
     if (loaded.document) documentLimitations(loaded.document).forEach(limitations.add);
+    if (loaded.document) recordGap(loaded.document);
     const withinTokenBound = Boolean(
       loaded.document && loaded.document.balanced &&
       loaded.document.tokens.length <= bounds.maxTotalTokens &&
@@ -361,6 +371,7 @@ async function loadUncached(
       root: dirname(absoluteTarget),
       files: withinTokenBound ? [loaded.document!] : [],
       limitations: limitations.finish(),
+      gaps,
     };
   }
   if (!targetMetadata.isDirectory()) {
@@ -509,6 +520,7 @@ async function loadUncached(
       }
       if (!loaded.document || loaded.size === undefined) continue;
       documentLimitations(loaded.document).forEach(limitations.add);
+      recordGap(loaded.document);
       totalTokens += loaded.document.tokens.length;
       totalCstNodes += loaded.document.cstNodeCount;
       if (totalTokens > bounds.maxTotalTokens) {
@@ -548,6 +560,7 @@ async function loadUncached(
     root: absoluteTarget,
     files,
     limitations: limitations.finish(),
+    gaps,
   };
 }
 

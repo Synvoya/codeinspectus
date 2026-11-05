@@ -55,9 +55,9 @@ npm run eval           # the eval suite against fixtures/vulnerable-app
 npm run test:redaction # end-to-end check that no secret value leaks into tool output
 ```
 
-- The scanning engines (Opengrep, Gitleaks, Trivy) are **external, SHA-pinned binaries**, not npm
-  packages. Some engine-dependent evals skip until those binaries are installed — that is expected,
-  not a failure.
+- The scanning engines (Opengrep, Gitleaks, Trivy, osv-scanner) are **external, SHA-pinned
+  binaries**, not npm packages. Some engine-dependent evals skip until those binaries are
+  installed — that is expected, not a failure.
 - For the full verification checklist — including how to confirm **zero network egress at scan
   time** — see [`docs/context/verify.md`](context/verify.md).
 - For the contribution workflow (fork → branch → PR, the precision bar for new detection rules, and

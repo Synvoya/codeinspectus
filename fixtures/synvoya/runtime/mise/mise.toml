@@ -1,0 +1,8 @@
+[env]
+FOO = "bar"
+
+[tools]
+node = "20"
+python = ["3.11.4", "3.10"]
+ruby = { version = "3.3" }
+go = "1.22.1"

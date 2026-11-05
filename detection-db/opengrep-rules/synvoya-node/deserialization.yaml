@@ -1,0 +1,46 @@
+# Synvoya Node.js pack (original Apache-2.0 rules; see LICENSE-PROVENANCE.md). ASCII-only.
+# Deserializers that can run code. node-serialize is left to ci-baseline-insecure-deserialization-node:
+# Opengrep resolves destructured and require(...) imports, so its `$S.unserialize($X)` already covers
+# every node-serialize call form (checked 2026-11-04); repeating it here would put two findings on one line.
+rules:
+  - id: syn-node-unsafe-deserialization
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      This deserializer can rebuild functions from its input (js-yaml with the full schema, funcster or
+      cryo), so data that reaches it can run code in the server process. Parse data with JSON.parse or
+      js-yaml's default safe schema and validate the result.
+    metadata:
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+      owasp: "A08:2021 - Software and Data Integrity Failures"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-node
+      references:
+        - https://cwe.mitre.org/data/definitions/502.html
+    # Minified / bundled browser files are not server code, and taint analysis of a big bundle can
+    # run past Opengrep's per-file timeout. Only file-basename globs: Opengrep matches rule paths
+    # against the absolute path, so a folder name here could match a parent of the project.
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.min.mjs"
+        - "*-min.js"
+        - "*.bundle.js"
+        - "*-bundle.js"
+        - "*.chunk.js"
+    pattern-either:
+      - pattern: $FUNCSTER.deepDeserialize($DATA, ...)
+      - patterns:
+          - pattern: $CRYO.parse($DATA)
+          - metavariable-regex:
+              metavariable: $CRYO
+              regex: (?i)^cryo$
+      - patterns:
+          - pattern-either:
+              - pattern: '$YAML.load($DATA, {..., schema: $SCHEMA, ...})'
+              - pattern: '$YAML.loadAll($DATA, {..., schema: $SCHEMA, ...})'
+              - pattern: '$YAML.loadAll($DATA, $ITER, {..., schema: $SCHEMA, ...})'
+          - metavariable-regex:
+              metavariable: $SCHEMA
+              regex: .*(DEFAULT_FULL_SCHEMA|FULL_SCHEMA|js-yaml-js-types)

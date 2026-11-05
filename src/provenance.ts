@@ -48,6 +48,23 @@ export const NATIVE_SAST_RECONCILIATION_COMPONENT = "native-sast:opengrep-reconc
 export const PUB_LOCKFILE_PARSER_COMPONENT = "codeinspectus-pub:lockfile-parser";
 export const PUB_SNAPSHOT_COMPONENT = "codeinspectus-pub:osv-snapshot";
 export const PUB_MATCHER_COMPONENT = "codeinspectus-pub:exact-version-matcher";
+/** The bundled Synvoya gap-advisory dataset; its signature is the dataset content digest, supplied at run time. */
+export const SYNVOYA_DATASET_COMPONENT = "synvoya:dataset";
+export const SYNVOYA_MATCHER_COMPONENT = "synvoya:gap-matcher";
+/** The Synvoya matcher of third-party GitHub Actions references against the installed OSV GitHub Actions database. */
+export const SYNVOYA_ACTIONS_MATCHER_COMPONENT = "synvoya:actions-matcher";
+/**
+ * The Synvoya producer of a finding: one of the declaration readers, one upstream engine's package inventory,
+ * or the osv-scanner run over the per-scan SBOM of vendored libraries (`sbom:osv-scanner`). Rescan confirms a
+ * fix only from the producer that made the finding (its checked-file set).
+ */
+export const SYNVOYA_PRODUCERS = ["runtime", "images", "products", "inventory:osv-scanner", "inventory:trivy", "vendored", "sbom:osv-scanner", "actions"] as const;
+export type SynvoyaProducer = (typeof SYNVOYA_PRODUCERS)[number];
+export const synvoyaProducerComponent = (producer: SynvoyaProducer): string => `synvoya:${producer}`;
+/** The producer named by a `synvoya:<producer>` producer component, if it is one. */
+export function synvoyaProducerOf(component: string): SynvoyaProducer | undefined {
+  return SYNVOYA_PRODUCERS.find((producer) => component === synvoyaProducerComponent(producer));
+}
 
 const COMPONENT_REVISIONS: Record<string, string> = {
   [PIPELINE_COMPONENT]: "3:normalize-alias-dedup-direct-target-routing-envelope",
@@ -93,7 +110,8 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   "ai:ios-ats-weak-tls": "1:concrete-production-domain-weak-tls-exception",
   "ai:ios-data-protection": "1:explicit-default-file-protection-none",
   [REACT_NATIVE_PACK_DISPATCH_COMPONENT]: "1:react-native-pack-dispatch",
-  [REACT_NATIVE_JAVASCRIPT_PARSER_COMPONENT]: "1:bounded-javascript-typescript-jsx-structural-parser",
+  // 2: JSX-aware retry accepts files the context-free pass rejected (coverage-honesty patch).
+  [REACT_NATIVE_JAVASCRIPT_PARSER_COMPONENT]: "2:bounded-javascript-typescript-jsx-structural-parser-jsx-text-retry",
   "ai:react-native-sensitive-async-storage": "1:proven-async-storage-sensitive-write",
   "ai:react-native-webview-untrusted-content": "1:proven-untrusted-webview-content-flow",
   "ai:react-native-webview-mixed-content": "1:explicit-production-webview-mixed-content",
@@ -106,7 +124,9 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   [PYTHON_LEZER_PARSER_COMPONENT]: "3:bounded-lezer-gated-python-parser-valid-yield-star-targets",
   [JAVASCRIPT_BASELINE_PACK_DISPATCH_COMPONENT]: "1:javascript-baseline-pack-dispatch",
   [JAVASCRIPT_AI_PACK_DISPATCH_COMPONENT]: "1:javascript-typescript-pack-dispatch",
-  [JAVASCRIPT_BASELINE_PARSER_COMPONENT]: "1:bounded-javascript-typescript-structural-parser",
+  // 2: JSX-aware retry and Yarn tooling skip change which files are analyzed, so a prior finding in
+  // a now-skipped or newly bounded-out file reads "not re-checked", never "resolved".
+  [JAVASCRIPT_BASELINE_PARSER_COMPONENT]: "2:bounded-javascript-typescript-structural-parser-jsx-retry-yarn-skip",
   [NATIVE_SAST_RECONCILIATION_COMPONENT]: "1:exact-opengrep-pre-dedup-reconciliation",
   "sast:javascript-weak-hash": "1:weak-hash-md5-sha1",
   "sast:javascript-weak-cipher": "1:weak-cipher-and-deprecated-create-cipher",
@@ -149,6 +169,17 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   "ai:github-actions-pwn-request": "1:pre-v7-privileged-untrusted-checkout-and-workspace-execution",
   [PUB_LOCKFILE_PARSER_COMPONENT]: "1:bounded-pub-lockfile-parser",
   [PUB_MATCHER_COMPONENT]: "1:exact-enumerated-osv-version-membership",
+  [SYNVOYA_MATCHER_COMPONENT]: "1:declared-version-range-membership",
+  "synvoya:runtime": "1:bounded-runtime-pin-reader",
+  "synvoya:images": "1:bounded-image-tag-reader",
+  "synvoya:products": "1:bounded-product-version-reader",
+  "synvoya:inventory:osv-scanner": "1:osv-scanner-all-packages-inventory",
+  "synvoya:inventory:trivy": "1:trivy-list-all-pkgs-inventory",
+  "synvoya:vendored": "1:bounded-vendored-and-cdn-library-reader",
+  // The library reader's exact declarations as a CycloneDX SBOM, matched by osv-scanner and mapped back by name and version.
+  "synvoya:sbom:osv-scanner": "1:exact-vendored-libraries-cyclonedx-osv-scanner",
+  "synvoya:actions": "1:bounded-workflow-and-composite-action-uses-reader",
+  [SYNVOYA_ACTIONS_MATCHER_COMPONENT]: "1:osv-github-actions-tag-floating-major-and-listed-commit",
 };
 
 const AI_RULE_COMPONENT: Record<string, string> = {
@@ -297,6 +328,30 @@ export async function rulesetSignature(root: string): Promise<string> {
   }
   await walk(root);
   return signature(entries.join("\n"));
+}
+
+/** The second signature a Trivy run records: its invocation with `license` toggled in or out of `--scanners`. */
+export const TRIVY_LICENSE_TOGGLED_INVOCATION = "trivy:invocation:license-toggled";
+
+/**
+ * Whether a detector component is unchanged between two scans. Equal signatures always match. Licence findings
+ * are opt-in, so for the Trivy invocation alone a scan with and a scan without the `license` scanner also match
+ * when everything else in the invocation is equal (the vuln, misconfig and secret checks are the same either
+ * way). Never used for a licence finding itself: its absence proves nothing unless both scans requested licences.
+ */
+export function componentSignaturesMatch(
+  component: string,
+  older: Readonly<Record<string, string>> | undefined,
+  newer: Readonly<Record<string, string>> | undefined,
+): boolean {
+  const olderSignature = older?.[component];
+  const newerSignature = newer?.[component];
+  if (!olderSignature || !newerSignature) return false;
+  if (olderSignature === newerSignature) return true;
+  if (component !== "trivy:invocation") return false;
+  const olderToggled = older?.[TRIVY_LICENSE_TOGGLED_INVOCATION];
+  const newerToggled = newer?.[TRIVY_LICENSE_TOGGLED_INVOCATION];
+  return olderSignature === newerToggled || newerSignature === olderToggled;
 }
 
 export function invocationSignature(producer: string, semanticArgs: readonly string[]): string {
@@ -487,6 +542,76 @@ export function pubFindingComponents(): string[] {
   ];
 }
 
+/** What must be unchanged to reproduce a Synvoya finding: the pipeline, the dataset and the matcher. */
+export function synvoyaFindingComponents(): string[] {
+  return [PIPELINE_COMPONENT, SYNVOYA_DATASET_COMPONENT, SYNVOYA_MATCHER_COMPONENT];
+}
+
+/**
+ * What must be unchanged to reproduce a Synvoya GitHub Actions advisory finding: the Actions matcher, the reader
+ * that found the reference, and the installed OSV GitHub Actions database (signed only when its install record
+ * matches the archive). The bundled dataset plays no part.
+ */
+export function synvoyaActionsFindingComponents(): string[] {
+  return [PIPELINE_COMPONENT, SYNVOYA_ACTIONS_MATCHER_COMPONENT, synvoyaProducerComponent("actions"), osvDatabaseComponent("GitHub Actions")];
+}
+
+/**
+ * What must be unchanged to reproduce a finding of the bundled dataset's own GitHub Actions advisories: the
+ * dataset, the Actions matcher and the reader that found the reference. The installed database plays no part.
+ */
+export function synvoyaActionsDatasetFindingComponents(): string[] {
+  return [PIPELINE_COMPONENT, SYNVOYA_DATASET_COMPONENT, SYNVOYA_ACTIONS_MATCHER_COMPONENT, synvoyaProducerComponent("actions")];
+}
+
+export function synvoyaStaticComponentSignatures(datasetSignature: string): Record<string, string> {
+  if (!/^sha256:[a-f0-9]{64}$/.test(datasetSignature)) {
+    throw new Error("Invalid bundled Synvoya dataset signature.");
+  }
+  return {
+    ...staticComponentSignatures([
+      PIPELINE_COMPONENT, SYNVOYA_MATCHER_COMPONENT, SYNVOYA_ACTIONS_MATCHER_COMPONENT, ...SYNVOYA_PRODUCERS.map(synvoyaProducerComponent),
+    ]),
+    [SYNVOYA_DATASET_COMPONENT]: datasetSignature,
+  };
+}
+
+/** Component id of one ecosystem's installed OSV database; the id `readOsvDbRecord` records. */
+export function osvDatabaseComponent(ecosystem: string): string {
+  return `osv-scanner:vulnerability-db:${ecosystem}`;
+}
+
+/** What must be unchanged to reproduce an osv-scanner finding: binary, flags, managed config, and that ecosystem's database. */
+export function osvScannerFindingComponents(ecosystem: string): string[] {
+  return [
+    PIPELINE_COMPONENT,
+    "osv-scanner:binary",
+    "osv-scanner:invocation",
+    "osv-scanner:config",
+    osvDatabaseComponent(ecosystem),
+  ];
+}
+
+/** The osv-scanner run over the per-scan SBOM; its signature is computed from its constant arguments. */
+export const OSV_SBOM_INVOCATION_COMPONENT = "osv-scanner:sbom-invocation";
+
+/**
+ * What must be unchanged to reproduce an osv-scanner finding from the per-scan SBOM: the main run's binary,
+ * managed config and ecosystem database, the SBOM run's own invocation, and the library table (dataset) and
+ * SBOM producer that chose its input.
+ */
+export function osvSbomFindingComponents(ecosystem: string): string[] {
+  return [
+    PIPELINE_COMPONENT,
+    "osv-scanner:binary",
+    OSV_SBOM_INVOCATION_COMPONENT,
+    "osv-scanner:config",
+    osvDatabaseComponent(ecosystem),
+    SYNVOYA_DATASET_COMPONENT,
+    synvoyaProducerComponent("sbom:osv-scanner"),
+  ];
+}
+
 export function pubStaticComponentSignatures(snapshotSignature: string): Record<string, string> {
   if (!/^sha256:[a-f0-9]{64}$/.test(snapshotSignature)) {
     throw new Error("Invalid bundled OSV Pub snapshot signature.");
@@ -501,7 +626,31 @@ export function pubStaticComponentSignatures(snapshotSignature: string): Record<
   };
 }
 
-export function externalFindingComponents(engine: Engine, kind: FindingKind): string[] {
+/** The Synvoya pack pass's own Opengrep invocation (M4 Task 4): pack rules run apart from the baseline rules. */
+export const OPENGREP_PACK_INVOCATION = "opengrep:pack-invocation";
+
+/**
+ * Taint-mode baseline rules (detection-db/opengrep-rules/security-baseline/*-taint.yaml) that run in the
+ * bundle-skipping pack pass, not the baseline pass (M4 perf fix). A unit test keeps this list equal to those files.
+ */
+export const OPENGREP_BUNDLE_SKIPPING_BASELINE_RULES: readonly string[] = ["ci-baseline-sql-injection-string-build"];
+
+/**
+ * Rules run in the bundle-skipping pack pass: the Synvoya PHP and Node packs (detection-db/opengrep-rules/synvoya-*)
+ * and the taint-mode baseline rules above. Their findings depend on that pass's invocation signature.
+ */
+export function isOpengrepPackRule(ruleId: string): boolean {
+  return ruleId.startsWith("syn-php-") || ruleId.startsWith("syn-node-") || OPENGREP_BUNDLE_SKIPPING_BASELINE_RULES.includes(ruleId);
+}
+
+/** How warnings and the third-party-bundles gap name the rules of the bundle-skipping pass. */
+export const OPENGREP_BUNDLE_SKIPPING_RULES_LABEL = ["syn-php-*", "syn-node-*", ...OPENGREP_BUNDLE_SKIPPING_BASELINE_RULES].join(", ");
+
+export function externalFindingComponents(engine: Engine, kind: FindingKind, ruleId?: string): string[] {
+  if (engine === "synvoya") return synvoyaFindingComponents();
+  if (engine === "opengrep" && ruleId !== undefined && isOpengrepPackRule(ruleId)) {
+    return [PIPELINE_COMPONENT, "opengrep:binary", OPENGREP_PACK_INVOCATION, "opengrep:ruleset"];
+  }
   const base = [PIPELINE_COMPONENT, `${engine}:binary`, `${engine}:invocation`];
   if (engine === "opengrep") return [...base, "opengrep:ruleset"];
   if (engine === "gitleaks") return [...base, "gitleaks:config", "gitleaks:effective-ignore"];

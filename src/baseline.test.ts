@@ -143,3 +143,46 @@ describe("findings the file router drops are still a coverage gap", () => {
     expect(assessAggregateCoverage(stored).aggregate).toBe("partial");
   });
 });
+
+// Review I-1: --accept-gaps must apply in baseline mode, where both scans carry the same gap.
+describe("accepted coverage gaps in a baseline comparison", () => {
+  const php = { coverage_gaps: [{ id: "php-sast" as const, files: 1, examples: ["src/index.php"] }] };
+
+  test("scans partial only through an accepted gap are a sound foundation", () => {
+    const old = scan(1, [finding("same")], php);
+    const fresh = scan(2, [finding("same"), finding("new", "critical", "rule:new")], php);
+
+    const plain = compareAgainstBaseline(old, fresh);
+    expect(plain.partial).toBe(true);
+    expect(evaluateNewFindingPolicy(plain, "high").exit_code).toBe(2);
+
+    const accepted = compareAgainstBaseline(old, fresh, ["php-sast"]);
+    expect(accepted.summary).toEqual({ New: 1, Existing: 1, "Not rechecked / unknown": 0 });
+    expect(accepted.coverage).toBe("complete");
+    expect(accepted.notes).toEqual([
+      "One or both scans are partial only through accepted coverage gaps (php-sast); a finding in input the baseline did not analyze reads New.",
+    ]);
+    expect(evaluateNewFindingPolicy(accepted, "high")).toMatchObject({ exit_code: 1, findings_at_or_above_threshold: 1 });
+  });
+
+  test("a gap only the current scan has is enough when accepted", () => {
+    const result = compareAgainstBaseline(scan(1, []), scan(2, [finding("new", "high", "rule:new")], php), ["php-sast"]);
+    expect(result.items[0]?.state).toBe("New");
+    expect(result.coverage).toBe("complete");
+  });
+
+  test("any other cause of partial coverage still fails closed", () => {
+    const fresh = scan(2, [finding("new", "high", "rule:new")], {
+      ...php, warnings: ["Opengrep SAST coverage partial: 1 with a timeout, memory limit or engine error: src/big.ts."],
+    });
+    const result = compareAgainstBaseline(scan(1, [], php), fresh, ["php-sast"]);
+    expect(result.partial).toBe(true);
+    expect(result.items[0]?.state).toBe("Not rechecked / unknown");
+    expect(evaluateNewFindingPolicy(result, "high").exit_code).toBe(2);
+  });
+
+  test("an accepted id that names a different gap does not help", () => {
+    const result = compareAgainstBaseline(scan(1, [], php), scan(2, [], php), ["deno-lock"]);
+    expect(result.partial).toBe(true);
+  });
+});

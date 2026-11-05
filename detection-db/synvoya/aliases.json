@@ -1,0 +1,110 @@
+{
+  "packages": {
+    "Packagist:magento/magento2-base": "Packagist:magento/community-edition",
+    "Packagist:magento/product-community-edition": "Packagist:magento/community-edition"
+  },
+  "imageAliases": {
+    "jenkins/jenkins": {
+      "ecosystem": "Maven",
+      "name": "org.jenkins-ci.main:jenkins-core"
+    },
+    "bitnami/jenkins": {
+      "ecosystem": "Maven",
+      "name": "org.jenkins-ci.main:jenkins-core"
+    },
+    "tomcat": {
+      "ecosystem": "Maven",
+      "name": "org.apache.tomcat.embed:tomcat-embed-core"
+    },
+    "apache/activemq-classic": {
+      "ecosystem": "Maven",
+      "name": "org.apache.activemq:activemq-broker"
+    },
+    "rmohr/activemq": {
+      "ecosystem": "Maven",
+      "name": "org.apache.activemq:activemq-broker"
+    },
+    "gitea/gitea": {
+      "ecosystem": "Go",
+      "name": "gitea.dev"
+    },
+    "bitnami/gitea": {
+      "ecosystem": "Go",
+      "name": "gitea.dev"
+    },
+    "n8nio/n8n": {
+      "ecosystem": "npm",
+      "name": "n8n"
+    },
+    "langflowai/langflow": {
+      "ecosystem": "PyPI",
+      "name": "langflow"
+    },
+    "gogs/gogs": {
+      "ecosystem": "Go",
+      "name": "gogs.io/gogs"
+    }
+  },
+  "productImages": {
+    "ghcr.io/berriai/litellm": "litellm",
+    "litellm/litellm": "litellm",
+    "ghcr.io/mlflow/mlflow": "mlflow",
+    "bitnami/mlflow": "mlflow",
+    "rayproject/ray": "ray",
+    "docker.osgeo.org/geoserver": "geoserver",
+    "xwiki": "xwiki",
+    "flink": "flink",
+    "apache/superset": "superset",
+    "bitnami/superset": "superset",
+    "apache/rocketmq": "rocketmq",
+    "apache/airflow": "airflow",
+    "bitnami/airflow": "airflow",
+    "solr": "solr",
+    "mongo-express": "mongo-express",
+    "sonatype/nexus3": "nexus",
+    "plexinc/pms-docker": "plex-media-server",
+    "atlassian/confluence": "confluence",
+    "atlassian/confluence-server": "confluence",
+    "wso2/wso2am": "wso2-api-manager",
+    "releases-docker.jfrog.io/jfrog/artifactory-oss": "artifactory",
+    "adobecoldfusion/coldfusion2018": "coldfusion",
+    "adobecoldfusion/coldfusion2021": "coldfusion",
+    "adobecoldfusion/coldfusion2023": "coldfusion",
+    "adobecoldfusion/coldfusion2025": "coldfusion",
+    "splunk/splunk": "splunk",
+    "container-registry.oracle.com/middleware/weblogic": "weblogic",
+    "jetbrains/teamcity-server": "teamcity",
+    "roundcube/roundcubemail": "roundcube",
+    "gitlab/gitlab-ce": "gitlab",
+    "gitlab/gitlab-ee": "gitlab",
+    "mongo": "mongodb",
+    "grafana/grafana": "grafana",
+    "bitnami/grafana": "grafana",
+    "wazuh/wazuh-manager": "wazuh",
+    "httpd": "httpd",
+    "bitnami/apache": "httpd",
+    "ghcr.io/apache/ofbiz": "ofbiz",
+    "atlassian/jira-software": "jira-software",
+    "metabase/metabase": "metabase",
+    "nextgenhealthcare/connect": "mirth-connect",
+    "joomla": "joomla",
+    "glpi/glpi": "glpi",
+    "atlassian/bitbucket": "bitbucket",
+    "atlassian/bitbucket-server": "bitbucket",
+    "dotcms/dotcms": "dotcms",
+    "couchdb": "couchdb",
+    "apache/apisix": "apisix",
+    "bitnami/apisix": "apisix",
+    "phpmyadmin": "phpmyadmin",
+    "phpmyadmin/phpmyadmin": "phpmyadmin",
+    "atlassian/crowd": "crowd",
+    "zabbix/zabbix-web-nginx-mysql": "zabbix",
+    "ibmcom/websphere-traditional": "websphere-traditional",
+    "docker.elastic.co/kibana/kibana": "kibana",
+    "kibana": "kibana",
+    "pihole/pihole": "pihole",
+    "kestra/kestra": "kestra",
+    "wordpress": "wordpress",
+    "erlang": "erlang"
+  }
+}

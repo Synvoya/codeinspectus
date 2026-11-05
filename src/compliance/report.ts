@@ -97,12 +97,15 @@ export async function buildComplianceReport(input: ComplianceReportInput): Promi
     frameworks.push(await coverageForFramework(fw, scan.findings, universe));
   }
 
+  // Licence-derived controls follow the scan: with licences not requested there is no licence evidence here.
+  const licenceNotes = (scan.coverage_notes ?? []).filter((note) => note.component === "scanner:license");
   return {
     scan_id: input.scan_id,
     posture_score: computePostureScore(scan.findings),
     posture_note:
       "Severity-weighted posture score (0–100): 100 minus weighted penalties (critical 15, high 8, medium 3, low 1). This is NOT a percent-compliant figure and must not be presented as one.",
     frameworks,
+    ...(licenceNotes.length ? { coverage_notes: licenceNotes } : {}),
     disclaimer: STANDING_DISCLAIMER,
   };
 }
