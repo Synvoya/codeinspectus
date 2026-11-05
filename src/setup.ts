@@ -193,7 +193,7 @@ const COMPONENT_METADATA: Record<SetupComponentId, Pick<SetupComponentPlan, "nam
   },
   gitleaks: {
     name: "Gitleaks",
-    coverage: ["200+ upstream secret patterns plus 4 CodeInspectus rules for credentials, API keys, and private keys."],
+    coverage: ["200+ upstream secret patterns plus 5 CodeInspectus rules for credentials, API keys, and private keys."],
     license: "MIT",
   },
   trivy: {
