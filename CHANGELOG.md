@@ -8,7 +8,7 @@ AI-drafted and practitioner-reviewed — see the honesty notes in the [README](R
 
 CodeInspectus 4.0 adds Google's osv-scanner as a fourth engine, Synvoya (an offline gap-advisory layer
 plus PHP and Node.js rule packs), parser-backed native JavaScript/TypeScript checks, and a quieter
-default output. This release focuses on PHP and Node.js. It is not released yet. It also includes the
+default output. This release focuses on PHP and Node.js. It also includes the
 declared coverage gaps, engine pin updates and engine-isolation fixes prepared as 3.4.0, which was never
 released, so everything below is new since 3.3.2. Upgrading from 3.3.2 changes default output,
 coverage verdicts and what a baseline comparison can prove; read [Upgrade notes](#upgrade-notes-40)
