@@ -32,9 +32,9 @@ broad repository coverage.
 If CodeInspectus is useful, [star the repository](https://github.com/Synvoya/codeinspectus)
 so other AI-app builders can find it.
 
-CodeInspectus orchestrates four best-in-class OSS engines behind one normalized,
-CWE-keyed schema, and adds its own **AI-code-specific checks** that generic
-scanners miss:
+CodeInspectus runs **five engines** behind one normalized, CWE-keyed schema: four
+best-in-class open-source engines, plus the **Synvoya engine**, our own, which carries the
+**AI-code-specific checks** and recent advisories that generic scanners miss:
 
 - **Opengrep** — SAST / OWASP Top 10 (SARIF)
 - **Gitleaks** — secrets
@@ -42,7 +42,7 @@ scanners miss:
 - **osv-scanner** (Google) — offline dependency matching against OSV.dev data, including
   OpenSSF malicious-package (`MAL-`) advisories. It runs only on the OSV databases you approved
   for the ecosystems your repository uses
-- **Synvoya (CodeInspectus)** — an offline gap-advisory layer for what those engines miss:
+- **Synvoya engine (ours)** — an offline gap-advisory layer for what those engines miss:
   declared Node.js, PHP, Python, Ruby, Go, .NET and Java versions (version-manager pins, manifests,
   CI setup steps, image tags), end-of-life lines, exploited products such as Adobe Commerce and
   WordPress core, malicious package versions, vendored and CDN-loaded JavaScript libraries (checked
