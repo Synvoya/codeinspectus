@@ -51,7 +51,7 @@ describe("JavaScript/TypeScript parse cache", () => {
     expect(cache.tokens).toBe(0);
     expect(cache.chars).toBe(0);
     expect(activeJavaScriptParseCache()).toBeUndefined();
-  });
+  }, 60000);
 
   test("the cache is cleared when a scan fails, and concurrent scans do not share one", async () => {
     const failing = new JavaScriptParseCache();

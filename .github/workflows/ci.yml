@@ -14,8 +14,9 @@
 #     engine-dependent and runs in the engine job below.
 #
 #   engine (linux/amd64) — fetches + cosign/checksum-verifies + SHA-pins the engine
-#     binaries and pulls the Trivy vuln DB and the OSV PyPI database (PyPI only: E61
-#     needs the crates.io database absent, and the npm database is over 200 MB). It then
+#     binaries and pulls the Trivy vuln DB and the OSV PyPI, npm, Packagist, Go and GitHub
+#     Actions databases (E87-E92 need npm, Go and GitHub Actions; E61 needs the crates.io
+#     database absent, so crates.io is never installed). It then
 #     runs the FULL eval suite with engine-backed, native-pack, parity, rescan,
 #     provenance, and redaction gates, plus the gitleaks-backed redaction-e2e and a
 #     real fixture scan. Proven feasible in CG-77 recon: every engine has a non-null
@@ -33,7 +34,7 @@
 #                                                .sigstore.json/checksums; action code
 #   *.sigstore.dev (fulcio/rekor/tuf-repo-cdn)   cosign keyless verify-blob (tlog + TUF root)
 #   mirror.gcr.io, ghcr.io                       Trivy vuln-DB OCI pull (install-time only)
-#   osv-vulnerabilities.storage.googleapis.com   OSV PyPI database zip (install-time only;
+#   osv-vulnerabilities.storage.googleapis.com   OSV database zips (install-time only;
 #                                                scans themselves run fully offline)
 #   registry.npmjs.org                           npm ci
 #
@@ -166,8 +167,8 @@ jobs:
           test "$actual" = "linux-x64"
       - name: Repair engines — verify immutable shipped pins + install + Trivy DB
         run: node dist/index.js repair-engines --refresh-db
-      - name: Install the OSV PyPI database (explicit list; npm and crates.io are deliberately not downloaded)
-        run: node dist/index.js repair-engines osv-scanner --osv-ecosystems PyPI
+      - name: Install the OSV databases the evals need (explicit list; crates.io is deliberately not downloaded)
+        run: node dist/index.js repair-engines osv-scanner --osv-ecosystems "PyPI,npm,Packagist,Go,GitHub Actions"
       - name: Assert user repair did not mutate the packaged lockfile
         run: git diff --exit-code -- engines.lock.json
       - name: Verify installed binaries against the lockfile (native OS)
@@ -177,15 +178,15 @@ jobs:
         run: |
           # The engine tier EXISTS to prove Opengrep + Trivy + osv-scanner actually execute. A skip
           # here is a FAILURE, not acceptable degradation: if the Trivy DB pull silently
-          # failed, the OSV PyPI database was not installed, or an engine did not run, E16-E18 and
-          # E59-E61 self-skip and the eval harness exits 0 — a false green. Asserting 0 skipped
+          # failed, an OSV database was not installed, or an engine did not run, E16-E18, E59-E61
+          # and E87-E92 self-skip and the eval harness exits 0 — a false green. Asserting 0 skipped
           # turns that into a RED instead. E61 also needs the OSV crates.io database ABSENT (its
-          # missing-database case), which is why only PyPI is installed.
+          # missing-database case), which is why crates.io is never installed.
           out="${RUNNER_TEMP:-/tmp}/eval.out"
           set -o pipefail
           npm run eval | tee "$out"
           grep -qE '0 failed, 0 skipped' "$out" || {
-            echo "FAIL: engine tier requires 0 skipped — E16/E18 Opengrep + E17 Trivy + E59-E61 osv-scanner must RUN, not skip (check the Trivy DB pull from mirror.gcr.io / ghcr.io and the OSV PyPI database download)."
+            echo "FAIL: engine tier requires 0 skipped — E16/E18 Opengrep + E17 Trivy + E59-E61 osv-scanner must RUN, not skip (check the Trivy DB pull from mirror.gcr.io / ghcr.io and the OSV database downloads)."
             exit 1
           }
       - name: Redaction e2e — gitleaks-detected non-pattern secrets stay redacted
@@ -238,8 +239,8 @@ jobs:
           test "$actual" = "$EXPECTED_PLATFORM"
       - name: Repair engines — verify immutable shipped pins + install + Trivy DB
         run: node dist/index.js repair-engines --refresh-db
-      - name: Install the OSV PyPI database (explicit list; npm and crates.io are deliberately not downloaded)
-        run: node dist/index.js repair-engines osv-scanner --osv-ecosystems PyPI
+      - name: Install the OSV databases the evals need (explicit list; crates.io is deliberately not downloaded)
+        run: node dist/index.js repair-engines osv-scanner --osv-ecosystems "PyPI,npm,Packagist,Go,GitHub Actions"
       - name: Assert user repair did not mutate the packaged lockfile
         run: git diff --exit-code -- engines.lock.json
       - name: Verify installed binaries against the lockfile (native OS)
@@ -251,7 +252,7 @@ jobs:
           set -o pipefail
           npm run eval | tee "$out"
           grep -qE '0 failed, 0 skipped' "$out" || {
-            echo "FAIL: portability tier requires 0 skipped — E16/E18 Opengrep + E17 Trivy + E59-E61 osv-scanner must RUN (check the OSV PyPI database download)."
+            echo "FAIL: portability tier requires 0 skipped — E16/E18 Opengrep + E17 Trivy + E59-E61 osv-scanner must RUN (check the OSV database downloads)."
             exit 1
           }
       - name: Redaction e2e — gitleaks-detected non-pattern secrets stay redacted
