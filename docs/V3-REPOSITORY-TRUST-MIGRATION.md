@@ -11,15 +11,19 @@ contracts and explicitly approved mutation tools. Statistical-watermark verifica
 
 ## Contract versions
 
-| Surface | V2 | V3 |
-|---|---:|---:|
-| Package / CLI / MCP server / SDK API | 2.6.0 | 3.3.2 |
-| Canonical JSON export | 2.0.0 | 3.0.0 |
-| Repository-trust document | absent | 1.0.0 |
-| Cleanup plan / result | absent | 1.0.0 |
-| SARIF standard | 2.1.0 | 2.1.0 |
-| Stored scan | 2.0.0 | 2.0.0 |
-| Sealed bundle manifest | 1.0.0 | 1.0.0 |
+| Surface | V2 | V3 | 4.0 |
+|---|---:|---:|---:|
+| Package / CLI / MCP server / SDK API | 2.6.0 | 3.3.2 | 4.0.0 |
+| Canonical JSON export | 2.0.0 | 3.0.0 | 3.0.0 |
+| Repository-trust document | absent | 1.0.0 | 1.0.0 |
+| Cleanup plan / result | absent | 1.0.0 | 1.0.0 |
+| SARIF standard | 2.1.0 | 2.1.0 | 2.1.0 |
+| Stored scan | 2.0.0 | 2.0.0 | 2.0.0 |
+| Sealed bundle manifest | 1.0.0 | 1.0.0 | 1.1.0 (verifies 1.0.0 too) |
+
+4.0 keeps every V3 contract except the sealed bundle manifest, which records osv-scanner as a fourth
+commodity engine. For what else changes when upgrading from 3.3.2 (licence findings opt-in, baselines to
+re-record, the open engine set), read the [CHANGELOG 4.0 upgrade notes](../CHANGELOG.md#upgrade-notes-40).
 
 The V2 packaged schemas remain in the npm artifact for historical validation. New JSON exports use
 `https://codeinspectus.com/schemas/v3.0.0/export.schema.json` and require a top-level

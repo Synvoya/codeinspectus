@@ -12,9 +12,22 @@
 
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { runOpengrepShadowParity } from "../src/shadow/opengrep-parity.js";
+import {
+  buildOpengrepArgs,
+  effectiveOpengrepIgnoreList,
+  OPENGREP_EFFECTIVE_IGNORE_NAME,
+  OPENGREP_IGNORE_FILE,
+  opengrepExecEnvironment,
+  opengrepRuleSets,
+  runOpengrep,
+} from "../src/engines/opengrep.js";
+import { resolveEngine } from "../src/engines/resolve.js";
+import { execBinary } from "../src/engines/exec.js";
+import { normalizeEngineOutput } from "../src/sarif/normalize.js";
 
 const FIXTURE = resolve(process.cwd(), "fixtures/vulnerable-app");
 const CORS_FIXTURE = resolve(process.cwd(), "fixtures/cors-corpus");
@@ -85,6 +98,10 @@ const SYNVOYA_EVAL_FIXTURES = resolve(process.cwd(), "fixtures/synvoya/evals");
 const SYNVOYA_GAP_DECLARATIONS_FIXTURE = resolve(SYNVOYA_EVAL_FIXTURES, "gap-declarations");
 const SYNVOYA_TRIVY_COVERED_FIXTURE = resolve(SYNVOYA_EVAL_FIXTURES, "trivy-covered");
 const SYNVOYA_FLOATING_TAG_FIXTURE = resolve(SYNVOYA_EVAL_FIXTURES, "floating-tag");
+const SYNVOYA_VENDORED_FIXTURE = resolve(SYNVOYA_EVAL_FIXTURES, "vendored-libraries");
+const SYNVOYA_GO_TOOLCHAIN_FIXTURE = resolve(SYNVOYA_EVAL_FIXTURES, "go-toolchain");
+const SYNVOYA_PHP_FIXTURES = resolve(process.cwd(), "fixtures/synvoya-php");
+const SYNVOYA_NODE_FIXTURE = resolve(process.cwd(), "fixtures/synvoya-node-corpus");
 // INTENTIONAL FAKE TEST DATA (planted fixture value; the evals below assert it is
 // detected and redacted) -- not a real credential; allowlisted in /.gitleaks.toml.
 const RAW_SECRET = "sk_live_51Mz9KQb2eRxW7vYpL3nHsD8tA6cF0gJ4uXiZ2oP1rE5wB9mNqK7";
@@ -283,7 +300,7 @@ const REACT_NATIVE_PACK_LIMITATIONS = [
   "Generated, dependency, build, test, fixture, demo, sample, and example trees are excluded from project-root scans unless a supported source file is scanned directly.",
   "Unreadable, malformed, symbolic-link, over-2 MiB, over-200,000-token, or over-64-level structurally nested files and source beyond the 50,000-entry/10,000-file/64 MiB/1,000,000-token/32-level project bounds are skipped and reported in pack coverage.",
   "The pack analyzes repository evidence only, never executes target code, and does not replace runtime mobile security testing.",
-  "Its lexer is lightweight, not a full parser: these are pattern checks for ordinary code and can be evaded by deliberately crafted code while a file reads as parsed. A full parser replacement is planned for 4.0.",
+  "Each file is read with a full parser (@babel/parser); a file it cannot parse is skipped as the gap native-parse-errors. The rules are intrafile token and syntax patterns, so code written to avoid a pattern (an alias, a wrapper, a computed call) can still avoid it.",
 ] as const;
 
 const EXPO_PACK_LIMITATIONS = [
@@ -1995,6 +2012,19 @@ const isolatedHome = (home: string): NodeJS.ProcessEnv => ({
 
 const synvoyaFindings = (findings: any[]): any[] => findings.filter((finding) => finding.engines.includes("synvoya"));
 
+/** A workflow with a clean action, the given tj-actions/changed-files ref (line 7), a v4 tag with a fix and a branch ref. */
+const ACTIONS_WORKFLOW = (ref: string): string =>
+  "on: push\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n" +
+  `      - uses: tj-actions/changed-files@${ref}\n      - uses: rlespinasse/github-slug-action@v4\n      - uses: tj-actions/changed-files@main\n`;
+
+/** Skips an eval when the OSV GitHub Actions database is not installed in this HOME (setup offers it). */
+function requireActionsDb(result: any): void {
+  const note = result.engine_details?.find((engine: any) => engine.engine === "synvoya")?.note ?? "";
+  if (!/checked against the OSV GitHub Actions database/.test(note)) {
+    throw new EvalSkip('OSV GitHub Actions database not installed (setup --select osv-scanner --osv-ecosystems "GitHub Actions")');
+  }
+}
+
 async function replaceMobileFixture(target: string, state: "tp" | "fixed"): Promise<void> {
   await rm(target, { recursive: true, force: true });
   // Model a normal Flutter mobile repository so one MCP scan proves that the
@@ -2275,9 +2305,9 @@ async function main() {
       id: "E14 list_rules exposes the AI-code moat rules + DB version",
       fn: async () => {
         const lr = (await client.callTool("codeinspectus_list_rules", {})).structuredContent;
-        assert(lr.custom_rule_count === 94, `expected 94 custom rules, got ${lr.custom_rule_count}`);
-        assert(lr.detection_db_version === "1.19.1", `expected detection DB 1.19.1, got ${lr.detection_db_version}`);
-        assert(lr.detection_db_date === "2026-10-31", `unexpected detection DB date ${lr.detection_db_date}`);
+        assert(lr.custom_rule_count === 126, `expected 126 custom rules, got ${lr.custom_rule_count}`);
+        assert(lr.detection_db_version === "2.0.0", `expected detection DB 2.0.0, got ${lr.detection_db_version}`);
+        assert(lr.detection_db_date === "2026-11-05", `unexpected detection DB date ${lr.detection_db_date}`);
         assert(lr.custom_rules.some((r: any) => r.id === "ci-ai-rls-using-true"), "missing ci-ai-rls-using-true in list_rules");
         const boundary = lr.custom_rules.find((r: any) => r.id === "ci-ai-client-error-leak");
         assert(boundary?.owasp_web?.includes("A05:2021") && boundary?.owasp_api?.includes("API8:2023"), "new rules must expose OWASP Web/API mappings");
@@ -2308,7 +2338,7 @@ async function main() {
           assertExactJson(rule.cwe, expected.cwe, `${expected.id} catalog CWE mapping changed`);
         }
         const nativePack = lr.native_packs.find((pack: any) => pack.id === "javascript-typescript");
-        assert(nativePack?.version === "1.9.0", "expected JavaScript/TypeScript pack 1.9.0");
+        assert(nativePack?.version === "1.10.0", "expected JavaScript/TypeScript pack 1.10.0");
         assert(nativePack?.analyzer_count === 12 && nativePack.rule_count === 29, "list_rules JavaScript/TypeScript pack inventory is wrong");
         const baselinePack = lr.native_packs.find((pack: any) => pack.id === "javascript-baseline");
         assert(baselinePack?.scanner_kind === "sast" && baselinePack.analyzer_count === 1 && baselinePack.rule_count === 2, "list_rules JavaScript baseline pack inventory is wrong");
@@ -2342,7 +2372,8 @@ async function main() {
         }
         for (const [packId, analyzerCount, ruleCount] of [["react-native", 4, 4], ["expo", 2, 2]] as const) {
           const pack = lr.native_packs.find((candidate: any) => candidate.id === packId);
-          assert(pack?.version === "1.0.0", `expected ${packId} pack 1.0.0`);
+          const expectedVersion = packId === "react-native" ? "1.1.0" : "1.0.0";
+          assert(pack?.version === expectedVersion, `expected ${packId} pack ${expectedVersion}`);
           assert(pack.analyzer_count === analyzerCount && pack.rule_count === ruleCount, `${packId} pack inventory changed`);
           assertExactJson(
             pack.languages,
@@ -4492,11 +4523,16 @@ async function main() {
           // Over Opengrep's 1,000,000-byte target limit, and a syntax error: both used to read as covered.
           await writeFile(join(temporaryRoot, "src", "generated.js"), `const data = [${"0,".repeat(600_000)}];\neval(location.hash);\n`, "utf8");
           await writeFile(join(temporaryRoot, "src", "broken.js"), "function broken( {\n  return eval(x;\n", "utf8");
+          // A non-source file over the limit (field run 2026-11-05) is an informational note, never partial.
+          await writeFile(join(temporaryRoot, "src", "logo.png"), Buffer.alloc(1_100_000, 0x89));
           const result = (await client.callTool("codeinspectus_scan", { path: temporaryRoot, scanners: ["sast"] })).structuredContent;
           assert(result.engine_details.some((engine: any) => engine.engine === "opengrep" && engine.ran), "Opengrep did not run");
           const note = result.warnings.find((warning: string) => warning.startsWith("Opengrep SAST coverage partial"));
           assert(!!note, `no Opengrep partial-coverage warning: ${JSON.stringify(result.warnings)}`);
           assert(/1 over Opengrep's file size limit/.test(note) && note.includes("src/generated.js"), `size skip not reported: ${note}`);
+          assert(!note.includes("logo.png"), `a non-source size skip made SAST coverage partial: ${note}`);
+          assert(result.coverage_notes?.some((entry: any) => entry.component === "engine:opengrep" && /non-source file\(s\) over its file size limit.*src\/logo\.png/.test(entry.detail)),
+            `no informational note for the non-source size skip: ${JSON.stringify(result.coverage_notes)}`);
           assert(!note.includes("src/broken.js"), `a parse error was reported as a non-acceptable warning: ${note}`);
           const parse = result.coverage_gaps?.find((gap: any) => gap.id === "sast-parse-errors");
           assertExactJson(parse, { id: "sast-parse-errors", files: 1, examples: ["src/broken.js"] }, "parse error not declared as a gap");
@@ -4564,7 +4600,7 @@ async function main() {
         const plain = (await client.callTool("codeinspectus_scan", { path })).structuredContent;
         assertExactJson(
           plain.coverage_gaps.map((gap: any) => [gap.id, gap.files, gap.examples]),
-          [["php-sast", 1, ["src/index.php"]], ["deno-lock", 1, ["deno.lock"]],
+          [["php-sast", 1, ["src/page.html.twig"]], ["deno-lock", 1, ["deno.lock"]],
             ["no-lockfile-npm", 1, ["package.json"]], ["no-lockfile-composer", 1, ["composer.json"]]],
           "declared coverage gaps changed",
         );
@@ -4767,14 +4803,15 @@ async function main() {
           await writeFile(join(root, "src", "real", "util.ts"), "export const u = 1;\n", "utf8");
           await symlink(join(root, "src", "real"), join(root, "src", "linked"));
           await writeFile(join(root, "composer.lock"), JSON.stringify({ packages: [{ name: "wpackagist-plugin/contact-form-7", version: "5.1.1" }] }), "utf8");
-          await writeFile(join(root, ".github", "workflows", "ci.yml"), "on: push\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n", "utf8");
+          // A branch of an action that has advisories stays in the gap with or without the OSV GitHub Actions database.
+          await writeFile(join(root, ".github", "workflows", "ci.yml"), "on: push\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: tj-actions/changed-files@main\n", "utf8");
           const ids = ["native-parse-errors", "symlinked-paths", "wordpress-plugins", "actions-unchecked"];
           const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["sast", "ai", "vuln"], accept_gaps: ids })).structuredContent;
           const gaps = Object.fromEntries(result.coverage_gaps.map((gap: any) => [gap.id, gap.examples]));
           assertExactJson(gaps["native-parse-errors"], ["src/broken.ts"], "native-parse-errors gap missing");
           assertExactJson(gaps["symlinked-paths"], ["src/linked"], "symlinked-paths gap missing");
           assertExactJson(gaps["wordpress-plugins"], ["composer.lock: wpackagist-plugin/contact-form-7"], "wordpress-plugins gap missing");
-          assertExactJson(gaps["actions-unchecked"], ["actions/checkout@v4 (.github/workflows/ci.yml)"], "actions-unchecked gap missing");
+          assertExactJson(gaps["actions-unchecked"], ["tj-actions/changed-files@main (.github/workflows/ci.yml)"], "actions-unchecked gap missing");
           assertExactJson(result.accepted_gaps, ids, "accepted gaps not listed");
           for (const pack of ["javascript-baseline", "javascript-typescript"]) {
             const state = result.pack_coverage.find((entry: any) => entry.pack_id === pack)?.state;
@@ -4987,6 +5024,742 @@ async function main() {
           normal.close();
           expired.close();
           await rm(home, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // The real osv-scanner 2.7.0 binary reads the per-scan CycloneDX SBOM (`-L inventory.cdx.json`) offline, and
+      // its findings point at the vendored file and line, never at the SBOM in the scan's temp dir.
+      id: "E87 a vendored jQuery 1.12.4 is checked by osv-scanner through the per-scan SBOM and reported at its file and line",
+      engineDep: "osv-scanner",
+      fn: async () => {
+        const result = (await client.callTool("codeinspectus_scan", { path: SYNVOYA_VENDORED_FIXTURE, scanners: ["vuln"] })).structuredContent;
+        if (result.coverage_gaps?.some((gap: any) => gap.id === "vendored-js")) {
+          throw new EvalSkip("OSV npm database not installed (repair-engines osv-scanner --osv-ecosystems npm)");
+        }
+        const file = "public/js/jquery-1.12.4.min.js";
+        const vendored = result.findings.filter((finding: any) => finding.location.file === file);
+        assert(vendored.length > 0, `no finding for ${file}: ${JSON.stringify(result.warnings)}`);
+        for (const finding of vendored) {
+          assert(finding.engine === "osv-scanner" && finding.engine_family === "synvoya", `unexpected engine/family: ${finding.engine}/${finding.engine_family}`);
+          assert(finding.location.start_line === 1, `expected line 1 (the banner), got ${finding.location.start_line}`);
+          assert(finding.package?.name === "jquery" && finding.package?.version === "1.12.4", `unexpected package ${JSON.stringify(finding.package)}`);
+          assert(finding.producer_components.includes("synvoya:sbom:osv-scanner"), "the finding does not record the SBOM producer");
+        }
+        assert(
+          vendored.some((finding: any) => [finding.rule_id, ...(finding.vulnerability_aliases ?? [])].some((id: string) => /^GHSA-/.test(id))),
+          `no GHSA advisory among ${vendored.map((finding: any) => finding.rule_id).join(", ")}`,
+        );
+        const text = JSON.stringify(result);
+        for (const leak of ["inventory.cdx.json", "synvoya-sbom", "osv-scanner-sbom.json", "ci-scan-"]) {
+          assert(!text.includes(leak), `the scan result mentions the managed SBOM or temp dir (${leak})`);
+        }
+        assert(!result.warnings.some((warning: string) => warning.startsWith("Synvoya SBOM check")), `the SBOM check warned: ${JSON.stringify(result.warnings)}`);
+        assert(!result.coverage_gaps?.length, `unexpected coverage gaps: ${JSON.stringify(result.coverage_gaps)}`);
+      },
+    },
+    {
+      // Task M2-5: third-party Actions against the installed OSV GitHub Actions database (real GHSA records), never
+      // through osv-scanner. A tag in the affected range is a finding with its fix; a major tag with a fixed release is
+      // a "pin to ≥ X" note; only the branch reference of an action with advisories stays in actions-unchecked.
+      id: "E88 a tj-actions/changed-files tag in the affected range is a Synvoya finding with its fix; a v4 tag with a fix is a note",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e88-"));
+        try {
+          await mkdir(join(root, ".github", "workflows"), { recursive: true });
+          await writeFile(join(root, ".github", "workflows", "ci.yml"), ACTIONS_WORKFLOW("v45.0.7"), "utf8");
+          const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["vuln"] })).structuredContent;
+          requireActionsDb(result);
+          const finding = result.findings.find((entry: any) => entry.rule_id === "GHSA-mrrh-fwg8-r2c3");
+          assert(finding, `no GHSA-mrrh-fwg8-r2c3 finding: ${JSON.stringify(result.findings.map((entry: any) => entry.rule_id))}`);
+          assert(finding.engine === "synvoya" && finding.engine_family === "synvoya", `unexpected engine/family ${finding.engine}/${finding.engine_family}`);
+          assertExactJson([finding.location.file, finding.location.start_line], [".github/workflows/ci.yml", 7], "the finding is not at the uses: line");
+          assert(finding.remediation.summary.includes("46.0.1"), `the remediation does not name the fixed release: ${finding.remediation.summary}`);
+          assert(finding.producer_components.includes("synvoya:actions"), "the finding does not record the actions producer");
+          assert((finding.vulnerability_aliases ?? []).includes("CVE-2025-30066"), "the CVE alias is missing");
+          assert(!result.findings.some((entry: any) => entry.location.start_line === 8 && entry.engine === "synvoya"), "the v4 tag with a fixed release became a finding");
+          const notes = (result.coverage_notes ?? []).map((note: any) => note.detail).join("\n");
+          assert(/rlespinasse\/github-slug-action@v4 is a moving tag .*≥ 4\.4\.1/.test(notes), `no pin-to note for the v4 tag: ${notes}`);
+          assert(/not pinned to a full commit SHA/.test(notes), "no SHA-pinning hygiene note");
+          assertExactJson(result.coverage_gaps?.find((gap: any) => gap.id === "actions-unchecked")?.examples,
+            ["tj-actions/changed-files@main (.github/workflows/ci.yml)"], "actions-unchecked does not hold exactly the unevaluated branch reference");
+          assert(!(result.dependency_coverage ?? []).some((entry: any) => entry.ecosystem === "GitHub Actions"), "osv-scanner reported GitHub Actions packages");
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Design §10.9: the 3.x lexer read `/` after `export default` as division, so the backtick opened a
+      // template that swallowed the admin route until the comment's backtick and the file read parsed.
+      id: "E130 the native parser reads an Express admin route the 3.x lexer hid behind a regex",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e130-"));
+        try {
+          await writeFile(join(root, "admin.mjs"), [
+            'import express from "express";',
+            "const app = express();",
+            "export default /`/;",
+            "app.delete('/api/admin/users', async (_req, res) => {",
+            "  await db.users.deleteMany();",
+            "  return res.sendStatus(204);",
+            "});",
+            "// `",
+          ].join("\n"), "utf8");
+          const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["ai"] })).structuredContent;
+          const findings = result.findings.filter((finding: any) => finding.rule_id === "ci-ai-express-admin-route-no-authz");
+          assert(findings.length === 1 && findings[0].location.start_line === 4, `expected the hidden admin route at line 4, got ${JSON.stringify(findings.map((finding: any) => finding.location))}`);
+          assert(!result.coverage_gaps?.some((gap: any) => gap.id === "native-parse-errors"), "a valid file was reported unparsed");
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Review focus 4: a commit-pinned action is a finding only when the advisory data lists that commit; otherwise a
+      // note, and the reference stays in actions-unchecked. Without the database every reference is in the gap.
+      id: "E89 an unlisted commit pin is a note and stays a gap; without the GitHub Actions database every reference is a gap",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e89-"));
+        const home = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e89-home-"));
+        const bare = new McpClient(isolatedHome(home));
+        try {
+          await mkdir(join(root, ".github", "workflows"), { recursive: true });
+          await writeFile(join(root, ".github", "workflows", "ci.yml"), ACTIONS_WORKFLOW("0e58ed8671d6b60d0890c21b07f8835ace038e67"), "utf8");
+          const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["vuln"] })).structuredContent;
+          requireActionsDb(result);
+          assert(!result.findings.some((entry: any) => entry.engine === "synvoya" && entry.location.start_line === 7), "an unlisted commit became a finding");
+          const notes = (result.coverage_notes ?? []).map((note: any) => note.detail).join("\n");
+          assert(/tj-actions\/changed-files@0e58ed8671d6 is pinned to a commit; GHSA-[a-z0-9-]+ has no commit list/.test(notes), `no commit-pin note: ${notes}`);
+          const gap = result.coverage_gaps?.find((entry: any) => entry.id === "actions-unchecked");
+          assert(gap?.examples.includes("tj-actions/changed-files@0e58ed8671d6b60d0890c21b07f8835ace038e67 (.github/workflows/ci.yml)"), `the commit pin is not in the gap: ${JSON.stringify(gap)}`);
+
+          await bare.init();
+          const without = (await bare.callTool("codeinspectus_scan", { path: root, scanners: ["vuln"] })).structuredContent;
+          const row = without.engine_details.find((engine: any) => engine.engine === "synvoya");
+          assert(/not checked \(the OSV GitHub Actions database is not installed\)/.test(row?.note ?? ""), `the engine note does not say the database is missing: ${row?.note}`);
+          assert(!without.findings.some((entry: any) => /^GHSA-/.test(entry.rule_id) && entry.engine === "synvoya"), "a GitHub Actions finding without the database");
+          assertExactJson(without.coverage_gaps?.find((entry: any) => entry.id === "actions-unchecked")?.files, 4, "without the database not every reference is a gap");
+        } finally {
+          bare.close();
+          await rm(root, { recursive: true, force: true });
+          await rm(home, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Rescan honesty for the actions producer: a fixed tag resolves the prior finding; a commit pin the matcher cannot
+      // judge leaves it not_rechecked, never resolved.
+      id: "E90 a rescan resolves an Actions finding once the tag is fixed, and reports it not_rechecked when pinned to an unlisted commit",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e90-"));
+        const workflow = join(root, ".github", "workflows", "ci.yml");
+        const only = (ref: string) => `on: push\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: tj-actions/changed-files@${ref}\n`;
+        try {
+          await mkdir(join(root, ".github", "workflows"), { recursive: true });
+          await writeFile(workflow, only("v45.0.7"), "utf8");
+          const prior = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["vuln"] })).structuredContent;
+          requireActionsDb(prior);
+          assert(prior.findings.some((entry: any) => entry.rule_id === "GHSA-mrrh-fwg8-r2c3"), "the prior scan has no Actions finding");
+          await writeFile(workflow, only("0e58ed8671d6b60d0890c21b07f8835ace038e67"), "utf8");
+          const pinned = (await client.callTool("codeinspectus_rescan", { path: root, prior_scan_id: prior.scan_id, scanners: ["vuln"] })).structuredContent;
+          assert(pinned.not_rechecked.some((entry: any) => entry.rule_id === "GHSA-mrrh-fwg8-r2c3"), `the commit-pinned rescan did not report it not_rechecked: ${JSON.stringify(pinned.summary)}`);
+          assert(!pinned.resolved.some((entry: any) => entry.rule_id === "GHSA-mrrh-fwg8-r2c3"), "an unjudgeable commit pin confirmed the fix");
+          await writeFile(workflow, only("v46.0.1"), "utf8");
+          const fixed = (await client.callTool("codeinspectus_rescan", { path: root, prior_scan_id: prior.scan_id, scanners: ["vuln"] })).structuredContent;
+          assert(fixed.resolved.some((entry: any) => entry.rule_id === "GHSA-mrrh-fwg8-r2c3"), `the fixed tag did not resolve the finding: ${JSON.stringify(fixed.summary)} ${fixed.not_rechecked_note ?? ""}`);
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      id: "E131 a 100,000-deep nested file is the native-parse-errors gap, not a crash or a hang",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e131-"));
+        try {
+          await writeFile(join(root, "package.json"), "{}\n", "utf8");
+          await writeFile(join(root, "deep.js"), ("[".repeat(10_000) + "\n").repeat(10) + ("]".repeat(10_000) + "\n").repeat(10), "utf8");
+          await writeFile(join(root, "ok.js"), "export const ok = 1;\n", "utf8");
+          const started = Date.now();
+          const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["ai"], accept_gaps: ["native-parse-errors"] })).structuredContent;
+          const gaps = Object.fromEntries((result.coverage_gaps ?? []).map((gap: any) => [gap.id, gap.examples]));
+          assertExactJson(gaps["native-parse-errors"], ["deep.js"], "deep nesting was not reported as native-parse-errors");
+          assert(Date.now() - started < 60_000, "the scan took over a minute");
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // The real osv-scanner 2.7.0 binary and the OSV Go database: an exact go.mod toolchain line and an exact golang
+      // image are checked as the Go standard library (`stdlib`) through the per-scan SBOM, at their own lines.
+      id: "E92 an exact Go toolchain (go.mod toolchain, golang image) is checked against the OSV Go database as stdlib at its line",
+      engineDep: "osv-scanner",
+      fn: async () => {
+        const result = (await client.callTool("codeinspectus_scan", { path: SYNVOYA_GO_TOOLCHAIN_FIXTURE, scanners: ["vuln"] })).structuredContent;
+        if ((result.coverage_notes ?? []).some((note: any) => /OSV Go database is not installed/.test(note.detail ?? ""))) {
+          throw new EvalSkip("OSV Go database not installed (repair-engines osv-scanner --osv-ecosystems Go)");
+        }
+        const stdlib = result.findings.filter((finding: any) => finding.package?.ecosystem === "Go" && finding.package?.name === "stdlib");
+        for (const [file, line] of [["go.mod", 5], ["Dockerfile", 1]] as const) {
+          const here = stdlib.filter((finding: any) => finding.location.file === file);
+          assert(here.length > 0, `no stdlib finding for ${file}: ${JSON.stringify(result.warnings)}`);
+          for (const finding of here) {
+            assert(finding.location.start_line === line, `${file}: expected line ${line}, got ${finding.location.start_line}`);
+            assert(finding.engine === "osv-scanner" && finding.engine_family === "synvoya", `${file}: unexpected engine/family ${finding.engine}/${finding.engine_family}`);
+            assert(finding.package.version === "v1.22.5", `${file}: unexpected version ${finding.package.version}`);
+            assert(finding.producer_components.includes("synvoya:sbom:osv-scanner"), `${file}: the finding does not record the SBOM producer`);
+          }
+          assert(
+            here.some((finding: any) => [finding.rule_id, ...(finding.vulnerability_aliases ?? [])].some((id: string) => /^GO-\d{4}-\d+$/.test(id))),
+            `${file}: no GO- advisory among ${here.map((finding: any) => finding.rule_id).join(", ")}`,
+          );
+        }
+        // The `go 1.22` minimum (line 3) is not a toolchain: nothing from the SBOM points at it.
+        assert(!stdlib.some((finding: any) => finding.location.file === "go.mod" && finding.location.start_line !== 5), "a stdlib finding points at the go minimum");
+        const text = JSON.stringify(result);
+        for (const leak of ["inventory.cdx.json", "synvoya-sbom", "osv-scanner-sbom.json"]) {
+          assert(!text.includes(leak), `the scan result mentions the managed SBOM (${leak})`);
+        }
+        assert(!result.warnings.some((warning: string) => warning.startsWith("Synvoya SBOM check")), `the SBOM check warned: ${JSON.stringify(result.warnings)}`);
+      },
+    },
+    {
+      // The GitHub Actions database is offered only through setup consent, with its size, licence and reader; the plan
+      // is offline.
+      id: "E91 setup offers the OSV GitHub Actions database for a repository with workflows, with its size and GHSA CC-BY-4.0 licence",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e91-"));
+        try {
+          await mkdir(join(root, ".github", "workflows"), { recursive: true });
+          await writeFile(join(root, ".github", "workflows", "ci.yml"), ACTIONS_WORKFLOW("v45.0.7"), "utf8");
+          const response = await client.callTool("codeinspectus_setup", { action: "plan", path: root, components: ["osv-scanner"] });
+          const database = response.structuredContent.plan.osv_databases.find((entry: any) => entry.ecosystem === "GitHub Actions");
+          assert(database, `GitHub Actions is not offered: ${JSON.stringify(response.structuredContent.plan.osv_databases)}`);
+          assert(database.estimated_download_bytes > 50_000 && database.estimated_download_bytes < 1_000_000, `implausible size estimate ${database.estimated_download_bytes}`);
+          assert(/GHSA.*CC-BY-4\.0.*never by osv-scanner/.test(database.note ?? ""), `no licence note: ${database.note}`);
+          const text = response.content.map((item: any) => item.text ?? "").join("\n");
+          assert(text.includes("GitHub Actions:") && text.includes("CC-BY-4.0"), "the plan text does not show the database and its licence");
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Synvoya PHP pack (design 4.5): every shipped syn-php-* rule fires on each of its tp/ fixtures and
+      // nowhere else, no fixture errors or times out, findings carry the Synvoya family, and PHP source
+      // no longer declares the php-sast gap. Fixtures named dot-env* are copied to .env* here because
+      // the repository never commits .env files.
+      id: "E100 [engine] every Synvoya PHP rule fires on its fixtures only, and PHP source is no longer a gap",
+      engineDep: "opengrep",
+      fn: async () => {
+        const rulesDir = resolve(process.cwd(), "detection-db/opengrep-rules/synvoya-php");
+        const ruleIds: string[] = [];
+        for (const name of (await readdir(rulesDir)).filter((x) => x.endsWith(".yaml"))) {
+          for (const match of (await readFile(join(rulesDir, name), "utf8")).matchAll(/^ {2}- id: (\S+)$/gm)) ruleIds.push(match[1] ?? "");
+        }
+        assertExactJson([...(await readdir(SYNVOYA_PHP_FIXTURES))].sort(), [...ruleIds].sort(), "fixture folders and Synvoya PHP rule ids differ");
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e100-"));
+        try {
+          const expected: string[] = [];
+          const copy = async (from: string, to: string): Promise<void> => {
+            for (const entry of await readdir(from, { withFileTypes: true })) {
+              const name = entry.name.startsWith("dot-") ? `.${entry.name.slice(4)}` : entry.name;
+              if (entry.isDirectory()) {
+                await mkdir(join(to, name), { recursive: true });
+                await copy(join(from, entry.name), join(to, name));
+              } else {
+                await cp(join(from, entry.name), join(to, name));
+              }
+            }
+          };
+          await copy(SYNVOYA_PHP_FIXTURES, root);
+          const walk = async (dir: string, rel: string): Promise<void> => {
+            for (const entry of await readdir(dir, { withFileTypes: true })) {
+              if (entry.isDirectory()) await walk(join(dir, entry.name), `${rel}${entry.name}/`);
+              else expected.push(`${rel}${entry.name}`);
+            }
+          };
+          for (const id of ruleIds) await walk(join(root, id, "tp"), `${id}/tp/`);
+          const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["sast"], max_findings: 1000 })).structuredContent;
+          assert(result.engine_details.some((engine: any) => engine.engine === "opengrep" && engine.ran), "Opengrep did not run");
+          const partial = result.warnings.filter((warning: string) => warning.startsWith("Opengrep SAST coverage partial"));
+          assert(partial.length === 0, `Opengrep reported skipped or failed files: ${JSON.stringify(partial)}`);
+          assert(!result.coverage_gaps?.some((gap: any) => gap.id === "sast-parse-errors" || gap.id === "php-sast"),
+            `unexpected coverage gaps: ${JSON.stringify(result.coverage_gaps)}`);
+          const hits = new Set<string>();
+          for (const finding of result.findings.filter((x: any) => ruleIds.includes(x.rule_id))) {
+            const [folder, kind] = finding.location.file.split("/");
+            assert(folder === finding.rule_id && kind === "tp", `${finding.rule_id} fired at ${finding.location.file}:${finding.location.start_line}`);
+            assert(finding.engine_family === "synvoya", `${finding.rule_id} has no Synvoya family`);
+            hits.add(finding.location.file);
+          }
+          const missed = expected.filter((file) => !hits.has(file));
+          assert(missed.length === 0, `tp fixtures without a finding: ${missed.join(", ")}`);
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Stream D review, Critical 1: as a CommonJS script `<!--` starts a comment and the route runs; as a
+      // module a template opens and swallows it. A `.js` file can be either, so it must never read clean.
+      id: "E132 an Express admin route behind an HTML-like comment is never a silent clean pass",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e132-"));
+        try {
+          await writeFile(join(root, "package.json"), "{}\n", "utf8");
+          await writeFile(join(root, "admin.js"), [
+            'const express = require("express");',
+            "const app = express();",
+            "var y = 0;",
+            "app <!--y; `",
+            'app.delete("/api/admin/users", async (_req, res) => {',
+            "  await db.users.deleteMany();",
+            "  return res.sendStatus(204);",
+            "});",
+            "// `",
+          ].join("\n"), "utf8");
+          const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["ai"], accept_gaps: ["native-parse-errors"] })).structuredContent;
+          const gaps = Object.fromEntries((result.coverage_gaps ?? []).map((gap: any) => [gap.id, gap.examples]));
+          const findings = result.findings.filter((finding: any) => finding.rule_id === "ci-ai-express-admin-route-no-authz");
+          assert(
+            findings.length === 1 || (gaps["native-parse-errors"] ?? []).includes("admin.js"),
+            `the hidden route read clean: findings=${findings.length} gaps=${JSON.stringify(gaps)}`,
+          );
+          assertExactJson(gaps["native-parse-errors"], ["admin.js"], "the script/module divergence was not reported as native-parse-errors");
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // A committed Laravel APP_KEY is a secret (Gitleaks rule, value redacted); example env files are
+      // documentation and never match. The key is generated at run time, so no key is committed.
+      id: "E101 [engine] a Laravel APP_KEY in .env is a redacted Synvoya secret, and .env.example is not",
+      engineDep: "gitleaks",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e101-"));
+        try {
+          const key = `base64:${randomBytes(32).toString("base64")}`;
+          await writeFile(join(root, ".env"), `APP_NAME=Shop\nAPP_KEY=${key}\nAPP_ENV=production\n`, "utf8");
+          await writeFile(join(root, ".env.example"), `APP_KEY=${key}\n`, "utf8");
+          const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["secret"] })).structuredContent;
+          const hits = result.findings.filter((x: any) => x.rule_id === "codeinspectus-laravel-app-key");
+          assert(hits.length === 1, `expected one APP_KEY finding, got ${JSON.stringify(hits.map((x: any) => x.location))}`);
+          assert(hits[0].location.file === ".env" && hits[0].location.start_line === 2, `APP_KEY reported at ${hits[0].location.file}:${hits[0].location.start_line}`);
+          assert(hits[0].is_secret === true && hits[0].engine_family === "synvoya", "APP_KEY finding is not a Synvoya secret");
+          assert(!JSON.stringify(result).includes(key.slice(7, 30)), "the APP_KEY value leaked into the scan result");
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Opengrep matches rule path excludes against the absolute target path: the PHP pack must still
+      // fire for a project that sits under parent folders named vendor/, includes/ and example/.
+      id: "E103 [engine] the Synvoya PHP pack fires for a target under vendor/includes/example parent folders",
+      engineDep: "opengrep",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e103-"));
+        try {
+          const target = join(root, "vendor", "includes", "example", "app");
+          await mkdir(target, { recursive: true });
+          await cp(join(SYNVOYA_PHP_FIXTURES, "syn-php-sql-injection", "tp", "plain.php"), join(target, "plain.php"));
+          await cp(join(SYNVOYA_PHP_FIXTURES, "syn-php-wp-debug-display-enabled", "tp", "wp-config.php"), join(target, "wp-config.php"));
+          const result = (await client.callTool("codeinspectus_scan", { path: target, scanners: ["sast"] })).structuredContent;
+          assert(result.engine_details.some((engine: any) => engine.engine === "opengrep" && engine.ran), "Opengrep did not run");
+          for (const [rule, file] of [["syn-php-sql-injection", "plain.php"], ["syn-php-wp-debug-display-enabled", "wp-config.php"]]) {
+            assert(result.findings.some((x: any) => x.rule_id === rule && x.location.file === file), `${rule} did not fire under the vendor/includes/example parents`);
+          }
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Design 4.6: licence findings were 47% of field findings and none was fixable, so they are opt-in.
+      id: "E133 [engine] licence findings are opt-in: absent with an informational note by default, present and kept by a rescan with include_licenses",
+      engineDep: "trivy-vuln",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e133-"));
+        try {
+          await mkdir(join(root, "node_modules", "gpl-pkg"), { recursive: true });
+          await writeFile(join(root, "package.json"), JSON.stringify({ name: "app", version: "1.0.0", dependencies: { "gpl-pkg": "1.0.0" } }), "utf8");
+          await writeFile(join(root, "package-lock.json"), JSON.stringify({ name: "app", lockfileVersion: 3, packages: { "": { name: "app", version: "1.0.0", dependencies: { "gpl-pkg": "1.0.0" } }, "node_modules/gpl-pkg": { version: "1.0.0", license: "GPL-3.0" } } }), "utf8");
+          await writeFile(join(root, "node_modules", "gpl-pkg", "package.json"), JSON.stringify({ name: "gpl-pkg", version: "1.0.0", license: "GPL-3.0" }), "utf8");
+          const note = "Licence findings were not requested (use include_licenses / --licenses).";
+          const off = (await client.callTool("codeinspectus_scan", { path: root })).structuredContent;
+          assert(off.findings.every((x: any) => x.finding_kind !== "license"), "a licence finding appeared without include_licenses");
+          assert(off.coverage_notes?.some((n: any) => n.component === "scanner:license" && n.detail === note), "the licence note is missing");
+          const on = (await client.callTool("codeinspectus_scan", { path: root, include_licenses: true })).structuredContent;
+          const licences = on.findings.filter((x: any) => x.finding_kind === "license");
+          assert(licences.length > 0, "include_licenses produced no licence finding");
+          assert(!on.coverage_notes?.some((n: any) => n.component === "scanner:license"), "the note stays although licences were requested");
+          const rescan = (await client.callTool("codeinspectus_rescan", { path: root, prior_scan_id: on.scan_id })).structuredContent;
+          assert(rescan.summary.resolved === 0 && rescan.remaining.some((x: any) => x.finding_kind === "license"), "a rescan did not follow the prior licence setting");
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // M4 Task 4 (controller ruling): the Synvoya pack rules run in their own Opengrep pass that skips
+      // minified bundles (taint rules time out on them); the baseline rules still scan the bundle. Skipped
+      // files are the acceptable gap third-party-bundles. A long comment line keeps a first-party file in
+      // the pack pass, and a rescan whose bundle set changed cannot resolve a pack finding.
+      id: "E134 [engine] the Synvoya pack pass skips minified bundles as the acceptable gap third-party-bundles; baseline rules still scan them",
+      engineDep: "opengrep",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e134-"));
+        try {
+          const handler = 'const cp=require("child_process");exports.ping=(req,res)=>{cp.exec("ping -c 1 "+req.query.host,(e,o)=>res.send(o))};exports.run=(code)=>eval(code);' +
+            'exports.user=(req,res)=>db.query("SELECT * FROM users WHERE id = "+req.query.id);';
+          const filler = Array.from({ length: 40 }, (_, index) => `function a${index}(e,t){return e&&t?e.call(t,n[${index}]):void 0};`).join("");
+          const readable = [
+            'const cp = require("child_process");',
+            "exports.ping = (req, res) => {",
+            '  const cmd = "ping -c 1 " + req.query.host;',
+            "  cp.exec(cmd, (err, out) => res.send(out));",
+            "};",
+            'exports.user = (req, res) => db.query("SELECT * FROM users WHERE id = " + req.query.id);',
+            `//# sourceMappingURL=data:application/json;base64,${"QUJD".repeat(5_000)}`,
+            "",
+          ].join("\n");
+          await mkdir(join(root, "public", "js"), { recursive: true });
+          await mkdir(join(root, "src"), { recursive: true });
+          await writeFile(join(root, "public", "js", "editor.js"), `/*! Editor v1 | MIT */${handler}${filler}\n`, "utf8");
+          await writeFile(join(root, "src", "ping.js"), readable, "utf8");
+
+          const first = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["sast"], accept_gaps: ["third-party-bundles"] })).structuredContent;
+          assert(first.engine_details.some((engine: any) => engine.engine === "opengrep" && engine.ran), "Opengrep did not run");
+          const pack = first.findings.filter((x: any) => /^syn-(?:node|php)-/.test(x.rule_id));
+          assert(pack.some((x: any) => x.rule_id === "syn-node-command-injection" && x.location.file === "src/ping.js"),
+            `a long comment line took the first-party file out of the pack pass: ${JSON.stringify(first.findings.map((x: any) => [x.rule_id, x.location.file]))}`);
+          assert(!pack.some((x: any) => x.location.file === "public/js/editor.js"), "the pack pass scanned the minified bundle");
+          assert(first.findings.some((x: any) => x.rule_id === "ci-baseline-dangerous-eval" && x.location.file === "public/js/editor.js" && x.engines.includes("opengrep")),
+            "the baseline rules no longer scan the minified bundle");
+          // M4 perf fix: the taint-mode baseline SQL rule runs in the bundle-skipping pass.
+          const sql = first.findings.filter((x: any) => x.rule_id === "ci-baseline-sql-injection-string-build").map((x: any) => x.location.file);
+          assert(sql.includes("src/ping.js") && !sql.includes("public/js/editor.js"),
+            `the taint baseline SQL rule should fire on src/ping.js only: ${JSON.stringify(sql)}`);
+          assertExactJson(first.coverage_gaps?.find((gap: any) => gap.id === "third-party-bundles"),
+            { id: "third-party-bundles", files: 1, examples: ["public/js/editor.js"] }, "the skipped bundle is not the declared gap");
+          assert(first.accepted_gaps?.includes("third-party-bundles"), "third-party-bundles could not be accepted");
+          assert(!first.warnings.some((warning: string) => warning.startsWith("Opengrep SAST coverage partial")),
+            `the pack pass left a coverage warning: ${JSON.stringify(first.warnings)}`);
+
+          // The first-party file is now minified too: the pack pass skips it, so its finding is not proven fixed.
+          await writeFile(join(root, "src", "ping.js"), `${handler}${filler}\n`, "utf8");
+          const rescan = (await client.callTool("codeinspectus_rescan", { path: root, prior_scan_id: first.scan_id })).structuredContent;
+          assert(!rescan.resolved.some((x: any) => /^syn-(?:node|php)-/.test(x.rule_id)),
+            `a pack finding resolved although the pack pass skipped its file: ${JSON.stringify(rescan.resolved.map((x: any) => x.rule_id))}`);
+          assert(rescan.not_rechecked.some((x: any) => x.rule_id === "syn-node-command-injection"), "the skipped pack finding is not listed as not rechecked");
+          assert(!rescan.resolved.some((x: any) => x.rule_id === "ci-baseline-sql-injection-string-build"),
+            "the taint baseline SQL finding resolved although the bundle-skipping pass skipped its file");
+          assert(rescan.not_rechecked.some((x: any) => x.rule_id === "ci-baseline-sql-injection-string-build"), "the skipped SQL finding is not listed as not rechecked");
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // M4 Task 4 review Critical 1: Opengrep 1.33.1 reads `\*` and `\?` in an ignore line as wildcards (and
+      // cannot name a literal `[`), so a minified file named with a glob character never goes on the pack
+      // skip list: it stays in the pack pass, and its readable sibling keeps its pack finding.
+      id: "E135 [engine] a minified file named with a glob character never hides its siblings from the Synvoya pack pass",
+      engineDep: "opengrep",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e135-"));
+        try {
+          const handler = 'const cp=require("child_process");exports.ping=(req,res)=>{cp.exec("ping -c 1 "+req.query.host,(e,o)=>res.send(o))};';
+          const filler = Array.from({ length: 40 }, (_, index) => `function a${index}(e,t){return e&&t?e.call(t,n[${index}]):void 0};`).join("");
+          const readable = 'const cp = require("child_process");\nexports.ping = (req, res) => {\n  const cmd = "ping -c 1 " + req.query.host;\n  cp.exec(cmd, (err, out) => res.send(out));\n};\n';
+          // Windows file names cannot hold `*` or `?`; `[` and `]` are glob characters too.
+          const pairs = process.platform === "win32"
+            ? [["c[X].js", "cX.js"], ["d]e.js", "de.js"]]
+            : [["c*.js", "cX.js"], ["q?.js", "qA.js"], ["r[1].js", "r1.js"]];
+          await mkdir(join(root, "src"), { recursive: true });
+          for (const [bundle, sibling] of pairs) {
+            await writeFile(join(root, "src", bundle!), `${handler}${filler}\n`, "utf8");
+            await writeFile(join(root, "src", sibling!), readable, "utf8");
+          }
+          const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["sast"] })).structuredContent;
+          assert(result.engine_details.some((engine: any) => engine.engine === "opengrep" && engine.ran), "Opengrep did not run");
+          const packFiles = new Set(result.findings.filter((x: any) => x.rule_id === "syn-node-command-injection").map((x: any) => x.location.file));
+          for (const [bundle, sibling] of pairs) {
+            assert(packFiles.has(`src/${sibling}`), `the minified src/${bundle} hid src/${sibling} from the pack pass: ${JSON.stringify([...packFiles])}`);
+            assert(packFiles.has(`src/${bundle}`), `src/${bundle} left the pack pass although no ignore line can name it alone`);
+          }
+          assert(!result.coverage_gaps?.some((gap: any) => gap.id === "third-party-bundles"), `a file the pack pass scanned is listed as skipped: ${JSON.stringify(result.coverage_gaps)}`);
+          assert(!result.warnings.some((warning: string) => warning.startsWith("Opengrep SAST coverage partial")),
+            `unexpected coverage warning: ${JSON.stringify(result.warnings)}`);
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // M4 perf fix: Opengrep skips a file that holds none of a rule's identifiers only while it can derive that
+      // file prefilter from the rule. The precision-pass DOM-XSS rule grew past that analysis's limit and ran
+      // every pattern on every JS/TS file (baseline Opengrep time x2.7 on the field repos, no warning). With
+      // --time, Opengrep lists a rule under a file's match_times only when it ran there.
+      id: "E136 [engine] no baseline Opengrep rule runs on a JS/TS file that holds none of its identifiers",
+      engineDep: "opengrep",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e136-"));
+        try {
+          const target = join(root, "target");
+          const scratch = join(root, "scratch");
+          await mkdir(target);
+          await mkdir(scratch);
+          await writeFile(join(target, "plain.js"), "const total = [1, 2, 3].reduce((sum, value) => sum + value, 0);\nmodule.exports = total;\n", "utf8");
+          await writeFile(join(target, "sink.js"), 'document.getElementById("o").innerHTML = location.hash;\n', "utf8");
+          await writeFile(join(scratch, OPENGREP_EFFECTIVE_IGNORE_NAME), effectiveOpengrepIgnoreList(await readFile(OPENGREP_IGNORE_FILE, "utf8")), "utf8");
+          const bin = await resolveEngine("opengrep");
+          const report = join(scratch, "report.json");
+          const args = buildOpengrepArgs(target, join(scratch, "report.sarif"), report, (await opengrepRuleSets()).baseline);
+          args.splice(args.length - 1, 0, "--time");
+          await execBinary(bin.path, args, { cwd: target, offline: true, env: opengrepExecEnvironment(scratch) });
+          const timing = JSON.parse(await readFile(report, "utf8")).time;
+          const ran = (file: string): string[] => (timing.targets.find((entry: any) => entry.path.endsWith(file))?.match_times ?? [])
+            .map(([rule]: [string, number]) => rule.split(".").pop());
+          assert(ran("sink.js").includes("ci-baseline-dom-xss-innerhtml"), `the timing report does not list rules that ran: ${JSON.stringify(ran("sink.js"))}`);
+          assertExactJson(ran("plain.js"), [], "baseline rules ran on a file holding none of their identifiers (lost file prefilter)");
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Design 4.7: list_rules shows per-language rule counts, read from the rule files Opengrep loads.
+      id: "E102 list_rules counts Synvoya PHP rules per language",
+      fn: async () => {
+        const result = (await client.callTool("codeinspectus_list_rules", {})).structuredContent;
+        const php = result.sast_rule_languages?.find((entry: any) => entry.language === "php");
+        assert(php && php.rule_count > 0 && php.rulesets.includes("synvoya-php"), `no PHP rule count: ${JSON.stringify(result.sast_rule_languages)}`);
+        const text = (await client.callTool("codeinspectus_list_rules", {})).content?.[0]?.text ?? "";
+        assert(/Opengrep rules by language: .*php \d+/.test(text), "the list_rules summary does not name the PHP rule count");
+        assert(result.custom_rules.filter((rule: any) => rule.id.startsWith("syn-php-")).every((rule: any) => rule.engine_family === "synvoya"),
+          "a syn-php rule is not in the Synvoya family");
+      },
+    },
+    {
+      // M3 stream B: every shipped syn-node-* rule has a fixture folder named by its id; tp/ files must
+      // fire that rule, fp/ files must stay quiet for every syn-node rule, nothing may fail to parse,
+      // and each finding is a Synvoya-family Opengrep finding. Experimental rules are never loaded.
+      id: "E110 [engine] every Synvoya Node.js rule fires on its TP fixtures and stays quiet on its FP fixtures",
+      engineDep: "opengrep",
+      fn: async () => {
+        const rulesDir = resolve(process.cwd(), "detection-db/opengrep-rules/synvoya-node");
+        const ruleIds: string[] = [];
+        for (const name of (await readdir(rulesDir)).filter((x) => x.endsWith(".yaml"))) {
+          for (const match of (await readFile(join(rulesDir, name), "utf8")).matchAll(/^ {2}- id: (\S+)$/gm)) ruleIds.push(match[1] ?? "");
+        }
+        assert(ruleIds.length > 0 && ruleIds.every((id) => id.startsWith("syn-node-")), `unexpected rule ids: ${ruleIds.join(", ")}`);
+        const folders = await readdir(SYNVOYA_NODE_FIXTURE);
+        assertExactJson([...folders].sort(), [...ruleIds].sort(), "fixture folders and synvoya-node rule ids differ");
+        const result = (await client.callTool("codeinspectus_scan", {
+          path: SYNVOYA_NODE_FIXTURE, scanners: ["sast"], max_findings: 1000,
+        })).structuredContent;
+        assert(result.engine_details.some((engine: any) => engine.engine === "opengrep" && engine.ran), "Opengrep did not run");
+        assert(!result.truncated, "the fixture scan was truncated");
+        const partial = result.warnings.filter((warning: string) => warning.startsWith("Opengrep SAST coverage partial"));
+        assert(partial.length === 0, `Opengrep reported skipped or failed files: ${JSON.stringify(partial)}`);
+        assert(!result.coverage_gaps?.some((gap: any) => gap.id === "sast-parse-errors"), "Opengrep could not parse a rule fixture");
+        const hits = new Set<string>();
+        for (const finding of result.findings.filter((x: any) => x.rule_id.startsWith("syn-node-"))) {
+          const [folder, kind] = finding.location.file.split("/");
+          assert(folder === finding.rule_id && kind === "tp", `${finding.rule_id} fired at ${finding.location.file}:${finding.location.start_line}`);
+          assert(finding.engine === "opengrep" && finding.engine_family === "synvoya", `${finding.rule_id} is not a Synvoya-family Opengrep finding`);
+          hits.add(finding.location.file);
+        }
+        for (const id of ruleIds) {
+          for (const file of await readdir(join(SYNVOYA_NODE_FIXTURE, id, "tp"))) {
+            assert(hits.has(`${id}/tp/${file}`), `${id} missed ${id}/tp/${file}`);
+          }
+        }
+      },
+    },
+    {
+      // Opengrep 1.33.1 matches rule `paths` against the absolute target path, so a folder-name exclude
+      // would silently switch a rule off for every project under such a parent folder (review F1).
+      id: "E111 [engine] Synvoya Node.js rules still fire for a project under vendors/, third_party/, assets/js/ and example-template/ parents",
+      engineDep: "opengrep",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e111-"));
+        try {
+          const target = join(temporaryRoot, "vendors", "third_party", "assets", "js", "templates", "example-template", "app");
+          await mkdir(join(target, "src"), { recursive: true });
+          await cp(join(SYNVOYA_NODE_FIXTURE, "syn-node-command-injection", "tp", "01_exec_indirect.js"), join(target, "src", "server.js"));
+          await cp(join(SYNVOYA_NODE_FIXTURE, "syn-node-jwt-verify-no-algorithms", "tp", "01_require.js"), join(target, "src", "auth.js"));
+          await cp(join(SYNVOYA_NODE_FIXTURE, "syn-node-placeholder-secret-deploy", "tp", "docker-compose.yml"), join(target, "docker-compose.yml"));
+          const result = (await client.callTool("codeinspectus_scan", { path: target, scanners: ["sast"] })).structuredContent;
+          assert(result.engine_details.some((engine: any) => engine.engine === "opengrep" && engine.ran), "Opengrep did not run");
+          for (const [rule, file] of [
+            ["syn-node-command-injection", "src/server.js"],
+            ["syn-node-jwt-verify-no-algorithms", "src/auth.js"],
+            ["syn-node-placeholder-secret-deploy", "docker-compose.yml"],
+          ]) {
+            assert(result.findings.some((x: any) => x.rule_id === rule && x.location.file === file),
+              `${rule} did not fire on ${file} under a vendors/third_party/assets/js/templates/example-template parent`);
+          }
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Design §10.6 (field precision pass): Opengrep hits in vendored or minified libraries
+      // (CKEditor, jQuery, Freemius) are not the project's code; secrets there are still reported.
+      id: "E120 [engine] inferred third-party scripts (minified, UMD, vendors/) are reported low; padded own code stays high",
+      engineDep: "opengrep",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e120-"));
+        try {
+          const sink = "module.exports = (code) => eval(code);\n";
+          const umd = "(function (global, factory) {\n  typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :\n" +
+            "  typeof define === 'function' && define.amd ? define(factory) : global.widget = factory();\n}(this, function () {\n" +
+            "  return function run(code) { return eval(code); };\n}));\n";
+          const minified = `${"if(a){b(c);}".repeat(120)}function r(c){return eval(c)}\n`;
+          await mkdir(join(temporaryRoot, "public", "js"), { recursive: true });
+          await mkdir(join(temporaryRoot, "includes", "vendors", "lib"), { recursive: true });
+          await mkdir(join(temporaryRoot, "src"), { recursive: true });
+          await writeFile(join(temporaryRoot, "public", "js", "widget.js"), umd, "utf8");
+          await writeFile(join(temporaryRoot, "public", "js", "bundle.js"), minified, "utf8");
+          await writeFile(join(temporaryRoot, "includes", "vendors", "lib", "lib.js"), sink, "utf8");
+          await writeFile(join(temporaryRoot, "src", "app.js"), sink, "utf8");
+          await writeFile(join(temporaryRoot, "src", "app.test.js"), sink, "utf8");
+          // Re-triage 2: one appended comment line of 20,000 ";" must not make the project's own code third-party.
+          await writeFile(join(temporaryRoot, "src", "padded.js"), `${sink}//${";".repeat(20_000)}\n`, "utf8");
+          const result = (await client.callTool("codeinspectus_scan", { path: temporaryRoot, scanners: ["sast"] })).structuredContent;
+          const evals = result.findings.filter((x: any) => x.rule_id === "ci-baseline-dangerous-eval");
+          const byFile = Object.fromEntries(evals.map((x: any) => [x.location.file, x]));
+          for (const file of ["src/app.js", "src/padded.js"]) {
+            assert(byFile[file]?.severity === "high", `the project's own eval() in ${file} was not reported high: ${JSON.stringify(evals)}`);
+          }
+          // Content or folder-name evidence (minified body, UMD wrapper, vendors/) lowers a finding, never removes it.
+          for (const file of ["public/js/bundle.js", "public/js/widget.js", "includes/vendors/lib/lib.js"]) {
+            assert(byFile[file]?.severity === "low" && byFile[file].title.startsWith("Third-party code"),
+              `the finding in inferred third-party ${file} was not reported low: ${JSON.stringify(byFile[file])}`);
+          }
+          // Design 4.6: the same sink in a test file is lowered with its context, never dropped.
+          assert(byFile["src/app.test.js"]?.severity === "low" && byFile["src/app.test.js"].title.startsWith("Test/example context"),
+            `the eval() in a test file was not reported low with its context: ${JSON.stringify(byFile["src/app.test.js"])}`);
+          assert((result.coverage_notes ?? []).some((x: any) => x.component === "routing:test-example-context"), "no test/example routing note");
+          const lowered = (result.coverage_notes ?? []).find((x: any) => x.component === "routing:third-party-lowered");
+          assert(lowered && ["public/js/bundle.js", "public/js/widget.js", "includes/vendors/lib/lib.js"].every((file) => lowered.detail.includes(file)),
+            `the lowered third-party note is missing or incomplete: ${JSON.stringify(result.coverage_notes)}`);
+          assert(!result.warnings.some((warning: string) => /dropped/i.test(warning)), `routing reported a drop: ${JSON.stringify(result.warnings)}`);
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Dedup keys on file + line range + CWE and keeps one finding by fingerprint order at equal
+      // severity/confidence, so a pack finding on a baseline finding's line could replace the existing
+      // fingerprint (review F2). Raw Opengrep output, before dedup, must never put both on one line.
+      id: "E112 [engine] no line carries both a ci-baseline-* and a syn-node-* Opengrep finding (existing fingerprints stay)",
+      engineDep: "opengrep",
+      fn: async () => {
+        for (const corpus of [OPENGREP_RULES_FIXTURE, SYNVOYA_NODE_FIXTURE]) {
+          const managedTmp = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e112-"));
+          try {
+            const output = await runOpengrep(corpus, managedTmp);
+            assert(output.ran, `Opengrep did not run on ${corpus}: ${output.note ?? "no note"}`);
+            const byLine = new Map<string, Set<string>>();
+            for (const finding of normalizeEngineOutput(output, corpus)) {
+              const key = `${finding.location.file}:${finding.location.start_line}`;
+              byLine.set(key, (byLine.get(key) ?? new Set()).add(finding.rule_id));
+            }
+            for (const [key, rules] of byLine) {
+              const ids = [...rules];
+              assert(!(ids.some((id) => id.startsWith("ci-baseline-")) && ids.some((id) => id.startsWith("syn-node-"))),
+                `${key} carries ${ids.join(" + ")}`);
+            }
+          } finally {
+            await rm(managedTmp, { recursive: true, force: true });
+          }
+        }
+      },
+    },
+    {
+      // Design §10.6: field Gitleaks hits on identifiers and public-by-design values (Doctrine index
+      // names, conda pins, OAuth client/tenant ids, reCAPTCHA site keys and Google's test keys, QStash
+      // dev-server defaults, Firebase config keys) are allowlisted per class; real secrets still fire.
+      // Values are assembled at run time so this source file holds no secret-shaped literal.
+      id: "E121 [engine] Gitleaks precision allowlists silence identifier classes and keep real secrets",
+      engineDep: "gitleaks",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e121-"));
+        const j = (...parts: string[]) => parts.join("");
+        const files: Record<string, string> = {
+          "migrations/Version1.php": `$this->renameIndex('oauth2_access_tokens', '${j("IDX_368A4209", "A76ED395")}', 'user_id');\n`,
+          "ml/env.yaml": `dependencies:\n  - aws-c-auth=0.7.3=${j("h28f75", "89_1")}\n  - tokenizers=0.14.1=${j("py310h32", "0607d_2")}\n`,
+          "deploy/config.yml": `env:\n  OAUTH_CLIENT_ID: "${j("f508c1d2-0b1e-4a6f-9c3d-", "7e2a1b9c4d5e")}"\n  OAUTH_TENANT_ID: "${j("c687a1b2-3c4d-4e5f-8a9b-", "0c1d2e3f4a5b")}"\n`,
+          "config/site.yml": `emailOctopusSiteKey: ${j("6LdYxAcTAAAAAJ", "cZVRqyHh71UMIEGNQ_MXjiZKh0")}\n`,
+          "src/Captcha.tsx": `const CAPTCHA_TEST_KEY = '${j("6LeIxAcTAAAAAJcZVRqyHh71", "UMIEGNQ_MXjiZKhI")}'\n`,
+          ".github/workflows/e2e.yaml": `env:\n  QSTASH_TOKEN: "${j("eyJVc2VySUQiOiJkZWZhdWx0VXNlciIsIlBhc3N3b3Jk", "IjoiZGVmYXVsdFBhc3N3b3JkIn0=")}"\n` +
+            `  QSTASH_CURRENT_SIGNING_KEY: "${j("sig_7kYjw48mhY7k", "AjqNGcy6cr29RJ6r")}"\n`,
+          "android/app/google-services.json": `{"api_key": [{"current_key": "${j("AIzaSyA1b2C3d4E5f6G7h8", "I9j0K1l2M3n4O5p6Q")}"}]}\n`,
+          "services/spotify.js": `const CLIENT_SECRET = '${j("4395a1c7e2b94f0d", "8a6c3e1f5b7d9a20")}'\n`,
+          "config/recaptcha.php": `'secret_key' => env('RECAPTCHA_SECRET_KEY', '${j("6LcJq8Zt2Vb7Nx4Rk1Pm", "9Wd3Hy6Lc0Ts5Gf8Ja2x")}'),\n`,
+          "ios/AppConfig.json": `{"api_key": "${j("AIzaSyA1b2C3d4E5f6G7h8", "I9j0K1l2M3n4O5p6Q")}"}\n`,
+          // Review round 2: a client secret inside google-services.json is still a secret.
+          "android/other/google-services.json": `{"client_secret": "${j("4c1e9a7b2d8f6e0a", "3b5c7d9e1f2a4b6c")}"}\n`,
+        };
+        try {
+          for (const [file, text] of Object.entries(files)) {
+            await mkdir(dirname(join(temporaryRoot, file)), { recursive: true });
+            await writeFile(join(temporaryRoot, file), text, "utf8");
+          }
+          const result = (await client.callTool("codeinspectus_scan", { path: temporaryRoot, scanners: ["secret"] })).structuredContent;
+          const reported = new Set(result.findings.filter((x: any) => x.engines.includes("gitleaks")).map((x: any) => x.location.file));
+          const real = ["services/spotify.js", "config/recaptcha.php", "ios/AppConfig.json", "android/other/google-services.json"];
+          for (const file of real) assert(reported.has(file), `Gitleaks no longer reports the secret in ${file}: ${JSON.stringify([...reported])}`);
+          const silent = Object.keys(files).filter((file) => !real.includes(file));
+          for (const file of silent) assert(!reported.has(file), `Gitleaks still reports the allowlisted class in ${file}`);
+          assert(result.secret_coverage === "verified", `secret coverage read ${result.secret_coverage}`);
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // Design 4.6 with real Gitleaks output (--redact=100, so the SARIF never carries the value): a generic
+      // secret in a test file that is also used in application code keeps its severity; a test-only one is
+      // lowered. Values are assembled at run time so this source file holds no secret-shaped literal.
+      id: "E137 [engine] a generic secret shared by src/ and tests/ keeps its severity in both; a test-only copy is lowered",
+      engineDep: "gitleaks",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e137-"));
+        const shared = ["Qm7ZpX2kL9vR4tY8", "wB3nC6dF1gH5jK0s"].join("");
+        const testOnly = ["Zt5YbN8cV2xK7mQ4", "pL1wR9sD3fG6hJ0a"].join("");
+        try {
+          await mkdir(join(temporaryRoot, "src"), { recursive: true });
+          await mkdir(join(temporaryRoot, "tests"), { recursive: true });
+          await writeFile(join(temporaryRoot, "src", "keys.ts"), `export const config = { api_key: "${shared}" };\n`, "utf8");
+          await writeFile(join(temporaryRoot, "tests", "keys.test.ts"), `// fixture\nconst apiKey = "${shared}";\n`, "utf8");
+          await writeFile(join(temporaryRoot, "tests", "only.test.ts"), `const apiKey = "${testOnly}";\n`, "utf8");
+          const result = (await client.callTool("codeinspectus_scan", { path: temporaryRoot, scanners: ["secret"] })).structuredContent;
+          const generic = result.findings.filter((x: any) => x.engines.includes("gitleaks") && x.rule_id === "generic-api-key");
+          const byFile = Object.fromEntries(generic.map((x: any) => [x.location.file, x]));
+          const app = byFile["src/keys.ts"];
+          const reused = byFile["tests/keys.test.ts"];
+          const only = byFile["tests/only.test.ts"];
+          assert(app && reused && only, `Gitleaks did not report all three generic secrets: ${JSON.stringify(Object.keys(byFile))}`);
+          assert(app.severity !== "low" && reused.severity === app.severity,
+            `the shared test copy did not keep its severity: src ${app.severity}, tests ${reused.severity}`);
+          assert(reused.message.includes("same value also found in 1 non-test file(s): src/keys.ts"), `no reuse note: ${reused.message}`);
+          assert(only.severity === "low" && only.title.startsWith("Test/example context"), `the test-only copy was not lowered: ${JSON.stringify(only)}`);
+          // Routing-only: the key is never written to a finding, and the values never leave the scan.
+          const text = JSON.stringify(result);
+          assert(generic.every((x: any) => x.secret_value_hash === undefined), "a routing key was written as secret_value_hash");
+          assert(!text.includes(shared) && !text.includes(testOnly), "a secret value appears in the scan result");
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
         }
       },
     },

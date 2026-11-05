@@ -1,6 +1,7 @@
 on: pull_request
 jobs:
-  changes:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - uses: tj-actions/changed-files@v45
+      - uses: actions/checkout@v4
+      - uses: softprops/action-gh-release@v2

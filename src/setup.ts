@@ -19,6 +19,7 @@ import { hasManagedCosign } from "./engines/signature.js";
 import { engineNeedsCosign, repairEngines, UNREPAIRABLE_ENGINE_STATES, type InstallIo } from "./install.js";
 import {
   detectOsvEcosystems,
+  OSV_DB_NOTES,
   OSV_DB_SIZE_ESTIMATES,
   OSV_ECOSYSTEMS,
   parseOsvEcosystems,
@@ -57,6 +58,8 @@ export interface SetupOsvDatabasePlan {
   selected: boolean;
   /** Approximate archive size; the databases change upstream, so this is never an exact figure. */
   estimated_download_bytes: number;
+  /** Where the records come from, their licence and the engine that reads them, when the plan must say so. */
+  note?: string;
 }
 
 export interface SetupComponentPlan {
@@ -251,6 +254,7 @@ export async function buildSetupPlan(options: {
       state: installed === undefined ? "missing" : installed === "ready" ? "installed" : "stale",
       selected: osvSelected,
       estimated_download_bytes: OSV_DB_SIZE_ESTIMATES[ecosystem],
+      ...(OSV_DB_NOTES[ecosystem] ? { note: OSV_DB_NOTES[ecosystem] } : {}),
     };
   });
   const osvDownloads = osvDatabases.filter((database) => database.selected && database.state !== "installed");
@@ -360,6 +364,7 @@ export function formatSetupPlan(plan: SetupPlan): string {
         : `~${approxSize(database.estimated_download_bytes)} estimated ${database.state === "stale" ? "refresh" : "download"}`;
       const label = osvComponent?.action === "blocked" ? "[blocked]" : database.selected ? "[selected]" : "[declined]";
       lines.push(`  ${label} ${database.ecosystem}: ${database.state}; ${detail}`);
+      if (database.note) lines.push(`    ${database.note}`);
     }
     lines.push(`Estimated OSV database downloads: ~${mib(plan.estimated_osv_download_bytes)} (sizes change upstream).`);
   } else if (osvComponent?.selected) {

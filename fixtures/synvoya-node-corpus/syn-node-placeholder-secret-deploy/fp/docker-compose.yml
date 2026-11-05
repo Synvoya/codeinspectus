@@ -1,0 +1,7 @@
+services:
+  app:
+    environment:
+      APP_SECRET: ${APP_SECRET:?set APP_SECRET}
+      JWT_SECRET: ""
+      SECRET_ROTATION_DAYS: 30
+      PASSWORD_MIN_LENGTH: 12

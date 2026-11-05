@@ -21,10 +21,18 @@ npm run eval         # drives the built server over MCP stdio
 Expected: all non-skipped evals PASS. Engine-dependent evals (E16 Opengrep SQLi,
 E17 Trivy SCA, E18 Opengrep CORS precision, and E34-E36 Opengrep/native parity)
 auto-SKIP when the binary/DB cannot run — that is acceptable, a FAIL is not. The
-suite currently has 87 evals. Measured on 2026-11-03: with all four engines and
-their databases installed, 87 passed, 0 failed, 0 skipped; with no engine installed (a `HOME` without
-`~/.codeinspectus`), 63 passed, 0 failed, 24 skipped (every skip is engine-dependent; E82, E83, E85
-and E86 need no engine and E84 skips). Partial installs fall between the two: E59/E60 skip without the
+suite currently has 110 evals (E01-E92 plus E100-E103, E110-E112, E120-E121, E130-E137). Measured
+on 2026-11-05 after the 4.0 final-review fixes: with all four engines and their databases installed
+(OSV npm, PyPI, Packagist, Go and GitHub Actions), 110 passed, 0 failed, 0 skipped.
+The no-engine count for 110 evals was not re-measured for 4.0; at 87 evals (2026-11-03) it was 63 passed,
+0 failed, 24 skipped (every skip is engine-dependent; E82, E83, E85 and E86 need no engine and E84
+skips). Engine evals need a `HOME` holding `~/.codeinspectus`; run them from the main checkout or a
+copy with that `HOME`. In a worktree whose `HOME` was blocked, E83 and E84 timed out (a worktree
+artefact, per the M4 ledger, not a product failure). Evals added for 4.0: E87-E92 (vendored
+libraries, GitHub Actions, Go toolchain), E100-E103 and E110-E112 (every PHP and Node.js pack rule on its
+TP and FP fixtures; no line carries both a baseline and a Node pack finding), E120-E121 (third-party
+routing, Gitleaks allowlists), E130-E132 (native parser), E133 (licence opt-in) and E134-E135 (pack pass
+skips bundles; a glob-named file never hides siblings). Partial installs fall between the two: E59/E60 skip without the
 PyPI OSV database, and E61 skips without osv-scanner or when the OSV crates.io database is installed. E17 and E64 skip only without the Trivy DB; E64 requires
 every Trivy dependency finding to name its package and, when Trivy reports a fixed version, to
 name the upgrade in its remediation (a Trivy finding merged into an osv-scanner one is checked in
@@ -42,9 +50,9 @@ E68 writes `trivy.yaml`, `.trivyignore` and `trivy-secret.yaml` into a scanned c
 and requires Trivy's vulnerability, misconfiguration and secret findings anyway; it skips only
 without the Trivy DB. E69 scans a single file whose directory holds a `.gitleaksignore` naming it
 and requires the Gitleaks finding; it skips only without Gitleaks. E70 adds a file over Opengrep's
-1,000,000-byte limit and a syntax error and requires the "Opengrep SAST coverage partial" warning to
-count and name the first and the `sast-parse-errors` gap to name the second; it skips only without
-Opengrep. E71 scans copies of `opengrep-ignore-suppress`
+1,000,000-byte limit, a syntax error and a 1.1 MB PNG, and requires the "Opengrep SAST coverage partial" warning to
+count and name the first, the `sast-parse-errors` gap to name the second, and an informational
+`engine:opengrep` note (never the warning) to name the PNG; it skips only without Opengrep. E71 scans copies of `opengrep-ignore-suppress`
 under `build/`, `tests/` and `node_modules/` folders and requires the planted `eval()` (and the
 default `*.min.js` exclusion) in each; it guards the internal
 `SEMGREP_R2C_INTERNAL_EXPLICIT_SEMGREPIGNORE` variable and skips only without Opengrep. E72 builds a
@@ -185,7 +193,7 @@ npx vitest run \
   src/provenance.test.ts \
   src/repository-trust/*.test.ts
 ```
-Expected: all focused tests pass; manifest `1.19.1` owns exactly 72 native rule IDs (29
+Expected: all focused tests pass; manifest `2.0.0` owns exactly 72 native rule IDs (29
 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, 2 Expo, 10 Python AI/API,
 1 Go AI, 1 Java AI, 1 C# AI, 1 PHP AI, 1 Rust AI, 1 Ruby AI, 3 Firebase configuration,
 2 GitHub Actions workflow, and 2 JavaScript baseline SAST) across sixteen packs and 45 analyzers;

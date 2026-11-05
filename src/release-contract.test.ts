@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { SERVER_VERSION } from "./config.js";
 import { SDK_API_VERSION, SDK_COMPATIBILITY } from "./sdk/index.js";
 
-const RELEASE_VERSION = "3.3.2";
+const RELEASE_VERSION = "4.0.0";
 
 describe("V3 release source synchronization", () => {
   test("package, lockfile, server, CLI, and SDK versions agree", async () => {
@@ -31,7 +31,7 @@ describe("V3 release source synchronization", () => {
     ]);
     expect(SERVER_VERSION).toBe(RELEASE_VERSION);
     expect(SDK_API_VERSION).toBe(RELEASE_VERSION);
-    expect(SDK_COMPATIBILITY).toMatchObject({ cli_major: 3, export_schema: "3.0.0", repository_trust_schema: "1.0.0", cleanup_schema: "1.0.0" });
+    expect(SDK_COMPATIBILITY).toMatchObject({ cli_major: 4, export_schema: "3.0.0", repository_trust_schema: "1.0.0", cleanup_schema: "1.0.0" });
     expect(packageJson.license).toBe("Apache-2.0");
     expect(packageJson.files).toContain("agent-rules");
     expect(packageJson.files).toContain("LICENSE");
@@ -50,8 +50,8 @@ describe("V3 release source synchronization", () => {
       custom_rules: Array<{ engine: string; pack_id?: string }>;
     };
     const native = manifest.custom_rules.filter((rule) => rule.engine === "codeinspectus-ai");
-    expect(manifest.version).toBe("1.19.1");
-    expect(manifest.custom_rules).toHaveLength(94);
+    expect(manifest.version).toBe("2.0.0");
+    expect(manifest.custom_rules).toHaveLength(126); // 94 + 19 syn-php-* + 12 syn-node-* Opengrep + 1 Gitleaks (7 holdout failures held in experimental)
     expect(native).toHaveLength(72);
     expect(new Set(native.map((rule) => rule.pack_id)).size).toBe(16);
   });

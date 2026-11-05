@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { synvoyaFindingComponents } from "../provenance.js";
 import { fingerprint } from "../util/hash.js";
-import { cycleOf, evaluateSynvoya, spansAffect, type PackageInventory } from "./evaluate.js";
+import { cycleOf, evaluateSynvoya, judgeDeclaredVersion, spansAffect, type PackageInventory } from "./evaluate.js";
 import type { Declaration, EolEntry, SynvoyaAdvisory, SynvoyaDataset } from "./types.js";
 import { isAffected, type VersionScheme } from "./versions.js";
 
@@ -43,6 +43,7 @@ function dataset(advisories: SynvoyaAdvisory[], eolEntries: EolEntry[] = []): Sy
     imageAliases: {},
     productImages: {},
     eol: eolEntries,
+    libraries: { libraries: [] },
   };
 }
 
@@ -689,3 +690,29 @@ describe("evaluateSynvoya: unjudged declarations (rescan proof)", () => {
   });
 });
 
+
+describe("judgeDeclaredVersion (one declared version against one advisory, as the Actions matcher uses it)", () => {
+  const action = adv({
+    id: "GHSA-mrrh-fwg8-r2c3",
+    kind: "vulnerability",
+    target: { type: "package", ecosystem: "GitHub Actions", name: "tj-actions/changed-files" },
+    affected: [{ events: [{ introduced: "0" }, { fixed: "46.0.1" }] }],
+    fixed: ["46.0.1"],
+  });
+
+  test("exact versions: inside the range is a finding, the fix or later is none, an unreadable version is unknown", () => {
+    expect(judgeDeclaredVersion(action, "45.0.7", "exact", NOW)).toEqual({ verdict: "finding", basis: "exact", proven: false });
+    expect(judgeDeclaredVersion(action, "46.0.1", "exact", NOW)).toEqual({ verdict: "none" });
+    expect(judgeDeclaredVersion(action, "main", "exact", NOW)).toEqual({ verdict: "unknown" });
+  });
+
+  test("the M1 floating rule: a whole affected line is a finding, a line with a fixed release is a note naming it", () => {
+    expect(judgeDeclaredVersion(action, "45", "floating", NOW)).toEqual({ verdict: "finding", basis: "line", proven: false });
+    expect(judgeDeclaredVersion(action, "46", "floating", NOW)).toEqual({ verdict: "note", fixed: ["46.0.1"] });
+    expect(judgeDeclaredVersion(action, "47", "floating", NOW)).toEqual({ verdict: "none" });
+    expect(judgeDeclaredVersion(adv({ ...action, affected: [{ events: [{ introduced: "0" }] }], fixed: [] }), "3", "floating", NOW))
+      .toEqual({ verdict: "finding", basis: "line", proven: true });
+    expect(judgeDeclaredVersion(adv({ ...action, affected: [{ events: [{ introduced: "0" }, { fixed: "x.y" }] }] }), "46", "floating", NOW))
+      .toEqual({ verdict: "unknown" });
+  });
+});

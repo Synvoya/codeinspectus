@@ -13,7 +13,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const DATA_FILES = ["advisories.json", "aliases.json", "eol.json"];
+const DATA_FILES = ["advisories.json", "aliases.json", "eol.json", "libraries.json"];
 const DEFAULT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../detection-db/synvoya");
 
 const args = process.argv.slice(2);

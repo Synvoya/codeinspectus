@@ -1,0 +1,138 @@
+# CodeInspectus original Apache-2.0 security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
+# Taint-mode baseline rules (OWASP A03). A `*-taint.yaml` file runs in the bundle-skipping Opengrep pass
+# beside the Synvoya packs (src/engines/opengrep-bundles.ts), not in the baseline pass: taint analysis of a
+# minified bundle is not bounded by the per-rule timeout (field: 54 s on one 300 KB vendored bundle), and
+# it made every JS/TS file of the baseline pass pay for intrafile dataflow. The bundles it skips are the
+# third-party-bundles gap; every other file is scanned exactly as before.
+rules:
+  - id: ci-baseline-sql-injection-string-build
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Potential SQL injection: HTTP request input reaches a SQL query that is built by
+      string concatenation or template interpolation. Pass the value as a bound
+      parameter (a placeholder plus a values array) instead.
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: MEDIUM
+      references:
+        - https://owasp.org/Top10/A03_2021-Injection/
+    # Precision pass (design 10.6): a string-built query alone is not reported. Field triage found
+    # 0 of 37 such hits exploitable (migrations interpolating constants, schema dialects interpolating
+    # identifiers), so the rule now needs request input to reach the query text in the same file.
+    mode: taint
+    pattern-sources:
+      # Request objects of Express, Koa, Hono and the Fetch API (Next.js route handlers).
+      - patterns:
+          - pattern: $REQ.$FIELD
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|request|ctx|ctx\.request|c\.req)$
+          - metavariable-regex:
+              metavariable: $FIELD
+              regex: ^(query|body|params|headers|cookies|searchParams|nextUrl|url|originalUrl)$
+      - patterns:
+          - pattern: $REQ.$METHOD(...)
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|request|c\.req)$
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^(json|formData|text|query|param|header|get)$
+      # H3 / Nuxt server routes: the input readers, bound to the h3 import or to the event of a
+      # defineEventHandler/eventHandler handler (Nuxt auto-imports them), never to a bare name.
+      - patterns:
+          - pattern: $FN($EVENT, ...)
+          - metavariable-regex:
+              metavariable: $FN
+              regex: ^(getQuery|readBody|getRouterParam|getRouterParams|getValidatedQuery|readValidatedBody|getHeader|getHeaders|getCookie|readFormData|readRawBody)$
+          - pattern-either:
+              - pattern-inside: |
+                  import { ..., $FN, ... } from "h3";
+                  ...
+              - patterns:
+                  - pattern-either:
+                      - pattern-inside: $DEFINE(async ($EVENT) => { ... })
+                      - pattern-inside: $DEFINE(($EVENT) => { ... })
+                      - pattern-inside: $DEFINE(async function ($EVENT) { ... })
+                      - pattern-inside: $DEFINE(function ($EVENT) { ... })
+                  - metavariable-regex:
+                      metavariable: $DEFINE
+                      regex: ^(defineEventHandler|eventHandler|defineCachedEventHandler|defineNitroHandler)$
+        # A sanitizer counts only for its own sink: numeric casts, the mysql/mysql2 module or a
+    # connection/pool it created, and the pg client escapes. An HTML escaper is not one.
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: parseInt(...)
+          - pattern: parseFloat(...)
+          - pattern: Number(...)
+          - pattern: $PG.escapeLiteral(...)
+          - pattern: $PG.escapeIdentifier(...)
+          # Placeholder lists built from the input's length ("?, ?, ?"), not its values.
+          - pattern: $LIST.map(() => "...")
+          - pattern: $LIST.map(($ITEM) => "...")
+          - pattern: Array($N).fill("...")
+          - pattern: new Array($N).fill("...")
+      # mysql.escape(...) / mysql.escapeId(...) on the imported mysql or mysql2 module.
+      - patterns:
+          - pattern: $DRV.$ESC(...)
+          - metavariable-regex:
+              metavariable: $ESC
+              regex: ^(escape|escapeId)$
+          - pattern-either:
+              - pattern-inside: |
+                  $DRV = require("$MOD");
+                  ...
+              - pattern-inside: |
+                  import $DRV from "$MOD";
+                  ...
+              - pattern-inside: |
+                  import * as $DRV from "$MOD";
+                  ...
+          - metavariable-regex:
+              metavariable: $MOD
+              regex: ^mysql2?(/promise)?$
+      # connection.escape(...) on a connection or pool created by that module.
+      - patterns:
+          - pattern: $CONN.$ESC(...)
+          - metavariable-regex:
+              metavariable: $ESC
+              regex: ^(escape|escapeId)$
+          - pattern-either:
+              - pattern-inside: |
+                  $DRV = require("$MOD");
+                  ...
+              - pattern-inside: |
+                  import $DRV from "$MOD";
+                  ...
+              - pattern-inside: |
+                  import * as $DRV from "$MOD";
+                  ...
+          - metavariable-regex:
+              metavariable: $MOD
+              regex: ^mysql2?(/promise)?$
+          - pattern-either:
+              - pattern-inside: |
+                  $CONN = $DRV.$CREATE(...);
+                  ...
+              - pattern-inside: |
+                  $CONN = await $DRV.$CREATE(...);
+                  ...
+          - metavariable-regex:
+              metavariable: $CREATE
+              regex: ^(createConnection|createPool|createPoolCluster)$
+    pattern-sinks:
+      - patterns:
+          - pattern: $DB.$EXEC($QUERY, ...)
+          - metavariable-regex:
+              metavariable: $EXEC
+              regex: ^(query|execute|raw|\$queryRawUnsafe|\$executeRawUnsafe)$
+          - metavariable-pattern:
+              metavariable: $QUERY
+              pattern-either:
+                - pattern: '"..." + ...'
+                - pattern: '... + "..."'
+                - pattern: '`...${...}...`'
+          - focus-metavariable: $QUERY

@@ -63,6 +63,23 @@ export interface EolEntry {
   source: string;
 }
 
+/** One reviewed front-end library: the npm package it is published as and the evidence that names it. */
+export interface LibraryEntry {
+  /** The package name exactly as published on npm. */
+  npm: string;
+  /** Anchored regex sources with exactly one capture group (the version), matched against a leading comment. */
+  banners: string[];
+  /** Lower-case file-name stems: `<stem>-<version>(.min).js`. */
+  fileStems: string[];
+  /** Lower-case CDN path keys, e.g. "jquery" (unpkg), "npm/jquery" (jsDelivr), "ajax/libs/jquery" (cdnjs, Google). */
+  cdnPaths: string[];
+}
+
+/** Reviewed, bundled mapping from banners, file names and CDN paths to npm packages (never guessed from free text). */
+export interface LibraryTable {
+  libraries: LibraryEntry[];
+}
+
 export interface SynvoyaDataset {
   version: string;
   date: string;
@@ -74,6 +91,7 @@ export interface SynvoyaDataset {
   /** image repo → product */
   productImages: Record<string, string>;
   eol: EolEntry[];
+  libraries: LibraryTable;
 }
 
 /** What a reader found a repository declaring: a runtime pin, a product, a package or an image. */
@@ -97,7 +115,7 @@ export interface Declaration {
   /** Unresolved only: the reader's own note already says why it cannot be judged, so the evaluator adds none. */
   noted?: true;
   /** The reader that found it; the scanner sets it, and the finding records it as `synvoya:<producer>`. */
-  producer?: "runtime" | "images" | "products";
+  producer?: "runtime" | "images" | "products" | "vendored" | "actions";
 }
 
 export interface ReaderResult {

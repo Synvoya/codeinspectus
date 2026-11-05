@@ -4,11 +4,21 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
-## [Unreleased (4.0.0)]
+## [4.0.0] — unreleased
 
-Google osv-scanner as a fourth engine, and the Synvoya gap layer. Not released yet; it builds on the 3.4.0 changes below.
+CodeInspectus 4.0 adds Google's osv-scanner as a fourth engine, Synvoya (an offline gap-advisory layer
+plus PHP and Node.js rule packs), parser-backed native JavaScript/TypeScript checks, and a quieter
+default output. This release focuses on PHP and Node.js. It is not released yet. It also includes the
+declared coverage gaps, engine pin updates and engine-isolation fixes prepared as 3.4.0, which was never
+released, so everything below is new since 3.3.2. Upgrading from 3.3.2 changes default output,
+coverage verdicts and what a baseline comparison can prove; read [Upgrade notes](#upgrade-notes-40)
+first. Items planned after 4.0 are listed under
+[Known limits](#known-limits-40).
 
 ### Added
+
+#### osv-scanner, the fourth engine
+
 - Added Google's osv-scanner 2.7.0 as a fourth managed engine, installed only after approval like
   Opengrep, Gitleaks and Trivy. `engines.lock.json` ships its binary SHA-256 for five platforms; the
   maintainer pin step recorded each one only after verifying the release's `SHA256SUMS` and its
@@ -40,14 +50,15 @@ Google osv-scanner as a fourth engine, and the Synvoya gap layer. Not released y
   database, with OSV data licensing and attribution. `preflight` lists osv-scanner for dependency
   scans as additive. A missing osv-scanner does not make engine setup `repair_required`.
 - Sealed bundles seal manifest `1.1.0`, which records four commodity engines (Opengrep, Gitleaks,
-  Trivy and osv-scanner). Bundles sealed up to 3.4.0 use manifest `1.0.0` and still verify.
+  Trivy and osv-scanner). Bundles sealed up to 3.3.2 use manifest `1.0.0` and still verify.
 - The TypeScript SDK exposes `SDK_COMPATIBILITY.bundle_schemas_verified` (`["1.0.0", "1.1.0"]`), the
   bundle manifest versions `verifyBundle` accepts.
 - `THIRD-PARTY-NOTICES.md` and `NOTICE` now attribute osv-scanner (Apache-2.0) and the OSV data
   sources and their licenses: GHSA, PyPA, OSS-Fuzz and Go (CC BY 4.0), OpenSSF Malicious Packages
   (Apache-2.0), Drupal (MIT) and RustSec (CC0 1.0). This is attribution, not a legal review.
 
-### Added: Synvoya gap layer
+#### Synvoya: engine, dataset and readers
+
 - Added **Synvoya**, an offline gap-advisory layer (`engine: "synvoya"`) that runs in every
   vulnerability scan. It judges what a repository **declares** (never what is deployed) against a
   bundled dataset: Node.js, PHP, Python, Ruby, Go, .NET and Java versions read from version-manager
@@ -56,6 +67,10 @@ Google osv-scanner as a fourth engine, and the Synvoya gap layer. Not released y
   Magento Open Source and WordPress core versions from `composer.lock`; and malicious or unlisted
   package versions from the package lists osv-scanner and Trivy already produce. See
   [docs/SYNVOYA.md](docs/SYNVOYA.md).
+- Composer's `config.platform.php` (and `platform-overrides` in `composer.lock`) is a
+  dependency-resolution hint, not the deployed PHP, so it gives an informational note and never a
+  runtime finding; `require.php` and real runtime pins (Dockerfiles, CI, `.tool-versions`) stay the
+  sources.
 - Version rules set confidence, never severity (severity comes from the advisory): an exact affected
   pin is high; a floating or range declaration whose every resolvable release is affected is medium;
   a floating or range declaration on an end-of-life line is high; a provisional advisory is low and
@@ -64,8 +79,8 @@ Google osv-scanner as a fourth engine, and the Synvoya gap layer. Not released y
   is a note that never lowers coverage. Adobe Commerce and Magento fixes that are hotfixes (no
   version change) are medium "Verify ... is applied" findings. Every runtime or image fix says to
   rebuild and redeploy; malware findings include credential rotation.
-- The dataset (`detection-db/synvoya/`, 330 advisories and 335 end-of-life cycles in
-  `2026.11.03.5`) is checked against SHA-256 digests in `manifest.json` and a strict schema before
+- The dataset (`detection-db/synvoya/`, 330 advisories and 335 end-of-life cycles in version
+  `2026.11.05.2`) is checked against SHA-256 digests in `manifest.json` and a strict schema before
   use. An edited or corrupted dataset makes the engine `unavailable` with a scan warning, and a
   rescan reports its prior findings as not re-checked; it is never a silent zero. End-of-life data
   comes from endoflife.date (MIT), see `detection-db/synvoya/LICENSE-PROVENANCE.md`.
@@ -75,7 +90,8 @@ Google osv-scanner as a fourth engine, and the Synvoya gap layer. Not released y
 - Rescan confirms a Synvoya finding fixed only when each of its producers fully re-checked the file
   (`synvoya:runtime`, `synvoya:images`, `synvoya:products`, `synvoya:inventory:*`). A file a reader
   skipped, read in part, could not judge, or lost to the 30-second reader deadline is
-  `not_rechecked`, never `resolved`.
+  `not_rechecked`, never `resolved`. A reached reader deadline also makes aggregate coverage
+  `partial`, with a scan warning that names how many files or folders were not read.
 - Findings from CodeInspectus-owned detection carry the optional display field
   `engine_family: "synvoya"` ("Synvoya (CodeInspectus)"). `engine`, `rule_id`, ids and fingerprints
   are unchanged, and export schema `3.0.0` does not write the field. `codeinspectus_list_rules`
@@ -90,73 +106,126 @@ Google osv-scanner as a fourth engine, and the Synvoya gap layer. Not released y
 - Evals E82-E86 cover declared Node.js, PHP and Adobe Commerce findings with fixes, a tampered
   dataset, upstream enrichment, floating-tag notes, and a rescan past the reader deadline.
 
-### Fixed
-- Drupal contrib findings from osv-scanner now name the fixed version. OSV keys those packages as
-  `https://packages.drupal.org/8:drupal/<module>`, so the lookup never matched the Composer name and
-  remediation said no version was listed. Fingerprints are unchanged.
+#### Synvoya: vendored libraries, Magento, Go and GitHub Actions
 
-### Changed
-- `SDK_COMPATIBILITY.bundle_schema` is now `1.1.0`, the manifest version this release seals. It was
-  `1.0.0`. Use `bundle_schemas_verified` for the versions `verifyBundle` accepts.
-- Export schema `3.0.0` is unchanged. Exports carry no structured `package` field; the package is
-  kept internally for de-duplication.
+- Vendored and CDN-loaded JavaScript libraries (banner comments, versioned file names such as
+  `jquery-1.12.4.min.js`, versioned CDN URLs) are checked by osv-scanner: each scan writes the exact
+  versions as a CycloneDX SBOM in its temp directory and runs osv-scanner over it offline with the main
+  run's flags. Findings are `osv-scanner` findings in the Synvoya family at the declaring file and line,
+  never at the SBOM. A library shipped as files is reported once per advisory per vendored root (the
+  path up to the directory named for the library, else the file's folder), at its shallowest file,
+  naming up to 5 other files; its fingerprint is keyed on the root, so TinyMCE's banner on every plugin
+  file is one finding, not one per file. CDN references stay one per declaration. Floating versions are notes, and a file holding one is never confirmed fixed on
+  rescan. Without osv-scanner or its npm database the new
+  declared gap `vendored-js` names the files; a failed second run is a `Synvoya SBOM check did not
+  run` warning (partial coverage). Rails `vendor/assets/` counts as a web asset folder. Eval E87 runs
+  the real binary.
+- Magento Open Source installed with Composer is now checked against its GitHub advisories. A
+  `composer.lock` locks `magento/product-community-edition` (or `magento/magento2-base`), while the
+  OSV Packagist database files Magento advisories under `magento/community-edition`, so a store got no
+  Magento finding. The same SBOM run now checks the locked version under that name (a reviewed alias in
+  `detection-db/synvoya/aliases.json`) and reports at the locked package's line, under its locked name.
+  Adobe Commerce (`magento/product-enterprise-edition`) has no package in that database and is not
+  checked this way (a note says so). An advisory the main osv-scanner run already reports for the
+  locked package in the same file stays that run's finding.
+- Trivy compares Magento `-pN` patch releases as pre-releases, so a store on `2.4.6-p11` got
+  advisories fixed in `2.4.6-p6` (91 on one field store). A Trivy finding on a Magento core package is
+  no longer reported when, under Magento ordering, the installed `-pN` release is at or above every fix
+  Trivy lists for that release line; a coverage note (`engine:trivy`) gives the count, package and
+  advisories. Other Trivy findings and their fingerprints are unchanged.
+- The declared Go toolchain is checked against Go advisories. An exact `toolchain goX.Y.Z` line in
+  `go.mod` and an exact `golang:X.Y.Z` image go into the same SBOM as the Go standard library
+  (`pkg:golang/stdlib@vX.Y.Z`, the package the OSV Go database files toolchain advisories under), and
+  findings point at the declaring line. A `go X` line is a minimum, not a toolchain, so it is never
+  checked; a toolchain upgrade is confirmed on rescan, a removed toolchain line is not. Without the OSV Go
+  database a note names the files; no new gap id.
+- Eight bundled advisories that waited for a later reader now run: the Go standard library releases
+  (`SYN-2026-019`, `020`) are judged against declared Go runtimes (go.mod `toolchain` lines,
+  `golang` images, `.tool-versions`, setup-go steps), and the six GitHub Actions advisories (`SYN-2026-068`, `069`, `076`,
+  `07601`, `077`, `326`) against `uses:` references by the Actions matcher, with or without the OSV GitHub
+  Actions database. An advisory the database or osv-scanner already reports in the same file is not
+  repeated: that finding stands and gains Synvoya's fix steps. Without the database these Actions findings
+  appear but nothing is claimed checked, so a rescan never confirms them fixed. `SYN-2026-070` (mutable action
+  tags) has no version to compare and still waits; the unpinned-reference note covers it. `SYN-2026-219`
+  (CVE-2020-0601, a Windows CryptoAPI flaw whose Go change is Windows-only) waits for platform detection like
+  `SYN-2026-150`, so a Linux golang image never gets it. Dataset version
+  `2026.11.05.2`; a rescan after the update reports older Synvoya findings as not re-checked once.
 
-### Upgrade note
-- `npx codeinspectus repair-engines` also installs osv-scanner 2.7.0, unless you declined it in
-  `setup` (then run `repair-engines osv-scanner` to install it), but downloads no new OSV database;
-  OSV databases you already installed may be refreshed if they are stale or have lost their install
-  record.
-- To scan dependencies with osv-scanner, approve the databases your repository needs:
-  `npx codeinspectus setup --select osv-scanner --path /absolute/path/to/repository`. Until you do,
-  scans report each missing ecosystem as `unavailable` with a setup warning.
-- Installing osv-scanner can detach existing triage annotations from dependency findings that it
-  merges into. The merged finding can carry a different fingerprint, so an annotation recorded
-  against the earlier finding may stop matching. The finding resurfaces for triage; nothing is
-  hidden.
-- Builds up to 3.4.0 cannot verify bundles sealed with manifest `1.1.0` (`bundle verify` exits 2).
-  Bundles sealed by 3.4.0 and earlier still verify with this release.
-- `SDK_COMPATIBILITY.bundle_schema` changed from `1.0.0` to `1.1.0`. Consumers that compared it to
-  decide which bundles to accept should read `bundle_schemas_verified` instead.
+#### Synvoya PHP and Node.js rule packs
 
-## [3.4.0] — unreleased
+- **Synvoya PHP pack (`syn-php-*`, 19 Opengrep rules)** for plain PHP, Laravel, Symfony and WordPress
+  (`.php`, `.phtml`, `.blade.php`): SQL, command and code injection, file inclusion, `unserialize`
+  and phar paths, SSRF, `extract()` on request input, client-named uploads, Blade raw output,
+  predictable tokens, weak password hashing, disabled TLS verification, debug settings in deployable
+  env files and Symfony front controllers, and unchecked WordPress REST and admin-ajax writes. One more rule, the
+  Gitleaks rule `codeinspectus-laravel-app-key`, flags a Laravel `APP_KEY` in a `.env`,
+  `.env.production`, `.env.prod` or `.env.staging` file (`.env.example`, `.env.testing` and `.env.ci` are not matched). PHP source is no longer the `php-sast` gap; that gap now names
+  only Twig templates.
+- **Synvoya Node.js pack (`syn-node-*`, 12 Opengrep rules)** for Express, NestJS, Next.js, Nuxt/H3
+  and Hono: command injection, `vm`/`Function` code injection, zip-slip,
+  unsafe deserialization, JWT verification without fixed algorithms or with decode-only use,
+  cookie and session flags, unconditional `trust proxy`, NestJS `ValidationPipe` without
+  `whitelist`, prototype pollution, and placeholder secrets in deploy defaults.
+- Both packs were written for CodeInspectus (provenance in `docs/RULE-PROVENANCE.md`), carry
+  true-positive and false-positive fixtures checked by evals E100-E103 and E110-E112, and passed a
+  field precision gate: hits on the field repositories were triaged, then triaged again
+  independently. A rule that did not pass is held back, not shipped: `syn-php-xss-echo` and four
+  Node.js rules (`syn-node-default-credentials`, `syn-node-open-redirect`,
+  `syn-node-prototype-pollution-library-merge`, `syn-node-session-secret-literal`). They live outside
+  `detection-db/`, so Opengrep never loads them and the npm package does not contain them.
+- **Holdout precision gate.** On the repositories they were tuned on, the packs scored 24 of 24 true
+  positives. Re-measured on 12 holdout repositories none of the rules was tuned on, they scored 3 of 26
+  (PHP) and 17 of 131 (Node.js): the tuning result was over-fitted. Each rule now ships only if at most 1
+  in 5 of its holdout hits is a false positive, or, with no holdout hit, if it had no tuning false
+  positive and its fixtures pass. Seven rules failed and are held back as experimental for 4.1, to be
+  fixed and re-measured on a new holdout set: `syn-node-sql-injection` (11 of 103 holdout hits true),
+  `syn-node-path-traversal` (0/22), `syn-php-path-traversal` (0/11), `syn-php-preg-replace-eval-modifier`
+  (0/5), `syn-php-laravel-mass-assignment-unguarded` (0/2), `syn-php-open-redirect` (0/1) and
+  `syn-php-xxe-entity-expansion` (0/1). `syn-php-tls-verification-disabled` (2 of 4) and
+  `syn-php-insecure-random-token` (1 of 2) are kept for the real issues they found. With
+  `syn-node-sql-injection` held back, JavaScript/TypeScript SQL injection is reported only by the
+  baseline rule (request input reaching a query built in the call). Per-rule table:
+  [docs/RULE-PROVENANCE.md](docs/RULE-PROVENANCE.md#holdout-precision-gate-40-final-field-run).
+- The packs' rules carry no parent-folder excludes: a project under `vendor/`, `includes/` or
+  `example-template/` parent folders is scanned like any other. Only a file's target-relative path and
+  content route it (see `third-party-bundles` below).
+- `codeinspectus_list_rules` reports the bundled Opengrep rule count per language
+  (`sast_rule_languages`).
 
-### Upgrading / CI impact
-- **More scans read `partial`, so CI exits 2 on unchanged input.** Inputs no bundled engine analyzes are
-  now declared coverage gaps instead of reading `complete`, and engine skips that used to be silent are
-  reported. On the 20-repository field set, 19 repositories exit 2 with this release (13 did with the
-  pre-release build these changes started from, which already had the new engine pins; 6 changed from
-  exit 0 to exit 2, and only 1 exits 0). 11 of the 19 are partial only through declared gaps.
-- **To keep CI passing for known gaps, accept them by id:** `--accept-gaps php-sast,deno-lock` (CLI),
-  `accept_gaps: ["php-sast"]` (MCP `codeinspectus_scan`), `acceptGaps: ["php-sast"]` (SDK `scan`). An
-  accepted gap stays listed in `coverage_gaps` and coverage still reads `partial`; CI passes coverage
-  only when every other cause is complete, and any other cause (an engine that did not run, an Opengrep
-  timeout or size skip, an unverified `.gitleaksignore` or Trivy inline ignore) still exits 2. The same
-  ids apply with `--baseline`. `scans compare` honours a stored scan's accepted language and component
-  gaps (`<language>-sast`, `vue-sast`, `svelte-sast`, `astro-sast`), where no engine reports SAST
-  findings; accepted `sast-parse-errors` and lockfile gaps still make it partial, because an engine may
-  have analyzed that input in the other scan. An unknown id is a usage error; ids are never removed,
-  and a retired id is accepted as a no-op.
-- **Gap ids:** `php-sast`, `ruby-sast`, `java-sast`, `kotlin-sast`, `go-sast`, `csharp-sast`,
-  `rust-sast`, `swift-sast`, `c-sast`, `cpp-sast`, `scala-sast`, `dart-sast`, `vue-sast`,
-  `svelte-sast`, `astro-sast`, `objc-sast`, `elixir-sast`, `erlang-sast`, `lua-sast`, `perl-sast`,
-  `groovy-sast`, `clojure-sast`, `haskell-sast`, `ocaml-sast`, `r-sast`, `julia-sast`, `zig-sast`,
-  `solidity-sast`, `vb-sast`, `sast-parse-errors`, `deno-lock`, `bun-lockb`, `no-lockfile-npm`,
-  `no-lockfile-composer`, `npm-shrinkwrap-unread`. docs/CI-POLICY.md explains each one.
-- **One-time rescan effect:** the Opengrep and Trivy invocation signatures, the bundled ruleset and the
-  native JavaScript parser revisions changed, so the first rescan or baseline comparison after
-  upgrading reports an Opengrep, Trivy or native JavaScript/TypeScript finding that is gone as
-  "not re-checked" rather than "resolved".
+#### Parser-backed native JavaScript/TypeScript checks
 
-### Changed
-- Engine pins: Opengrep 1.23.0 → 1.33.1 and Trivy 0.71.2 → 0.76.1. Gitleaks 8.30.1 is already the
-  latest release. Trivy 0.76.1 is built with Go 1.27.3, which distrusts the compromised eMudhra
-  intermediate CA. Opengrep 1.24–1.33 change taint analysis (switch and `case` handling, Kotlin and
-  Ruby branches, Python match arms); the exact Opengrep eval corpora are unchanged.
-- Opengrep releases since v1.31.0 are signed by `rolling-release.yml` on per-release
-  `release-vX.Y.Z` branches instead of `main`. The lockfile pins the exact `release-v1.33.1`
-  identity, and verification stays fail-closed.
+- **The native JavaScript/TypeScript packs read files with a real parser**. The 3.x
+  lexer is replaced by `@babel/parser` 7.25.0 (MIT, no dependencies of its own; the one new runtime
+  dependency). The Express and Next.js admin-route, Supabase Edge, React Native and JavaScript baseline
+  checks now see exactly the code the parser reads, so the twelve known-limitation inputs (a regex read
+  as division after `extends`, `new`, `default`, `of`, `await`, or `break`/`++` on a new line, the
+  identifier escape `\u0065val`, and TypeScript `!` after a string, template, `!` or `{}`) no longer
+  hide a sink; `javascript-known-limitations.test.ts` is all ordinary tests now. JSX text is text: valid
+  components with `Don't` or a lone `/` in JSX text parse again, and a call spelled inside JSX text is
+  no longer read as a call. A TypeScript type argument such as `useState<Config>()` is no longer read
+  as a JSX element. Rule ids and fingerprints are unchanged: over every fixture and the 28 field
+  repositories, the native findings (484) are identical before and after, and the field files reported as
+  `native-parse-errors` drop from 84 to 1 (a definite assignment on a computed class key, `[K]!: T`, which
+  this parser release cannot read). Files that parse now also count toward the 1,000,000-token project
+  budget, so a few later files in one large repository move to `native-token-budget`. Native-analyzer CPU
+  time on those repositories is about 1.35x the 3.x lexer's (parse-only about 2.9x; each scan shares
+  parses between its analyzers).
+- Fail closed as before: a file the parser rejects, a file over the 200,000-token bound (now refused
+  before parsing by a linear upper-bound count, so a 2 MiB file of `;` no longer allocates its token
+  stream), nesting too deep for the parser, and a `.js`, `.jsx`, `.ts` or `.tsx` file that is valid
+  both as a script and as a module but reads differently under each are `native-parse-errors`. Such a
+  file runs as a script, or as a module in a `"type": "module"` package, so it is read under both goals:
+  an HTML-like comment (`<!--`, `-->`) is a comment only in a script and `await` an operator only in a
+  module, and either can hide code from one reading. `.cjs`/`.cts` are read as scripts and `.mjs`/`.mts`
+  as modules only. A file valid under one goal alone is read under that goal. The
+  2 MiB / 64 KiB caps are unchanged (`oversized-files`). Which tokens run conditionally is now computed
+  once per file from the parser's tree; it was a rescan per assignment (23 s on a 180,000-token file of
+  member assignments, now 59 ms). Parses are shared only within one scan's native analyzers, in a cache
+  bounded at 250,000 tokens and 8 MiB of source that is cleared when the scan ends.
 
-### Added
+
+#### Declared coverage gaps and coverage notes
+
 - Declared coverage gaps. Inputs no bundled engine analyzes now make aggregate coverage `partial` and
   are listed with a stable id, a file count and up to five example paths (`coverage_gaps`): source
   files of languages without bundled SAST rules (`php-sast`, `ruby-sast`, `java-sast`, `go-sast`, …),
@@ -175,12 +244,144 @@ Google osv-scanner as a fourth engine, and the Synvoya gap layer. Not released y
   accepted language and component gaps. The JSON export
   carries them as coverage evidence with component `gap:<id>`; export schema 3.0.0 is unchanged. Gap
   ids are documented in docs/CI-POLICY.md.
+- New declared gaps for inputs no bundled engine has advisory data for: `wordpress-plugins`
+  (`wpackagist-plugin/*` and `wpackagist-theme/*` in `composer.lock`, and `wp-content/plugins/*` with
+  a plugin header) and `actions-unchecked` (third-party `uses:` references in GitHub workflows not
+  checked against advisories). Without the OSV GitHub Actions database `actions-unchecked` lists every
+  such reference; once that database is installed it narrows to the references the Synvoya Actions
+  matcher could not evaluate (a branch, a commit the advisory data does not list, a `docker://` step,
+  an unreadable reference or file).
+- Native-pack limits that are deterministic analysis limits are declared gaps instead of partial coverage
+  no id could accept: `native-parse-errors` (files the bounded native parsers cannot read),
+  `oversized-files` (per-file size and call-count bounds and the JavaScript/TypeScript reading caps of
+  2 MiB characters per file and 64 KiB per line, typically vendored bundles),
+  `native-token-budget` (files left unparsed once the 1,000,000-token JavaScript/TypeScript project
+  budget is spent, counted with examples; a repository can pad itself to push files past it, and Opengrep
+  still scans them for its generic rules when the SAST scanner runs),
+  `express-routes-unresolved` (admin-route candidates whose middleware could not be proven either way),
+  `nextjs-routes-unresolved` (Next.js admin API handlers whose custom wrapper, guard or privileged
+  operation could not be proven either way, such as umami's `parseRequest` routes) and
+  `symlinked-paths` (links whose real target inside the repository the walker reads under its own
+  path; links outside the repository, into an ignored folder such as `node_modules/` or beyond the depth
+  bound stay non-acceptable). Analyzer failures, the other project-wide bounds, reconciliation
+  mismatches and Opengrep timeouts stay non-acceptable.
+  In the field validation, 6 of 12 repositories could not pass CI with every gap accepted.
 - Scan results carry informational `coverage_notes`, shown in the text summary and exported as
   informational coverage evidence: Opengrep's default ignore list, the native JavaScript packs'
   Yarn-tooling skip, and how many shell, PowerShell and Makefile files no bundled SAST rule reads
   (not a coverage gap). Notes never lower coverage.
 
+### Changed
+
+- Engine pins: Opengrep 1.23.0 → 1.33.1 and Trivy 0.71.2 → 0.76.1. Gitleaks 8.30.1 is already the
+  latest release. Trivy 0.76.1 is built with Go 1.27.3, which distrusts the compromised eMudhra
+  intermediate CA. Opengrep 1.24–1.33 change taint analysis (switch and `case` handling, Kotlin and
+  Ruby branches, Python match arms); the exact Opengrep eval corpora are unchanged.
+- Opengrep releases since v1.31.0 are signed by `rolling-release.yml` on per-release
+  `release-vX.Y.Z` branches instead of `main`. The lockfile pins the exact `release-v1.33.1`
+  identity, and verification stays fail-closed.
+- **Licence findings are now opt-in.** A scan no longer runs Trivy's licence scanner or reports licence
+  findings unless you ask: MCP `codeinspectus_scan` with `include_licenses: true`, CLI `--licenses`, SDK
+  `client.scan(path, { includeLicenses: true })`, or `license` named in `scanners`. They were 47% of all
+  findings in field scans and none was fixable. A scan without them carries the informational coverage
+  note "Licence findings were not requested (use include_licenses / --licenses)"; it does not make
+  coverage partial and appears in exports and the compliance report. With the opt-in the findings,
+  fingerprints and ids of the other findings are the same as 3.x. `codeinspectus_rescan` and
+  `scans rerun` repeat the prior scan's choice (a scan stored before 4.0 counts as having run licences
+  unless its scanner list left them out), and a licence finding from a scan that asked for them is
+  reported as not re-checked, never resolved, when the new scan did not.
+- **Test, fixture, example and documentation files lower generic findings.** Gitleaks' provider-less
+  rules (`generic-api-key`, `curl-auth-header`, `curl-auth-user`) and generic code findings (Opengrep and
+  native checks that are not secrets and not credential-class) in a test, fixture, example or
+  documentation file are reported at `low` with a "Test/example context" label, never dropped; their
+  ids, fingerprints and rule ids are unchanged. Context comes from the target-relative path alone:
+  `test/`, `tests/`, `__tests__/`, `__snapshots__/`, `spec/`, `fixtures/` and Xcode-style `<Name>Tests/`
+  folders anywhere; `docs/`, `examples/` and `example/` only as the first folder; `*.test.*`,
+  `*.spec.*`, `*.e2e-spec.*`, `*.snap`, `<name>.example[.ext]`, `<name>.sample[.ext]`, `.env.dist`,
+  `README[.ext]` and `*.md`; case-sensitive, and a parent folder outside the scanned target is never
+  consulted. Every named-provider secret (AWS, Stripe, GitHub, Slack, private keys and others), malware
+  and vulnerability finding keeps its severity everywhere. A generic secret in a test or example file
+  also keeps its severity when the same value (matched by hash, across engines) is reported in a
+  non-test file: its message names up to 3 of those files and the count, never the value, and the
+  coverage note counts these. Gitleaks and Trivy withhold the value from their reports, so for this
+  check only it is read back from the reported source line and hashed in memory; that hash is never
+  stored, exported or part of a fingerprint (eval E137). The coverage note `routing:test-example-context` gives the count per rule.
+- **Third-party code is routed out of SAST noise, with disclosure.** Code findings (Opengrep and native
+  checks only; never secrets, credential-class findings such as CWE-798, or dependency findings) in a
+  case-sensitive `vendor/` folder or a `*.min.js` file are not reported, which is the scope Opengrep's own
+  default ignore list already skips; the note `routing:third-party-code` names up to 20 files. Code
+  findings in scripts that only look like copied libraries (a `/*!` or `@license`/`@preserve` banner, a UMD
+  wrapper, a minified body, or a `vendors/`, `third_party/`, `third-party/`, `thirdparty/`,
+  `bower_components/` or `jspm_packages/` folder) are reported at `low` with a "Third-party code" label
+  and the note `routing:third-party-lowered`. Both notes are informational. A repository comment cannot
+  remove a file from SAST, and a first-party module with a long base64 constant is not minified.
+- **The Synvoya packs run in their own Opengrep pass.** The PHP and Node Opengrep packs (`syn-php-*`,
+  `syn-node-*`) run in a second Opengrep pass with
+  a 30-second per-rule timeout. It skips minified files and files under a `vendors/` folder, where their
+  taint rules timed out and left SAST coverage partial with nothing a user could accept. The skipped
+  files are the new acceptable gap `third-party-bundles` (up to 20 examples). A `/*` inside a string on a
+  long dense line (`accept:"image/*"`) does not hide the rest of a concatenated minified bundle from
+  this classification. The taint-mode baseline
+  rules (`*-taint.yaml` files; today `ci-baseline-sql-injection-string-build`) run in this same pass, so
+  they also skip third-party bundles (the same `third-party-bundles` gap): taint analysis cost every
+  JavaScript/TypeScript file and one 300 KB vendored bundle took 54 seconds. The other baseline Opengrep
+  rules scan every file as before. Each pass records its own invocation signature, so a rescan whose skipped
+  set changed reports pack findings as not re-checked, not resolved.
+- **Non-source files over Opengrep's size limit are a coverage note, not partial SAST.** The pack pass's
+  generic rules make Opengrep list every file over its 1,000,000-byte limit. A skipped image, font, audio or
+  video file, archive (`.phar` included), PDF, compiled binary, lockfile (`*.lock`, `package-lock.json`,
+  `pnpm-lock.yaml`), source map, `.sql` or `.csv` file is now an informational `engine:opengrep` note,
+  because no bundled rule reads it as source. Any other file over the limit, JavaScript, TypeScript, Python and PHP source
+  included, still makes SAST coverage partial.
+- **Precision changes to the baseline Opengrep rules** (ids unchanged; the findings that remain keep
+  their fingerprints, and the ones dropped are deliberate). Over the PHP and Node.js field repositories
+  the old `ci-baseline-sql-injection-string-build` (37 hits), `ci-baseline-dom-xss-innerhtml` (113) and
+  `ci-baseline-nosql-injection` (15) had no true positive. Now:
+  - `ci-baseline-sql-injection-string-build` is a taint rule: HTTP request input (Express, Koa, Hono,
+    Next.js, H3/Nuxt) must reach a concatenated or interpolated query in the same file;
+    `parseInt`/`Number` and driver escape helpers sanitize.
+  - `ci-baseline-dom-xss-innerhtml` needs a DOM-XSS source (location hash, search, href or pathname,
+    document URL or referrer, `window.name`, a `postMessage` payload) written directly or through one or
+    two variables; stored or fetched markup is a known gap. The rule's file prefilter is restored
+    (matches unchanged), so files that never mention an HTML sink are not analysed.
+  - `ci-baseline-nosql-injection` needs a Mongoose-style model, a driver collection or a file importing
+    `mongoose`/`mongodb`; route parameters alone no longer count.
+  - `ci-baseline-dangerous-eval` ignores a `Function` built only from string literals.
+  - `ci-baseline-weak-hash` is demoted to hygiene: Opengrep severity `INFO` and confidence `LOW`, and
+    the native `javascript-baseline` check low severity and low confidence (13 of 13 field hits were
+    cache keys, checksums or ids). `ci-baseline-weak-cipher` is unchanged.
+- **Gitleaks precision allowlists** (CodeInspectus Gitleaks configuration), each scoped to the rule that
+  produced the hit and never covering a value that can authenticate: generated index and key names
+  (`IDX_`/`UNIQ_`/`FK_`/`PK_` plus 16 hex characters) in migrations, conda pins, OAuth client and tenant
+  ids that hold a UUID, reCAPTCHA site keys and Google's published test key pair, the Upstash QStash
+  local development defaults, Stripe publishable keys (`pk_test_`/`pk_live_`), and Google API keys in
+  `google-services.json` and `GoogleService-Info.plist`. Test, documentation and example files are not
+  allowlisted (they are lowered above, not hidden). Eval E121.
+- Detection database 2.0.0 (3.3.2 shipped 1.19.0): 126 custom detections, up from 94, with the Synvoya
+  PHP and Node.js packs as two more Opengrep rulesets and the baseline rule changes above. Bundles and
+  `codeinspectus_list_rules` report this version.
+- Native pack versions: `javascript-typescript` 1.10.0, `react-native` 1.1.0, `javascript-baseline` 1.1.0
+  (parser-backed reading; same rules; the `javascript-baseline` weak-hash check is demoted as above).
+- `SDK_COMPATIBILITY.bundle_schema` is now `1.1.0`, the manifest version this release seals. It was
+  `1.0.0`. Use `bundle_schemas_verified` for the versions `verifyBundle` accepts.
+- Export schema `3.0.0` is unchanged. Exports carry no structured `package` field; the package is
+  kept internally for de-duplication.
+- The coverage gap `php-sast` no longer names `.php`, `.phtml` or `.blade.php` files (the Synvoya PHP pack
+  covers them).
+- The eval suite has 110 evals. The Synvoya, pack, routing, Gitleaks, licence and parser evals added
+  in 4.0 are E82-E92, E100-E103, E110-E112, E120-E121 and E130-E137.
+
 ### Fixed
+
+- Plain repository and URL paths are no longer redacted in finding titles, messages and coverage
+  notes. The output scrub took `github/workflows/desktop-e2e` (from `.github/workflows/desktop-e2e.yml`),
+  advisory links and Go module paths for high-entropy tokens, so text read
+  `declared in .[redacted, 28 chars].yml`; Go pseudo-versions were masked the same way. Known secret
+  shapes, credential assignments and base64 values that contain `/` are still masked. Fingerprints are
+  unchanged.
+- Drupal contrib findings from osv-scanner now name the fixed version. OSV keys those packages as
+  `https://packages.drupal.org/8:drupal/<module>`, so the lookup never matched the Composer name and
+  remediation said no version was listed. Fingerprints are unchanged.
 - Opengrep now runs under a UTF-8 locale. When the MCP host set no locale, a non-ASCII byte in a
   repository's `.semgrepignore` ended the Opengrep run with no SARIF, so the scan lost all SAST
   results and read `partial`; non-ASCII snippet text was also replaced. The locale is `en_US.UTF-8`
@@ -205,16 +406,6 @@ Google osv-scanner as a fourth engine, and the Synvoya gap layer. Not released y
   list of fixed versions or constraints such as `>= 2.9.0`, or a no-fix note) instead of the
   generic CWE-1395 text. Finding ids, fingerprints and locations are unchanged; a lockfile without
   per-package line data (for example `pnpm-lock.yaml`) is still reported at line 1.
-- Valid JSX text containing an apostrophe or a bare `/` no longer makes the native JavaScript packs
-  skip the file as malformed and read `partial`. A file that fails the usual pass is re-read with
-  quotes and slashes in JSX text treated as plain characters (not for `.ts`/`.mts`/`.cts`). The
-  retry is kept only if it is clean and every token the usual pass read as code (identifiers,
-  operators, brackets) is unchanged, so it can only re-read what the usual pass took for a string or
-  regex literal; files that already parsed keep exactly the same tokens. A closing tag must name its
-  element, and `<T>(` or a bare `<T>` after `=` or `:` is read as TypeScript type parameters. In the
-  20 field repositories this re-admits 59 of the 74 skipped files; JSX attribute strings that span
-  lines, unpaired parentheses in JSX text, and template or regex literals the usual pass rejects
-  keep the other 15 reported as skipped.
 - A `.gitleaksignore` lowers secret coverage to `unverified` only when one of its entries can
   match CodeInspectus's Gitleaks run. `gitleaks dir` reports absolute paths, so relative
   `file:rule:line` entries and commit-scoped entries hide nothing there; the file is still disclosed,
@@ -244,54 +435,6 @@ Google osv-scanner as a fourth engine, and the Synvoya gap layer. Not released y
 - A Trivy license result for a package with a secret-like name (for example `passport-headerapikey`)
   is a license finding again, not a high-severity hard-coded secret with CWE-798. Its fingerprint
   changes once, because the misclassification had set the CWE.
-- The native JavaScript/TypeScript lexer tokenizes code inside template substitutions (`${…}`) like
-  other code, so calls such as an `eval` there reach the native checks; it reads a TypeScript non-null
-  assertion before division (`d[0]! / 255`) and a regex after an `if`/`while`/`for` condition
-  correctly. A `/` after a closing brace, and a regex or string inside a substitution that holds a
-  backtick or closing brace, are reported under `native-parse-errors`. `//` comments and hashbangs end
-  at every ECMAScript line terminator (CR, U+2028 and U+2029 as well as LF), `.mts` and `.cts` files
-  are lexed as TypeScript, numbers follow ECMAScript numeric-literal syntax (`1+eval(x)` used to read as
-  the number `1+e` followed by `val(x)`, hiding the call), and HTML-like comments (`<!--` or `-->`
-  anywhere in code, so also `n-->0`) make a file unparsed. In the 12 validation repositories 7 files now parse and 4 are newly reported
-  unparsed.
-- Native JavaScript/TypeScript lexing is linear and capped. An unterminated regex used to make every
-  later `/` on its line rescan to the end of the line (58 s for one 1 MB line), and finding JSX tag ends
-  was quadratic on many unclosed tags (24 s at the 200,000-token bound). Both are linear now, and a file
-  over 2 MiB characters or with a line over 64 KiB is not lexed and is reported under
-  `oversized-files`; every adversarial input tried lexes in under 0.2 s per file at those caps.
-- When the lexer's plain pass stops early (an unterminated string, regex, template or block comment,
-  or a bound), the JSX-aware retry is no longer used: it alone would decide the unread rest of the file
-  and could read later code as a regex. JSX text holding an apostrophe (`Don't`) or a lone `/` therefore
-  makes a file unparsed (`native-parse-errors`) until the 4.0 parser; in the 12 validation repositories
-  42 of about 10,300 JavaScript/TypeScript files move there (dub 38, cap-collectif 4).
-- **Known limitation: the native packs are not robust to deliberately crafted code.** They use a
-  lightweight lexer, not a JavaScript parser, and are pattern checks for ordinary code. Code written
-  to evade them can hide a call from them, or show them a fake guard, while the file still reads as
-  parsed. Examples: a `/` that JavaScript reads as a regex but the lexer reads as division (after
-  `extends`, `new`, `default`, `of`, or after `break` or `++` on a new line), identifier escapes
-  such as `\u0065val`, and JSX text that looks like a guard. This affects the native-only checks
-  (Express and Next.js admin routes, Supabase Edge authentication, the React Native rules), which
-  have no Opengrep equivalent. When the SAST scanner runs, Opengrep's full parser still scans the
-  same files for its generic sinks. A full parser replacement is planned for 4.0; the known inputs
-  are pinned in `src/packs/react-native/javascript-known-limitations.test.ts`.
-- New declared gaps for inputs no bundled engine has advisory data for: `wordpress-plugins`
-  (`wpackagist-plugin/*` and `wpackagist-theme/*` in `composer.lock`, and `wp-content/plugins/*` with
-  a plugin header) and `actions-unchecked` (third-party `uses:` references in GitHub workflows).
-- Native-pack limits that are deterministic analysis limits are declared gaps instead of partial coverage
-  no id could accept: `native-parse-errors` (files the bounded native parsers cannot read),
-  `oversized-files` (per-file size and call-count bounds and the JavaScript/TypeScript lexing caps of
-  2 MiB characters per file and 64 KiB per line, typically vendored bundles),
-  `native-token-budget` (files left unparsed once the 1,000,000-token JavaScript/TypeScript project
-  budget is spent, counted with examples; a repository can pad itself to push files past it, and Opengrep
-  still scans them for its generic rules when the SAST scanner runs),
-  `express-routes-unresolved` (admin-route candidates whose middleware could not be proven either way),
-  `nextjs-routes-unresolved` (Next.js admin API handlers whose custom wrapper, guard or privileged
-  operation could not be proven either way, such as umami's `parseRequest` routes) and
-  `symlinked-paths` (links whose real target inside the repository the walker reads under its own
-  path; links outside the repository, into an ignored folder such as `node_modules/` or beyond the depth
-  bound stay non-acceptable). Analyzer failures, the other project-wide bounds, reconciliation
-  mismatches and Opengrep timeouts stay non-acceptable.
-  In the field validation, 6 of 12 repositories could not pass CI with every gap accepted.
 - Native Pub analysis no longer reads `partial` in a repository without Dart because of a directory
   symlink that resolves inside the repository (ghostfolio's `.claude/skills/*` →
   `.agents/skills/*`): lockfile discovery walks the real path, so such a link hides nothing. Links
@@ -334,8 +477,11 @@ Google osv-scanner as a fourth engine, and the Synvoya gap layer. Not released y
 - Opengrep now scans the same files as Trivy, Gitleaks and the native packs (`--no-git-ignore`). It
   used to ask git for the file list and silently omitted untracked git-ignored files, without listing
   them as skipped. Findings in git-ignored locations are framed by file routing as for other engines.
-
-- Detection database 1.19.1: four pattern arms in three bundled Opengrep rules
+- Native JavaScript/TypeScript reading is bounded. The 3.3.2 lexer could rescan every later `/` on a
+  line after an unterminated regex (58 s for one 1 MB line) and was quadratic on many unclosed JSX tags
+  (24 s at the 200,000-token bound). A file over 2 MiB characters or with a line over 64 KiB is now not
+  read and is reported under `oversized-files`.
+- Four pattern arms in three bundled Opengrep rules
   (`ci-baseline-ssrf-request-from-input`, `ci-baseline-path-traversal`,
   `ci-baseline-insecure-random-security`) could never report a finding. They matched a
   template-literal `fetch`, `axios.get` or `readFile` argument, or any `x = Math.random()`, without
@@ -344,12 +490,124 @@ Google osv-scanner as a fourth engine, and the Synvoya gap layer. Not released y
   are unchanged, and template-literal URLs and paths remain undetected by these rules. A corpus with
   true-positive cases for all 20 bundled rules now runs in the evals and fails on any matching error.
 
-### Upgrade note
-- Existing installs report the old Opengrep and Trivy binaries as a SHA256 mismatch and do not run
-  them. Run `npx codeinspectus repair-engines` to install the pinned versions.
-- The native JavaScript parser revisions changed (JSX retry, Yarn tooling skip), so the first rescan
-  after upgrading reports a native JavaScript finding that is gone as "not re-checked" rather than
-  "resolved": the file may now be skipped or past the project token bound.
+### Upgrade notes (4.0)
+
+- **Run `npx codeinspectus repair-engines` after upgrading.** The Opengrep and Trivy pins changed
+  (see Changed), so existing installs report the old Opengrep and Trivy binaries as a SHA256 mismatch
+  and do not run them until the pinned versions are installed.
+- **More scans read `partial`, so CI exits 2 on unchanged input.** Inputs no bundled engine analyzes are
+  now declared coverage gaps instead of reading `complete`, and engine skips that used to be silent are
+  reported. When these gaps were introduced (before the 4.0 PHP and Node.js packs), 19 of the 20 field
+  repositories exited 2 (13 did with the pre-release build those changes started from, which already had
+  the new engine pins; 6 changed from exit 0 to exit 2, and only 1 exited 0); 11 of the 19 were partial
+  only through declared gaps.
+- **To keep CI passing for known gaps, accept them by id:** `--accept-gaps php-sast,deno-lock` (CLI),
+  `accept_gaps: ["php-sast"]` (MCP `codeinspectus_scan`), `acceptGaps: ["php-sast"]` (SDK `scan`). An
+  accepted gap stays listed in `coverage_gaps` and coverage still reads `partial`; CI passes coverage
+  only when every other cause is complete, and any other cause (an engine that did not run, an Opengrep
+  timeout or size skip, an unverified `.gitleaksignore` or Trivy inline ignore) still exits 2. The same
+  ids apply with `--baseline`. `scans compare` honours a stored scan's accepted language and component
+  gaps (`<language>-sast`, `vue-sast`, `svelte-sast`, `astro-sast`), where no engine reports SAST
+  findings; accepted `sast-parse-errors` and lockfile gaps still make it partial, because an engine may
+  have analyzed that input in the other scan. An unknown id is a usage error; ids are never removed,
+  and a retired id is accepted as a no-op.
+- **Gap ids:** `php-sast`, `ruby-sast`, `java-sast`, `kotlin-sast`, `go-sast`, `csharp-sast`,
+  `rust-sast`, `swift-sast`, `c-sast`, `cpp-sast`, `scala-sast`, `dart-sast`, `vue-sast`,
+  `svelte-sast`, `astro-sast`, `objc-sast`, `elixir-sast`, `erlang-sast`, `lua-sast`, `perl-sast`,
+  `groovy-sast`, `clojure-sast`, `haskell-sast`, `ocaml-sast`, `r-sast`, `julia-sast`, `zig-sast`,
+  `solidity-sast`, `vb-sast`, `sast-parse-errors`, `deno-lock`, `bun-lockb`, `no-lockfile-npm`,
+  `no-lockfile-composer`, `npm-shrinkwrap-unread`, `wordpress-plugins`, `actions-unchecked`,
+  `native-parse-errors`, `oversized-files`, `native-token-budget`, `express-routes-unresolved`,
+  `nextjs-routes-unresolved`, `symlinked-paths` and `dev-deps-unscanned`, plus `vendored-js` and
+  `third-party-bundles` (below). docs/CI-POLICY.md explains each one.
+- Migration: licence findings are now opt-in. If CI counts, gates on or exports licence findings, add
+  `--licenses` (CLI), `includeLicenses: true` (SDK) or `include_licenses: true` (MCP). Totals,
+  baselines and `--fail-on-*` thresholds that included licence findings will drop. Comparing a scan
+  that ran licences with a newer one that did not (`rescan`, `scans compare`) reports those licence
+  findings as not re-checked, never as resolved.
+- **Re-record baselines with 4.0.** A baseline recorded with 3.3.2 or earlier cannot prove New or
+  Existing for most 4.0 findings, so `scan --baseline` against it reads coverage `partial` and exits 2
+  until you record a new baseline with 4.0. The engine pins changed (Opengrep 1.23.0 → 1.33.1, Trivy
+  0.71.2 → 0.76.1), so the old baseline's Opengrep and Trivy signatures differ, and osv-scanner,
+  Synvoya and the Synvoya packs never ran in it, so their findings read not re-checked (unknown), never
+  New. It fails closed, never as a false pass. Run one 4.0 scan of the branch you compare against and
+  use it as the new baseline.
+- Between scans recorded with 4.0, a baseline that ran licences still gates a default scan: for
+  `--baseline`, `rescan` and `scans compare` only the `license` element of Trivy's `--scanners` is
+  ignored, nothing else, so a new vulnerable package is still reported New and
+  `--fail-on-new-severity` still exits 1. The baseline's licence findings are not re-checked (the new
+  scan has none), and licence findings in a `--licenses` scan against a baseline that never asked for
+  them read Not rechecked rather than New.
+- **Findings that disappear, and rescans across the upgrade.** The licence default, the precision
+  changes, the Gitleaks allowlists and the routing above remove or lower findings you saw in 3.x. Each
+  scan records a signature for the Opengrep ruleset and invocation, the pack pass, the Gitleaks
+  configuration, the Synvoya dataset and the other detector components; where a signature differs from
+  the prior scan's, the prior scan's findings from that detector read **not re-checked** rather than
+  resolved. Expect this once after the upgrade, and again whenever a later release changes the dataset
+  or a pack. It is noise, never a false "fixed". The Opengrep and Trivy invocation signatures, the
+  bundled ruleset and the native JavaScript/TypeScript reader revisions changed as well, so an Opengrep,
+  Trivy or native JavaScript/TypeScript finding that is gone reads not re-checked on the first rescan or
+  baseline comparison after upgrading (the file may now be skipped or past the project token bound).
+- **Opengrep now runs in two passes** when the Synvoya packs apply (see `third-party-bundles` below).
+  A pre-upgrade Opengrep finding is not re-checked once.
+- **Display ids are still positional.** The `CI-0001` style id is assigned by position in the scan's
+  sorted finding list, so it can change when an unrelated finding appears. Triage, baselines and rescans
+  match on fingerprints, which are stable; do not store display ids. Fingerprint-derived display ids
+  are planned after 4.0.
+- **New gap ids.** `vendored-js` (vendored or CDN libraries not checked because osv-scanner or its OSV
+  npm database is not installed) and `third-party-bundles` (bundles the Synvoya pack pass skipped). Both
+  make aggregate coverage `partial`, so CI exits 2 until you install the database, accept the gap with
+  `--accept-gaps`, or fix the cause. The `php-sast` gap now names only Twig templates. Gap ids are
+  never removed. See [docs/CI-POLICY.md](docs/CI-POLICY.md#declared-coverage-gaps).
+- **The engine set is open.** `Finding.engine` is now `opengrep`, `gitleaks`, `trivy`, `osv-scanner`,
+  `codeinspectus-ai`, `codeinspectus-pub` or `synvoya`, and a later release may add more. Treat an
+  unknown value as an engine you have not seen. `engine_family: "synvoya"` is optional and display
+  only; key stable logic on `engine`, `rule_id` and `fingerprint`. Export schema `3.0.0` does not carry
+  `engine_family`.
+- `npx codeinspectus repair-engines` also installs osv-scanner 2.7.0, unless you declined it in
+  `setup` (then run `repair-engines osv-scanner` to install it), but downloads no new OSV database;
+  OSV databases you already installed may be refreshed if they are stale or have lost their install
+  record.
+- To scan dependencies with osv-scanner, approve the databases your repository needs:
+  `npx codeinspectus setup --select osv-scanner --path /absolute/path/to/repository`. Until you do,
+  scans report each missing ecosystem as `unavailable` with a setup warning.
+- Installing osv-scanner can detach existing triage annotations from dependency findings that it
+  merges into. The merged finding can carry a different fingerprint, so an annotation recorded
+  against the earlier finding may stop matching. The finding resurfaces for triage; nothing is
+  hidden.
+- The Trivy upgrade (0.71.2 → 0.76.1) moves the line of some misconfiguration findings, and the line
+  is part of their fingerprint. Across the 40 field repositories, 86 Kubernetes misconfiguration
+  findings changed fingerprint this way (for example KSV-0014 now points at the first initContainer,
+  line 57 instead of 77). A rescan or baseline comparison across the upgrade does not match them to
+  the 3.x finding by fingerprint, and triage annotations recorded against the old fingerprint stop
+  matching; re-record the baseline (above).
+- 3.3.2 and earlier cannot verify bundles sealed with manifest `1.1.0` (`bundle verify` exits 2).
+  Bundles sealed by 3.3.2 and earlier still verify with this release.
+- `SDK_COMPATIBILITY.bundle_schema` changed from `1.0.0` to `1.1.0`. Consumers that compared it to
+  decide which bundles to accept should read `bundle_schemas_verified` instead.
+
+### Known limits (4.0)
+
+- Synvoya judges what a repository declares, never what is deployed; only exact versions are checked in
+  vendored libraries; Actions findings need the OSV GitHub Actions database to count as checked; Go
+  toolchain, Magento Commerce and platform-specific entries are bounded as described in
+  [docs/SYNVOYA.md](docs/SYNVOYA.md#not-covered-yet).
+- The PHP and Node.js packs are precision-gated, not complete: taint rules read one file, PHP Twig
+  templates are the `php-sast` gap, and the experimental rules above are not shipped. See
+  [docs/RULE-PROVENANCE.md](docs/RULE-PROVENANCE.md) and the SAST row of the README.
+- The pack pass skips minified files and files under a `vendors/` folder (gap `third-party-bundles`);
+  a first-party file that is minified or kept under `vendors/` gets no pack findings until you review
+  and accept the gap.
+- The native JavaScript/TypeScript parser cannot read a definite assignment on a computed class key
+  (`[K]!: T`); that file is `native-parse-errors`.
+- WordPress plugin and theme versions stay the declared gap `wordpress-plugins`.
+- Planned after 4.0, not shipped: dev-only dependency severity scope, fingerprint-derived display ids
+  with package-line locations in lockfiles, and further output de-duplication (one finding per secret
+  across engines).
+- Not shipped and not scheduled: WordPress plugin advisories (a decision is pending), platform detection
+  for Windows-only advisories (`SYN-2026-150`, `SYN-2026-219`), advisories for mutable action tags
+  (`SYN-2026-070`), and signing of the Synvoya dataset manifest.
+
 
 ## [3.3.2] — 2026-10-24
 

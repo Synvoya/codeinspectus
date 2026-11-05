@@ -16,6 +16,7 @@ import { rubyAiPack } from "./ruby-ai-pack.js";
 import { firebasePack } from "./firebase-pack.js";
 import { githubActionsPack } from "./github-actions-pack.js";
 import type { DetectedTechnology, DetectorPackCoverage } from "../types.js";
+import { withJavaScriptParseCache } from "./react-native/javascript-parse.js";
 import type {
   NativeDetectorPack,
   NativePackExecution,
@@ -187,7 +188,8 @@ export async function executeNativePacks(
   );
   const applicablePackIds = new Set(applicablePacks.map((pack) => pack.id));
   const analyzers = registeredNativeAnalyzers(target, applicablePacks);
-  const results = await Promise.allSettled(analyzers.map((analyzer) => analyzer.run()));
+  // One JavaScript/TypeScript parse cache per execution, shared by its analyzers and cleared at the end.
+  const results = await withJavaScriptParseCache(() => Promise.allSettled(analyzers.map((analyzer) => analyzer.run())));
   const gapRecords: NativeGapRecord[] = [];
   return {
     analyzers,

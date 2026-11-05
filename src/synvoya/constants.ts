@@ -13,7 +13,7 @@ import { DETECTION_DB_DIR } from "../config.js";
 export const SYNVOYA_DATASET_DIR = join(DETECTION_DB_DIR, "synvoya");
 
 /** Every file in the dataset directory that the manifest must digest. */
-export const SYNVOYA_DATASET_FILES = ["advisories.json", "aliases.json", "eol.json"] as const;
+export const SYNVOYA_DATASET_FILES = ["advisories.json", "aliases.json", "eol.json", "libraries.json"] as const;
 
 /** Hard per-file size cap (applies to the manifest and every dataset file). */
 export const SYNVOYA_MAX_FILE_BYTES = 8 * 1024 * 1024;

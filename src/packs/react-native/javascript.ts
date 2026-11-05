@@ -1,11 +1,13 @@
 /**
- * Bounded, dependency-free JavaScript/TypeScript/JSX structural layer.
+ * Bounded JavaScript/TypeScript/JSX structural layer over a real parser (design §10.9).
  *
- * This is deliberately smaller than a compiler AST. Comments, quoted strings,
- * templates, and regular-expression literals are atomic; brackets are paired;
- * consumers operate on imports, definitions, calls, and JSX props. Unsupported
- * or malformed shapes fail closed instead of falling back to source regexes.
+ * `@babel/parser` reads each file (javascript-parse.ts); a file is accepted only when it parses, and
+ * its token stream is the parser's own. Consumers operate on imports, definitions, calls, and JSX
+ * props over that stream, with brackets paired. Unsupported or malformed files fail closed instead of
+ * falling back to source regexes.
  */
+
+import { parseJavaScriptTokens } from "./javascript-parse.js";
 
 export type JsTokenKind = "identifier" | "string" | "template" | "number" | "regex" | "symbol";
 
@@ -17,6 +19,8 @@ export interface JsToken {
   end: number;
   line: number;
   staticValue?: string;
+  /** A `<` the parser read as the start of a JSX tag (never a comparison or a type argument). */
+  jsx?: true;
 }
 
 export interface JsDocument {
@@ -27,7 +31,12 @@ export interface JsDocument {
   balanced: boolean;
   lexicalIssues: string[];
   hasDynamicJsxSpread: boolean;
-  /** Over the native lexing caps and never lexed: loaders record the gap oversized-files. */
+  /**
+   * Token index pairs `[first, last]` of every unbraced if/else/for/while/with body, from the parser's
+   * AST (isConditionallyExecuted).
+   */
+  conditionalBodies?: readonly number[];
+  /** Over the native parsing caps and never parsed: loaders record the gap oversized-files. */
   oversized?: true;
 }
 
@@ -91,620 +100,12 @@ export interface JsDefinition {
   origin?: ImportOrigin;
 }
 
-const IDENTIFIER_START = /[A-Za-z_$]/;
-const IDENTIFIER_CONTINUE = /[A-Za-z0-9_$]/;
-const DIGIT = /[0-9]/;
-const MULTI_SYMBOLS = [
-  "===", "!==", ">>>", "**=", "&&=", "||=", "??=", "...", "=>", "==", "!=",
-  "<=", ">=", "&&", "||", "??", "?.", "++", "--", "+=", "-=", "*=", "/=",
-  "%=", "**", "<<", ">>", "&=", "|=", "^=", "</", "/>",
-] as const;
 export const REACT_NATIVE_MAX_JS_TOKENS = 200_000;
 export const REACT_NATIVE_MAX_JS_NESTING = 64;
-const MAX_TEMPLATE_NESTING = 64;
 
-function identifierStart(char: string | undefined): boolean {
-  return char !== undefined && IDENTIFIER_START.test(char);
-}
-
-function identifierContinue(char: string | undefined): boolean {
-  return char !== undefined && IDENTIFIER_CONTINUE.test(char);
-}
-
-function digit(char: string | undefined): boolean {
-  return char !== undefined && DIGIT.test(char);
-}
-
-function readQuoted(
-  source: string,
-  start: number,
-  line: number,
-): { token: JsToken; next: number; line: number; terminated: boolean } {
-  const quote = source[start]!;
-  let cursor = start + 1;
-  let currentLine = line;
-  let value = "";
-  while (cursor < source.length) {
-    const char = source[cursor]!;
-    if (char === "\\") {
-      const escaped = source[cursor + 1];
-      if (escaped === "\n") currentLine++;
-      if (escaped !== undefined) value += source.slice(cursor, cursor + 2);
-      cursor += 2;
-      continue;
-    }
-    if (char === quote) {
-      const end = cursor + 1;
-      return {
-        token: {
-          kind: "string",
-          value: source.slice(start, end),
-          staticValue: decodeQuotedValue(value),
-          raw: source.slice(start, end),
-          start,
-          end,
-          line,
-        },
-        next: end,
-        line: currentLine,
-        terminated: true,
-      };
-    }
-    if (char === "\n") {
-      return {
-        token: {
-          kind: "string",
-          value: source.slice(start),
-          raw: source.slice(start),
-          start,
-          end: source.length,
-          line,
-        },
-        next: source.length,
-        line: currentLine + 1,
-        terminated: false,
-      };
-    }
-    value += char;
-    cursor++;
-  }
-  return {
-    token: {
-      kind: "string",
-      value: source.slice(start),
-      raw: source.slice(start),
-      start,
-      end: source.length,
-      line,
-    },
-    next: source.length,
-    line: currentLine,
-    terminated: false,
-  };
-}
-
-function decodeQuotedValue(value: string): string {
-  return value.replace(/\\(?:u\{([0-9A-Fa-f]+)\}|u([0-9A-Fa-f]{4})|x([0-9A-Fa-f]{2})|([\\'"bfnrtv0]))/g,
-    (_match, unicodePoint: string | undefined, unicode: string | undefined, hex: string | undefined, simple: string | undefined) => {
-      const digits = unicodePoint ?? unicode ?? hex;
-      if (digits) {
-        const codePoint = Number.parseInt(digits, 16);
-        return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : "";
-      }
-      const escapes: Record<string, string> = {
-        "\\": "\\", "'": "'", "\"": "\"", b: "\b", f: "\f", n: "\n",
-        r: "\r", t: "\t", v: "\v", "0": "\0",
-      };
-      return escapes[simple ?? ""] ?? simple ?? "";
-    });
-}
-
-function readTemplate(
-  source: string,
-  start: number,
-  line: number,
-  nesting = 0,
-  typescript = false,
-  budget = REACT_NATIVE_MAX_JS_TOKENS,
-): { token: JsToken; next: number; line: number; terminated: boolean; issues: string[]; inner: JsToken[] } {
-  const unterminated = (currentLine: number, issues: string[] = [], inner: JsToken[] = []) => ({
-    token: { kind: "template" as const, value: source.slice(start), raw: source.slice(start), start, end: source.length, line },
-    next: source.length,
-    line: currentLine,
-    terminated: false,
-    issues,
-    inner,
-  });
-  if (nesting > MAX_TEMPLATE_NESTING) return unterminated(line);
-  let cursor = start + 1;
-  let currentLine = line;
-  let dynamic = false;
-  let escaped = false;
-  const issues: string[] = [];
-  // Tokens of every substitution, in order: code inside `${…}` is code (Ruling 26).
-  const inner: JsToken[] = [];
-  while (cursor < source.length) {
-    const char = source[cursor]!;
-    if (char === "\n") currentLine++;
-    if (escaped) {
-      escaped = false;
-      cursor++;
-      continue;
-    }
-    if (char === "\\") {
-      escaped = true;
-      cursor++;
-      continue;
-    }
-    if (char === "$" && source[cursor + 1] === "{") {
-      // Ruling 26: a substitution is lexed by the full code tokenizer and regex rule, ends at the brace
-      // that closes it, and its tokens join the outer stream so analyzers see the code inside it.
-      dynamic = true;
-      // The substitution shares the caller's token budget (security review: no fresh budget per `${`).
-      const remaining = budget - inner.length;
-      if (remaining < 1) {
-        issues.push(`JavaScript/TypeScript token bound exceeded (${budget}).`);
-        return unterminated(currentLine, issues, inner);
-      }
-      const substitution = lex(source, remaining, false, {
-        typescript,
-        substitution: { start: cursor + 2, line: currentLine, nesting: nesting + 1 },
-      });
-      for (const issue of substitution.issues) issues.push(issue);
-      for (const token of substitution.tokens) inner.push(token);
-      if (!substitution.closed) return unterminated(substitution.line, issues, inner);
-      cursor = substitution.end + 1;
-      currentLine = substitution.line;
-      continue;
-    }
-    if (char === "`") {
-      const end = cursor + 1;
-      const body = source.slice(start + 1, cursor);
-      return {
-        token: {
-          kind: "template",
-          value: source.slice(start, end),
-          ...(dynamic ? {} : { staticValue: decodeQuotedValue(body) }),
-          raw: source.slice(start, end),
-          start,
-          end,
-          line,
-        },
-        next: end,
-        line: currentLine,
-        terminated: true,
-        issues,
-        inner,
-      };
-    }
-    cursor++;
-  }
-  return unterminated(currentLine, issues, inner);
-}
-
-/** Words after which a `!` is a prefix operator, never TypeScript's postfix non-null assertion. */
-const PREFIX_POSITION_WORDS = new Set([
-  "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do",
-  "else", "enum", "export", "extends", "finally", "for", "function", "if", "implements", "import", "in",
-  "instanceof", "interface", "let", "new", "of", "package", "private", "protected", "public", "return",
-  "static", "switch", "throw", "try", "typeof", "var", "void", "while", "with", "yield", "async",
-]);
-/** Keywords whose parenthesised condition is followed by a statement, not an expression. */
-const CONDITION_WORDS = new Set(["if", "while", "for", "with", "switch", "catch"]);
-const AWAIT_WORD = new Set(["await"]);
-const FOR_WORD = new Set(["for"]);
-
-/**
- * Field validation (Sink): TypeScript `d[0]! / 255`. Ruling 26: only in .ts/.tsx files, and only when
- * the `!` is on the same line as the token before it, which is an identifier (not a prefix keyword),
- * a number, a `]`, or a `)` that closes an expression (not an if/while/for/for await/with/switch/catch
- * condition), is the `!` a postfix non-null assertion, so the `/` after it divides.
- */
-function nonNullAssertion(tokens: readonly JsToken[], typescript: boolean, conditionCloses: ReadonlySet<number>): boolean {
-  const bang = tokens.at(-1);
-  if (!typescript || bang?.value !== "!" || bang.kind !== "symbol") return false;
-  const before = tokens.at(-2);
-  if (!before || before.line !== bang.line) return false;
-  if (before.kind === "number") return true;
-  if (before.kind === "identifier") return !isKeyword(before, tokens.at(-3), PREFIX_POSITION_WORDS);
-  if (before.kind !== "symbol") return false;
-  if (before.value === "]") return true;
-  return before.value === ")" && !conditionCloses.has(tokens.length - 2);
-}
-
-const REGEX_START_WORDS = new Set([
-  "return", "throw", "case", "delete", "void", "typeof", "instanceof", "in", "of", "yield", "await", "else", "do",
-]);
-
-/** A keyword spelling after `.`, `?.` or `#` is a member or private name, not a keyword (security review). */
-function isKeyword(token: JsToken | undefined, before: JsToken | undefined, words: ReadonlySet<string>): boolean {
-  return token?.kind === "identifier" && words.has(token.value) &&
-    !(before?.kind === "symbol" && [".", "?.", "#"].includes(before.value));
-}
-
-function canStartRegex(previous: JsToken | undefined, beforePrevious?: JsToken): boolean {
-  if (!previous) return true;
-  if (previous.kind === "identifier") return isKeyword(previous, beforePrevious, REGEX_START_WORDS);
-  if (previous.kind === "number" || previous.kind === "string" || previous.kind === "template" || previous.kind === "regex") {
-    return false;
-  }
-  return ![")", "]", "}", "++", "--"].includes(previous.value);
-}
-
-/**
- * ECMAScript line terminators (LF, CR, U+2028, U+2029) end a `//` comment and a hashbang (Ruling 30,
- * review C-1 #1: a comment that ran to the next LF hid the code after a lone CR).
- */
+/** ECMAScript line terminators (LF, CR, U+2028, U+2029), for the per-line cap. */
 function lineTerminator(char: string | undefined): boolean {
-  return char === "\n" || char === "\r" || char === "\u2028" || char === "\u2029";
-}
-
-/**
- * End of the ECMAScript numeric literal that starts at `start` (a digit). Re-review N-3: hex, octal
- * and binary digits only follow their `0x`/`0o`/`0b` prefix, an exponent is `e`/`E`, an optional sign
- * and at least one digit, and `n` ends a BigInt; anything else ends the number (`1+eval` is `1`, `+`,
- * `eval`, not the number `1+e`).
- */
-function numberEnd(source: string, start: number): number {
-  let cursor = start;
-  const prefix = source[start] === "0" ? source[start + 1]?.toLowerCase() : undefined;
-  if (prefix === "x" || prefix === "o" || prefix === "b") {
-    const digits = prefix === "x" ? /[0-9A-Fa-f_]/ : prefix === "o" ? /[0-7_]/ : /[01_]/;
-    cursor += 2;
-    while (digits.test(source[cursor] ?? "")) cursor++;
-    return source[cursor] === "n" ? cursor + 1 : cursor;
-  }
-  while (/[0-9_]/.test(source[cursor] ?? "")) cursor++;
-  if (source[cursor] === "n") return cursor + 1;
-  if (source[cursor] === ".") {
-    cursor++;
-    while (/[0-9_]/.test(source[cursor] ?? "")) cursor++;
-  }
-  if (source[cursor] === "e" || source[cursor] === "E") {
-    const sign = source[cursor + 1] === "+" || source[cursor + 1] === "-" ? 1 : 0;
-    if (/[0-9]/.test(source[cursor + 1 + sign] ?? "")) {
-      cursor += 1 + sign;
-      while (/[0-9_]/.test(source[cursor] ?? "")) cursor++;
-    }
-  }
-  return cursor;
-}
-
-function readRegex(
-  source: string,
-  start: number,
-  line: number,
-): { token: JsToken; next: number; terminated: boolean } {
-  let cursor = start + 1;
-  let escaped = false;
-  let characterClass = false;
-  while (cursor < source.length && source[cursor] !== "\n") {
-    const char = source[cursor]!;
-    if (escaped) {
-      escaped = false;
-    } else if (char === "\\") {
-      escaped = true;
-    } else if (char === "[") {
-      characterClass = true;
-    } else if (char === "]") {
-      characterClass = false;
-    } else if (char === "/" && !characterClass) {
-      cursor++;
-      while (/[A-Za-z]/.test(source[cursor] ?? "")) cursor++;
-      return {
-        token: {
-          kind: "regex",
-          value: source.slice(start, cursor),
-          raw: source.slice(start, cursor),
-          start,
-          end: cursor,
-          line,
-        },
-        next: cursor,
-        terminated: true,
-      };
-    }
-    cursor++;
-  }
-  return {
-    token: {
-      kind: "symbol",
-      value: "/",
-      raw: "/",
-      start,
-      end: start + 1,
-      line,
-    },
-    next: start + 1,
-    terminated: false,
-  };
-}
-
-/** A JSX context for the JSX-aware retry: an open or closing tag, element text, or a `{…}` container. */
-interface JsxFrame {
-  kind: "tag" | "closing" | "text" | "expression";
-  braces: number;
-  /** Element name of a tag, closing tag or element text (`""` for a fragment). */
-  name?: string;
-}
-
-const JSX_TAG_START = /^<(?:>|[A-Za-z_$])/;
-const JSX_NAME = /[A-Za-z_$][\w$-]*(?:[.:][A-Za-z_$][\w$-]*)*/y;
-/** `<T>(`: a TypeScript generic arrow or call signature, never an element followed by text. */
-const GENERIC_SIGNATURE = /^<[A-Za-z_$][\w$]*>\(/;
-/** A bare `<T>` after `=` or `:` (`type X = <T>…`, `let f: <T>…`) is read as type parameters. */
-const BARE_TAG = /^<[A-Za-z_$][\w$]*>/;
-
-function jsxName(source: string, at: number): string {
-  JSX_NAME.lastIndex = at;
-  return JSX_NAME.exec(source)?.[0] ?? "";
-}
-const TYPE_PARAMETERS = /^<\s*[A-Za-z_$][\w$]*\s*(?:,|extends\b)/;
-
-interface LexOptions {
-  /** TypeScript file (`.ts`, `.tsx`, `.mts`, `.cts`): enables the postfix non-null `!` rule. */
-  typescript?: boolean;
-  /** Lex a template substitution starting at `start` and stop at the brace that closes it. */
-  substitution?: { start: number; line: number; nesting: number };
-}
-
-export function lexJavaScript(
-  source: string,
-  maxTokens = REACT_NATIVE_MAX_JS_TOKENS,
-  jsx = false,
-  options: { typescript?: boolean } = {},
-): { tokens: JsToken[]; issues: string[]; truncated: boolean } {
-  const { tokens, issues, truncated } = lex(source, maxTokens, jsx, options);
-  return { tokens, issues, truncated };
-}
-
-function lex(
-  source: string,
-  maxTokens: number,
-  jsx: boolean,
-  options: LexOptions,
-): { tokens: JsToken[]; issues: string[]; end: number; line: number; closed: boolean; truncated: boolean } {
-  if (!Number.isSafeInteger(maxTokens) || maxTokens < 1) {
-    throw new Error("Invalid JavaScript/TypeScript token bound.");
-  }
-  const typescript = options.typescript ?? false;
-  const substitution = options.substitution;
-  // Outer tokens only: every regex/division decision reads these. Substitution tokens are kept per
-  // template and merged after their template at the end (security review: never decide from them).
-  const tokens: JsToken[] = [];
-  const inner = new Map<number, JsToken[]>();
-  let innerCount = 0;
-  const issues: string[] = [];
-  // `(` entries: whether the paren opens an if/while/for/for await/with/switch/catch condition.
-  const parens: boolean[] = [];
-  const conditionCloses = new Set<number>();
-  // A `)` with no matching `(` cannot be classified, so a `/` after it is not decided.
-  const unmatchedCloses = new Set<number>();
-  let braces = 0;
-  // Whether lexing stopped before reading the rest of the source as code: an unterminated string,
-  // template, block comment or regex, or a bound. parseJavaScriptSource then refuses the JSX retry,
-  // because keepsCode cannot check tokens the plain pass never produced (security review).
-  let truncated = false;
-  const appendToken = (token: JsToken): boolean => {
-    if (tokens.length + innerCount >= maxTokens) {
-      issues.push(`JavaScript/TypeScript token bound exceeded (${maxTokens}).`);
-      return false;
-    }
-    tokens.push(token);
-    return true;
-  };
-  let cursor = substitution?.start ?? 0;
-  let line = substitution?.line ?? 1;
-  const frames: JsxFrame[] = [];
-  const pushSymbol = (value: string): boolean =>
-    appendToken({ kind: "symbol", value, raw: value, start: cursor, end: cursor + value.length, line });
-  if (!substitution && source.startsWith("#!")) {
-    while (cursor < source.length && !lineTerminator(source[cursor])) cursor++;
-  }
-
-  scan: while (cursor < source.length) {
-    const char = source[cursor]!;
-    const next = source[cursor + 1];
-    const frame = frames.at(-1);
-    if (frame?.kind === "text") {
-      // JSX text is lexed like code except that a quote or slash is an ordinary character, never a
-      // string, regex or comment. parseJavaScriptSource keeps the retry only if every other token is
-      // unchanged, so this can only re-read what the plain pass took for a literal.
-      if (char === "{" || char === "<") {
-        const closing = char === "<" && next === "/";
-        if (!pushSymbol(closing ? "</" : char)) break scan;
-        frames.push({
-          kind: char === "{" ? "expression" : closing ? "closing" : "tag",
-          braces: 1,
-          ...(char === "<" ? { name: jsxName(source, cursor + (closing ? 2 : 1)) } : {}),
-        });
-        cursor += closing ? 2 : 1;
-        continue;
-      }
-      if (char === "'" || char === "\"" || char === "`" || char === "/") {
-        if (!pushSymbol(char)) break scan;
-        cursor++;
-        continue;
-      }
-    }
-    if (frame?.kind === "tag" || frame?.kind === "closing") {
-      if (char === ">" || (char === "/" && next === ">")) {
-        if (!pushSymbol(char === ">" ? ">" : "/>")) break scan;
-        frames.pop();
-        if (char === ">" && frame.kind === "tag") frames.push({ kind: "text", braces: 0, name: frame.name ?? "" });
-        // A closing tag must close the element it names: `</Layout>` in text after a TypeScript
-        // `<T>` generic must not end that misread "element" and swallow the code in between.
-        if (frame.kind === "closing" && frames.pop()?.name !== frame.name) {
-          issues.push(`Mismatched JSX closing tag at line ${line}.`);
-        }
-        cursor += char === ">" ? 1 : 2;
-        continue;
-      }
-      if (char === "{") frames.push({ kind: "expression", braces: 1 });
-    }
-    if (frame?.kind === "expression" && (char === "{" || char === "}")) {
-      frame.braces += char === "{" ? 1 : -1;
-      if (frame.braces === 0) frames.pop();
-    }
-    const ahead = jsx && char === "<" ? source.slice(cursor, cursor + 256) : "";
-    if (
-      ahead && canStartRegex(tokens.at(-1), tokens.at(-2)) && JSX_TAG_START.test(ahead) && !TYPE_PARAMETERS.test(ahead) &&
-      !GENERIC_SIGNATURE.test(ahead) && !(BARE_TAG.test(ahead) && ["=", ":"].includes(tokens.at(-1)?.value ?? ""))
-    ) {
-      if (!pushSymbol("<")) break scan;
-      frames.push({ kind: "tag", braces: 0, name: jsxName(source, cursor + 1) });
-      cursor++;
-      continue;
-    }
-    if (char === "\n") {
-      line++;
-      cursor++;
-      continue;
-    }
-    if (/\s/.test(char)) {
-      cursor++;
-      continue;
-    }
-    if (char === "/" && next === "/") {
-      cursor += 2;
-      while (cursor < source.length && !lineTerminator(source[cursor])) cursor++;
-      continue;
-    }
-    if (char === "/" && next === "*") {
-      const startLine = line;
-      cursor += 2;
-      let terminated = false;
-      while (cursor < source.length) {
-        if (source[cursor] === "\n") line++;
-        if (source[cursor] === "*" && source[cursor + 1] === "/") {
-          cursor += 2;
-          terminated = true;
-          break;
-        }
-        cursor++;
-      }
-      if (!terminated) {
-        issues.push(`Unterminated block comment at line ${startLine}.`);
-        truncated = true;
-      }
-      continue;
-    }
-    if (char === "'" || char === "\"") {
-      const result = readQuoted(source, cursor, line);
-      if (!appendToken(result.token)) break scan;
-      if (!result.terminated) {
-        issues.push(`Unterminated quoted string at line ${line}.`);
-        truncated = true;
-      }
-      // Ruling 26: inside a substitution a string that holds a backtick or `}` is not trusted.
-      if (substitution && /[`}]/.test(result.token.value)) issues.push(`Ambiguous string in a template substitution at line ${line}.`);
-      cursor = result.next;
-      line = result.line;
-      continue;
-    }
-    if (char === "`") {
-      const remaining = maxTokens - tokens.length - innerCount - 1;
-      const result = readTemplate(source, cursor, line, (substitution?.nesting ?? 0), typescript, Math.max(0, remaining));
-      if (!appendToken(result.token)) break scan;
-      if (result.inner.length) {
-        inner.set(tokens.length - 1, result.inner);
-        innerCount += result.inner.length;
-      }
-      for (const issue of result.issues) issues.push(issue);
-      if (!result.terminated) {
-        issues.push(`Unterminated template literal at line ${line}.`);
-        truncated = true;
-      }
-      cursor = result.next;
-      line = result.line;
-      continue;
-    }
-    // Ruling 26: after a `}` a `/` may divide (an object literal) or start a regex (after a block); the
-    // lexer does not choose, it records the file as unparsed.
-    if (char === "/" && tokens.at(-1)?.kind === "symbol" && tokens.at(-1)?.value === "}") {
-      issues.push(`Ambiguous \`/\` after a closing brace at line ${line}.`);
-    }
-    if (char === "/" && tokens.at(-1)?.kind === "symbol" && tokens.at(-1)?.value === ")" && unmatchedCloses.has(tokens.length - 1)) {
-      issues.push(`Ambiguous \`/\` after an unmatched \`)\` at line ${line}.`);
-    }
-    // A `/` after the `)` of an if/while/for/with condition starts a statement, so it is a regex.
-    const afterCondition = tokens.at(-1)?.value === ")" && conditionCloses.has(tokens.length - 1);
-    // Field validation (Sink): `d[0]! / 255` read `/ 255, d[1]! /` as a regex.
-    if (char === "/" && (afterCondition || canStartRegex(tokens.at(-1), tokens.at(-2))) && !nonNullAssertion(tokens, typescript, conditionCloses)) {
-      const result = readRegex(source, cursor, line);
-      // Ruling 26: inside a substitution a regex that holds a backtick or `}` is not trusted.
-      if (substitution && /[`}]/.test(result.token.value)) issues.push(`Ambiguous regular expression in a template substitution at line ${line}.`);
-      if (!appendToken(result.token)) break scan;
-      if (!result.terminated) {
-        // Review I-2: resuming one character later rescanned every later `/` on the line to its end
-        // (quadratic). The file is already unparsed, so stop here, as an unterminated string does.
-        issues.push(`Unterminated regular-expression literal at line ${line}.`);
-        break scan;
-      }
-      cursor = result.next;
-      continue;
-    }
-    if (identifierStart(char)) {
-      const start = cursor++;
-      while (identifierContinue(source[cursor])) cursor++;
-      const raw = source.slice(start, cursor);
-      if (!appendToken({ kind: "identifier", value: raw, raw, start, end: cursor, line })) break scan;
-      continue;
-    }
-    if (digit(char)) {
-      const start = cursor;
-      cursor = numberEnd(source, cursor);
-      const raw = source.slice(start, cursor);
-      if (!appendToken({ kind: "number", value: raw, raw, start, end: cursor, line })) break scan;
-      continue;
-    }
-    // Annex B HTML-like comments (Ruling 30, review C-1 #7): a script reads `<!--`, and `-->` first on
-    // a line, as a comment to the end of the line. The lexer reads code, so the file is unparsed. Any
-    // `-->` counts, whatever its position: "first on a line" depends on line terminators the lexer's
-    // line numbers do not track (security review), so `n-->0` is refused too (fail closed).
-    if (source.startsWith("<!--", cursor) || source.startsWith("-->", cursor)) {
-      issues.push(`HTML-like comment at line ${line}.`);
-    }
-    const symbol = MULTI_SYMBOLS.find((candidate) => source.startsWith(candidate, cursor)) ?? char;
-    if (substitution && symbol === "}" && braces === 0) {
-      return { tokens: withSubstitutions(tokens, inner), issues, end: cursor, line, closed: true, truncated };
-    }
-    if (symbol === "{") braces++;
-    if (symbol === "}") braces--;
-    if (symbol === ")") {
-      if (!parens.length) unmatchedCloses.add(tokens.length);
-      else if (parens.pop()) conditionCloses.add(tokens.length);
-    }
-    if (symbol === "(") {
-      // `for await (x of y)` is a loop condition too; `obj.if(` and `#for(` are calls (security review).
-      parens.push(isKeyword(tokens.at(-1), tokens.at(-2), CONDITION_WORDS) ||
-        (isKeyword(tokens.at(-1), tokens.at(-2), AWAIT_WORD) && isKeyword(tokens.at(-2), tokens.at(-3), FOR_WORD)));
-    }
-    if (!appendToken({
-      kind: "symbol",
-      value: symbol,
-      raw: symbol,
-      start: cursor,
-      end: cursor + symbol.length,
-      line,
-    })) break scan;
-    cursor += symbol.length;
-  }
-  if (frames.length) issues.push("Unclosed JSX element.");
-  // Every `break scan` (an unterminated regex or a bound) leaves source unread.
-  if (cursor < source.length) truncated = true;
-  return { tokens: withSubstitutions(tokens, inner), issues, end: cursor, line, closed: !substitution, truncated };
-}
-
-/** Outer tokens with each template's substitution tokens right after it (Ruling 26). */
-function withSubstitutions(tokens: readonly JsToken[], inner: ReadonlyMap<number, readonly JsToken[]>): JsToken[] {
-  if (!inner.size) return tokens as JsToken[];
-  const merged: JsToken[] = [];
-  for (const [index, token] of tokens.entries()) {
-    merged.push(token);
-    for (const extra of inner.get(index) ?? []) merged.push(extra);
-  }
-  return merged;
+  return char === "\n" || char === "\r" || char === " " || char === " ";
 }
 
 function balance(tokens: readonly JsToken[]): { pairs: Map<number, number>; balanced: boolean; maxDepth: number } {
@@ -714,7 +115,9 @@ function balance(tokens: readonly JsToken[]): { pairs: Map<number, number>; bala
   let valid = true;
   let maxDepth = 0;
   for (let index = 0; index < tokens.length; index++) {
-    const value = tokens[index]!.value;
+    const token = tokens[index]!;
+    if (token.kind !== "symbol") continue;
+    const value = token.value;
     if (value === "(" || value === "[" || value === "{") {
       stack.push({ token: value, index });
       maxDepth = Math.max(maxDepth, stack.length);
@@ -735,17 +138,7 @@ function balance(tokens: readonly JsToken[]): { pairs: Map<number, number>; bala
   return { pairs, balanced: valid && stack.length === 0, maxDepth };
 }
 
-/** Every non-literal token of the plain pass appears unchanged, at the same offset, in the retry. */
-function keepsCode(plain: readonly JsToken[], retry: readonly JsToken[]): boolean {
-  const byStart = new Map(retry.map((token) => [token.start, token]));
-  return plain.every((token) => {
-    if (token.kind === "string" || token.kind === "template" || token.kind === "regex") return true;
-    const same = byStart.get(token.start);
-    return same !== undefined && same.kind === token.kind && same.end === token.end && same.value === token.value;
-  });
-}
-
-/** Review I-2: per-file caps on native lexing, so the worst case stays bounded (measured: under 0.2 s). */
+/** Review I-2: per-file caps on native parsing, so the worst case stays bounded. */
 export const NATIVE_LEX_MAX_CHARS = 2 * 1024 * 1024;
 export const NATIVE_LEX_MAX_LINE_CHARS = 64 * 1024;
 
@@ -760,6 +153,29 @@ function overLexingCaps(content: string): boolean {
   return false;
 }
 
+/** First token index whose start is at or after `offset` (tokens are in source order). */
+function firstTokenAtOrAfter(tokens: readonly JsToken[], offset: number): number {
+  let low = 0;
+  let high = tokens.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (tokens[middle]!.start < offset) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+/** Source ranges `[start, end)` to token index pairs `[first, last]`; empty ranges are dropped. */
+function tokenRanges(tokens: readonly JsToken[], ranges: readonly number[]): number[] {
+  const result: number[] = [];
+  for (let index = 0; index + 1 < ranges.length; index += 2) {
+    const first = firstTokenAtOrAfter(tokens, ranges[index]!);
+    const last = firstTokenAtOrAfter(tokens, ranges[index + 1]!) - 1;
+    if (first <= last) result.push(first, last);
+  }
+  return result;
+}
+
 export function parseJavaScriptSource(path: string, content: string): JsDocument {
   if (overLexingCaps(content)) {
     return {
@@ -768,42 +184,30 @@ export function parseJavaScriptSource(path: string, content: string): JsDocument
       tokens: [],
       pairs: new Map(),
       balanced: false,
-      lexicalIssues: [`Over the native lexing caps (${NATIVE_LEX_MAX_CHARS} characters, ${NATIVE_LEX_MAX_LINE_CHARS} per line).`],
+      lexicalIssues: [`Over the native parsing caps (${NATIVE_LEX_MAX_CHARS} characters, ${NATIVE_LEX_MAX_LINE_CHARS} per line).`],
       hasDynamicJsxSpread: false,
       oversized: true,
     };
   }
-  // `.mts` and `.cts` are TypeScript too (Ruling 30, review C-1 #6).
-  const typescript = /\.(?:[cm]?ts|tsx)$/i.test(path);
-  const plain = lexJavaScript(content, REACT_NATIVE_MAX_JS_TOKENS, false, { typescript });
-  let { tokens, issues } = plain;
-  let paired = balance(tokens);
-  // Valid JSX text may hold `'`, `/` or an unpaired `(`, which this context-free lexer reads as code
-  // and rejects. Only then, and only outside TypeScript-only files, retry with JSX text awareness and
-  // keep the retry if it is clean: a file that already lexed keeps exactly its tokens.
-  // A truncated plain pass refuses the retry: keepsCode below would check only the tokens before the
-  // stop, and the retry alone would decide the rest (it could read later code as a regex).
-  if ((issues.length || !paired.balanced) && !plain.truncated && !/\.[cm]?ts$/i.test(path)) {
-    const retry = lexJavaScript(content, REACT_NATIVE_MAX_JS_TOKENS, true, { typescript });
-    const retryPaired = balance(retry.tokens);
-    // Fail closed unless the retry differs from the plain pass only where the plain pass saw a string,
-    // template or regex literal: a misread TypeScript generic must not turn code into JSX text and hide
-    // an assignment, call or sink from the analyzers (security review).
-    if (!retry.issues.length && retryPaired.balanced && keepsCode(tokens, retry.tokens)) {
-      ({ tokens, issues, paired } = { ...retry, paired: retryPaired });
-    }
-  }
+  const parsed = parseJavaScriptTokens(path, content, REACT_NATIVE_MAX_JS_TOKENS);
+  const issues = [...parsed.issues];
+  const paired = balance(parsed.tokens);
   if (paired.maxDepth > REACT_NATIVE_MAX_JS_NESTING) {
     issues.push(`JavaScript/TypeScript structural nesting bound exceeded (${REACT_NATIVE_MAX_JS_NESTING}).`);
+  } else if (!issues.length && !paired.balanced) {
+    // The parser accepted the file, so its brackets pair; anything else is an adapter defect (fail closed).
+    issues.push("JavaScript/TypeScript tokens do not pair.");
   }
+  const balanced = issues.length === 0;
   const document: JsDocument = {
     path,
     content,
-    tokens,
-    pairs: paired.pairs,
-    balanced: paired.balanced && issues.length === 0,
+    tokens: balanced ? parsed.tokens : [],
+    pairs: balanced ? paired.pairs : new Map(),
+    balanced,
     lexicalIssues: issues,
     hasDynamicJsxSpread: false,
+    ...(balanced ? { conditionalBodies: tokenRanges(parsed.tokens, parsed.conditionalBodies) } : {}),
   };
   document.hasDynamicJsxSpread = jsxElements(document).some((element) => element.hasSpread);
   return document;
@@ -891,37 +295,56 @@ export function jsCalls(document: JsDocument): JsCall[] {
 
 const memberAssignmentCache = new WeakMap<JsDocument, JsMemberAssignment[]>();
 
-function sameScope(left: readonly number[], right: readonly number[]): boolean {
-  return left.length === right.length && left.every((open, index) => right[index] === open);
+const conditionalCache = new WeakMap<JsDocument, Uint8Array>();
+
+/**
+ * Which tokens are conditionally executed, for the whole document in one linear pass (review I-2: the
+ * per-token rescan was quadratic over a file's assignments). A token is conditional when it sits in an
+ * unbraced if/else/for/while/with body at that body's own brace level (bodies come from the parser's
+ * AST), or when an `&&`, `||`, `??` or `?` precedes it in the same statement.
+ */
+function conditionalTokens(document: JsDocument): Uint8Array {
+  const cached = conditionalCache.get(document);
+  if (cached) return cached;
+  const tokens = document.tokens;
+  const flags = new Uint8Array(tokens.length);
+  const depth = new Int32Array(tokens.length);
+  let level = 0;
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index]!;
+    if (token.kind === "symbol" && token.value === "}" && level > 0) level--;
+    depth[index] = level;
+    if (token.kind === "symbol" && token.value === "{") level++;
+  }
+  const bodies = document.conditionalBodies ?? [];
+  const opens: Array<[number, number]> = [];
+  const closes: Array<[number, number]> = [];
+  for (let index = 0; index + 1 < bodies.length; index += 2) {
+    const first = bodies[index]!;
+    opens.push([first, depth[first]!]);
+    closes.push([bodies[index + 1]! + 1, depth[first]!]);
+  }
+  opens.sort((left, right) => left[0] - right[0]);
+  closes.sort((left, right) => left[0] - right[0]);
+  const active = new Int32Array(REACT_NATIVE_MAX_JS_NESTING + 2);
+  let openCursor = 0;
+  let closeCursor = 0;
+  let shortCircuits = 0;
+  for (let index = 0; index < tokens.length; index++) {
+    while (closeCursor < closes.length && closes[closeCursor]![0] <= index) active[closes[closeCursor++]![1]]!--;
+    while (openCursor < opens.length && opens[openCursor]![0] <= index) active[opens[openCursor++]![1]]!++;
+    if (active[depth[index]!]! > 0 || shortCircuits > 0) flags[index] = 1;
+    const value = tokens[index]!.value;
+    if (value === ";" || value === "{" || value === "}") shortCircuits = 0;
+    else if (value === "&&" || value === "||" || value === "??" || value === "?") shortCircuits++;
+  }
+  conditionalCache.set(document, flags);
+  return flags;
 }
 
 /** True when a token is governed by an unbraced branch/loop or short-circuit expression. */
 export function isConditionallyExecuted(document: JsDocument, tokenIndex: number): boolean {
-  const tokens = document.tokens;
-  const targetScope = lexicalScopeAt(document, tokenIndex);
-  const controls = new Set(["if", "for", "while", "with"]);
-  for (let index = 0; index < tokenIndex; index++) {
-    if (!controls.has(tokens[index]!.value) || tokens[index + 1]?.value !== "(") continue;
-    if (!sameScope(lexicalScopeAt(document, index), targetScope)) continue;
-    const close = document.pairs.get(index + 1);
-    if (close === undefined || close >= tokenIndex) continue;
-    const bodyStart = close + 1;
-    if (tokens[bodyStart]?.value === "{") continue;
-    const bodyEnd = statementExpressionEnd(document, bodyStart);
-    if (tokenIndex >= bodyStart && tokenIndex < bodyEnd) return true;
-  }
-  for (let index = 0; index < tokenIndex; index++) {
-    if (tokens[index]!.value !== "else" || !sameScope(lexicalScopeAt(document, index), targetScope)) continue;
-    const bodyStart = index + 1;
-    if (tokens[bodyStart]?.value === "{") continue;
-    const bodyEnd = statementExpressionEnd(document, bodyStart);
-    if (tokenIndex >= bodyStart && tokenIndex < bodyEnd) return true;
-  }
-  let statementStart = tokenIndex - 1;
-  while (statementStart >= 0 && ![";", "{", "}"].includes(tokens[statementStart]!.value)) statementStart--;
-  return tokens.slice(statementStart + 1, tokenIndex).some((token) =>
-    ["&&", "||", "??", "?"].includes(token.value)
-  );
+  return conditionalTokens(document)[tokenIndex] === 1;
 }
 
 export function jsMemberAssignments(document: JsDocument): JsMemberAssignment[] {
@@ -1051,7 +474,8 @@ export function jsxElements(document: JsDocument): JsxElement[] {
     }
   }
   for (let index = 0; index < tokens.length - 1; index++) {
-    if (tokens[index]!.value !== "<" || tokens[index + 1]?.kind !== "identifier") continue;
+    // Only a `<` the parser read as a JSX tag starts an element; a type argument `<Config>` never does.
+    if (!tokens[index]!.jsx || tokens[index + 1]?.kind !== "identifier") continue;
     const ref = jsxReference(tokens, index + 1);
     if (!ref || !/^[A-Z]/.test(ref.reference.at(-1) ?? "")) continue;
     const closeIndex = scanEnd[ref.end]!;

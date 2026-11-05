@@ -313,6 +313,9 @@ export const scanResultSchema = z.object({
       products: z.array(z.string()).optional(),
       "inventory:osv-scanner": z.array(z.string()).optional(),
       "inventory:trivy": z.array(z.string()).optional(),
+      vendored: z.array(z.string()).optional(),
+      "sbom:osv-scanner": z.array(z.string()).optional(),
+      actions: z.array(z.string()).optional(),
     })
     .optional(),
   security_control_evidence: z.array(securityControlEvidenceSchema).optional(),
@@ -331,6 +334,7 @@ export const scanResultSchema = z.object({
       scanners: z.array(scannerEnum).optional(),
       severity_threshold: severityEnum.optional(),
       max_findings: z.number().int(),
+      include_licenses: z.boolean().optional(),
     })
     .optional(),
   git_scope: gitScanScopeSchema.optional(),
@@ -372,7 +376,7 @@ export const scanInput = z.object({
     .array(scannerEnum)
     .optional()
     .describe(
-      "Limit which scanner classes run: sast, secret, vuln, misconfig, license, ai. Default: all.",
+      "Limit which scanner classes run: sast, secret, vuln, misconfig, license, ai. Default: all except license, which needs include_licenses or an explicit license entry.",
     ),
   max_findings: z
     .number()
@@ -384,6 +388,13 @@ export const scanInput = z.object({
     .boolean()
     .optional()
     .describe("Include the per-framework compliance overview in the result (default: true)."),
+  include_licenses: z
+    .boolean()
+    .optional()
+    .describe(
+      "Include Trivy licence findings (default: false; they are informational and not fixable). " +
+        "Listing license in scanners also requests them. A rescan follows the prior scan's setting.",
+    ),
   accept_gaps: z
     .array(z.enum(COVERAGE_GAP_IDS))
     .optional()
@@ -524,6 +535,8 @@ export const complianceReportOutput = z.object({
   posture_score: z.number(),
   posture_note: z.string(),
   frameworks: z.array(frameworkCoverageSchema),
+  /** Present when licence findings were not requested for the scan: no licence evidence is in these controls. */
+  coverage_notes: z.array(z.object({ component: z.string(), detail: z.string() })).optional(),
   disclaimer: z.string(),
 });
 
@@ -638,6 +651,14 @@ export const ruleGroupSchema = z.object({
   engines: z.array(engineEnum),
 });
 
+/** Bundled Opengrep rules per declared language (`generic` = config files and templates). */
+export const sastRuleLanguageSchema = z.object({
+  language: z.string(),
+  rule_count: z.number().int().nonnegative(),
+  /** Rule folders under detection-db/opengrep-rules that hold these rules, e.g. `synvoya-php`. */
+  rulesets: z.array(z.string()),
+});
+
 export const listRulesOutput = z.object({
   detection_db_version: z.string(),
   detection_db_date: z.string(),
@@ -654,6 +675,8 @@ export const listRulesOutput = z.object({
   ),
   synvoya_dataset: synvoyaDatasetInfoSchema,
   rule_groups: z.array(ruleGroupSchema),
+  /** Optional (added in 4.0): absent when the bundled rule files could not be read. */
+  sast_rule_languages: z.array(sastRuleLanguageSchema).optional(),
   trivy_db_date: z.string().optional(),
   engine_setup: engineSetupSchema,
   native_packs: z.array(nativePackInfoSchema),
@@ -695,6 +718,7 @@ export const setupPlanSchema = z.object({
     state: z.enum(["installed", "missing", "stale"]),
     selected: z.boolean(),
     estimated_download_bytes: z.number().int().nonnegative(),
+    note: z.string().optional(),
   })),
   estimated_osv_download_bytes: z.number().int().nonnegative(),
   estimated_database_disk_bytes: z.number().int().nonnegative(),

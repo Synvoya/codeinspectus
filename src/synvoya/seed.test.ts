@@ -126,12 +126,14 @@ describe("shipped Synvoya seed dataset", () => {
     expect(bad).toEqual([]);
   });
 
-  it("entries that need a later reader are marked requires: M2 (GitHub Actions, Go stdlib)", () => {
-    const m2 = dataset.advisories.filter((a) => a.requires === "M2").map((a) => a.id);
-    expect(m2).toContain("SYN-2026-019");
-    expect(m2).toContain("SYN-2026-326");
+  it("only the mutable-tag config entry still waits for M2: the Go stdlib and GitHub Actions advisories have their readers", () => {
+    // SYN-2026-070 is a hygiene class with no version to compare; M2 reports unpinned references as one info note.
+    expect(dataset.advisories.filter((a) => a.requires === "M2").map((a) => a.id)).toEqual(["SYN-2026-070"]);
+    for (const id of ["SYN-2026-019", "SYN-2026-020", "SYN-2026-068", "SYN-2026-069", "SYN-2026-076", "SYN-2026-07601", "SYN-2026-077", "SYN-2026-326"]) {
+      expect(dataset.advisories.find((a) => a.id === id)!.requires, id).toBeUndefined();
+    }
     for (const a of dataset.advisories) {
-      if (a.target.type === "package" && a.target.ecosystem === "GitHub Actions") expect(a.requires, a.id).toBe("M2");
+      if (a.target.type === "package" && a.target.ecosystem === "GitHub Actions" && a.kind !== "config") expect(a.requires, a.id).toBeUndefined();
     }
   });
 
@@ -155,6 +157,8 @@ describe("shipped Synvoya seed dataset", () => {
   it("an advisory with a platform precondition no reader can see waits for platform detection (CVE-2024-4577 is Windows PHP-CGI only)", () => {
     const cgi = dataset.advisories.find((a) => a.id === "SYN-2026-150")!;
     expect(cgi.requires).toBe("platform-detection");
+    // SYN-2026-219 (CVE-2020-0601, Windows CryptoAPI) is the same class: the Go fix is a Windows-only workaround.
+    expect(dataset.advisories.find((a) => a.id === "SYN-2026-219")!.requires).toBe("platform-detection");
   });
 
   it("every end-of-life cycle has a date, a latest release and an https source, once per product", () => {

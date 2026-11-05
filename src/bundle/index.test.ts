@@ -85,7 +85,7 @@ describe("sealed scan bundles", () => {
     const verified = await verifySealedBundle(directory);
     expect(verified.manifest).toMatchObject({
       schema_version: "1.1.0", scan_id: scan().scan_id,
-      detection_database: { version: "1.19.1", date: "2026-10-31" },
+      detection_database: { version: "2.0.0", date: "2026-11-05" },
       native_engine: { name: "codeinspectus-ai", version: "5.20.0" },
       schemas: { export: "3.0.0" },
       artifacts: expect.arrayContaining([expect.objectContaining({ path: "artifacts/scan-record.json", sha256: expect.stringMatching(/^[0-9a-f]{64}$/) })]),
@@ -226,6 +226,15 @@ describe("sealed scan bundles", () => {
     insideScan.repository_root = parent;
     await expect(createSealedBundle(insideScan, join(parent, "scan-results"))).rejects.toThrow(/inside the scan target/i);
     await expect(createSealedBundle(scan(), `${parent}/../escape`)).rejects.toThrow(/traversal/i);
+  });
+
+  test("a scan that recorded its licence choice still seals a manifest in the 1.x shape", async () => {
+    const licensed = scan();
+    licensed.scan_config = { ...licensed.scan_config!, include_licenses: false };
+    const directory = join(await root(), "licence-choice");
+    await createSealedBundle(licensed, directory);
+    const manifest = (await verifySealedBundle(directory)).manifest;
+    expect(manifest.scan_configuration).toEqual({ scanners: ["sast", "secret", "vuln", "misconfig", "license", "ai"], max_findings: 200 });
   });
 
   test("sealing is additive and accepts a tolerant older stored scan without rewriting it", async () => {

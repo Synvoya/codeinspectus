@@ -64,6 +64,7 @@ export interface CliDependencies {
     scanners?: ScannerKind[];
     max_findings?: number;
     include_compliance?: boolean;
+    include_licenses?: boolean;
     git_scope?: GitScopeRequest;
     accept_gaps?: CoverageGapId[];
   }): Promise<ScanResult>;
@@ -129,6 +130,7 @@ export function parseCliCommand(argv: readonly string[]): ParsedCliCommand {
   let outputFormat: CliOutputFormat | undefined;
   let allowOutputInTarget = false;
   let includeCompliance = true;
+  let includeLicenses = false;
   let failOnSeverity: Severity | undefined;
   let baselineScanId: string | undefined;
   let failOnNewSeverity: Severity | undefined;
@@ -201,6 +203,8 @@ export function parseCliCommand(argv: readonly string[]): ParsedCliCommand {
       allowOutputInTarget = true;
     } else if (arg === "--no-compliance") {
       includeCompliance = false;
+    } else if (arg === "--licenses") {
+      includeLicenses = true;
     } else if (arg.startsWith("-")) {
       throw new CliUsageError(`Unknown option '${arg}'. See 'codeinspectus ${command} --help'.`);
     } else if (target) {
@@ -225,6 +229,7 @@ export function parseCliCommand(argv: readonly string[]): ParsedCliCommand {
     throw new CliUsageError("--fail-on-severity is available only for scan enforcement.");
   }
   if (command !== "scan" && (baselineScanId || failOnNewSeverity)) throw new CliUsageError("Baseline options are available only for scan.");
+  if (command !== "scan" && includeLicenses) throw new CliUsageError("--licenses is available only for scan.");
   if (command !== "scan" && acceptedGaps.length) throw new CliUsageError("--accept-gaps is available only for scan.");
   if (command !== "scan" && (diffBase || headRevision || workingTree || workingTreeBase)) throw new CliUsageError("Git scope options are available only for scan.");
   if (diffBase && workingTree) throw new CliUsageError("Use either --diff/--head or --working-tree/--base, not both.");
@@ -249,6 +254,7 @@ export function parseCliCommand(argv: readonly string[]): ParsedCliCommand {
       ...(baselineScanId ? { baseline_scan_id: baselineScanId } : {}),
       ...(failOnNewSeverity ? { fail_on_new_severity: failOnNewSeverity } : {}),
       ...(acceptedGaps.length ? { accept_gaps: [...new Set(acceptedGaps)] } : {}),
+      ...(includeLicenses ? { include_licenses: true } : {}),
       ...(diffBase ? { git_scope: { mode: "commit_diff" as const, base: diffBase, head: headRevision! } }
         : workingTree ? { git_scope: { mode: "working_tree" as const, base: workingTreeBase! } } : {}),
       include_compliance: includeCompliance,
@@ -273,6 +279,7 @@ export function cliHelp(command?: "scan" | "preflight" | "export"): string {
     "  --output-dir <path>           Also write the result to this explicit directory.",
     "  --allow-output-in-target      Approve an --output-dir inside the scanned repository.",
     "  --no-compliance               Omit the compliance overview from scan output.",
+    "  --licenses                    Include licence findings (off by default; they are informational).",
     "  --accept-gaps <id[,id]>       Accept named coverage gaps (e.g. php-sast) so they alone do not fail CI.",
   ];
   if (command) {
@@ -365,7 +372,8 @@ async function writeAtomic(path: string, content: string): Promise<void> {
 
 function renderTextScan(result: ScanResult, config: CliScanConfiguration): string {
   const effectiveConfiguration = {
-    scanners: config.scanners ?? ALL_SCANNERS,
+    // Licences are opt-in (4.0): a default scan lists them only when --licenses asked for them.
+    scanners: config.scanners ?? ALL_SCANNERS.filter((scanner) => scanner !== "license" || config.include_licenses === true),
     severity_threshold: config.severity_threshold ?? "info",
     max_findings: config.max_findings ?? DEFAULT_MAX_FINDINGS,
     output_format: "text" as const,
@@ -524,6 +532,7 @@ export async function runCli(
         include_compliance: parsed.configuration.include_compliance ?? true,
         ...(parsed.configuration.git_scope ? { git_scope: parsed.configuration.git_scope } : {}),
         ...(parsed.configuration.accept_gaps ? { accept_gaps: parsed.configuration.accept_gaps } : {}),
+        ...(parsed.configuration.include_licenses ? { include_licenses: true } : {}),
       });
       const stored = await dependencies.loadScan(result.scan_id);
       let baseline: BaselineComparison | undefined;

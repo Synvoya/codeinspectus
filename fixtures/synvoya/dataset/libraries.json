@@ -1,0 +1,403 @@
+{
+  "libraries": [
+    {
+      "npm": "jquery",
+      "banners": [
+        "^jQuery (?:JavaScript Library )?v(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "jquery"
+      ],
+      "cdnPaths": [
+        "jquery",
+        "npm/jquery",
+        "ajax/libs/jquery"
+      ]
+    },
+    {
+      "npm": "jquery-ui",
+      "banners": [
+        "^jQuery UI - v(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)",
+        "^jQuery UI Core (\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "jquery-ui"
+      ],
+      "cdnPaths": [
+        "jquery-ui",
+        "npm/jquery-ui",
+        "ajax/libs/jqueryui"
+      ]
+    },
+    {
+      "npm": "bootstrap",
+      "banners": [
+        "^Bootstrap(?:: [a-z-]{1,24}\\.js)? v(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "bootstrap"
+      ],
+      "cdnPaths": [
+        "bootstrap",
+        "npm/bootstrap",
+        "ajax/libs/twitter-bootstrap"
+      ]
+    },
+    {
+      "npm": "lodash",
+      "banners": [],
+      "fileStems": [
+        "lodash"
+      ],
+      "cdnPaths": [
+        "lodash",
+        "npm/lodash",
+        "ajax/libs/lodash.js"
+      ]
+    },
+    {
+      "npm": "underscore",
+      "banners": [
+        "^Underscore\\.js v?(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "underscore"
+      ],
+      "cdnPaths": [
+        "underscore",
+        "npm/underscore",
+        "ajax/libs/underscore.js"
+      ]
+    },
+    {
+      "npm": "moment",
+      "banners": [
+        "^moment\\.js\\s+version\\s*:\\s*v?(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "moment"
+      ],
+      "cdnPaths": [
+        "moment",
+        "npm/moment",
+        "ajax/libs/moment.js"
+      ]
+    },
+    {
+      "npm": "angular",
+      "banners": [],
+      "fileStems": [
+        "angular"
+      ],
+      "cdnPaths": [
+        "angular",
+        "npm/angular"
+      ]
+    },
+    {
+      "npm": "handlebars",
+      "banners": [
+        "^@license\\s+handlebars v(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "handlebars"
+      ],
+      "cdnPaths": [
+        "handlebars",
+        "npm/handlebars",
+        "ajax/libs/handlebars.js"
+      ]
+    },
+    {
+      "npm": "mustache",
+      "banners": [],
+      "fileStems": [
+        "mustache"
+      ],
+      "cdnPaths": [
+        "mustache",
+        "npm/mustache",
+        "ajax/libs/mustache.js"
+      ]
+    },
+    {
+      "npm": "dompurify",
+      "banners": [
+        "^@license DOMPurify v?(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "dompurify"
+      ],
+      "cdnPaths": [
+        "dompurify",
+        "npm/dompurify",
+        "ajax/libs/dompurify"
+      ]
+    },
+    {
+      "npm": "axios",
+      "banners": [
+        "^[Aa]xios v(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "axios"
+      ],
+      "cdnPaths": [
+        "axios",
+        "npm/axios",
+        "ajax/libs/axios"
+      ]
+    },
+    {
+      "npm": "vue",
+      "banners": [
+        "^Vue\\.js v(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "vue"
+      ],
+      "cdnPaths": [
+        "vue",
+        "npm/vue",
+        "ajax/libs/vue"
+      ]
+    },
+    {
+      "npm": "react",
+      "banners": [
+        "^@license React v(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)\\s+react\\.(?:production\\.min|development)\\.js"
+      ],
+      "fileStems": [
+        "react"
+      ],
+      "cdnPaths": [
+        "react",
+        "npm/react",
+        "ajax/libs/react"
+      ]
+    },
+    {
+      "npm": "react-dom",
+      "banners": [
+        "^@license React v(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)\\s+react-dom[0-9A-Za-z.-]{0,40}\\.js"
+      ],
+      "fileStems": [
+        "react-dom"
+      ],
+      "cdnPaths": [
+        "react-dom",
+        "npm/react-dom",
+        "ajax/libs/react-dom"
+      ]
+    },
+    {
+      "npm": "chart.js",
+      "banners": [
+        "^Chart\\.js v(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "chart.js"
+      ],
+      "cdnPaths": [
+        "chart.js",
+        "npm/chart.js",
+        "ajax/libs/chart.js"
+      ]
+    },
+    {
+      "npm": "highlight.js",
+      "banners": [
+        "^[Hh]ighlight\\.js v?(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "highlight.js"
+      ],
+      "cdnPaths": [
+        "highlight.js",
+        "npm/highlight.js",
+        "ajax/libs/highlight.js"
+      ]
+    },
+    {
+      "npm": "prismjs",
+      "banners": [
+        "^PrismJS (\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "prismjs"
+      ],
+      "cdnPaths": [
+        "prismjs",
+        "npm/prismjs",
+        "ajax/libs/prism"
+      ]
+    },
+    {
+      "npm": "tinymce",
+      "banners": [
+        "^Copyright \\(c\\) Tiny Technologies, Inc\\.[\\s\\S]{0,400}?Version: (\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)",
+        "^TinyMCE version (\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "tinymce"
+      ],
+      "cdnPaths": [
+        "tinymce",
+        "npm/tinymce",
+        "ajax/libs/tinymce"
+      ]
+    },
+    {
+      "npm": "ckeditor4",
+      "banners": [],
+      "fileStems": [],
+      "cdnPaths": [
+        "ckeditor4",
+        "npm/ckeditor4",
+        "ajax/libs/ckeditor"
+      ]
+    },
+    {
+      "npm": "select2",
+      "banners": [
+        "^Select2 v?(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "select2"
+      ],
+      "cdnPaths": [
+        "select2",
+        "npm/select2",
+        "ajax/libs/select2"
+      ]
+    },
+    {
+      "npm": "datatables.net",
+      "banners": [
+        "^DataTables v?(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "datatables",
+        "jquery.datatables"
+      ],
+      "cdnPaths": [
+        "datatables.net",
+        "npm/datatables.net",
+        "ajax/libs/datatables"
+      ]
+    },
+    {
+      "npm": "sweetalert2",
+      "banners": [
+        "^sweetalert2 v(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "sweetalert2"
+      ],
+      "cdnPaths": [
+        "sweetalert2",
+        "npm/sweetalert2",
+        "ajax/libs/limonte-sweetalert2"
+      ]
+    },
+    {
+      "npm": "swiper",
+      "banners": [
+        "^Swiper v?(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "swiper"
+      ],
+      "cdnPaths": [
+        "swiper",
+        "npm/swiper",
+        "ajax/libs/swiper"
+      ]
+    },
+    {
+      "npm": "popper.js",
+      "banners": [],
+      "fileStems": [],
+      "cdnPaths": [
+        "popper.js",
+        "npm/popper.js"
+      ]
+    },
+    {
+      "npm": "@popperjs/core",
+      "banners": [],
+      "fileStems": [],
+      "cdnPaths": [
+        "@popperjs/core",
+        "npm/@popperjs/core"
+      ]
+    },
+    {
+      "npm": "knockout",
+      "banners": [
+        "^Knockout JavaScript library v(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "knockout"
+      ],
+      "cdnPaths": [
+        "knockout",
+        "npm/knockout",
+        "ajax/libs/knockout"
+      ]
+    },
+    {
+      "npm": "backbone",
+      "banners": [
+        "^Backbone\\.js v?(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "backbone"
+      ],
+      "cdnPaths": [
+        "backbone",
+        "npm/backbone",
+        "ajax/libs/backbone.js"
+      ]
+    },
+    {
+      "npm": "mathjax",
+      "banners": [],
+      "fileStems": [
+        "mathjax"
+      ],
+      "cdnPaths": [
+        "mathjax",
+        "npm/mathjax",
+        "ajax/libs/mathjax"
+      ]
+    },
+    {
+      "npm": "pdfjs-dist",
+      "banners": [],
+      "fileStems": [
+        "pdfjs-dist"
+      ],
+      "cdnPaths": [
+        "pdfjs-dist",
+        "npm/pdfjs-dist",
+        "ajax/libs/pdf.js"
+      ]
+    },
+    {
+      "npm": "socket.io-client",
+      "banners": [
+        "^Socket\\.IO v(\\d+(?:\\.\\d+){0,2}(?:-[0-9A-Za-z.]+)?)"
+      ],
+      "fileStems": [
+        "socket.io",
+        "socket.io-client"
+      ],
+      "cdnPaths": [
+        "socket.io-client",
+        "npm/socket.io-client",
+        "ajax/libs/socket.io"
+      ]
+    }
+  ]
+}

@@ -20,9 +20,9 @@ import type {
 } from "../repository-trust/schemas.js";
 import type { CleanupPlan, CleanupResult } from "../repository-trust/cleanup.js";
 
-export const SDK_API_VERSION = "3.3.2" as const;
+export const SDK_API_VERSION = "4.0.0" as const;
 export const SDK_COMPATIBILITY = Object.freeze({
-  cli_major: 3,
+  cli_major: 4,
   export_schema: "3.0.0",
   repository_trust_schema: "1.0.0",
   cleanup_schema: "1.0.0",
@@ -154,6 +154,8 @@ export interface ScanOptions extends CommandRunOptions {
    * An unknown id is rejected by the CLI, and the SDK throws `CodeInspectusSdkError`.
    */
   acceptGaps?: readonly string[];
+  /** Include licence findings (`--licenses`). Off by default since 4.0: they are informational and not fixable. */
+  includeLicenses?: boolean;
 }
 
 export interface HistoryListOptions extends CommandRunOptions {
@@ -319,6 +321,7 @@ export class CodeInspectusClient {
     else if (options.gitScope?.mode === "working_tree") args.push("--working-tree", "--base", options.gitScope.base);
     if (options.includeCompliance === false) args.push("--no-compliance");
     if (options.acceptGaps?.length) args.push("--accept-gaps", options.acceptGaps.join(","));
+    if (options.includeLicenses) args.push("--licenses");
     return parseJsonResult<JsonExportV3>(await this.run(args, options), SDK_COMPATIBILITY.export_schema);
   }
 

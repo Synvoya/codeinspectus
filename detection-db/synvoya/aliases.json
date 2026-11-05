@@ -1,5 +1,8 @@
 {
-  "packages": {},
+  "packages": {
+    "Packagist:magento/magento2-base": "Packagist:magento/community-edition",
+    "Packagist:magento/product-community-edition": "Packagist:magento/community-edition"
+  },
   "imageAliases": {
     "jenkins/jenkins": {
       "ecosystem": "Maven",

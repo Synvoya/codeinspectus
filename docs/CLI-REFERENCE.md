@@ -20,9 +20,15 @@ Shared scan options:
 - `--output FILE` or `--output-dir DIRECTORY`
 - `--allow-output-in-target` for an explicitly approved output directory inside the target
 - `--no-compliance`
-- `--accept-gaps <id[,id]>` (scan only): accept named coverage gaps such as `php-sast` or
-  `deno-lock` so they alone do not fail CI; coverage still reads `partial` and the gaps stay listed.
-  Gap ids are documented in [CI-POLICY.md](CI-POLICY.md#declared-coverage-gaps).
+- `--licenses` (scan only): include licence findings. They are off by default since 4.0 because they
+  are informational and none is fixable; without the flag the scan carries the coverage note
+  "Licence findings were not requested (use include_licenses / --licenses)." (informational, never a
+  coverage gap). `--scanner license` also requests them. The MCP tools take `include_licenses: true`
+  on `codeinspectus_scan`, and `codeinspectus_rescan` and `scans rerun` repeat the prior scan's choice.
+- `--accept-gaps <id[,id]>` (scan only): accept named coverage gaps such as `php-sast`, `deno-lock`,
+  `vendored-js` or `third-party-bundles` so they alone do not fail CI; coverage still reads `partial` and
+  the gaps stay listed. An unknown id is an input error (exit 2). Gap ids are documented in
+  [CI-POLICY.md](CI-POLICY.md#declared-coverage-gaps).
 
 Policy and Git scope options:
 
@@ -125,7 +131,8 @@ osv-scanner needs one OSV database per package ecosystem, downloaded only after 
   them, not a scan.
 - `--osv-ecosystems LIST` approves exactly the listed ecosystems and overrides `--path`. The list is
   comma-separated and case-insensitive; the allowed names are `npm`, `PyPI`, `Packagist`, `Go`,
-  `crates.io`, `RubyGems`, `Maven`, `NuGet`, and `Pub`. Distribution ecosystems are not allowed.
+  `crates.io`, `RubyGems`, `Maven`, `NuGet`, `Pub`, and `GitHub Actions` (a small database read by the
+  Synvoya Actions matcher, not by osv-scanner; quote the name). Distribution ecosystems are not allowed.
   Databases are downloaded only when `osv-scanner` is among the selected components;
   `--osv-ecosystems` without it is an error.
 - With neither option, `setup` installs the osv-scanner binary and downloads no database, except

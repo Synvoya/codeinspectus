@@ -56,6 +56,13 @@ describe("Synvoya display family membership", () => {
     expect(native).not.toHaveProperty("engine_family");
   });
 
+  test("an osv-scanner finding from the vendored-library SBOM is in the family; a main-run one is not", () => {
+    const main = { ...finding("osv-scanner", "GHSA-aaaa-bbbb-cccc"), producer_components: ["osv-scanner:binary"] };
+    expect(withEngineFamily(main)).toBe(main);
+    const sbom = { ...main, producer_components: ["osv-scanner:binary", "synvoya:sbom:osv-scanner"] };
+    expect(withEngineFamily(sbom)).toEqual({ ...sbom, engine_family: "synvoya" });
+  });
+
   test("the display name is Synvoya (CodeInspectus)", () => {
     expect(SYNVOYA_FAMILY_DISPLAY).toBe("Synvoya (CodeInspectus)");
   });

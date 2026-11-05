@@ -38,6 +38,8 @@ export const DEFAULT_WALK_LIMITS: WalkLimits = {
 /** Opt-in descent into `vendor/` (never `node_modules/`), under one depth and entry budget shared by every vendor directory in the walk. */
 export interface WalkOptions {
   vendor?: { maxDepth: number; maxEntries: number };
+  /** Directory names the `vendor` option enters (default `["vendor"]`); `node_modules` is never one of them. */
+  vendorNames?: readonly string[];
   /** Shared Synvoya reader deadline: once aborted, no further directory is listed and no file is added. */
   signal?: AbortSignal;
   /**
@@ -94,6 +96,7 @@ export async function walkCandidates(
    * huge vendor tree nor thousands of small ones can starve or multiply the main walk's bounded work.
    */
   const vendor = { visited: 0, capped: false };
+  const vendorNames: ReadonlySet<string> = new Set((options.vendorNames ?? ["vendor"]).filter((name) => name !== "node_modules"));
   let expired = false;
   const deadlineReached = (relDir: string): boolean => {
     if (expired) return true;
@@ -136,7 +139,7 @@ export async function walkCandidates(
         // Never followed; only a link that a reader would have opened is worth reporting.
         if (matchers.some((matcher) => matchesCandidate(matcher, rel))) skipped.push({ file: rel, reason: "symlink" });
       } else if (entry.isDirectory()) {
-        if (entry.name === "vendor" && options.vendor !== undefined) {
+        if (vendorNames.has(entry.name) && options.vendor !== undefined) {
           // A nested vendor/x/vendor is entered too, under the same budget and one extra level of depth.
           if (vendorDepth === undefined) {
             if (!vendor.capped && depth + 1 <= maxDepth) await visit(join(absDir, entry.name), rel, depth + 1, 0);

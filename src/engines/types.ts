@@ -17,6 +17,8 @@ export interface EngineOutput {
   coverageWarnings?: string[];
   /** Declared coverage gaps the engine reported while it ran (acceptable by id with accept_gaps). */
   coverageGaps?: CoverageGap[];
+  /** Informational coverage notes (component `engine:<engine>`); they never make coverage partial. */
+  coverageNotes?: string[];
   /** Detector-component signatures captured before execution for rescan equivalence proof. */
   componentSignatures?: Record<string, string>;
 }

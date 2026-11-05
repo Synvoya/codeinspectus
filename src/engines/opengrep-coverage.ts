@@ -26,6 +26,37 @@ const MAX_EXAMPLES = 5;
 const POLICY_SKIPS = new Set(["semgrepignore_patterns_match", "wrong_language", "irrelevant_rule"]);
 const SIZE_SKIPS = new Set(["exceeded_size_limit", "too_big"]);
 /**
+ * Field run 2026-11-05: the pack pass's generic rules make Opengrep list a size skip for every large file,
+ * and 22/40 repos read SAST-partial only for images, PDFs, binaries and lockfiles. A size skip of a file with
+ * one of these extensions (or a lockfile name) is no source of any language a bundled rule reads (JavaScript,
+ * TypeScript, Python, PHP, and the generic rules' deploy and environment files): an informational note, never
+ * partial. Any other size skip, an unlisted extension included, stays partial.
+ */
+const NON_SOURCE_EXTENSIONS: ReadonlySet<string> = new Set([
+  // images
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".icns", ".tif", ".tiff", ".avif", ".heic", ".psd", ".svg", ".svgz",
+  // fonts
+  ".ttf", ".otf", ".woff", ".woff2", ".eot",
+  // audio and video
+  ".mp3", ".mp4", ".m4a", ".m4v", ".wav", ".ogg", ".oga", ".ogv", ".webm", ".mov", ".avi", ".mkv", ".flac",
+  // archives (`.phar`: Opengrep does not read it as PHP; measured with Opengrep 1.33.1)
+  ".zip", ".gz", ".tgz", ".tar", ".bz2", ".xz", ".7z", ".rar", ".jar", ".war", ".phar",
+  // documents
+  ".pdf",
+  // compiled binaries
+  ".node", ".dylib", ".so", ".dll", ".exe", ".bin", ".wasm", ".class", ".o", ".a", ".pyc",
+  // lockfiles, source maps and data dumps
+  ".lock", ".lockb", ".map", ".sql", ".csv",
+]);
+const NON_SOURCE_NAMES: ReadonlySet<string> = new Set(["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml"]);
+
+/** Whether a target-relative path names a file no bundled Opengrep rule reads as source (by extension or lockfile name). */
+export function nonSourceFile(rel: string): boolean {
+  const name = rel.slice(rel.lastIndexOf("/") + 1).toLowerCase();
+  const dot = name.lastIndexOf(".");
+  return NON_SOURCE_NAMES.has(name) || (dot > 0 && NON_SOURCE_EXTENSIONS.has(name.slice(dot)));
+}
+/**
  * Error types for code Opengrep's parsers could not read (`ParseError`, `LexicalError` and
  * `PartialParsing` in Opengrep's output schema). "Other syntax error", timeouts, memory limits and
  * internal matching errors are not parser limits and stay non-acceptable.
@@ -64,6 +95,74 @@ export interface OpengrepFileCoverage {
   warning?: string;
   /** Files whose only errors are parser limits: the declared gap `sast-parse-errors`. */
   parseErrors?: CoverageGap;
+  /** Non-source files skipped for size (nonSourceFile): an informational coverage note, never partial. */
+  note?: string;
+}
+
+/**
+ * One report for several Opengrep passes over the same target (the baseline and Synvoya pack passes): their
+ * errors and paths side by side, so a file both passes report is counted once. Undefined (a coverage warning)
+ * when any report is missing or malformed.
+ */
+export function mergeOpengrepReports(reports: readonly unknown[]): unknown {
+  const errors: Record<string, unknown>[] = [];
+  const scanned: unknown[] = [];
+  const skipped: Record<string, unknown>[] = [];
+  for (const report of reports) {
+    const root = report !== null && typeof report === "object" ? report as Record<string, unknown> : {};
+    const paths = root.paths !== null && typeof root.paths === "object" ? root.paths as Record<string, unknown> : {};
+    const reportErrors = records(root.errors);
+    const reportSkipped = records(paths.skipped);
+    if (!reportErrors || !reportSkipped || !Array.isArray(paths.scanned)) return undefined;
+    for (const error of reportErrors) errors.push(error);
+    for (const path of paths.scanned as unknown[]) scanned.push(path);
+    for (const entry of reportSkipped) skipped.push(entry);
+  }
+  return { errors, paths: { scanned, skipped } };
+}
+
+/** Target-relative paths a report says the managed ignore list skipped, or undefined for a malformed report. */
+function ignoreSkips(report: unknown, target: string): Set<string> | undefined {
+  const root = report !== null && typeof report === "object" ? report as Record<string, unknown> : {};
+  const paths = root.paths !== null && typeof root.paths === "object" ? root.paths as Record<string, unknown> : {};
+  const skipped = records(paths.skipped);
+  if (!skipped) return undefined;
+  const out = new Set<string>();
+  for (const entry of skipped) {
+    if (entry.reason !== "semgrepignore_patterns_match") continue;
+    const rel = targetPath(entry.path, target);
+    // A skip outside the target (or of the target itself) cannot be checked against routing: count it as unexpected.
+    out.add(rel ?? `\u0000${String(entry.path)}`);
+  }
+  return out;
+}
+
+export interface PackSkipCheck {
+  /** Chosen bundles the pack pass did skip (a chosen file it still scanned is no gap). */
+  skipped: string[];
+  /** Files the pack pass skipped that neither the managed ignore list nor bundle routing names. */
+  unexpected: string[];
+}
+
+/**
+ * Fail-closed check of the pack pass's skip list (M4 Task 4 review): every `semgrepignore` skip must be a
+ * chosen bundle or a path the managed list ignores (`managedIgnored`). The baseline pass's own report is no
+ * reference: Opengrep lists only skips of files some loaded rule's language could read, and the pack's
+ * generic rules read every file. Undefined when the report is missing or malformed.
+ */
+export function checkPackSkips(
+  packReport: unknown,
+  bundles: readonly string[],
+  target: string,
+  managedIgnored: (rel: string) => boolean,
+): PackSkipCheck | undefined {
+  const pack = ignoreSkips(packReport, target);
+  if (!pack) return undefined;
+  const chosen = new Set(bundles);
+  return {
+    skipped: bundles.filter((rel) => pack.has(rel)),
+    unexpected: [...pack].filter((rel) => !chosen.has(rel) && (rel.startsWith("\u0000") || !managedIgnored(rel))).sort(),
+  };
 }
 
 export function opengrepFileCoverage(report: unknown, target: string): OpengrepFileCoverage {
@@ -74,7 +173,7 @@ export function opengrepFileCoverage(report: unknown, target: string): OpengrepF
   if (!errors || !skipped || !Array.isArray(paths.scanned)) {
     return { warning: "Opengrep SAST coverage partial: Opengrep's structured skip and error report was missing or malformed, so skipped files are unknown." };
   }
-  const groups = { size: new Set<string>(), errors: new Set<string>(), unreadable: new Set<string>(), other: new Set<string>() };
+  const groups = { size: new Set<string>(), nonSource: new Set<string>(), errors: new Set<string>(), unreadable: new Set<string>(), other: new Set<string>() };
   let unnamed = 0;
   const add = (group: Set<string>, path: unknown, key: string): void => {
     const shown = displayPath(path, target);
@@ -97,7 +196,8 @@ export function opengrepFileCoverage(report: unknown, target: string): OpengrepF
     if (reason === "analysis_failed_parser_or_internal_error" && typeof entry.path === "string" && parseOnly.has(entry.path)) {
       continue; // classified by its errors below
     }
-    const group = SIZE_SKIPS.has(reason) ? groups.size
+    const rel = targetPath(entry.path, target);
+    const group = SIZE_SKIPS.has(reason) ? (rel !== undefined && nonSourceFile(rel) ? groups.nonSource : groups.size)
       : reason === "analysis_failed_parser_or_internal_error" ? groups.errors
         : reason === "insufficient_permissions" ? groups.unreadable
           : groups.other;
@@ -119,12 +219,21 @@ export function opengrepFileCoverage(report: unknown, target: string): OpengrepF
     .filter((path) => !path.startsWith("\u0000"));
   const examples = files.slice(0, MAX_EXAMPLES).join(", ");
   const shownParseFiles = parseFiles.flatMap((path) => displayPath(path, target) ?? []).sort();
+  const nonSource = [...groups.nonSource].filter((path) => !path.startsWith("\u0000"));
+  const nonSourceExamples = nonSource.slice(0, MAX_EXAMPLES).join(", ");
   return {
     ...(parts.length
       ? { warning: `Opengrep SAST coverage partial: ${parts.join("; ")}${examples ? `: ${examples}${files.length > MAX_EXAMPLES ? ", …" : ""}` : ""}.` }
       : {}),
     ...(parseFiles.length
       ? { parseErrors: { id: "sast-parse-errors" as const, files: parseFiles.length, examples: shownParseFiles.slice(0, MAX_EXAMPLES) } }
+      : {}),
+    ...(groups.nonSource.size
+      ? {
+        note: `Opengrep skipped ${groups.nonSource.size} non-source file(s) over its file size limit (images, fonts, media, archives, ` +
+          "documents, binaries, lockfiles, source maps or data dumps); no bundled SAST rule reads them (informational, not a coverage gap)" +
+          `${nonSourceExamples ? `: ${nonSourceExamples}${nonSource.length > MAX_EXAMPLES ? ", …" : ""}` : ""}.`,
+      }
       : {}),
   };
 }

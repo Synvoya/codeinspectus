@@ -210,7 +210,8 @@ async function buildBundle(scanInput: StoredScanResult, sealedAt = new Date().to
         : {}),
     },
     scan_id: scan.scan_id,
-    ...(scan.scan_config ? { scan_configuration: scan.scan_config } : {}),
+    // Bundle manifests keep their 3.x shape: the licence choice is recorded by the scan's coverage note.
+    ...(scan.scan_config ? { scan_configuration: (({ include_licenses: _licences, ...configuration }) => configuration)(scan.scan_config) } : {}),
     scan_scope: scan.git_scope ?? { mode: "whole_target", target: scan.target },
     timestamps: { started_at: scan.started_at, completed_at: completedAt(scan), sealed_at: sealedAt },
     artifacts: EXPECTED_ARTIFACTS.map((path) => ({ path, media_type: MEDIA_TYPES[path], bytes: files[path].length, sha256: sha256Hex(files[path]) })),

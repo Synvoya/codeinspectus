@@ -88,7 +88,7 @@ function emit(
   raw: string,
   line: number,
   source: string,
-  options: { majorOnlyIsRange?: boolean; lineOnly?: boolean } = {},
+  options: { majorOnlyIsRange?: boolean } = {},
 ): void {
   if (ctx.full) return;
   if (ctx.out.length >= MAX_DECLARATIONS_PER_FILE) {
@@ -97,18 +97,13 @@ function emit(
     ctx.notes.push(`${ctx.file}: more than ${MAX_DECLARATIONS_PER_FILE} runtime declarations; extra ignored`);
     return;
   }
-  let spec = normalize(runtime, raw);
+  const spec = normalize(runtime, raw);
   if (spec === "") return;
-  let { precision, resolved } = classify(spec);
+  const classified = classify(spec);
+  const resolved = classified.resolved;
+  let precision = classified.precision;
   // A Maven property that names a major (17, 1.8) is a language level, not a pinned build.
   if (options.majorOnlyIsRange && /^(?:1\.)?\d+$/.test(spec)) precision = "range";
-  // A value that sets a resolution target (Composer platform PHP) names its release line, not the patch
-  // release that is deployed: 8.2.0 floats on 8.2.
-  if (options.lineOnly && precision === "exact") {
-    spec = spec.split(".").slice(0, 2).join(".");
-    precision = "floating";
-    resolved = undefined;
-  }
   if (precision === "unresolved") {
     note(ctx, `${ctx.file}:${line}: ${source} "${spec}" does not name a resolvable version; no runtime finding is possible for it.`);
   }
@@ -196,13 +191,20 @@ function at(value: unknown, path: readonly string[]): unknown {
 function emitJsonKeys(
   ctx: Ctx,
   text: string,
-  entries: ReadonlyArray<readonly [RuntimeId, readonly string[], string, { lineOnly?: boolean }?]>,
+  entries: ReadonlyArray<readonly [RuntimeId, readonly string[], string, { hint?: boolean }?]>,
 ): void {
   const root = parseJsonObject(text);
   const lines = jsonKeyLines(text);
   for (const [runtime, path, source, options] of entries) {
     const value = at(root, path);
-    if (typeof value === "string") emit(ctx, runtime, value, lines.get(path.join("\0")) ?? 1, source, options);
+    if (typeof value !== "string") continue;
+    const line = lines.get(path.join("\0")) ?? 1;
+    // A Composer platform setting tells the resolver which PHP to resolve for; it says nothing about the PHP that
+    // is deployed, so it is a note and never a declaration (field run 2026-11-05: 12 false positives).
+    if (options?.hint) {
+      note(ctx, `${ctx.file}:${line}: ${source} "${value.trim()}" is a dependency-resolution hint, not the deployed PHP version; ` +
+        "no runtime finding is made from it (require.php, Dockerfiles, CI and .tool-versions are read for that).");
+    } else emit(ctx, runtime, value, line, source);
   }
 }
 
@@ -494,12 +496,12 @@ function readOne(ctx: Ctx, name: string, text: string): void {
     case "composer.json":
       return emitJsonKeys(ctx, text, [
         ["php", ["require", "php"], "composer.json require.php"],
-        ["php", ["config", "platform", "php"], "composer.json config.platform.php", { lineOnly: true }],
+        ["php", ["config", "platform", "php"], "composer.json config.platform.php", { hint: true }],
       ]);
     case "composer.lock":
       return emitJsonKeys(ctx, text, [
         ["php", ["platform", "php"], "composer.lock platform"],
-        ["php", ["platform-overrides", "php"], "composer.lock platform-overrides", { lineOnly: true }],
+        ["php", ["platform-overrides", "php"], "composer.lock platform-overrides", { hint: true }],
       ]);
     case "global.json":
       return emitJsonKeys(ctx, text, [["dotnet", ["sdk", "version"], "global.json sdk.version"]]);

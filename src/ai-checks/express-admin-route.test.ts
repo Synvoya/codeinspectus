@@ -713,6 +713,36 @@ describe("Express admin route access-control boundary", () => {
     }
   });
 
+  // Stream D review, Critical 1: as a CommonJS script the route runs (`<!--` starts a comment); as a module
+  // a template swallows it. A `.js` file can be either, so it is the gap, never a silent clean pass.
+  test("a route that a script runs but a module reading hides is the native-parse-errors gap", async () => {
+    const directory = await realpath(await mkdtemp(join(tmpdir(), "codeinspectus-express-goal-")));
+    try {
+      const route = [
+        'const express = require("express");',
+        "const app = express();",
+        "var y = 0;",
+        "app <!--y; `",
+        'app.delete("/api/admin/users", async (_req, res) => {',
+        "  await db.users.deleteMany();",
+        "  return res.sendStatus(204);",
+        "});",
+        "// `",
+      ].join("\n");
+      await writeFile(join(directory, "admin.js"), route);
+      const ambiguous = await runExpressAdminRouteAnalysis(directory);
+      expect(ambiguous.findings).toHaveLength(0);
+      expect(ambiguous.gaps).toEqual([{ id: "native-parse-errors", path: "admin.js" }]);
+      // As an explicit CommonJS script there is one reading, and the route it runs is found.
+      await rm(join(directory, "admin.js"));
+      await writeFile(join(directory, "admin.cjs"), route);
+      const script = await runExpressAdminRouteAnalysis(directory);
+      expect(script.findings.map((item) => [item.location.file, item.location.start_line])).toEqual([["admin.cjs", 5]]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   test("skips call-heavy files at the explicit bound", async () => {
     const directory = await realpath(await mkdtemp(join(tmpdir(), "codeinspectus-express-calls-")));
     try {

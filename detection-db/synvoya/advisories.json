@@ -1603,8 +1603,7 @@
         "https://go.dev/issue/80405"
       ],
       "status": "active",
-      "provisional": false,
-      "requires": "M2"
+      "provisional": false
     },
     {
       "id": "SYN-2026-020",
@@ -1662,8 +1661,7 @@
         "https://go.dev/issue/82345"
       ],
       "status": "active",
-      "provisional": false,
-      "requires": "M2"
+      "provisional": false
     },
     {
       "id": "SYN-2026-021",
@@ -4034,8 +4032,7 @@
         "https://api.osv.dev/v1/vulns/GHSA-5xjx-3w67-w9x9"
       ],
       "status": "active",
-      "provisional": false,
-      "requires": "M2"
+      "provisional": false
     },
     {
       "id": "SYN-2026-069",
@@ -4076,8 +4073,7 @@
         "https://api.github.com/repos/wktk/conflibot/releases"
       ],
       "status": "active",
-      "provisional": false,
-      "requires": "M2"
+      "provisional": false
     },
     {
       "id": "SYN-2026-070",
@@ -4896,8 +4892,7 @@
         "https://api.github.com/repos/aquasecurity/setup-trivy/releases"
       ],
       "status": "active",
-      "provisional": false,
-      "requires": "M2"
+      "provisional": false
     },
     {
       "id": "SYN-2026-07601",
@@ -4943,8 +4938,7 @@
         "https://api.github.com/repos/aquasecurity/setup-trivy/releases"
       ],
       "status": "active",
-      "provisional": false,
-      "requires": "M2"
+      "provisional": false
     },
     {
       "id": "SYN-2026-077",
@@ -4987,8 +4981,7 @@
         "https://osv-vulnerabilities.storage.googleapis.com/GitHub%20Actions/all.zip"
       ],
       "status": "active",
-      "provisional": false,
-      "requires": "M2"
+      "provisional": false
     },
     {
       "id": "SYN-2026-078",
@@ -13591,7 +13584,7 @@
       ],
       "status": "active",
       "provisional": false,
-      "requires": "M2"
+      "requires": "platform-detection"
     },
     {
       "id": "SYN-2026-220",
@@ -19605,8 +19598,7 @@
         "https://nvd.nist.gov/vuln/detail/CVE-2025-30066"
       ],
       "status": "active",
-      "provisional": false,
-      "requires": "M2"
+      "provisional": false
     }
   ]
 }

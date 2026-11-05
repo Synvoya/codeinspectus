@@ -1,0 +1,21 @@
+# Synvoya PHP pack -- original Apache-2.0 rules (see LICENSE-PROVENANCE.md). ASCII-only.
+# Template-level output: Blade's raw-output tag fed directly from request input. Blade views are also
+# parsed as PHP by the taint rules, but {!! !!} is template text there, so this rule reads the tag.
+rules:
+  - id: syn-php-blade-raw-request-output
+    languages: [generic]
+    severity: ERROR
+    message: >-
+      Reflected XSS in a Blade view: {!! !!} prints request input (request(), $request, old() or a
+      superglobal) without escaping. Use {{ }} so Blade escapes the value.
+    metadata:
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks: [laravel]
+    paths:
+      include:
+        - "*.blade.php"
+    pattern-regex: \{!!\s*(?:request\s*\(|\$request\s*->|\\?Request::|\\?Input::|old\s*\(|\$_(?:GET|POST|REQUEST|COOKIE)\b|\$_SERVER\s*\[\s*["'](?:HTTP_(?!HOST)|REQUEST_URI|QUERY_STRING|PHP_SELF))[^!]*!!\}

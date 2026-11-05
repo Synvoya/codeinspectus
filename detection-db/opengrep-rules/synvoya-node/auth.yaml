@@ -1,0 +1,200 @@
+# Synvoya Node.js pack (original Apache-2.0 rules; see LICENSE-PROVENANCE.md). ASCII-only.
+# Token handling with the jsonwebtoken package. ci-baseline-jwt-alg-none already reports an
+# explicit "none" algorithm; these rules cover a missing allow-list and decode-without-verify.
+rules:
+  - id: syn-node-jwt-verify-no-algorithms
+    languages: [javascript, typescript]
+    severity: INFO
+    message: >
+      jsonwebtoken verify() is called without an algorithms allow-list, so the token header picks
+      the algorithm. Releases before 9 accept "none" or an RS/HS key confusion this way; 9.x still
+      accepts any algorithm the key type allows, so on 9.x this is defence in depth. Pass
+      algorithms: ["RS256"] (or the one algorithm you sign with) on every verify call.
+    metadata:
+      cwe: "CWE-347: Improper Verification of Cryptographic Signature"
+      owasp: "A07:2021 - Identification and Authentication Failures"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-node
+      references:
+        - https://cwe.mitre.org/data/definitions/347.html
+    # Minified / bundled browser files are not server code, and taint analysis of a big bundle can
+    # run past Opengrep's per-file timeout. Only file-basename globs: Opengrep matches rule paths
+    # against the absolute path, so a folder name here could match a parent of the project.
+    # Test files verify tokens they minted themselves; they are not shipped.
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.min.mjs"
+        - "*-min.js"
+        - "*.bundle.js"
+        - "*-bundle.js"
+        - "*.chunk.js"
+        - "*.test.js"
+        - "*.test.jsx"
+        - "*.test.mjs"
+        - "*.test.cjs"
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "*.spec.js"
+        - "*.spec.jsx"
+        - "*.spec.mjs"
+        - "*.spec.cjs"
+        - "*.spec.ts"
+        - "*.spec.tsx"
+        - "*.e2e-spec.ts"
+        - "*-spec.ts"
+        - "*-spec.js"
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-either:
+                  - pattern-inside: |
+                      $JWT = require("jsonwebtoken");
+                      ...
+                  - pattern-inside: |
+                      import $JWT from "jsonwebtoken";
+                      ...
+                  - pattern-inside: |
+                      import * as $JWT from "jsonwebtoken";
+                      ...
+              - pattern-either:
+                  - pattern: $JWT.verify($TOKEN, $KEY)
+                  - pattern: $JWT.verify($TOKEN, $KEY, function (...) { ... })
+                  - pattern: $JWT.verify($TOKEN, $KEY, (...) => $BODY)
+                  - pattern: $JWT.verify($TOKEN, $KEY, {...})
+                  - pattern: $JWT.verify($TOKEN, $KEY, {...}, $CB)
+              - pattern-not: '$JWT.verify($TOKEN, $KEY, {..., algorithms: $ALGS, ...})'
+              - pattern-not: '$JWT.verify($TOKEN, $KEY, {..., algorithms: $ALGS, ...}, $CB)'
+          - patterns:
+              - pattern-either:
+                  - pattern-inside: |
+                      import { ..., verify, ... } from "jsonwebtoken";
+                      ...
+                  - pattern-inside: |
+                      const { ..., verify, ... } = require("jsonwebtoken");
+                      ...
+              - pattern-either:
+                  - pattern: verify($TOKEN, $KEY)
+                  - pattern: verify($TOKEN, $KEY, function (...) { ... })
+                  - pattern: verify($TOKEN, $KEY, (...) => $BODY)
+                  - pattern: verify($TOKEN, $KEY, {...})
+                  - pattern: verify($TOKEN, $KEY, {...}, $CB)
+              - pattern-not: 'verify($TOKEN, $KEY, {..., algorithms: $ALGS, ...})'
+              - pattern-not: 'verify($TOKEN, $KEY, {..., algorithms: $ALGS, ...}, $CB)'
+      # ci-baseline-jwt-alg-none reports an explicit `algorithm: "none"` (its pattern, verbatim);
+      # its tp/02 and tp/03 fixtures prove it fires on the member and named-import forms (E75).
+      - pattern-not: '$BASEJWT.verify(..., { ..., algorithm: "none", ... })'
+
+  - id: syn-node-jwt-decode-without-verify
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      A token taken from the request is read with jsonwebtoken decode() with no verify() call
+      before it or after it in the same block. decode() does not check the signature, so anyone can forge the claims this
+      code trusts. Use verify() with the signing key and an algorithms allow-list.
+    metadata:
+      cwe: "CWE-345: Insufficient Verification of Data Authenticity"
+      owasp: "A07:2021 - Identification and Authentication Failures"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-node
+      references:
+        - https://cwe.mitre.org/data/definitions/345.html
+    # Minified / bundled browser files are not server code, and taint analysis of a big bundle can
+    # run past Opengrep's per-file timeout. Only file-basename globs: Opengrep matches rule paths
+    # against the absolute path, so a folder name here could match a parent of the project.
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.min.mjs"
+        - "*-min.js"
+        - "*.bundle.js"
+        - "*-bundle.js"
+        - "*.chunk.js"
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.headers
+              - pattern: $REQ.cookies
+              - pattern: $REQ.query
+              - pattern: $REQ.body
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|request|ctx|ctx\.request)$
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.header(...)
+              - pattern: $REQ.get(...)
+              - pattern: $REQ.headers.get(...)
+              - pattern: $REQ.cookies.get(...)
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|request|ctx)$
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - patterns:
+                  - pattern-either:
+                      - pattern-inside: |
+                          $JWT = require("jsonwebtoken");
+                          ...
+                      - pattern-inside: |
+                          import $JWT from "jsonwebtoken";
+                          ...
+                      - pattern-inside: |
+                          import * as $JWT from "jsonwebtoken";
+                          ...
+                  - pattern: $JWT.decode($T, ...)
+                  # verify() before decode() (or decode() to read the key id, then verify()) is fine.
+                  - pattern-not-inside: |
+                      $JWT.verify(...);
+                      ...
+                  - pattern-not-inside: |
+                      $V = $JWT.verify(...);
+                      ...
+                  - pattern-not-inside: |
+                      $V = await $JWT.verify(...);
+                      ...
+                  - pattern-not-inside: |
+                      await $JWT.verify(...);
+                      ...
+                  - pattern-not-inside: |
+                      $JWT.decode(...);
+                      ...
+                      $JWT.verify(...);
+                  - pattern-not-inside: |
+                      $D = $JWT.decode(...);
+                      ...
+                      $JWT.verify(...);
+              - patterns:
+                  - pattern-either:
+                      - pattern-inside: |
+                          import { ..., decode, ... } from "jsonwebtoken";
+                          ...
+                      - pattern-inside: |
+                          const { ..., decode, ... } = require("jsonwebtoken");
+                          ...
+                  - pattern: decode($T, ...)
+                  - pattern-not-inside: |
+                      verify(...);
+                      ...
+                  - pattern-not-inside: |
+                      $V = verify(...);
+                      ...
+                  - pattern-not-inside: |
+                      $V = await verify(...);
+                      ...
+                  - pattern-not-inside: |
+                      await verify(...);
+                      ...
+                  - pattern-not-inside: |
+                      decode(...);
+                      ...
+                      verify(...);
+                  - pattern-not-inside: |
+                      $D = decode(...);
+                      ...
+                      verify(...);
+          - focus-metavariable: $T

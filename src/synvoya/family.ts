@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 
 import { GITLEAKS_CONFIG } from "../config.js";
 import { log } from "../logger.js";
+import { synvoyaProducerComponent } from "../provenance.js";
 import type { Finding } from "../types.js";
 
 export const SYNVOYA_FAMILY = "synvoya" as const;
@@ -61,7 +62,12 @@ export function isSynvoyaFinding(f: Pick<Finding, "engine" | "rule_id">): boolea
   return false;
 }
 
-/** Adds `engine_family: "synvoya"` to a member; any other finding is returned as the same object. */
+const SBOM_PRODUCER = synvoyaProducerComponent("sbom:osv-scanner");
+
+/**
+ * Adds `engine_family: "synvoya"` to a member (including an osv-scanner finding the Synvoya layer produced
+ * from its vendored-library SBOM); any other finding is returned as the same object.
+ */
 export function withEngineFamily(f: Finding): Finding {
-  return isSynvoyaFinding(f) ? { ...f, engine_family: SYNVOYA_FAMILY } : f;
+  return isSynvoyaFinding(f) || f.producer_components?.includes(SBOM_PRODUCER) ? { ...f, engine_family: SYNVOYA_FAMILY } : f;
 }

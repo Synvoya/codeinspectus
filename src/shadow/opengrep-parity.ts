@@ -14,7 +14,7 @@ const SELECTED_RULES = new Set([
 ]);
 
 export const JAVASCRIPT_BASELINE_CANDIDATE_SIGNATURE = signature(
-  "javascript-baseline-shadow\0v2\0medium-confidence\0weak-hash(md5,sha1)\0weak-cipher(des,des-ede3,rc4,deprecated-createCipher)\0bounded-js-ts-structural-parser",
+  "javascript-baseline-shadow\0v3\0weak-hash(md5,sha1;low)\0weak-cipher(des,des-ede3,rc4,deprecated-createCipher;medium)\0bounded-js-ts-structural-parser",
 );
 
 export interface ShadowIdentity {

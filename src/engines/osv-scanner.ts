@@ -30,7 +30,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { MANAGED_OSV_CONFIG, MANAGED_OSV_DB } from "../config.js";
 import { log } from "../logger.js";
 import { osvDbZipPath, readOsvDbRecord, type OsvDbRecord } from "../osv/database.js";
-import { packageLine, readLockfileLines as readLines, type LockfileLines } from "../osv/package-line.js";
+import { packageEntryLine, readLockfileLines as readLines, type LockfileLines } from "../osv/package-line.js";
 import {
   isOsvEcosystem,
   isOverlaySegment,
@@ -39,11 +39,17 @@ import {
   OSV_OVERLAY_ECOSYSTEMS,
   type OsvEcosystem,
 } from "../osv/ecosystems.js";
-import { invocationSignature, osvDatabaseComponent, osvScannerFindingComponents, signature } from "../provenance.js";
+import {
+  invocationSignature,
+  osvDatabaseComponent,
+  osvSbomFindingComponents,
+  osvScannerFindingComponents,
+  signature,
+} from "../provenance.js";
 import type { DependencyCoverage, EngineRunInfo, Finding, Severity } from "../types.js";
 import { SEVERITY_RANK } from "../types.js";
 import { fingerprint as makeFingerprint } from "../util/hash.js";
-import { execBinary } from "./exec.js";
+import { execBinary, type ExecResult } from "./exec.js";
 import { EngineUnavailableError, resolveEngine } from "./resolve.js";
 import { engineWorkingDirectory } from "./target.js";
 
@@ -93,6 +99,11 @@ const ADVISORY_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 export function buildOsvScannerArgs(target: string, outputPath: string, configPath: string): string[] {
   // Defence in depth: the scan boundary canonicalises the target, and a relative one would resolve against cwd.
   if (!isAbsolute(target)) throw new Error("osv-scanner needs an absolute scan target.");
+  return [...scanFlags(outputPath, configPath), "-r", target];
+}
+
+/** The flags every osv-scanner run takes, whatever it reads. */
+function scanFlags(outputPath: string, configPath: string): string[] {
   return [
     "scan",
     "source",
@@ -108,9 +119,31 @@ export function buildOsvScannerArgs(target: string, outputPath: string, configPa
     outputPath,
     "--config",
     configPath,
-    "-r",
-    target,
   ];
+}
+
+/**
+ * The per-scan SBOM's file name. osv-scanner 2.7.0 reads a CycloneDX SBOM through `scan source -L <file>`
+ * (`--lockfile`), and picks its CycloneDX extractor from the file name: `<name>.cdx.json` is read, while
+ * `sbom.json` exits 127 with "could not determine extractor suitable to this file" and the parser-prefixed
+ * `-L cyclonedx:<file>` is refused ("could not determine extractor"); `--sbom` is deprecated. The name is
+ * passed relative to the run's working directory (the SBOM's folder), so no drive letter or other `:` in an
+ * absolute path can be read as a `-L <parser>:<path>` prefix. Its JSON result keys each package by the
+ * component's `name` and `version` (not the purl), lists identical name@version components once, and carries
+ * no bom-ref, so callers map packages back by ecosystem, name and version. Verified against the real 2.7.0
+ * binary (2026-11-04); the engine eval E87 runs it.
+ */
+export const OSV_SBOM_FILE_NAME = "inventory.cdx.json";
+
+/** The main run's flags with `-L <SBOM>` in place of `-r <target>`: offline, managed config, no resolution. */
+export function buildOsvScannerSbomArgs(sbomName: string, outputPath: string, configPath: string): string[] {
+  if (sbomName !== OSV_SBOM_FILE_NAME) throw new Error(`osv-scanner reads the managed SBOM only as ${OSV_SBOM_FILE_NAME}.`);
+  return [...scanFlags(outputPath, configPath), "-L", sbomName];
+}
+
+/** The SBOM run's invocation signature: its arguments with the managed paths as placeholders, so it is constant. */
+export function osvSbomInvocationSignature(): string {
+  return invocationSignature("osv-scanner", buildOsvScannerSbomArgs(OSV_SBOM_FILE_NAME, "<managed-temp>", "<managed-config>"));
 }
 
 // ── osv-scanner JSON ────────────────────────────────────────────────────────
@@ -341,6 +374,16 @@ interface FindingContext {
   line: number;
   producerComponents: string[];
   database?: OsvDbRecord;
+  /** Replaces the opening "<file> resolves <ecosystem> package <name@version>." sentence. */
+  lead?: string;
+  /**
+   * The name the repository declares when osv-scanner matched the package under another (advisory) name: the
+   * finding's title, remediation, package and fingerprint use it; the fixed releases still come from the
+   * advisory's own package entry.
+   */
+  declaredName?: string;
+  /** A vendored root: replaces `file` as the fingerprint's location input (see `OsvSbomLocation`). */
+  fingerprintScope?: string;
 }
 
 function findingFor(pkg: ParsedPackage, group: ParsedGroup, context: FindingContext): Finding | undefined {
@@ -364,7 +407,8 @@ function findingFor(pkg: ParsedPackage, group: ParsedGroup, context: FindingCont
     ...osvIds.map((id) => `https://osv.dev/vulnerability/${id}`),
     ...cwe.map((id) => `https://cwe.mitre.org/data/definitions/${id.slice(4)}.html`),
   ];
-  const label = `${pkg.name}@${pkg.version}`;
+  const name = context.declaredName ?? pkg.name;
+  const label = `${name}@${pkg.version}`;
   const fixed = fixedVersions(records, pkg);
 
   let remediationSummary: string;
@@ -379,10 +423,10 @@ function findingFor(pkg: ParsedPackage, group: ParsedGroup, context: FindingCont
     ];
   } else {
     remediationSummary = fixed.length === 1
-      ? `Upgrade ${pkg.name} to ${fixed[0]}, the fixed release listed upstream, or remove the package.`
+      ? `Upgrade ${name} to ${fixed[0]}, the fixed release listed upstream, or remove the package.`
       : fixed.length
-        ? `Upgrade ${pkg.name} to a fixed release listed upstream (${fixed.join(", ")}; choose the one on your release line), or remove the package.`
-        : `Upgrade ${pkg.name} to a version not listed as affected, or remove the package.`;
+        ? `Upgrade ${name} to a fixed release listed upstream (${fixed.join(", ")}; choose the one on your release line), or remove the package.`
+        : `Upgrade ${name} to a version not listed as affected, or remove the package.`;
     steps = [
       remediationSummary,
       "Regenerate the lockfile using your normal trusted package-manager workflow.",
@@ -394,8 +438,8 @@ function findingFor(pkg: ParsedPackage, group: ParsedGroup, context: FindingCont
   const snapshot = context.database ? ` (database recorded ${context.database.recorded_at})` : "";
   const fingerprint = makeFingerprint([
     "osv-scanner",
-    context.file,
-    normalizePackageName(pkg.name),
+    ...(context.fingerprintScope !== undefined ? ["vendored-root", context.fingerprintScope] : [context.file]),
+    normalizePackageName(name),
     pkg.version,
     ruleId,
   ]);
@@ -412,7 +456,7 @@ function findingFor(pkg: ParsedPackage, group: ParsedGroup, context: FindingCont
     owasp_web: ["A06:2021"],
     location: { file: context.file, start_line: context.line, end_line: context.line },
     message:
-      `${context.file} resolves ${pkg.ecosystem} package ${label}. ` +
+      `${context.lead ?? `${context.file} resolves ${pkg.ecosystem} package ${label}.`} ` +
       `${ruleId} is reported against that exact version by osv-scanner using the offline OSV ${pkg.ecosystem} database${snapshot}. ` +
       (malicious
         ? "OSV classifies it as a malicious package: treat any environment that installed or ran it as potentially compromised. "
@@ -423,7 +467,7 @@ function findingFor(pkg: ParsedPackage, group: ParsedGroup, context: FindingCont
     confidence: "high",
     producer_components: context.producerComponents,
     finding_kind: "vulnerability",
-    package: { ecosystem: pkg.ecosystem, name: pkg.name, version: pkg.version },
+    package: { ecosystem: pkg.ecosystem, name, version: pkg.version },
   };
 }
 
@@ -705,6 +749,50 @@ function missingDatabaseHint(stderr: string): string {
     : " An OSV database could not be read: run `codeinspectus setup` to reinstall it.";
 }
 
+/**
+ * Run osv-scanner offline against the overlay. It stops at the first database it cannot load: exit 127, or
+ * exit 1 with the packages after it left unmatched once it had found vulnerabilities. For an ecosystem newer
+ * than both overlay snapshots, an empty database is added and the run retried once. A forged stderr line can
+ * at most cost this one extra run and lower the run's coverage to partial (Ruling 35); never raise it.
+ */
+async function execWithOverlay(
+  binary: string,
+  args: string[],
+  outputPath: string,
+  overlay: string,
+  cwd: string,
+): Promise<{ res: ExecResult; unseeded?: string }> {
+  const run = async () => {
+    // A stale file from an earlier run must never be read as this run's result.
+    await rm(outputPath, { force: true });
+    return execBinary(binary, args, { cwd, offline: true, env: { OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY: overlay } });
+  };
+  let res = await run();
+  const unseeded = !res.timedOut && (res.code === 1 || res.code === 127) ? unseededMissingDatabase(res.stderr) : undefined;
+  if (unseeded !== undefined) {
+    // If the empty database cannot be written, keep the first result; the caller lowers it to partial.
+    const added = await addEmptyDatabase(overlay, unseeded).then(() => true, (error: unknown) => {
+      log.debug(`osv-scanner retry skipped: could not add an empty ${unseeded} database (${errorCode(error) || "unknown error"})`);
+      return false;
+    });
+    if (added) {
+      log.debug(`osv-scanner could not load a database for ${unseeded}; retrying once with an empty one`);
+      res = await run();
+    }
+  }
+  return { res, ...(unseeded !== undefined ? { unseeded } : {}) };
+}
+
+/** Why a completed-looking run cannot be read; undefined when its output file is there and in bounds. */
+async function unreadableRun(res: ExecResult, outputPath: string, cause: (stderr: string) => string): Promise<string | undefined> {
+  if (res.timedOut) return "osv-scanner timed out before producing results.";
+  if (res.code !== 0 && res.code !== 1) return `osv-scanner exited with code ${res.code ?? "unknown"} and no usable result.${cause(res.stderr)}`;
+  const output = await lstat(outputPath).then((metadata) => metadata, () => undefined);
+  if (!output?.isFile()) return `osv-scanner produced no output file (exit ${res.code}).${cause(res.stderr)}`;
+  if (output.size > MAX_OUTPUT_BYTES) return `osv-scanner output exceeds the ${MAX_OUTPUT_BYTES / (1024 * 1024)} MiB bound and was not read.`;
+  return undefined;
+}
+
 function outcome(
   version: string,
   started: number,
@@ -769,41 +857,13 @@ export async function runOsvScanner(target: string, tmpDir: string): Promise<Osv
       throw error;
     }
     const cwd = await engineWorkingDirectory(target);
-    const run = async () => {
-      // A stale file from an earlier run must never be read as this run's result.
-      await rm(outputPath, { force: true });
-      return execBinary(bin.path, args, { cwd, offline: true, env: { OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY: overlay } });
-    };
-    let res = await run();
-    // osv-scanner stops at the first database it cannot load: exit 127, or exit 1 with the packages after it
-    // left unmatched once it had found vulnerabilities. For an ecosystem newer than both overlay snapshots,
-    // add an empty database and retry once. A forged stderr line can at most cost this one extra run and,
-    // below, lower this run's coverage to partial (Ruling 35); it can never raise coverage.
-    const unseeded = !res.timedOut && (res.code === 1 || res.code === 127) ? unseededMissingDatabase(res.stderr) : undefined;
-    if (unseeded !== undefined) {
-      // If the empty database cannot be written, keep the first result; it is lowered to partial below.
-      const added = await addEmptyDatabase(overlay, unseeded).then(() => true, (error: unknown) => {
-        log.debug(`osv-scanner retry skipped: could not add an empty ${unseeded} database (${errorCode(error) || "unknown error"})`);
-        return false;
-      });
-      if (added) {
-        log.debug(`osv-scanner could not load a database for ${unseeded}; retrying once with an empty one`);
-        res = await run();
-      }
-    }
+    const { res, unseeded } = await execWithOverlay(bin.path, args, outputPath, overlay, cwd);
 
     // Exit 0 (no vulnerabilities) and 1 (vulnerabilities found) are both a completed scan.
-    if (res.timedOut) return failed("osv-scanner timed out before producing results.");
-    if (res.code !== 0 && res.code !== 1) {
-      return failed(`osv-scanner exited with code ${res.code ?? "unknown"} and no usable result.${cause(res.stderr)}`);
-    }
+    const unreadable = await unreadableRun(res, outputPath, cause);
     // A completed run's stderr is never read as a result (Ruling 31), but it helps diagnose one.
-    if (res.stderr.trim()) log.debug(`osv-scanner stderr (exit ${res.code}): ${stderrCause(res.stderr, redactions)}`);
-    const output = await lstat(outputPath).then((metadata) => metadata, () => undefined);
-    if (!output?.isFile()) return failed(`osv-scanner produced no output file (exit ${res.code}).${cause(res.stderr)}`);
-    if (output.size > MAX_OUTPUT_BYTES) {
-      return failed(`osv-scanner output exceeds the ${MAX_OUTPUT_BYTES / (1024 * 1024)} MiB bound and was not read.`);
-    }
+    if (!unreadable && res.stderr.trim()) log.debug(`osv-scanner stderr (exit ${res.code}): ${stderrCause(res.stderr, redactions)}`);
+    if (unreadable) return failed(unreadable);
     const parsed = parseOutput(await readFile(outputPath, "utf8"));
     if (!parsed) return failed(`osv-scanner output was not the expected JSON result (exit ${res.code}).`);
     const { sources, dropped } = parsed;
@@ -846,7 +906,7 @@ export async function runOsvScanner(target: string, tmpDir: string): Promise<Osv
           lines = readLines(absolute);
           lineCache.set(absolute, lines);
         }
-        const line = packageLine(await lines, pkg.name);
+        const line = packageEntryLine(await lines, file, pkg.name, pkg.version);
         const database = isOsvEcosystem(ecosystem) ? databases.get(ecosystem) : undefined;
         for (const group of pkg.groups) {
           const finding = findingFor(pkg, group, {
@@ -904,5 +964,157 @@ export async function runOsvScanner(target: string, tmpDir: string): Promise<Osv
       { available: true, ran: false, note: `osv-scanner failed: ${redactPaths(err instanceof Error ? err.message : String(err), redactions)}` },
       { applicable: true },
     );
+  }
+}
+
+// ── per-scan SBOM run (Synvoya vendored libraries) ──────────────────────────
+
+/** Where a package from the SBOM was declared in the repository. */
+export interface OsvSbomLocation {
+  file: string;
+  line: number;
+  /** The finding message's opening sentence, naming the declaration (never the SBOM). */
+  lead: string;
+  /** The package name the repository declares, when the SBOM names the package by its advisory name. */
+  declaredName?: string;
+  /**
+   * The vendored root a location stands for (one finding per install): the fingerprint is keyed on it instead
+   * of `file`, so it stays stable when the file the finding is shown at changes.
+   */
+  fingerprintScope?: string;
+}
+
+export interface OsvSbomOptions {
+  /**
+   * Ecosystems whose installed database the SBOM needs. When none is installed nothing runs (`unavailable`);
+   * otherwise the run goes ahead and names the missing ones in `missingDatabases`: their packages were checked
+   * against nothing, so the caller must treat them as not checked.
+   */
+  ecosystems: readonly OsvEcosystem[];
+  /** The declarations behind one package osv-scanner listed; none when the SBOM never named it. */
+  locate: (pkg: { ecosystem: string; name: string; version: string }) => OsvSbomLocation[];
+  /**
+   * Every package the SBOM names. `--all-packages` lists clean ones too, so a run that does not list one of
+   * them (an extractor change, a skipped component) is incomplete: absence of a finding proves nothing there.
+   */
+  expected: ReadonlyArray<{ ecosystem: string; name: string; version: string }>;
+}
+
+export interface OsvSbomResult {
+  /** `unavailable`: osv-scanner or a needed database is not installed, so it never ran. */
+  state: "ran" | "failed" | "unavailable";
+  version: string;
+  /** Why it did not run (local paths replaced by placeholders). */
+  reason?: string;
+  /** The needed databases that are not installed: every one when `unavailable`; their packages were not checked. */
+  missingDatabases: OsvEcosystem[];
+  /**
+   * The run proves absence for the installed ecosystems: it completed, every installed needed database has a
+   * matching install record, it did not stop at a database it could not load, every advisory group was mapped
+   * to a declaration, and it listed every expected package of an installed ecosystem.
+   */
+  complete: boolean;
+  findings: Finding[];
+  /** Reasons the run is not complete, for the user. */
+  warnings: string[];
+}
+
+/**
+ * Check a per-scan CycloneDX SBOM (OSV_SBOM_FILE_NAME in its own folder under the scan's temp dir) with the
+ * main run's offline flags, managed config and database overlay construction. `workDir` holds this run's own
+ * overlay and output, so it never shares files with the main run. Findings are located only through
+ * `locate`: never at the SBOM.
+ */
+export async function runOsvScannerOnSbom(sbomPath: string, workDir: string, options: OsvSbomOptions): Promise<OsvSbomResult> {
+  let version = "unknown";
+  const redactions: Redactions = [
+    [workDir, "<managed-temp>"],
+    [dirname(sbomPath), "<managed-temp>"],
+    [MANAGED_OSV_DB, "<managed-osv-db>"],
+    [homedir(), "~"],
+  ];
+  const result = (state: OsvSbomResult["state"], rest: Partial<OsvSbomResult> = {}): OsvSbomResult => ({
+    state, version, missingDatabases: [], complete: false, findings: [], warnings: [], ...rest,
+  });
+  try {
+    if (basename(sbomPath) !== OSV_SBOM_FILE_NAME) throw new Error(`the SBOM must be named ${OSV_SBOM_FILE_NAME}`);
+    const bin = await resolveEngine("osv-scanner");
+    version = bin.version;
+    await writeManagedConfig();
+    const databases = await readDatabaseStates();
+    const missingDatabases = options.ecosystems.filter((ecosystem) => !databases.get(ecosystem)?.archive);
+    const installed = options.ecosystems.filter((ecosystem) => !missingDatabases.includes(ecosystem));
+    if (installed.length === 0) {
+      return result("unavailable", { missingDatabases, reason: `the OSV ${missingDatabases.join(", ")} database is not installed` });
+    }
+
+    const outputPath = join(workDir, "osv-scanner-sbom.json");
+    const args = buildOsvScannerSbomArgs(OSV_SBOM_FILE_NAME, outputPath, MANAGED_OSV_CONFIG);
+    const failed = (reason: string) => result("failed", { reason });
+    const overlay = join(workDir, "osv-db-overlay");
+    try {
+      await buildDatabaseOverlay(overlay, databases);
+    } catch (error) {
+      if (error instanceof OverlayLinkError) return failed(error.message);
+      throw error;
+    }
+    const { res, unseeded } = await execWithOverlay(bin.path, args, outputPath, overlay, dirname(sbomPath));
+    const cause = (stderr: string): string => {
+      const text = stderrCause(stderr, redactions);
+      return text ? ` Cause: ${/[.!?…]$/.test(text) ? text : `${text}.`}` : "";
+    };
+    const unreadable = await unreadableRun(res, outputPath, cause);
+    if (unreadable) return failed(unreadable);
+    const parsed = parseOutput(await readFile(outputPath, "utf8"));
+    if (!parsed) return failed(`osv-scanner output was not the expected JSON result (exit ${res.code}).`);
+    const seeded = new Set([...OSV_OVERLAY_ECOSYSTEMS, ...(unseeded === undefined ? [] : [unseeded])].map((name) => name.toLowerCase()));
+    const partialRun = stoppedEarly(res.stderr, parsed.sources, seeded);
+
+    const findings: Finding[] = [];
+    let unlocated = 0;
+    for (const source of parsed.sources) {
+      for (const pkg of source.packages) {
+        if (!pkg.groups.length) continue;
+        const locations = options.locate({ ecosystem: pkg.ecosystem, name: pkg.name, version: pkg.version });
+        if (!locations.length) {
+          unlocated += pkg.groups.length;
+          continue;
+        }
+        const database = isOsvEcosystem(pkg.ecosystem) ? databases.get(pkg.ecosystem) : undefined;
+        for (const location of locations) {
+          for (const group of pkg.groups) {
+            const finding = findingFor(pkg, group, {
+              file: location.file,
+              line: location.line,
+              lead: location.lead,
+              ...(location.declaredName !== undefined ? { declaredName: location.declaredName } : {}),
+              ...(location.fingerprintScope !== undefined ? { fingerprintScope: location.fingerprintScope } : {}),
+              producerComponents: osvSbomFindingComponents(pkg.ecosystem),
+              database: database?.archive ? database.record : undefined,
+            });
+            if (finding) findings.push(finding);
+          }
+        }
+      }
+    }
+    if (res.code === 1 && findings.length === 0) return failed("osv-scanner reported vulnerabilities that could not be mapped.");
+
+    const warnings: string[] = [];
+    const listed = new Set(parsed.sources.flatMap((source) => source.packages.map((pkg) => `${pkg.ecosystem}\0${pkg.name}\0${pkg.version}`)));
+    const unlisted = (options.expected ?? []).filter((pkg) =>
+      !(missingDatabases as readonly string[]).includes(pkg.ecosystem) && !listed.has(`${pkg.ecosystem}\0${pkg.name}\0${pkg.version}`)).length;
+    if (unlisted) warnings.push(`osv-scanner did not list ${plural(unlisted, "package")} the SBOM names, so ${unlisted === 1 ? "it was" : "they were"} not checked.`);
+    if (parsed.dropped) warnings.push(`osv-scanner reported ${plural(parsed.dropped, "advisory group")} for vendored libraries that could not be mapped; they are not in the findings.`);
+    if (unlocated) warnings.push(`osv-scanner reported ${plural(unlocated, "advisory group")} for a package the SBOM did not name; they are not in the findings.`);
+    if (partialRun) warnings.push(STOPPED_EARLY);
+    const unrecorded = installed.filter((ecosystem) => !databases.get(ecosystem)?.record);
+    if (unrecorded.length) {
+      warnings.push(`The OSV ${unrecorded.join(", ")} database has no install record that matches it, so vendored-library results cannot be proven reproducible on rescan.`);
+    }
+    return result("ran", { findings, warnings, missingDatabases, complete: warnings.length === 0 });
+  } catch (err) {
+    if (err instanceof EngineUnavailableError) return result("unavailable", { reason: "osv-scanner is not installed" });
+    log.warn("osv-scanner SBOM run error", err);
+    return result("failed", { reason: `osv-scanner failed: ${redactPaths(err instanceof Error ? err.message : String(err), redactions)}` });
   }
 }

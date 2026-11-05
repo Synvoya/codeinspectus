@@ -1,0 +1,11 @@
+on: push
+jobs:
+  ship:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: pypa/gh-action-pypi-publish@v1.14.2
+      - uses: wktk/conflibot@v1.2.0
+      - uses: aquasecurity/trivy-action@0.34.0
+      - uses: aquasecurity/setup-trivy@v0.2.5
+      - uses: shivammathur/setup-php@2.37.0
+      - uses: tj-actions/changed-files@v45.0.7

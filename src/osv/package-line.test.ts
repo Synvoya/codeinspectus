@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { packageEntryLine, packageLine, readLockfileLines } from "./package-line.js";
+import { packageEntryLine, readLockfileLines } from "./package-line.js";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -11,11 +11,11 @@ afterEach(async () => {
 });
 
 /** The 1-based line of the package's own entry in a lockfile written to a temporary file. */
-async function entry(file: string, text: string, name: string): Promise<number> {
+async function entry(file: string, text: string, name: string, version?: string): Promise<number> {
   const root = await mkdtemp(join(tmpdir(), "ci-package-line-"));
   roots.push(root);
   await writeFile(join(root, file), text, "utf8");
-  return packageEntryLine(await readLockfileLines(join(root, file)), file, name);
+  return packageEntryLine(await readLockfileLines(join(root, file)), file, name, version);
 }
 
 /** Lines numbered from 1: `lines("a", "b")` → "a\nb". */
@@ -71,10 +71,47 @@ describe("packageEntryLine: the package's own key, never a longer name that cont
     expect(packageEntryLine(undefined, "package-lock.json", "electron")).toBe(1);
   });
 
-  it("packageLine (osv-scanner locations, a fingerprint input) is unchanged: first line containing the name", async () => {
-    const root = await mkdtemp(join(tmpdir(), "ci-package-line-"));
-    roots.push(root);
-    await writeFile(join(root, "package-lock.json"), lines("{", '  "electron-updater": "^6.8.9",', '  "node_modules/electron": {}', "}"));
-    expect(packageLine(await readLockfileLines(join(root, "package-lock.json")), "electron")).toBe(2);
+  it("osv-scanner field cases: the versioned entry, never a substring hit or another version's entry", async () => {
+    // PicGo pnpm v9: `tar@7.5.2` was reported at `'@babel/helper-compilation-targets@7.27.2':` (first substring
+    // match); tar@6.2.1 and tar@7.5.2 are both locked, and each appears again under `snapshots:`.
+    const pnpm = lines(
+      "lockfileVersion: '9.0'", "packages:", "  '@babel/helper-compilation-targets@7.27.2':", "    resolution: {}",
+      "    deprecated: Old versions of tar are not supported", "  tar@6.2.1:", "    resolution: {}",
+      "    deprecated: Old versions of tar are not supported", "  tar@7.5.2:", "    resolution: {}",
+      "snapshots:", "  tar@6.2.1: {}", "  tar@7.5.2: {}",
+    );
+    expect(await entry("pnpm-lock.yaml", pnpm, "tar", "7.5.2")).toBe(9);
+    expect(await entry("pnpm-lock.yaml", pnpm, "tar", "6.2.1")).toBe(6);
+    // cortext: `ws` was reported at `'@wordpress/dataviews':` in the importers section.
+    const ws = lines("importers:", "  .:", "    dependencies:", "      '@wordpress/dataviews':", "        version: 1.0.0", "packages:", "  ws@7.5.10:", "    resolution: {}", "  ws@8.18.0:", "    resolution: {}");
+    expect(await entry("pnpm-lock.yaml", ws, "ws", "8.18.0")).toBe(9);
+    expect(await entry("pnpm-lock.yaml", lines("packages:", "  /ws@7.5.10:", "    resolution: {}", "  /ws@8.18.0:"), "ws", "8.18.0")).toBe(4);
+    // personal-management-system: `symfony/http-foundation` was reported at another package's `require` line.
+    const composer = lines(
+      "{", '    "packages": [', "        {", '            "name": "symfony/security-bundle",', '            "version": "v5.4.0",',
+      '            "require": {', '                "symfony/http-foundation": "^5.4 || ^6.0"', "            }", "        },", "        {",
+      '            "name": "symfony/http-foundation",', '            "version": "v5.4.0",', "        }", "    ]", "}",
+    );
+    expect(await entry("composer.lock", composer, "symfony/http-foundation", "5.4.0")).toBe(11);
+  });
+
+  it("the version picks between entries of one name in every lockfile format, else the first entry", async () => {
+    const lockV3 = lines(
+      "{", '  "packages": {', '    "node_modules/tar": {', '      "version": "6.2.1"', "    },",
+      '    "node_modules/cacache/node_modules/tar": {', '      "version": "7.5.2"', "    }", "  }", "}",
+    );
+    expect(await entry("package-lock.json", lockV3, "tar", "7.5.2")).toBe(6);
+    expect(await entry("package-lock.json", lockV3, "tar", "6.2.1")).toBe(3);
+    expect(await entry("package-lock.json", lockV3, "tar", "9.9.9")).toBe(3);
+    const yarn = lines('"@babel/helper-compilation-targets@^7.27.2":', '  version "7.27.2"', "", "tar@^6.1.0:", '  version "6.2.1"', "", "tar@^7.4.3:", '  version "7.5.2"');
+    expect(await entry("yarn.lock", yarn, "tar", "7.5.2")).toBe(7);
+    const berry = lines('"tar@npm:^6.1.0, tar@npm:^6.1.11":', "  version: 6.2.1", "", '"tar@npm:^7.4.3":', "  version: 7.5.2");
+    expect(await entry("yarn.lock", berry, "tar", "7.5.2")).toBe(4);
+    const poetry = lines("[[package]]", 'name = "urllib3"', 'version = "1.26.20"', "", "[[package]]", 'name = "urllib3"', 'version = "2.2.3"');
+    expect(await entry("poetry.lock", poetry, "urllib3", "2.2.3")).toBe(6);
+    const gosum = lines("golang.org/x/net v0.17.0 h1:a", "golang.org/x/net v0.17.0/go.mod h1:b", "golang.org/x/net v0.33.0 h1:c");
+    expect(await entry("go.sum", gosum, "golang.org/x/net", "0.33.0")).toBe(3);
+    const gems = lines("GEM", "  specs:", "    rack (2.2.8)", "    rack (3.1.8)");
+    expect(await entry("Gemfile.lock", gems, "rack", "3.1.8")).toBe(4);
   });
 });

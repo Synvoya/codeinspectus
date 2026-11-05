@@ -1,6 +1,6 @@
 {
   "name": "codeinspectus",
-  "version": "3.3.2",
+  "version": "4.0.0",
   "mcpName": "io.github.Synvoya/codeinspectus",
   "description": "CodeInspectus, by Synvoya — a local-first security MCP server and CLI with CI policy, versioned exports, evidence bundles, history, baselines, and approval-gated agent workflows. Zero network egress at scan time.",
   "license": "Apache-2.0",
@@ -82,6 +82,7 @@
     "provenance"
   ],
   "dependencies": {
+    "@babel/parser": "7.25.0",
     "@lezer/python": "1.1.19",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "exifreader": "4.44.0",

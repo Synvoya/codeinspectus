@@ -1,0 +1,251 @@
+# Synvoya PHP pack -- original Apache-2.0 rules (see LICENSE-PROVENANCE.md). ASCII-only.
+# Framework configuration and access-control defaults: Laravel and Symfony debug settings in deployed
+# environment files, WordPress REST/admin-ajax handlers without access checks, and WordPress error
+# display. (The upload rule is a taint rule and lives in taint.yaml. The Laravel mass-assignment rule
+# failed the holdout gate and is held in experimental/.)
+# Example and test environment files (.env.example, .env.dist, .env.test, ...) are never matched:
+# they document settings and are not deployed as-is.
+rules:
+  - id: syn-php-env-app-debug-enabled
+    languages: [generic]
+    severity: WARNING
+    message: >-
+      APP_DEBUG=true in a deployable environment file. With debug on, Laravel and Symfony error
+      pages show stack traces, configuration and environment values (keys, database passwords) to
+      anyone who triggers an error. Set APP_DEBUG=false outside local development and keep .env
+      out of version control.
+    metadata:
+      cwe: "CWE-489: Active Debug Code"
+      owasp: "A05:2021 - Security Misconfiguration"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks: [laravel, symfony]
+    paths:
+      include:
+        - ".env"
+        - ".env.production"
+        - ".env.prod"
+        - ".env.prod.local"
+    patterns:
+      - pattern-regex: (?m)^[ \t]*(?:export[ \t]+)?APP_DEBUG[ \t]*=[ \t]*["']?(?:true|1|on|yes)["']?[ \t]*(?:#.*)?$
+      # A file that declares itself a local/development/test environment is a developer file.
+      - pattern-not-regex: (?s)\A(?=.*(?m:^[ \t]*(?:export[ \t]+)?APP_ENV[ \t]*=[ \t]*["']?(?:local|dev|development|test|testing)["']?[ \t]*(?:#.*)?$)).*\z
+
+  - id: syn-php-symfony-prod-debug
+    languages: [generic]
+    severity: WARNING
+    message: >-
+      A production environment file or production config enables Symfony's dev mode (APP_ENV=dev
+      in .env.prod, or debug/toolbar true under config/packages/prod). Dev mode exposes profiler
+      data and detailed errors; production must run with APP_ENV=prod and APP_DEBUG=0.
+    metadata:
+      cwe: "CWE-489: Active Debug Code"
+      owasp: "A05:2021 - Security Misconfiguration"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks: [symfony]
+    paths:
+      include:
+        - ".env.prod"
+        - ".env.production"
+        - ".env.prod.local"
+        - "config/packages/prod/*.yaml"
+        - "config/packages/prod/*.yml"
+    pattern-either:
+      - pattern-regex: (?m)^[ \t]*(?:export[ \t]+)?APP_ENV[ \t]*=[ \t]*["']?dev["']?[ \t]*(?:#.*)?$
+      - pattern-regex: (?m)^[ \t]+(?:debug|toolbar)[ \t]*:[ \t]*true[ \t]*(?:#.*)?$
+
+  - id: syn-php-symfony-front-controller-debug
+    languages: [php]
+    severity: WARNING
+    message: >-
+      The public front controller boots the kernel in the dev environment with debug on, or enables
+      the debug error handler unconditionally. Read the environment and debug flag from APP_ENV and
+      APP_DEBUG so production runs without debug.
+    metadata:
+      cwe: "CWE-489: Active Debug Code"
+      owasp: "A05:2021 - Security Misconfiguration"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks: [symfony]
+    paths:
+      include:
+        - "public/index.php"
+        - "web/app.php"
+        - "web/index.php"
+    pattern-either:
+      - pattern: new $KERNEL("dev", true, ...)
+      - patterns:
+          - pattern: $DEBUG::enable(...)
+          - metavariable-regex:
+              metavariable: $DEBUG
+              regex: ^(?:.*\\)?Debug$
+          - pattern-not-inside: |
+              if (...) { ... }
+
+  - id: syn-php-wp-rest-route-public-write
+    languages: [php]
+    severity: WARNING
+    message: >-
+      WordPress REST route that changes state (POST, PUT, PATCH or DELETE) is open to everyone:
+      its permission_callback is __return_true, always returns true, or is missing, and its
+      handler checks no nonce, capability, token or signature either. Check a capability
+      (current_user_can) in permission_callback, or verify a nonce or signature in the handler.
+    metadata:
+      cwe: "CWE-862: Missing Authorization"
+      owasp: "A01:2021 - Broken Access Control"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks: [wordpress]
+    patterns:
+      - pattern-inside: register_rest_route(...)
+      # One route definition array: a state-changing method plus an always-true or absent check.
+      - pattern: |
+          [..., "methods" => $M, ...]
+      - pattern-either:
+          - pattern: |
+              [..., "permission_callback" => "__return_true", ...]
+          - pattern: |
+              [..., "permission_callback" => function (...) { return true; }, ...]
+          - pattern: |
+              [..., "permission_callback" => fn(...) => true, ...]
+          - patterns:
+              - pattern: |
+                  [..., "callback" => $CB, ...]
+              - pattern-not: |
+                  [..., "permission_callback" => $P, ...]
+      - metavariable-regex:
+          metavariable: $M
+          regex: (?i)^.*(?:POST|PUT|PATCH|DELETE|CREATABLE|EDITABLE|DELETABLE|ALLMETHODS)
+      # The handler must be readable in this file (a closure, a method of the enclosing class, or a
+      # function in the file) and must not do its own check: public-by-design endpoints such as OAuth
+      # token or webhook receivers authenticate the caller in the handler. Unresolvable handlers are
+      # not reported (precision over recall).
+      - pattern-either:
+          - pattern: |
+              [..., "callback" => function (...) { $...HB; }, ...]
+          - patterns:
+              - pattern-inside: |
+                  class $C { ... function $FN(...) { $...HB; } ... }
+              - pattern: |
+                  [..., "callback" => [$OBJ, "$FN"], ...]
+          - patterns:
+              - pattern-inside: |
+                  function $FN(...) { $...HB; }
+                  ...
+              - pattern: |
+                  [..., "callback" => "$FN", ...]
+          - patterns:
+              - pattern-inside: |
+                  $FIRST;
+                  ...
+                  function $FN(...) { $...HB; }
+              - pattern: |
+                  [..., "callback" => "$FN", ...]
+      - metavariable-regex:
+          metavariable: $...HB
+          regex: (?s)\A(?!.*(?i:nonce|verify|signature|hash_equals|password_verify|current_user_can|user_can|authenticat|authori[sz]|permission|capabilit|token|secret|wp_check_password|is_user_logged_in|api_?key|hmac|check_admin|check_ajax)).*\z
+
+  - id: syn-php-wp-ajax-handler-no-auth-check
+    languages: [php]
+    severity: WARNING
+    message: >-
+      WordPress admin-ajax handler changes data (options, posts, users, metadata, files or database
+      rows) without a nonce or capability check. Any visitor (wp_ajax_nopriv_) or any logged-in
+      user, including via a forged cross-site request, can trigger it. Call check_ajax_referer()
+      and current_user_can() before the change.
+    metadata:
+      cwe: "CWE-862: Missing Authorization"
+      owasp: "A01:2021 - Broken Access Control"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks: [wordpress]
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-inside: |
+                  add_action("$HOOK", "$FN", ...);
+                  ...
+          - patterns:
+              - pattern-inside: |
+                  function $FN(...) { ... }
+                  ...
+                  add_action("$HOOK", "$FN", ...);
+          - patterns:
+              - pattern-inside: |
+                  class $C { ... function $INIT(...) { ... add_action("$HOOK", [$this, "$FN"], ...); ... } ... }
+      - metavariable-regex:
+          metavariable: $HOOK
+          regex: ^wp_ajax_
+      - pattern-inside: |
+          function $FN(...) { $...BODY; }
+      # Any call whose name mentions a nonce, referer, capability or permission check counts as a
+      # check (helpers such as $this->verify_request() included): precision over recall.
+      - metavariable-regex:
+          metavariable: $...BODY
+          regex: (?s)\A(?!.*(?i:nonce|referer|current_user_can|user_can|capabilit|permission|authori[sz]|is_super_admin|verify_request|verify_ajax|check_ajax|check_admin|security_check)).*\z
+      - pattern-either:
+          - patterns:
+              - pattern: $SC(...)
+              - metavariable-regex:
+                  metavariable: $SC
+                  regex: ^(?:update_option|add_option|delete_option|update_site_option|add_site_option|delete_site_option|wp_insert_post|wp_update_post|wp_delete_post|wp_trash_post|update_post_meta|add_post_meta|delete_post_meta|update_user_meta|add_user_meta|delete_user_meta|update_term_meta|delete_term_meta|wp_insert_user|wp_update_user|wp_delete_user|wp_create_user|wp_set_password|wp_set_auth_cookie|wp_insert_term|wp_update_term|wp_delete_term|wp_set_object_terms|wp_insert_comment|wp_update_comment|wp_delete_comment|set_theme_mod|remove_theme_mod|switch_theme|activate_plugin|deactivate_plugins|delete_plugins|move_uploaded_file|file_put_contents|unlink|wp_delete_file)$
+          - patterns:
+              - pattern: $DB->$M(...)
+              - metavariable-regex:
+                  metavariable: $DB
+                  regex: ^(?:\$|.*->)wpdb$
+              - metavariable-regex:
+                  metavariable: $M
+                  regex: ^(?:insert|update|delete|replace|query)$
+          - patterns:
+              - pattern: $U->$M(...)
+              - metavariable-regex:
+                  metavariable: $M
+                  regex: ^(?:set_role|add_role|remove_role|add_cap|remove_cap)$
+
+  - id: syn-php-wp-debug-display-enabled
+    languages: [php]
+    severity: WARNING
+    message: >-
+      wp-config.php turns on WordPress error display (WP_DEBUG_DISPLAY true, or WP_DEBUG true
+      without WP_DEBUG_DISPLAY false), so PHP notices with file paths and query details reach
+      visitors. Log errors instead: WP_DEBUG_LOG true and WP_DEBUG_DISPLAY false.
+    metadata:
+      cwe: "CWE-209: Generation of Error Message Containing Sensitive Information"
+      owasp: "A05:2021 - Security Misconfiguration"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks: [wordpress]
+    paths:
+      include:
+        - "wp-config.php"
+    patterns:
+      - pattern-either:
+          - pattern: define("WP_DEBUG_DISPLAY", true);
+          - patterns:
+              - pattern: define("WP_DEBUG", true);
+              # Any explicit WP_DEBUG_DISPLAY define decides on its own (true is reported above).
+              - pattern-not-inside: |
+                  define("WP_DEBUG", true);
+                  ...
+                  define("WP_DEBUG_DISPLAY", $SHOW);
+              - pattern-not-inside: |
+                  define("WP_DEBUG_DISPLAY", $SHOW);
+                  ...
+                  define("WP_DEBUG", true);
+              - pattern-not-inside: |
+                  define("WP_DEBUG", true);
+                  ...
+                  ini_set("display_errors", $OFF);
+      # Environment-gated defines (if WP_ENV === 'development' ...) are a developer choice.
+      - pattern-not-inside: |
+          if (...) { ... }
+      - pattern-not-inside: |
+          if (...) { ... } else { ... }

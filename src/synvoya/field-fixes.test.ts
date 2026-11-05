@@ -54,8 +54,11 @@ describe("class A: Windows-only PHP-CGI advisory (SYN-2026-150, CVE-2024-4577)",
   });
 });
 
-describe("class B: Composer platform PHP is a release line, not a patch release", () => {
-  it("platform 8.2.0 resolves along the supported 8.2 line: a note, no finding (pterodactyl)", async () => {
+describe("class B: Composer platform PHP is a dependency-resolution hint, never the deployed runtime", () => {
+  const hint = (file: string, source: string, value: string) =>
+    expect.stringMatching(new RegExp(`^${file.replace(/\./g, "\\.")}:\\d+: ${source.replace(/\./g, "\\.")} "${value.replace(/\./g, "\\.")}" is a dependency-resolution hint, not the deployed PHP version; no runtime finding is made from it`));
+
+  it("platform 8.2.0 gives no finding and no resolve note, only the hint note (pterodactyl)", async () => {
     const composerJson = JSON.stringify({ require: { php: "^8.2 || ^8.3" }, config: { platform: { php: "8.2.0" } } }, null, 2);
     const composerLock = JSON.stringify({ packages: [], platform: { php: "^8.2 || ^8.3" }, "platform-overrides": { php: "8.2.0" } }, null, 2);
     const result = await scan({
@@ -65,22 +68,31 @@ describe("class B: Composer platform PHP is a release line, not a patch release"
     });
     expect(at(result.findings)).toEqual([]);
     expect(result.notes).toEqual(expect.arrayContaining([
-      expect.stringMatching(/^composer\.json:\d+: composer\.json config\.platform\.php declares PHP 8\.2, which can still resolve to a release affected by SYN-2026-008/),
-      expect.stringMatching(/^composer\.lock:\d+: composer\.lock platform-overrides declares PHP 8\.2, which can still resolve/),
+      hint("composer.json", "composer.json config.platform.php", "8.2.0"),
+      hint("composer.lock", "composer.lock platform-overrides", "8.2.0"),
     ]));
+    expect(result.notes.filter((note) => /(?:config\.platform\.php|platform-overrides) declares PHP/.test(note))).toEqual([]);
   });
 
-  it("an end-of-life platform line keeps its findings (cap-collectif 8.1, geoip-detect 7.3.0)", async () => {
+  it("an end-of-life platform value is a note, not a finding (cortext 8.1, geoip-detect 7.3: 12 field FPs)", async () => {
     const result = await scan({
       "composer.json": JSON.stringify({ config: { platform: { php: "8.1" } } }, null, 2),
       "composer.lock": JSON.stringify({ packages: [], "platform-overrides": { php: "7.3.0" } }, null, 2),
     });
-    expect(at(result.findings)).toEqual([
-      "SYN-2026-008 composer.json:4", "SYN-2026-008 composer.lock:4",
-      "SYN-2026-014 composer.json:4", "SYN-2026-014 composer.lock:4",
-      "SYN-2026-015 composer.json:4", "SYN-2026-015 composer.lock:4",
-    ]);
-    for (const finding of result.findings) expect(finding.confidence).toBe("high");
+    expect(at(result.findings)).toEqual([]);
+    expect(result.notes).toEqual(expect.arrayContaining([
+      hint("composer.json", "composer.json config.platform.php", "8.1"),
+      hint("composer.lock", "composer.lock platform-overrides", "7.3.0"),
+    ]));
+  });
+
+  it("require.php and real runtime pins stay the sources: an EOL Dockerfile image still reports beside a platform hint", async () => {
+    const result = await scan({
+      "composer.json": JSON.stringify({ require: { php: "7.4.33" }, config: { platform: { php: "8.3" } } }, null, 2),
+      Dockerfile: "FROM php:8.0-cli\n",
+    });
+    expect(at(result.findings)).toEqual(expect.arrayContaining([expect.stringMatching(/ composer\.json:3$/), expect.stringMatching(/ Dockerfile:1$/)]));
+    expect(result.findings.some((finding) => finding.location.file === "composer.json" && finding.location.start_line !== 3)).toBe(false);
   });
 });
 
@@ -91,12 +103,15 @@ describe("class C: the go.mod go directive is a minimum, the toolchain line is e
       "vibe/go.mod": "module example.com/vibe\n\ngo 1.25.0\n",
       "nr-relay/Dockerfile": "FROM golang:1.22-alpine AS build\n",
     });
-    expect(at(result.findings)).toEqual(["SYN-2026-021 nr-relay/Dockerfile:1"]);
+    // Only the image pin is a finding (nothing for either go.mod `go` minimum). With the Go stdlib advisories active
+    // (M2), every 1.22.x release is below their fixes, so the pin also carries SYN-2026-019/020 beside its EOL finding.
+    expect(at(result.findings)).toEqual(["SYN-2026-019 nr-relay/Dockerfile:1", "SYN-2026-020 nr-relay/Dockerfile:1", "SYN-2026-021 nr-relay/Dockerfile:1"]);
   });
 
   it("a toolchain line on an end-of-life Go stays a finding", async () => {
     const result = await scan({ "go.mod": "module example.com/app\n\ngo 1.22.0\n\ntoolchain go1.24.3\n" });
-    expect(at(result.findings)).toEqual(["SYN-2026-021 go.mod:5"]);
+    // go1.24.3 is below the fixes of the Go stdlib advisories (SYN-2026-019/020) as well as end-of-life.
+    expect(at(result.findings)).toEqual(["SYN-2026-019 go.mod:5", "SYN-2026-020 go.mod:5", "SYN-2026-021 go.mod:5"]);
   });
 });
 

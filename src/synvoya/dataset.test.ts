@@ -66,7 +66,11 @@ describe("Synvoya dataset loader", () => {
     expect(loaded.dataset.eol.length).toBeGreaterThan(100);
     expect(Object.keys(loaded.dataset.imageAliases).length).toBeGreaterThan(0);
     expect(Object.keys(loaded.dataset.productImages).length).toBeGreaterThan(0);
-    expect(loaded.dataset.aliases).toEqual({});
+    // The locked Magento Open Source packages are checked under the name GitHub advisories use (M2 Task 3).
+    expect(loaded.dataset.aliases).toEqual({
+      "Packagist:magento/magento2-base": "Packagist:magento/community-edition",
+      "Packagist:magento/product-community-edition": "Packagist:magento/community-edition",
+    });
   });
 
   it("returns the manifest digest, which changes whenever any dataset file changes", async () => {
@@ -271,6 +275,76 @@ describe("Synvoya dataset loader", () => {
       const loaded = await loadSynvoyaDataset(work);
       expect(loaded.ok).toBe(false);
       if (!loaded.ok) expect(loaded.reason).toContain("eol.json");
+    });
+
+    describe("libraries.json", () => {
+      const entry = (overrides: Record<string, unknown> = {}) => ({
+        npm: "left-pad",
+        banners: ["^left-pad v(\\d+\\.\\d+\\.\\d+)"],
+        fileStems: ["left-pad"],
+        cdnPaths: ["left-pad", "npm/left-pad"],
+        ...overrides,
+      });
+      const withLibraries = (...entries: Array<Record<string, unknown>>) => replaceFile("libraries.json", `${JSON.stringify({ libraries: entries })}\n`);
+      const rejected = async (needle: string) => {
+        const loaded = await loadSynvoyaDataset(work);
+        expect(loaded.ok).toBe(false);
+        if (!loaded.ok) {
+          expect(loaded.reason).toContain("libraries.json");
+          expect(loaded.reason).toContain(needle);
+        }
+      };
+
+      it("ships the reviewed table, digested by the manifest", async () => {
+        const loaded = await loadSynvoyaDataset();
+        expect(loaded.ok).toBe(true);
+        if (!loaded.ok) return;
+        const names = loaded.dataset.libraries.libraries.map((library) => library.npm);
+        expect(names).toEqual(expect.arrayContaining(["jquery", "jquery-ui", "bootstrap", "react", "react-dom", "@popperjs/core", "socket.io-client", "pdfjs-dist"]));
+        expect(new Set(names).size).toBe(names.length);
+        const manifest = JSON.parse(await readFile(join(SYNVOYA_DATASET_DIR, "manifest.json"), "utf8")) as { files: Record<string, string> };
+        expect(Object.keys(manifest.files)).toContain("libraries.json");
+      });
+
+      it("accepts a well-formed table", async () => {
+        await withLibraries(entry());
+        expect((await loadSynvoyaDataset(work)).ok).toBe(true);
+      });
+
+      it("rejects an unanchored banner regex", async () => {
+        await withLibraries(entry({ banners: ["left-pad v(\\d+)"] }));
+        await rejected("anchored");
+      });
+
+      it("rejects a banner regex without exactly one capture group", async () => {
+        await withLibraries(entry({ banners: ["^left-pad v\\d+"] }));
+        await rejected("capture group");
+        await withLibraries(entry({ banners: ["^(left)-(pad) v\\d+"] }));
+        await rejected("capture group");
+      });
+
+      it("rejects a banner regex that repeats a group without an upper bound, and one that does not compile", async () => {
+        await withLibraries(entry({ banners: ["^(?:a+)+(\\d+)"] }));
+        await rejected("upper bound");
+        await withLibraries(entry({ banners: ["^(left"] }));
+        await rejected("compile");
+      });
+
+      it("rejects an entry with no evidence, a malformed npm name and a duplicated library or key", async () => {
+        await withLibraries(entry({ banners: [], fileStems: [], cdnPaths: [] }));
+        await rejected("at least one");
+        await withLibraries(entry({ npm: "Left Pad" }));
+        await rejected("libraries.0.npm");
+        await withLibraries(entry(), entry());
+        await rejected("Duplicate library");
+        await withLibraries(entry(), entry({ npm: "right-pad", fileStems: ["left-pad"], cdnPaths: ["right-pad"] }));
+        await rejected("stem:left-pad");
+      });
+
+      it("rejects an empty table (no silent zero)", async () => {
+        await replaceFile("libraries.json", `${JSON.stringify({ libraries: [] })}\n`);
+        await rejected("libraries.json");
+      });
     });
 
     it("requires covered_by and covered_since exactly when status is covered", async () => {

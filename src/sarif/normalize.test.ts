@@ -10,7 +10,7 @@
  */
 
 import { describe, test, expect } from "vitest";
-import { normalizeSarif } from "./normalize.js";
+import { normalizeSarif, splitMagentoPatchFixed } from "./normalize.js";
 import type { SarifLog } from "./types.js";
 
 const TARGET = "/repo";
@@ -300,5 +300,77 @@ describe("Trivy dependency remediation", () => {
     expect(finding?.remediation.summary).toBe(
       "Upgrade addressable from 2.8.6 to a fixed version (~> 2.8.7, >= 2.9.0; choose the one on your release line), then rebuild the lockfile.",
     );
+  });
+});
+
+describe("Trivy Magento -pN patch releases (field N2)", () => {
+  // Real Trivy 0.76.1 messages (offline, DB 2026-10-31) for magento/community-edition locked at 2.4.7-p3 and
+  // 2.4.6-p11. Trivy orders a `-pN` patch release before its base release (as a pre-release) and compares N
+  // as text, so 2.4.7-p3 reads as below the 2.4.7 fix and 2.4.6-p11 as below the 2.4.6-p6 fix.
+  const result = (id: string, name: string, installed: string, fixed: string, line = 5) => ({
+    ruleId: id,
+    message: { text: `Package: ${name}\nInstalled Version: ${installed}\nVulnerability ${id}\nSeverity: HIGH\nFixed Version: ${fixed}\nLink: [${id}](https://avd.aquasec.com/nvd/${id.toLowerCase()})` },
+    locations: [{ physicalLocation: { artifactLocation: { uri: "composer.lock", uriBaseId: "ROOTPATH" }, region: { startLine: line, startColumn: 1, endLine: line + 4, endColumn: 1 } } }],
+  });
+  const sarif = (results: ReturnType<typeof result>[]): SarifLog => ({
+    runs: [{
+      tool: { driver: { name: "Trivy", rules: [...new Set(results.map((entry) => entry.ruleId))].map((id) => ({ id, name: "LanguageSpecificPackageVulnerability", shortDescription: { text: `Magento ${id}` }, properties: { tags: ["vulnerability", "security", "HIGH"], "security-severity": "8.1" } })) } },
+      results,
+    }],
+  });
+  const CE = "magento/community-edition";
+  const findings = normalizeSarif(sarif([
+    // Fixed on the 2.4.7 line by 2.4.7 itself: 2.4.7-p3 is later. Trivy reports it (false positive).
+    result("CVE-2024-20758", CE, "2.4.7-p3", "2.4.7, 2.4.6-p5, 2.4.5-p7, 2.4.4-p8"),
+    // Fixed on the 2.4.7 line by 2.4.7-p6: 2.4.7-p3 is affected (true positive).
+    result("CVE-2025-47110", CE, "2.4.7-p3", "2.4.8-p1, 2.4.7-p6, 2.4.5-p13, 2.4.6-p11"),
+    // No fixed release listed: never provably fixed.
+    result("CVE-2025-54236", CE, "2.4.7-p3", ""),
+    // Fixed exactly at the installed release, and fixed at p6 < p11 (Trivy compares "p11" < "p6" as text).
+    result("CVE-2025-47110", CE, "2.4.6-p11", "2.4.8-p1, 2.4.7-p6, 2.4.5-p13, 2.4.6-p11", 20),
+    result("CVE-2024-34102", CE, "2.4.6-p11", "2.4.6-p6, 2.4.5-p8, 2.4.4-p9", 20),
+    // Only a later line is fixed: nothing proves 2.4.7-p3 fixed.
+    result("CVE-2025-24434", CE, "2.4.7-p3", "2.4.8-beta2"),
+    // Not a Magento core package, and a core package without a -pN suffix: untouched.
+    result("CVE-2026-0001", "acme/thing", "2.4.7-p3", "2.4.7"),
+    result("CVE-2026-0002", CE, "2.4.6", "2.4.6"),
+  ]), "trivy", "/repo");
+
+  test("drops only findings whose installed -pN release is at or above every fix on its own release line, and names them", () => {
+    const { kept, suppressed } = splitMagentoPatchFixed(findings);
+    expect(suppressed.map((entry) => `${entry.rule_id}@${entry.version}`)).toEqual([
+      "CVE-2024-20758@2.4.7-p3",
+      "CVE-2025-47110@2.4.6-p11",
+      "CVE-2024-34102@2.4.6-p11",
+    ]);
+    expect(suppressed[0]).toEqual({ file: "composer.lock", name: CE, version: "2.4.7-p3", rule_id: "CVE-2024-20758" });
+    expect(kept.map((finding) => `${finding.rule_id}@${finding.package?.version}`)).toEqual([
+      "CVE-2025-47110@2.4.7-p3",
+      "CVE-2025-54236@2.4.7-p3",
+      "CVE-2025-24434@2.4.7-p3",
+      "CVE-2026-0001@2.4.7-p3",
+      "CVE-2026-0002@2.4.6",
+    ]);
+  });
+
+  test("kept findings are the very objects normalisation produced: fingerprints and ids unchanged", () => {
+    const { kept } = splitMagentoPatchFixed(findings);
+    for (const finding of kept) expect(findings).toContain(finding);
+    const again = normalizeSarif(sarif([result("CVE-2025-47110", CE, "2.4.7-p3", "2.4.8-p1, 2.4.7-p6, 2.4.5-p13, 2.4.6-p11")]), "trivy", "/repo");
+    expect(kept[0]!.fingerprint).toBe(again[0]!.fingerprint);
+  });
+
+  test("the other locked Magento core names are covered; other engines' findings are never touched", () => {
+    for (const name of ["magento/product-community-edition", "magento/project-community-edition", "magento/magento2-base", "magento/product-enterprise-edition"]) {
+      const [finding] = normalizeSarif(sarif([result("CVE-2024-20758", name, "2.4.7-p3", "2.4.7")]), "trivy", "/repo");
+      expect(splitMagentoPatchFixed([finding!]).suppressed).toHaveLength(1);
+    }
+    const osv = { ...findings[0]!, engine: "osv-scanner" as const, engines: ["osv-scanner" as const] };
+    expect(splitMagentoPatchFixed([osv]).kept).toEqual([osv]);
+  });
+
+  test("a fix list Magento ordering cannot read keeps the finding", () => {
+    const [finding] = normalizeSarif(sarif([result("CVE-2026-0003", CE, "2.4.7-p3", "2.4.7-hotfix, 2.4.6-p5")]), "trivy", "/repo");
+    expect(splitMagentoPatchFixed([finding!]).kept).toHaveLength(1);
   });
 });

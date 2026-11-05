@@ -20,14 +20,20 @@ export const JAVASCRIPT_BASELINE_RULE_IDS = [
   JAVASCRIPT_WEAK_CIPHER_RULE_ID,
 ] as const;
 
+// Design 10.6 precision pass: MD5/SHA1 is mostly used for cache keys, checksums and ids (0 of 13 field
+// hits hashed a credential), so weak-hash is low/low. Kept in exact parity with the Opengrep rule (E34).
 const RULE_METADATA = {
   [JAVASCRIPT_WEAK_HASH_RULE_ID]: {
     title: "Weak hashing algorithm (MD5/SHA1) used.",
     message: "Weak hashing algorithm (MD5/SHA1) used. Use SHA-256+ or a password KDF (bcrypt/scrypt/argon2) for credentials.\n",
+    severity: "low",
+    confidence: "low",
   },
   [JAVASCRIPT_WEAK_CIPHER_RULE_ID]: {
     title: "Deprecated password-based createCipher or weak cipher (DES/RC4/3DES) used.",
     message: "Deprecated password-based createCipher or weak cipher (DES/RC4/3DES) used. Use createCipheriv with a modern AEAD cipher, an independent random key, and a unique nonce.\n",
+    severity: "medium",
+    confidence: "medium",
   },
 } as const;
 
@@ -67,7 +73,7 @@ function candidateFinding(
     id: findingFingerprint,
     fingerprint: findingFingerprint,
     title: metadata.title,
-    severity: "medium",
+    severity: metadata.severity,
     engine: "codeinspectus-ai",
     engines: ["codeinspectus-ai"],
     rule_id: ruleId,
@@ -82,7 +88,7 @@ function candidateFinding(
     message: metadata.message,
     remediation: remediationForCwe(["CWE-327"]),
     frameworks: [],
-    confidence: "medium",
+    confidence: metadata.confidence,
     finding_kind: "sast",
     producer_components: ["shadow:javascript-baseline"],
   };

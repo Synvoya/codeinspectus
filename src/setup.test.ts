@@ -16,6 +16,7 @@ import {
 } from "./setup.js";
 import { createHash } from "node:crypto";
 import type { EngineSetupStatus } from "./types.js";
+import { setupPlanSchema } from "./schemas.js";
 
 let root: string;
 let preferencesPath: string;
@@ -341,6 +342,22 @@ describe("OSV database consent", () => {
       action: "refresh_database",
       selected: true,
     });
+  });
+
+  test("a repository with workflows is offered the GitHub Actions database with its size, licence and reader", async () => {
+    const target = await repoWith("composer.lock", ".github/workflows/ci.yml");
+    const plan = await buildSetupPlan({ status: readyEngines(), lockfile, preferencesPath, cosignAvailable: true, target });
+    expect(plan.osv_databases).toEqual([
+      { ecosystem: "Packagist", state: "missing", selected: true, estimated_download_bytes: 11_063_339 },
+      {
+        ecosystem: "GitHub Actions", state: "missing", selected: true, estimated_download_bytes: 100_334,
+        note: expect.stringMatching(/^GitHub Advisory Database \(GHSA\) records, CC-BY-4\.0; read by the Synvoya Actions matcher .* never by osv-scanner$/),
+      },
+    ]);
+    const rendered = formatSetupPlan(plan);
+    expect(rendered).toContain("[selected] GitHub Actions: missing; ~98 KiB estimated download");
+    expect(rendered).toMatch(/\n {4}GitHub Advisory Database \(GHSA\) records, CC-BY-4\.0; read by the Synvoya Actions matcher/);
+    expect(setupPlanSchema.safeParse(plan).success).toBe(true);
   });
 
   test("no target and no explicit list offers no database", async () => {

@@ -354,7 +354,7 @@ describe("schemeFor", () => {
   test("package ecosystems", () => {
     const cases: Array<[string, VersionScheme]> = [
       ["npm", "semver"], ["Packagist", "php"], ["PyPI", "pep440"], ["RubyGems", "ruby"],
-      ["Go", "go"], ["NuGet", "dotnet"], ["Maven", "maven"], ["crates.io", "generic"], ["", "generic"],
+      ["Go", "go"], ["NuGet", "dotnet"], ["Maven", "maven"], ["GitHub Actions", "semver"], ["crates.io", "generic"], ["", "generic"],
     ];
     for (const [ecosystem, scheme] of cases) {
       expect(schemeFor({ type: "package", ecosystem, name: "x" }), ecosystem).toBe(scheme);

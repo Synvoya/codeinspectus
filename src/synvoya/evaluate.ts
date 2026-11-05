@@ -604,6 +604,42 @@ function judgeSegments(scheme: VersionScheme, advisory: SynvoyaAdvisory, segment
   return { verdict: "note", fixed: sortVersions(scheme, candidates.find((list) => list.length > 0) ?? []), missingLatest };
 }
 
+/** One declared version judged against one advisory. */
+export type VersionJudgement =
+  | { verdict: "finding"; basis: "exact" | "line"; proven: boolean }
+  | { verdict: "note"; fixed: string[] }
+  | { verdict: "none" }
+  | { verdict: "unknown" };
+
+/**
+ * One declared version against one advisory by evaluateSynvoya's own rules, with no end-of-life table: an
+ * exact version is affected or not; a floating or range one is a finding only when every release it can
+ * resolve to is affected (the line is wholly inside an affected range), a note naming the fixed release when
+ * the advisory reaches it but does not cover it, and unknown whenever anything cannot be compared.
+ */
+export function judgeDeclaredVersion(advisory: SynvoyaAdvisory, spec: string, precision: "exact" | "floating" | "range", now: Date): VersionJudgement {
+  const scheme = schemeFor(advisory.target);
+  if (precision === "exact") {
+    const affected = isAffected(scheme, spec, advisory.affected);
+    if (affected === undefined) return { verdict: "unknown" };
+    if (!affected) return { verdict: "none" };
+    const proven = advisory.affected.some((element) => !hasPatch(element) && isAffected(scheme, spec, [element]) === true);
+    return { verdict: "finding", basis: "exact", proven };
+  }
+  try {
+    const spans = declaredSpans(scheme, spec, precision);
+    const segments = spans && resolvableSegments(scheme, spans, []);
+    if (!segments) return { verdict: "unknown" };
+    const judgement = judgeSegments(scheme, advisory, segments, now);
+    if (judgement.verdict === "finding") return { verdict: "finding", basis: "line", proven: judgement.proven };
+    if (judgement.verdict === "note") return { verdict: "note", fixed: judgement.fixed };
+    return { verdict: "none" };
+  } catch (error) {
+    if (!(error instanceof Incomparable)) throw error;
+    return { verdict: "unknown" };
+  }
+}
+
 // ---- findings ----
 
 interface Origin {

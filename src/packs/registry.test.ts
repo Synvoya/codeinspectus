@@ -280,7 +280,7 @@ describe("native detector pack registry", () => {
 
     const javascriptAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "javascript-typescript");
     expect(javascriptAnalyzers).toHaveLength(12);
-    expect(javascriptAnalyzers.every((analyzer) => analyzer.packVersion === "1.9.0")).toBe(true);
+    expect(javascriptAnalyzers.every((analyzer) => analyzer.packVersion === "1.10.0")).toBe(true);
     expect(javascriptAnalyzers.every((analyzer) => analyzer.packLanguages.includes("typescript"))).toBe(true);
     expect(javascriptAnalyzers.every((analyzer) => analyzer.packFrameworks.includes("supabase"))).toBe(true);
 
@@ -302,7 +302,7 @@ describe("native detector pack registry", () => {
 
     const reactNativeAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "react-native");
     expect(reactNativeAnalyzers).toHaveLength(4);
-    expect(reactNativeAnalyzers.every((analyzer) => analyzer.packVersion === "1.0.0")).toBe(true);
+    expect(reactNativeAnalyzers.every((analyzer) => analyzer.packVersion === "1.1.0")).toBe(true);
     expect(reactNativeAnalyzers.every((analyzer) => analyzer.packFrameworks.includes("react-native"))).toBe(true);
 
     const expoAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "expo");

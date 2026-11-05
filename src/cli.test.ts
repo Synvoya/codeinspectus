@@ -164,7 +164,33 @@ describe("CLI parser", () => {
       .toEqual(["php-sast", "deno-lock"]);
   });
 
+  test("--licenses opts in to licence findings; scans do not request them otherwise", async () => {
+    expect(parseCliCommand(["scan", "."]).configuration.include_licenses).toBeUndefined();
+    expect(parseCliCommand(["scan", ".", "--licenses"]).configuration.include_licenses).toBe(true);
+
+    const scanInputs: unknown[] = [];
+    const deps = dependencies({ scan: vi.fn(async (input) => { scanInputs.push(input); return emptyScan(); }) });
+    await runCli(["scan", ".", "--format", "json"], ioCapture().io, deps);
+    expect(scanInputs.at(-1)).not.toHaveProperty("include_licenses");
+    await runCli(["scan", ".", "--format", "json", "--licenses"], ioCapture().io, deps);
+    expect(scanInputs.at(-1)).toMatchObject({ include_licenses: true });
+    expect(cliHelp("scan")).toMatch(/--licenses\s+Include licence findings/);
+  });
+
+  test("the text header lists license as a default scanner only with --licenses", async () => {
+    const plain = ioCapture();
+    await runCli(["scan", "."], plain.io, dependencies());
+    expect(plain.stdout.join("")).toContain("Configuration: scanners=sast,secret,vuln,misconfig,ai |");
+    const withLicences = ioCapture();
+    await runCli(["scan", ".", "--licenses"], withLicences.io, dependencies());
+    expect(withLicences.stdout.join("")).toContain("Configuration: scanners=sast,secret,vuln,misconfig,license,ai |");
+    const named = ioCapture();
+    await runCli(["scan", ".", "--scanner", "sast,license"], named.io, dependencies());
+    expect(named.stdout.join("")).toContain("Configuration: scanners=sast,license |");
+  });
+
   test.each([
+    [["preflight", ".", "--licenses"], /--licenses is available only for scan/i],
     [["unknown"], /unknown subcommand/i],
     [["scan"], /requires a file or directory/i],
     [["scan", ".", "--wat"], /unknown option/i],

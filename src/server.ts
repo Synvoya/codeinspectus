@@ -52,7 +52,7 @@ import { runRescan } from "./rescan.js";
 import { buildComplianceReport } from "./compliance/report.js";
 import { explainFinding } from "./explain.js";
 import { generateSbom } from "./sbom.js";
-import { listRules, synvoyaDatasetLine } from "./rules.js";
+import { listRules, sastRuleLanguagesLine, synvoyaDatasetLine } from "./rules.js";
 import { summarizeScan, summarizeRescan } from "./summarize.js";
 import { buildSetupPlan, declineSetupComponents, formatSetupPlan, installSetupComponents, SETUP_COMPONENTS } from "./setup.js";
 import { applyRepositoryCleanup, planRepositoryCleanup, rollbackRepositoryCleanup } from "./repository-trust/cleanup.js";
@@ -130,7 +130,7 @@ export function createServer(): McpServer {
       title: "Scan code for security issues",
       description:
         "Run a full local security scan of a path: managed engines (Opengrep SAST, " +
-        "Gitleaks secrets, Trivy SCA/IaC/license), CodeInspectus's offline native Pub SCA, " +
+        "Gitleaks secrets, Trivy SCA/IaC), CodeInspectus's offline native Pub SCA, " +
         "plus AI-code-specific " +
         "checks (client-side secret exposure, Supabase RLS/inverted-auth, prompt-injection " +
         "sinks, API-boundary failures, and explicit runtime-control misconfiguration). " +
@@ -142,6 +142,7 @@ export function createServer(): McpServer {
         "V3.2 additionally audits explicit AI attribution in source/git/media metadata and validates supported local C2PA assets " +
         "with the official optional Content Authenticity Initiative library. Remote manifests and revocation endpoints are never fetched. " +
         "Statistical-watermark detection remains explicitly unavailable. " +
+        "Licence findings are off by default (informational, not fixable); pass include_licenses: true to add them. " +
         "Lists declared coverage gaps (coverage_gaps, stable ids) that make coverage partial and informational " +
         "coverage_notes; accept_gaps accepts named gap ids for CI while they stay listed. " +
         "Fully offline — zero network egress at scan time. Never writes to your code or repo.",
@@ -168,7 +169,8 @@ export function createServer(): McpServer {
       description:
         "Inspect external-engine health and exact platform download sizes, save declined choices, or install selected " +
         "Opengrep/Gitleaks/Trivy/OSV-Scanner components after explicit confirmation. Pass path (the repository to scan) to " +
-        "plan or install only the OSV vulnerability databases for the ecosystems its lockfiles use; each is listed with an " +
+        "plan or install only the OSV vulnerability databases for the ecosystems its lockfiles use (and GitHub Actions advisories " +
+        "when it has workflows); each is listed with an " +
         "estimated size (integrity: TLS + recorded SHA-256, OSV publishes no signature), and osv_ecosystems pins the exact " +
         "list the user approved. Plan is offline. Install writes only to ~/.codeinspectus, verifies immutable " +
         "pins/publisher provenance for engines, and never modifies the target repository.",
@@ -328,7 +330,8 @@ export function createServer(): McpServer {
           )
           .join("\n");
         return ok(
-          `${text}\n\nPosture score: ${result.posture_score}/100 (severity-weighted; NOT a "% compliant" figure).\n${result.disclaimer}`,
+          `${text}\n\n${(result.coverage_notes ?? []).map((note) => `${note.detail}\n`).join("")}` +
+            `Posture score: ${result.posture_score}/100 (severity-weighted; NOT a "% compliant" figure).\n${result.disclaimer}`,
           result as unknown as Record<string, unknown>,
         );
       } catch (err) {
@@ -415,6 +418,7 @@ export function createServer(): McpServer {
           `${result.custom_rule_count} CodeInspectus custom rules. ` +
           `${result.rule_groups.map((g) => `${g.group}: ${g.rule_count}`).join("; ")}. ` +
           `${synvoyaDatasetLine(result.synvoya_dataset)}. ` +
+          `${sastRuleLanguagesLine(result.sast_rule_languages)}. ` +
           engineSetupMessage(result.engine_setup);
         return ok(text, result as unknown as Record<string, unknown>);
       } catch (err) {

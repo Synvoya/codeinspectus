@@ -3,14 +3,18 @@ import { describe, expect, test } from "vitest";
 import {
   jsCalls,
   jsxElements,
-  lexJavaScript,
   nearestDefinition,
   parseJavaScriptSource,
   resolveImport,
 } from "./javascript.js";
 import { isReactNativeWebView } from "./analysis.js";
 
-describe("React Native JavaScript structural layer", () => {
+const parsedWithEval = (path: string, source: string): boolean => {
+  const document = parseJavaScriptSource(path, source);
+  return document.balanced && jsCalls(document).some((call) => call.callee === "eval");
+};
+
+describe("React Native JavaScript structural layer (parser-backed, design §10.9)", () => {
   test("keeps comments, strings, templates, and regex bodies atomic", () => {
     const document = parseJavaScriptSource("App.tsx", [
       "",
@@ -43,9 +47,10 @@ describe("React Native JavaScript structural layer", () => {
     // Ruling 26: the nested template's token joins the stream with the substitution's code.
     expect(document.tokens.filter((token) => token.kind === "template")).toHaveLength(2);
     expect(jsxElements(document)).toHaveLength(1);
-    // A string holding a closing brace inside a substitution is reported, not trusted.
-    expect(parseJavaScriptSource("App.tsx", "const nested = `outer ${`inner ${'}'}`} tail`;").lexicalIssues)
-      .toEqual([expect.stringContaining("Ambiguous string in a template substitution")]);
+    // The parser reads a string holding a closing brace inside a substitution exactly (3.x refused it).
+    const braced = parseJavaScriptSource("App.tsx", "const nested = `outer ${`inner ${'}'}`} tail`;");
+    expect(braced.balanced).toBe(true);
+    expect(braced.tokens.filter((token) => token.kind === "string").map((token) => token.staticValue)).toEqual(["}"]);
   });
 
   test("marks unterminated regex literals malformed instead of tokenizing their body as code", () => {
@@ -54,9 +59,8 @@ describe("React Native JavaScript structural layer", () => {
       "const pattern = /WebView source route params",
     ].join("\n"));
     expect(document.balanced).toBe(false);
-    expect(document.lexicalIssues).toEqual(expect.arrayContaining([
-      expect.stringContaining("Unterminated regular-expression literal"),
-    ]));
+    expect(document.lexicalIssues).toEqual([expect.stringContaining("JavaScript/TypeScript parse error")]);
+    expect(document.tokens).toEqual([]);
     expect(jsxElements(document)).toEqual([]);
   });
 
@@ -96,19 +100,26 @@ describe("React Native JavaScript structural layer", () => {
     expect(document.tokens.some((token) => token.kind === "regex" && token.value === "/x/")).toBe(true);
   });
 
-  test("the non-null rule applies only to TypeScript files", () => {
+  test("the non-null assertion is TypeScript syntax only", () => {
     for (const path of ["globe.js", "globe.mjs", "globe.jsx"]) {
       expect(parseJavaScriptSource(path, "const r = value! / 255;").lexicalIssues)
-        .toEqual([expect.stringContaining("Unterminated regular-expression literal")]);
+        .toEqual([expect.stringContaining("JavaScript/TypeScript parse error")]);
     }
     for (const path of ["globe.ts", "globe.tsx", "globe.mts", "globe.cts"]) {
       expect(parseJavaScriptSource(path, "const r = value! / 255;").lexicalIssues).toEqual([]);
     }
   });
 
-  test("a `/` after a closing brace is ambiguous and reported, not guessed", () => {
-    const document = parseJavaScriptSource("brace.js", "function f() {}\n/x/.test(name) && eval(code);");
-    expect(document.lexicalIssues).toEqual([expect.stringContaining("Ambiguous `/` after a closing brace")]);
+  // 3.x refused a `/` after `}` (block or object literal?); the parser knows which one it is.
+  test("a `/` after a closing brace is read as the parser reads it", () => {
+    const afterBlock = parseJavaScriptSource("brace.js", "function f() {}\n/x/.test(name) && eval(code);");
+    expect(afterBlock.lexicalIssues).toEqual([]);
+    expect(afterBlock.tokens.some((token) => token.kind === "regex" && token.value === "/x/")).toBe(true);
+    expect(jsCalls(afterBlock).some((call) => call.callee === "eval")).toBe(true);
+    const afterObject = parseJavaScriptSource("brace.js", "const r = {}\n/x/g; eval(code);");
+    expect(afterObject.balanced).toBe(true);
+    expect(afterObject.tokens.some((token) => token.kind === "regex")).toBe(false);
+    expect(jsCalls(afterObject).some((call) => call.callee === "eval")).toBe(true);
   });
 
   // Security review: keyword spellings used as member or private names are names, not keywords.
@@ -125,9 +136,10 @@ describe("React Native JavaScript structural layer", () => {
     expect(document.tokens.some((token) => token.kind === "regex")).toBe(false);
   });
 
-  test("a `/` after an unmatched `)` is reported, not guessed", () => {
+  test("an unmatched `)` is a parse error", () => {
     const document = parseJavaScriptSource("paren.js", "x) / 2;");
-    expect(document.lexicalIssues).toEqual(expect.arrayContaining([expect.stringContaining("Ambiguous `/` after an unmatched `)`")]));
+    expect(document.balanced).toBe(false);
+    expect(document.lexicalIssues).toEqual([expect.stringContaining("JavaScript/TypeScript parse error")]);
   });
 
   // Security review: the token after a template is decided from the template, not from its last inner token.
@@ -139,17 +151,17 @@ describe("React Native JavaScript structural layer", () => {
     expect(jsCalls(document).some((call) => call.callee === "eval")).toBe(true);
   });
 
-  // Security review: substitutions share the caller's token budget.
+  // Security review: substitution tokens count toward the one per-file token bound.
   test("substitution tokens count toward one token budget", () => {
-    const source = `const s = \`${"${a + b + c} ".repeat(200)}\`;`;
-    const bounded = lexJavaScript(source, 300);
-    expect(bounded.issues).toEqual(expect.arrayContaining([expect.stringContaining("token bound exceeded")]));
-    expect(bounded.tokens.length).toBeLessThanOrEqual(300);
-    expect(lexJavaScript(source, 10_000).issues).toEqual([]);
-    // A substitution with 300,000 tokens is merged without spreading it into one call.
-    const large = `const t = \`\${${"a+".repeat(150_000)}a}\`;`;
-    expect(() => lexJavaScript(large, 1_000_000)).not.toThrow();
-    expect(lexJavaScript(large, 1_000_000).tokens.length).toBe(300_006);
+    // 300,000 tokens inside one substitution, on lines under the per-line cap.
+    const large = `const t = \`\${${("a,".repeat(20_000) + "\n").repeat(8)}a}\`;`;
+    const document = parseJavaScriptSource("big.js", large);
+    expect(document.balanced).toBe(false);
+    expect(document.tokens).toEqual([]);
+    expect(document.lexicalIssues).toEqual([expect.stringContaining("token bound exceeded (200000)")]);
+    const small = parseJavaScriptSource("small.js", `const s = \`${"${a + b + c} ".repeat(200)}\`;`);
+    expect(small.balanced).toBe(true);
+    expect(small.tokens.filter((token) => token.kind === "identifier" && token.value !== "const").length).toBe(601);
   });
 
   // Field validation (umami) and Ruling 26: substitutions are lexed as code and their tokens are kept.
@@ -167,14 +179,14 @@ describe("React Native JavaScript structural layer", () => {
     expect(document.tokens.filter((token) => token.kind === "regex").map((token) => token.value)).toEqual(["/'/g", "/a'b/", "/t/", "/r/"]);
   });
 
-  test("a regex or string in a substitution that holds a backtick or closing brace is reported, not guessed", () => {
+  // 3.x refused these as ambiguous; the parser reads them exactly and the sink stays visible.
+  test("a regex or string in a substitution that holds a backtick or closing brace is read exactly", () => {
     for (const source of [
       "const a = `${s.replace(/`/g, '')}`; eval(x);",
       "const b = `${s.split(/}/)}`; eval(x);",
       "const c = `${s.split(\"}\")}`; eval(x);",
     ]) {
-      const document = parseJavaScriptSource("guess.ts", source);
-      expect(document.balanced && document.lexicalIssues.length === 0).toBe(false);
+      expect(parsedWithEval("guess.ts", source)).toBe(true);
     }
   });
 
@@ -197,18 +209,19 @@ describe("React Native JavaScript structural layer", () => {
       "const App = ({ route }) => <WebView source={{ uri: route.params.url }} />;",
     ].join("\n"));
     expect(document.balanced).toBe(false);
-    expect(document.lexicalIssues).toEqual(expect.arrayContaining([
-      expect.stringContaining("Unterminated quoted string"),
-    ]));
+    expect(document.lexicalIssues).toEqual([expect.stringContaining("JavaScript/TypeScript parse error")]);
     expect(jsxElements(document)).toEqual([]);
   });
 
-  test("enforces the token bound while lexing instead of allocating the full token stream", () => {
-    const result = lexJavaScript("x;".repeat(1_000), 20);
-    expect(result.tokens).toHaveLength(20);
-    expect(result.issues).toEqual([
-      "JavaScript/TypeScript token bound exceeded (20).",
-    ]);
+  // Bounded work: a file that could hold far more tokens than the bound is refused before the parser
+  // allocates its token stream (measured: 2 MiB of `;` took ~1 GB of heap when parsed).
+  test("refuses a file over the token bound before parsing it", () => {
+    const started = Date.now();
+    const document = parseJavaScriptSource("a.js", (";".repeat(60_000) + "\n").repeat(33));
+    expect(document.balanced).toBe(false);
+    expect(document.tokens).toEqual([]);
+    expect(document.lexicalIssues).toEqual(["JavaScript/TypeScript token bound exceeded (200000)."]);
+    expect(Date.now() - started).toBeLessThan(2_000);
   });
 
   test("resolves aliased imports in source order and honors lexical shadowing", () => {
@@ -305,16 +318,14 @@ describe("React Native JavaScript structural layer", () => {
     expect(jsxElements(document)).toEqual([]);
   });
 
-  // Field re-test G8a: the context-free pass read JSX text as code and rejected 9 of 20 repositories'
-  // valid components (fixture tsx-apostrophe; dub login page; pterodactyl breadcrumbs).
-  // Security review of 67188f2: an apostrophe ends the plain pass early (unterminated string), so the
-  // retry is refused and such a file stays unparsed (native-parse-errors) until the 4.0 parser.
-  test("accepts JSX text holding a parenthetical or a slash after an expression", () => {
+  // Field re-test G8a: the 3.x context-free pass read JSX text as code and rejected 9 of 20 repositories'
+  // valid components (fixture tsx-apostrophe; dub login page; pterodactyl breadcrumbs). JSX text is text
+  // to the parser, so these files parse now.
+  test("accepts JSX text holding an apostrophe, a parenthetical or a slash", () => {
     const apostrophe = parseJavaScriptSource("app/page.tsx", "export const Page = () => (<p>Don't have an account?</p>);\n");
-    expect(apostrophe.balanced).toBe(false);
-    // A lone `/` in JSX text starts an unterminated regex in the plain pass: unparsed as well.
+    expect(apostrophe.balanced).toBe(true);
     const bareSlash = parseJavaScriptSource("app/page.tsx", "export const Page = () => (\n  <p>\n    /\n  </p>\n);\n");
-    expect(bareSlash.balanced).toBe(false);
+    expect(bareSlash.balanced).toBe(true);
     const document = parseJavaScriptSource("app/page.tsx", [
       "import Link from 'next/link';",
       "export default function Page({ id }) {",
@@ -334,9 +345,16 @@ describe("React Native JavaScript structural layer", () => {
     expect(link?.props.map((prop) => prop.name)).toEqual(["href"]);
   });
 
-  test("keeps the exact tokens of a file the context-free pass already accepts", () => {
-    const source = "export const Page = () => <main><p>Do not have an account?</p></main>;\n";
-    expect(parseJavaScriptSource("app/page.tsx", source).tokens).toEqual(lexJavaScript(source).tokens);
+  test("maps the parser's JSX tokens to the analyzers' token shape; JSX text is not code", () => {
+    const source = "export const Page = () => <main><p>Do not call eval(x)</p><Img alt=\"a\" /></main>;\n";
+    const document = parseJavaScriptSource("app/page.tsx", source);
+    expect(document.tokens.map((token) => token.value)).toEqual([
+      "export", "const", "Page", "=", "(", ")", "=>", "<", "main", ">", "<", "p", ">", "</", "p", ">",
+      "<", "Img", "alt", "=", "\"a\"", "/>", "</", "main", ">", ";",
+    ]);
+    expect(jsCalls(document).some((call) => call.callee === "eval")).toBe(false);
+    // A type argument is never a JSX element.
+    expect(jsxElements(parseJavaScriptSource("a.tsx", "const v = useState<Config>(init);"))).toEqual([]);
   });
 
   test("never retries TypeScript-only files and fails closed on an unclosed JSX retry", () => {
@@ -383,39 +401,39 @@ describe("React Native JavaScript structural layer", () => {
     expect(!document.balanced || jsCalls(document).some((call) => call.callee === "eval")).toBe(true);
   });
 
-  // Security review: the retry may differ from the plain pass only where the plain pass saw a string,
-  // template or regex literal, so assignments, optional calls and call chains stay visible.
-  test("code inside a misread element stays visible to the analyzers", () => {
+  // Security review (3.x JSX retry): code around an element stays visible; text inside an element is
+  // JSX text, which never runs, so a call spelled there is not a call.
+  test("code around an element stays visible and element text is not code", () => {
     const document = parseJavaScriptSource("page.tsx", [
       "const v = <b>{x}</b>; y = eval(z);",
       "const view = ready && <Panel>",
       "  eval(location.hash);",
-      "  a?.(b);",
-      "  f()(g);",
       "</Panel>;",
+      "a?.(b);",
+      "f()(g);",
       "export const Page = () => <p>Don't</p>;",
     ].join("\n"));
-    if (document.balanced) {
-      const callees = jsCalls(document).map((call) => call.callee);
-      expect(callees.filter((callee) => callee === "eval")).toHaveLength(2);
-      expect(callees).toContain("f");
-      expect(document.tokens.map((token) => token.value)).toEqual(expect.arrayContaining(["y", "=", "?."]));
-    }
-    expect(document.lexicalIssues.length > 0 || document.balanced).toBe(true);
+    expect(document.balanced).toBe(true);
+    const callees = jsCalls(document).map((call) => call.callee);
+    expect(callees.filter((callee) => callee === "eval")).toHaveLength(1);
+    expect(callees).toContain("f");
+    expect(document.tokens.map((token) => token.value)).toEqual(expect.arrayContaining(["y", "=", "?."]));
   });
 
-  test("a JSX attribute string that spans lines stays unparsed", () => {
-    // Its continuation lines are code to the plain pass; the retry may not reinterpret them.
+  test("a JSX attribute string that spans lines is one literal", () => {
     const document = parseJavaScriptSource("Card.jsx", [
       "export const Card = () => (",
-      "  <section",
+      "  <Section",
       "    className=\"rounded-md",
       "      px-4 it's-not-a-quote\"",
       "  >",
-      "  </section>",
+      "  </Section>",
       ");",
     ].join("\n"));
-    expect(document.balanced).toBe(false);
+    expect(document.balanced).toBe(true);
+    const className = jsxElements(document)[0]?.props.find((prop) => prop.name === "className");
+    expect(className?.kind).toBe("literal");
+    expect(className?.expression.tokens[0]?.staticValue).toBe("rounded-md\n      px-4 it's-not-a-quote");
   });
 
   // Ruling 30 / review C-1 #1: ECMAScript ends a `//` comment and a hashbang at any line terminator
@@ -439,62 +457,135 @@ describe("React Native JavaScript structural layer", () => {
     expect(jsCalls(document).some((call) => call.callee === "eval")).toBe(true);
   });
 
-  // Ruling 30 / review C-1 #7: scripts read Annex B HTML-like comments (`<!--` anywhere, `-->` first on
-  // a line) as comments; the lexer does not, so either one makes the file unparsed.
+  // Ruling 30 / review C-1 #7: a script reads Annex B HTML-like comments (`<!--` anywhere, `-->` first on
+  // a line or after a block comment that spans lines) as comments; a module does not. The parser applies
+  // the rule of the file's goal, so the analyzers see exactly the code Node runs.
   test.each([
     ["<!--", "a.cjs", "<!-- `\neval(payload)\n<!-- `\n"],
     ["--> first on a line", "a.cjs", "--> `\neval(payload)\n--> `\n"],
     ["--> after a block comment", "a.js", "x = 1\n/* c */ --> `\neval(payload)\n--> `\n"],
-    // Security review: the decision must not depend on the lexer's line numbers, which count only LF.
-    ["--> mid-line", "a.js", "a --> eval(x)\n"],
-    ["--> after a block comment holding a CR", "a.js", "x = 1; /* \r */ --> eval(x)\n"],
-    ["<!-- mid-line", "a.mjs", "x = 1; <!-- eval(x)\n"],
-  ])("an HTML-like comment (%s) is a lexical issue", (_name, path, source) => {
+    ["--> mid-line (a decrement and a comparison)", "a.js", "a --> eval(x)\n"],
+  ])("an HTML-like comment (%s) is read with the script rules", (_name, path, source) => {
+    expect(parsedWithEval(path, source)).toBe(true);
+  });
+
+  test("an HTML-like comment hides only what Node does not run", () => {
+    // A block comment holding a CR is a line terminator, so `-->` after it starts a comment in a script.
+    const script = parseJavaScriptSource("a.cjs", "x = 1; /* \r */ --> eval(x)\n");
+    expect(script.balanced).toBe(true);
+    expect(jsCalls(script).some((call) => call.callee === "eval")).toBe(false);
+    // A module has no HTML-like comments: `<!--` there is not a comment and this file is invalid.
+    expect(parseJavaScriptSource("a.mjs", "x = 1; <!-- eval(x)\n").balanced).toBe(false);
+  });
+
+  // Security: a `.js` file runs as a script or, in a `"type": "module"` package, as a module, so no
+  // reading the packs accept may hide code the other goal runs.
+  // Review (stream D, Critical 1): a `.js`/`.ts`/`.jsx`/`.tsx` file runs as a script or, in a
+  // `"type": "module"` package, as a module. Neither reading may be trusted alone: a module reading can
+  // open a template that swallows code a script runs, and a script reading can hide code in a comment or
+  // string that a module runs. When both are valid and tokenize differently, the file is refused.
+  test.each([
+    // Reviewer's PoC: as a script line 2 runs (`<!--` starts a comment); as a module a template opens.
+    ["an HTML-like comment before a template", "x <!--y; `\neval(payload)\n// `\n"],
+    ["an HTML-like comment before code", "x = a <!--y; eval(payload)\n"],
+    // As a script `"/ ; eval(payload); //"` is a string; as a module `/2; x = "/` is a regex.
+    ["an await identifier", "r = await /2; x = \"/ ; eval(payload); //\"\n"],
+  ])("a file whose script and module readings differ by %s is refused", (_name, source) => {
+    for (const path of ["a.js", "a.jsx", "a.ts", "a.tsx"]) {
+      const document = parseJavaScriptSource(path, source);
+      expect(document.balanced).toBe(false);
+      expect(document.lexicalIssues).toEqual([expect.stringContaining("reads differently as a script and as a module")]);
+    }
+  });
+
+  test("an explicit goal has one reading", () => {
+    // A `.cjs` file is a script: the HTML-like comment hides line 2 from Node too.
+    const script = parseJavaScriptSource("a.cjs", "x <!--y; `\neval(payload)\n// `\n");
+    expect(script.balanced).toBe(true);
+    expect(jsCalls(script).some((call) => call.callee === "eval")).toBe(true);
+    expect(parseJavaScriptSource("a.cjs", "r = await /2; x = \"/ ; eval(payload); //\"\n").balanced).toBe(true);
+    // A `.mjs` file is a module. The parser would read `<!--` as operators and open a template over line 2,
+    // but V8 rejects an HTML-like comment opener in a module, so the file is refused (re-review R1).
+    const module = parseJavaScriptSource("a.mjs", "x <!--y; `\neval(payload)\n// `\n");
+    expect(module.balanced).toBe(false);
+    expect(module.lexicalIssues).toEqual([expect.stringContaining("HTML-like comment opener")]);
+  });
+
+  // Re-review R1: a module reading never treats `<!--` as `<` `!` `--` operators; V8 rejects such a module,
+  // so refusing it costs no coverage. This covers files that parse only as modules.
+  test.each([
+    ["a .mjs module", "a.mjs", "x <!--y;\neval(payload);\n"],
+    ["a .mts module", "a.mts", "let x = 1, y = 2;\nx <!--y;\neval(payload);\n"],
+    ["a .js file with import syntax", "a.js", "import z from 'z';\nx <!--y;\neval(payload);\n"],
+    ["a .ts file whose only ESM syntax is import type", "a.ts", "import type { Z } from 'z';\nx <!--y;\neval(payload);\n"],
+    ["a .tsx file with export syntax", "a.tsx", "export const v = 1;\nx <!--y;\neval(payload);\n"],
+  ])("%s holding an HTML-like comment opener read as operators is refused", (_name, path, source) => {
     const document = parseJavaScriptSource(path, source);
     expect(document.balanced).toBe(false);
-    expect(document.lexicalIssues).toEqual(expect.arrayContaining([expect.stringContaining("HTML-like comment")]));
+    expect(document.lexicalIssues).toEqual([expect.stringContaining("HTML-like comment opener")]);
   });
 
-  test("a decrement compared with > is code only when spaced apart", () => {
-    // Any `-->` in code is refused, whatever its position (fail closed).
-    expect(parseJavaScriptSource("a.js", "while (n-->0) eval(payload);\n").balanced).toBe(false);
-    const document = parseJavaScriptSource("a.js", "while (n-- > 0) eval(payload);\n");
-    expect(document.lexicalIssues).toEqual([]);
-    expect(jsCalls(document).some((call) => call.callee === "eval")).toBe(true);
+  test("an HTML-like comment opener spelled inside a string, template, regex or comment is not refused", () => {
+    expect(parsedWithEval("a.mjs", "const s = '<!--'; const t = `<!--`; const r = /<!--/; // <!--\neval(payload);\n")).toBe(true);
+    expect(parsedWithEval("a.mjs", "const ok = a < !--b;\neval(payload);\n")).toBe(true);
   });
 
-  // Review I-2: an unterminated regex used to resume one character later, so every later `/` on the
-  // line rescanned to its end (quadratic: 58 s for a 1 MB line). The file is unparsed either way.
-  test("an unterminated regex stops lexing, so a long line stays linear", () => {
-    // lexJavaScript has no line cap, so this exercises the lexer itself.
+  test("a file valid under one goal only is read under that goal", () => {
+    // Module only (import): read as a module.
+    expect(parsedWithEval("a.js", "import x from 'x';\nawait x;\neval(payload);\n")).toBe(true);
+    // Script only (a sloppy-mode name): read as a script.
+    expect(parsedWithEval("a.js", "function protected() {}\neval(payload);\n")).toBe(true);
+  });
+
+  test("a decrement compared with > is code", () => {
+    expect(parsedWithEval("a.js", "while (n-->0) eval(payload);\n")).toBe(true);
+    expect(parsedWithEval("a.js", "while (n-- > 0) eval(payload);\n")).toBe(true);
+  });
+
+  // Review I-2: an unterminated regex used to make the 3.x lexer rescan every later `/` (quadratic).
+  test("an unterminated regex is a parse error found in linear time", () => {
     const started = Date.now();
-    const lexed = lexJavaScript("(/[".repeat(350_000));
-    expect(lexed.truncated).toBe(true);
-    expect(lexed.issues).toEqual(expect.arrayContaining([expect.stringContaining("Unterminated regular-expression literal")]));
+    const document = parseJavaScriptSource("a.js", ("(/[".repeat(20_000) + "\n").repeat(30));
+    expect(document.balanced).toBe(false);
     expect(Date.now() - started).toBeLessThan(2_000);
   });
 
-  // Review I-2 sibling: each `<Name` scanned forward for its `>` again, quadratic on `x<A<A<A…`
-  // (9.7 s at 128 KB, about 20 s at the 200,000-token bound).
-  test("finding JSX tag ends stays linear on many unclosed tags", () => {
+  // Review I-2 sibling: `x<A<A<A…` made the 3.x tag-end scan quadratic. It is a comparison chain; the
+  // parser refuses this depth (fail closed) without a JSX element and within the time bound.
+  test("a long comparison chain stays bounded and is never JSX", () => {
     const started = Date.now();
-    // Short lines, so the per-line lexing cap does not apply.
     const document = parseJavaScriptSource("a.jsx", "x" + ("<A".repeat(1_000) + "\n").repeat(99));
-    expect(document.tokens.length).toBe(198_001);
     expect(jsxElements(document)).toEqual([]);
     expect(Date.now() - started).toBeLessThan(2_000);
   });
 
-  // Security review of 67188f2: keepsCode compares only the tokens the plain pass produced. When the
-  // plain pass stops early, the JSX retry alone decides the rest of the file, and here it reads
-  // `/2); eval(y); (1/` after `</p>` as a regex. A truncated plain pass therefore refuses the retry.
+  // Security review of 67188f2: the 3.x JSX retry could read `/2); eval(y); (1/` after `</p>` as a
+  // regex. The parser reads each file once, exactly: the elements are divided and the sink is visible.
   test.each([
-    ["an unterminated regex in JSX text", "a.jsx", "const a = (<p>/[\\]</p>);\nconst b = (<p>x</p> /2); eval(y); (1/ 1);\n"],
-    ["an unterminated regex in TSX text", "a.tsx", "const a = (<p>/[\\]</p>);\nconst b = (<p>x</p> /2); eval(y); (1/ 1);\n"],
+    ["a regex-like slash in JSX text", "a.jsx", "const a = (<p>/[\\]</p>);\nconst b = (<p>x</p> /2); eval(y); (1/ 1);\n"],
+    ["a regex-like slash in TSX text", "a.tsx", "const a = (<p>/[\\]</p>);\nconst b = (<p>x</p> /2); eval(y); (1/ 1);\n"],
     ["an apostrophe in JSX text", "a.jsx", "const a = (<p>it's</p>);\nconst b = (<p>x</p> /2); eval(y); (1/ 1);\n"],
     ["a backtick in JSX text", "a.jsx", "const a = (<p>`</p>);\nconst b = (<p>x</p> /2); eval(y); (1/ 1);\n"],
-  ])("a plain pass truncated by %s keeps the file unparsed", (_name, path, source) => {
-    expect(parseJavaScriptSource(path, source).balanced).toBe(false);
+  ])("%s never hides the code after the element", (_name, path, source) => {
+    expect(parsedWithEval(path, source)).toBe(true);
+  });
+
+  // Hostile input: nesting far deeper than any real file must not overflow the stack or hang. The
+  // parser's recursion error is a parse failure (fail closed), and nothing after it walks recursively.
+  test.each([
+    ["brackets", ("[".repeat(10_000) + "\n").repeat(10) + ("]".repeat(10_000) + "\n").repeat(10)],
+    ["parentheses", ("(".repeat(10_000) + "\n").repeat(10) + "x" + (")".repeat(10_000) + "\n").repeat(10)],
+    ["unary operators", ("!".repeat(10_000) + "\n").repeat(10) + "x"],
+    ["conditional chains", ("a?b:".repeat(10_000) + "\n").repeat(10) + "c"],
+    ["unbraced if chains", ("if(a)".repeat(10_000) + "\n").repeat(10) + "b.c=1;"],
+    ["arrow functions", ("()=>".repeat(10_000) + "\n").repeat(10) + "x"],
+  ])("100,000-deep %s fail closed without a stack overflow", (_name, source) => {
+    const started = Date.now();
+    let document: ReturnType<typeof parseJavaScriptSource> | undefined;
+    expect(() => { document = parseJavaScriptSource("deep.js", source); }).not.toThrow();
+    expect(document?.balanced).toBe(false);
+    expect(document?.lexicalIssues.length).toBeGreaterThan(0);
+    expect(Date.now() - started).toBeLessThan(5_000);
   });
 
   // Review I-2: native lexing is capped per file (2 MiB characters) and per line (64 KiB), so the
@@ -529,8 +620,8 @@ describe("React Native JavaScript structural layer", () => {
     ["1_000n+0b1010-0o17", ["1_000n", "+", "0b1010", "-", "0o17"]],
     ["1.e5", ["1.e5"]],
     ["1..toString()", ["1.", ".", "toString", "(", ")"]],
-  ])("lexes %s as ECMAScript numbers", (source, values) => {
-    expect(lexJavaScript(source).tokens.map((token) => token.value)).toEqual(values);
+  ])("reads %s as ECMAScript numbers", (source, values) => {
+    expect(parseJavaScriptSource("a.js", source).tokens.map((token) => token.value)).toEqual(values);
   });
 
   test("an eval after unspaced arithmetic is a call", () => {

@@ -4,7 +4,8 @@ import { assessAggregateCoverage } from "./export/model.js";
 import { pathIsWithin } from "./path-safety.js";
 import { findingsMatch, pairMovedFindings } from "./dedup.js";
 import { diffRescan } from "./rescan.js";
-import { executeScan } from "./scan.js";
+import { executeScan, scanIncludedLicenses } from "./scan.js";
+import { componentSignaturesMatch } from "./provenance.js";
 import {
   getScan,
   inspectScanStore,
@@ -252,10 +253,15 @@ export function findingAbsenceProvableAgainst(
   if (!comparisonCoverageSufficient(oldScan, newScan, acceptedGaps)) return false;
   if (!finding.producer_components?.length || !oldScan.component_signatures || !newScan.component_signatures) return false;
   if (finding.engines.some((engine) => !oldScan.engine_details.some((detail) => detail.engine === engine && detail.ran))) return false;
+  // Licence findings are checked only by a scan that asked for them: absence from one that did not proves nothing.
+  const licence = finding.finding_kind === "license";
+  if (licence && !(scanIncludedLicenses(oldScan) && scanIncludedLicenses(newScan))) return false;
   return finding.producer_components.every((component) => {
     const oldSignature = oldScan.component_signatures?.[component];
     const newSignature = newScan.component_signatures?.[component];
-    return Boolean(oldSignature && newSignature && oldSignature === newSignature);
+    return licence
+      ? Boolean(oldSignature && newSignature && oldSignature === newSignature)
+      : componentSignaturesMatch(component, oldScan.component_signatures, newScan.component_signatures);
   });
 }
 
@@ -396,6 +402,7 @@ export async function rerunStoredScan(prior: StoredScanResult): Promise<StoredSc
     scanners: prior.scan_config?.scanners,
     severity_threshold: undefined,
     max_findings: prior.scan_config?.max_findings,
+    include_licenses: scanIncludedLicenses(prior),
     include_compliance: false,
   });
   const stored = await getScan(execution.canonical.scan_id);

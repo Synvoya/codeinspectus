@@ -1,0 +1,290 @@
+# Synvoya Node.js pack (original Apache-2.0 rules; see LICENSE-PROVENANCE.md). ASCII-only.
+# Prototype pollution (CWE-1321): writes through attacker-chosen keys and hand-written deep merges.
+# Library merges (lodash merge/defaultsDeep/set, deep-extend, mixin-deep, jQuery extend) block
+# __proto__ in their fixed releases; their vulnerable versions are dependency advisories, not this pack.
+rules:
+  - id: syn-node-prototype-pollution-key
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Request input chooses a property name in a nested write (obj[a][b] = value). With a set
+      to "__proto__" (or "constructor" then "prototype") the write lands on Object.prototype and
+      changes every object in the process. Refuse those key names, or keep the data in a Map or
+      an Object.create(null) object.
+    metadata:
+      cwe: "CWE-1321: Improperly Controlled Modification of Object Prototype Attributes ('Prototype Pollution')"
+      owasp: "A08:2021 - Software and Data Integrity Failures"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-node
+      references:
+        - https://cwe.mitre.org/data/definitions/1321.html
+    # Minified / bundled browser files are not server code, and taint analysis of a big bundle can
+    # run past Opengrep's per-file timeout. Only file-basename globs: Opengrep matches rule paths
+    # against the absolute path, so a folder name here could match a parent of the project.
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.min.mjs"
+        - "*-min.js"
+        - "*.bundle.js"
+        - "*-bundle.js"
+        - "*.chunk.js"
+    mode: taint
+    pattern-sources:
+      # Next.js: `const|let|var { x } = (await request.json()) as T` (taint is otherwise lost at the cast).
+      - patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  const {..., $FIELD, ...} = (await $REQ.json()) as $TYPE;
+                  ...
+              - pattern-inside: |
+                  let {..., $FIELD, ...} = (await $REQ.json()) as $TYPE;
+                  ...
+              - pattern-inside: |
+                  var {..., $FIELD, ...} = (await $REQ.json()) as $TYPE;
+                  ...
+          - pattern: $FIELD
+      # H3 / Nuxt readers, only when they are h3's: imported from h3 / #imports / nitropack (named,
+      # aliased or namespace; Opengrep resolves the import) ...
+      - patterns:
+          - pattern: $NS.$H3FN($EVENT, ...)
+          - metavariable-regex:
+              metavariable: $NS
+              regex: ^(h3|#imports|nitropack|nitropack/runtime)$
+          - metavariable-regex:
+              metavariable: $H3FN
+              regex: ^(readBody|readFormData|readRawBody|getQuery|getRouterParam|getRouterParams)$
+      # ... or called with the event parameter of a defineEventHandler / eventHandler handler (inline,
+      # object form or passed by reference; Nuxt auto-imports) or of a function typed H3Event.
+      - patterns:
+          - pattern-either:
+              - pattern-inside: $DEFINE(($EVENT) => { ... })
+              - pattern-inside: $DEFINE(async ($EVENT) => { ... })
+              - pattern-inside: '$DEFINE(($EVENT: $T) => { ... })'
+              - pattern-inside: '$DEFINE(async ($EVENT: $T) => { ... })'
+              - pattern-inside: $DEFINE(function ($EVENT) { ... })
+              - pattern-inside: $DEFINE(async function ($EVENT) { ... })
+              - pattern-inside: '$DEFINE({..., handler: ($EVENT) => { ... }, ...})'
+              - pattern-inside: '$DEFINE({..., handler: async ($EVENT) => { ... }, ...})'
+              - pattern-inside: '$DEFINE({..., handler: async function ($EVENT) { ... }, ...})'
+              - pattern-inside: |
+                  function $H($EVENT) { ... }
+                  ...
+                  $DEFINE($H)
+              - pattern-inside: |
+                  async function $H($EVENT) { ... }
+                  ...
+                  $DEFINE($H)
+              - pattern-inside: |
+                  $H = ($EVENT) => { ... };
+                  ...
+                  $DEFINE($H)
+              - pattern-inside: |
+                  $H = async ($EVENT) => { ... };
+                  ...
+                  $DEFINE($H)
+          - metavariable-regex:
+              metavariable: $DEFINE
+              regex: ^(defineEventHandler|eventHandler|defineCachedEventHandler)$
+          - pattern: $H3FN($EVENT, ...)
+          - metavariable-regex:
+              metavariable: $H3FN
+              regex: ^(readBody|readFormData|readRawBody|getQuery|getRouterParam|getRouterParams)$
+      - patterns:
+          - pattern-either:
+              - pattern-inside: 'function $F(..., $EVENT: H3Event, ...) { ... }'
+              - pattern-inside: 'async function $F(..., $EVENT: H3Event, ...) { ... }'
+              - pattern-inside: '($EVENT: H3Event) => { ... }'
+              - pattern-inside: 'async ($EVENT: H3Event) => { ... }'
+          - pattern: $H3FN($EVENT, ...)
+          - metavariable-regex:
+              metavariable: $H3FN
+              regex: ^(readBody|readFormData|readRawBody|getQuery|getRouterParam|getRouterParams)$
+      # Hono: c.req.* only on a route handler's context parameter (inline or by reference) or on a
+      # parameter typed Context.
+      - patterns:
+          - pattern-either:
+              - pattern-inside: $APP.$VERB(..., ($HC) => { ... })
+              - pattern-inside: $APP.$VERB(..., async ($HC) => { ... })
+              - pattern-inside: $APP.$VERB(..., function ($HC) { ... })
+              - pattern-inside: $APP.$VERB(..., async function ($HC) { ... })
+              - pattern-inside: |
+                  function $H($HC) { ... }
+                  ...
+                  $APP.$VERB(..., $H)
+              - pattern-inside: |
+                  async function $H($HC) { ... }
+                  ...
+                  $APP.$VERB(..., $H)
+              - pattern-inside: |
+                  $H = ($HC) => { ... };
+                  ...
+                  $APP.$VERB(..., $H)
+              - pattern-inside: |
+                  $H = async ($HC) => { ... };
+                  ...
+                  $APP.$VERB(..., $H)
+          - metavariable-regex:
+              metavariable: $VERB
+              regex: ^(get|post|put|patch|delete|all|on|use|options|head)$
+          - pattern-either:
+              - pattern: $HC.req.query(...)
+              - pattern: $HC.req.queries(...)
+              - pattern: $HC.req.param(...)
+              - pattern: $HC.req.json()
+              - pattern: $HC.req.parseBody(...)
+              - pattern: $HC.req.formData()
+              - pattern: $HC.req.text()
+      - patterns:
+          - pattern-either:
+              - pattern-inside: 'function $F(..., $HC: Context, ...) { ... }'
+              - pattern-inside: 'async function $F(..., $HC: Context, ...) { ... }'
+              - pattern-inside: '($HC: Context) => { ... }'
+              - pattern-inside: 'async ($HC: Context) => { ... }'
+          - pattern-either:
+              - pattern: $HC.req.query(...)
+              - pattern: $HC.req.queries(...)
+              - pattern: $HC.req.param(...)
+              - pattern: $HC.req.json()
+              - pattern: $HC.req.parseBody(...)
+              - pattern: $HC.req.formData()
+              - pattern: $HC.req.text()
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.query
+              - pattern: $REQ.body
+              - pattern: $REQ.params
+              - pattern: $REQ.json()
+              - pattern: $REQ.nextUrl.searchParams
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|request|ctx|ctx\.request|context)$
+      - patterns:
+          - pattern-inside: |
+              class $C {
+                ...
+                $M(..., @$DEC(...) $ARG, ...) { ... }
+                ...
+              }
+          - metavariable-regex:
+              metavariable: $DEC
+              regex: ^(Body|Query|Param)$
+          - pattern: $ARG
+    pattern-sanitizers:
+      - pattern: parseInt(...)
+      - pattern: Number(...)
+      - by-side-effect: true
+        patterns:
+          - pattern-either:
+              - pattern: $K === "__proto__"
+              - pattern: $K !== "__proto__"
+              - pattern: $K == "__proto__"
+              - pattern: $K != "__proto__"
+              - pattern: $LIST.includes($K)
+              - pattern: $LIST.has($K)
+          - focus-metavariable: $K
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $OBJ[$K][$K2] = $V
+              - pattern: $OBJ[$K][$K2][$K3] = $V
+          - focus-metavariable: $K
+
+  - id: syn-node-prototype-pollution-merge
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      This recursive merge/copy helper walks every key of the source object and recurses into it
+      without skipping "__proto__", "constructor" or "prototype". Fed parsed JSON (a request body,
+      a config file) it can write onto Object.prototype. Skip those three keys, or iterate only
+      keys you expect.
+    metadata:
+      cwe: "CWE-1321: Improperly Controlled Modification of Object Prototype Attributes ('Prototype Pollution')"
+      owasp: "A08:2021 - Software and Data Integrity Failures"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-node
+      references:
+        - https://cwe.mitre.org/data/definitions/1321.html
+    # Minified / bundled browser files are not server code, and taint analysis of a big bundle can
+    # run past Opengrep's per-file timeout. Only file-basename globs: Opengrep matches rule paths
+    # against the absolute path, so a folder name here could match a parent of the project.
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.min.mjs"
+        - "*-min.js"
+        - "*.bundle.js"
+        - "*-bundle.js"
+        - "*.chunk.js"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              function $F(...) {
+                ...
+                for (const $K in $S) {
+                  ...
+                  $F(..., $T[$K], ..., $S[$K], ...);
+                  ...
+                }
+                ...
+              }
+          - pattern: |
+              function $F(...) {
+                ...
+                for (let $K in $S) {
+                  ...
+                  $F(..., $T[$K], ..., $S[$K], ...);
+                  ...
+                }
+                ...
+              }
+          - pattern: |
+              function $F(...) {
+                ...
+                for (var $K in $S) {
+                  ...
+                  $F(..., $T[$K], ..., $S[$K], ...);
+                  ...
+                }
+                ...
+              }
+          - pattern: |
+              function $F(...) {
+                ...
+                for (const $K of Object.keys($S)) {
+                  ...
+                  $F(..., $T[$K], ..., $S[$K], ...);
+                  ...
+                }
+                ...
+              }
+          - pattern: |
+              function $F(...) {
+                ...
+                Object.keys($S).forEach(($K) => {
+                  ...
+                  $F(..., $T[$K], ..., $S[$K], ...);
+                  ...
+                });
+                ...
+              }
+          - pattern: |
+              function $F(...) {
+                ...
+                for (const [$K, $V] of Object.entries($S)) {
+                  ...
+                  $F(..., $T[$K], ..., $V, ...);
+                  ...
+                }
+                ...
+              }
+      # The helper must also write through a computed key, or it only reads.
+      - pattern: |
+          function $F(...) {
+            ...
+            $TARGET[$K] = $VALUE;
+            ...
+          }
+      - pattern-not-regex: __proto__|["'`]constructor["'`]|["'`]prototype["'`]|Object\.create\(\s*null\s*\)

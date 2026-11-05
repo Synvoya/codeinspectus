@@ -57,6 +57,9 @@ describe("public SDK process wrapper", () => {
     // Final review I-2: the typed scan can opt in to accepting declared coverage gaps.
     const accepted = await client.scan(target, { acceptGaps: ["php-sast", "deno-lock"] });
     expect(accepted.args).toEqual(["scan", resolve(target), "--format", "json", "--accept-gaps", "php-sast,deno-lock"]);
+    // 4.0: licence findings are opt-in.
+    const licensed = await client.scan(target, { includeLicenses: true });
+    expect(licensed.args).toEqual(["scan", resolve(target), "--format", "json", "--licenses"]);
   });
 
   test("rejects incompatible typed contracts with the bounded process result attached", async () => {
@@ -108,7 +111,7 @@ describe("public SDK process wrapper", () => {
     const client = new CodeInspectusClient();
     await expect(client.run(["--version"], { signal: controller.signal })).rejects.toBeInstanceOf(CodeInspectusSdkError);
     await expect(client.run(["--version"], { signal: controller.signal })).rejects.toMatchObject({ code: "ABORTED" });
-    expect(SDK_COMPATIBILITY).toMatchObject({ export_schema: "3.0.0", repository_trust_schema: "1.0.0", cleanup_schema: "1.0.0", bundle_schema: "1.1.0", bundle_schemas_verified: ["1.0.0", "1.1.0"], repository_history_schema: "1.0.0", issue_payload_schema: "1.0.0", cli_major: 3 });
+    expect(SDK_COMPATIBILITY).toMatchObject({ export_schema: "3.0.0", repository_trust_schema: "1.0.0", cleanup_schema: "1.0.0", bundle_schema: "1.1.0", bundle_schemas_verified: ["1.0.0", "1.1.0"], repository_history_schema: "1.0.0", issue_payload_schema: "1.0.0", cli_major: 4 });
     // The SDK keeps literals (no runtime import of the bundle schemas); they must match what this release seals.
     expect(SDK_COMPATIBILITY.bundle_schema).toBe(BUNDLE_SCHEMA_VERSION);
     expect(Object.isFrozen(SDK_COMPATIBILITY.bundle_schemas_verified)).toBe(true);

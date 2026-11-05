@@ -88,7 +88,9 @@ re-host or redistribute this data, and none of these downloaded databases is inc
 package (the separate offline Pub snapshot described below is). Scans never download anything.
 
 Only language-package ecosystems are on the download allow-list: npm, PyPI, Packagist, Go,
-crates.io, RubyGems, Maven, NuGet, and Pub. Distribution ecosystems are never downloaded. OSV
+crates.io, RubyGems, Maven, NuGet, and Pub, plus GitHub Actions (GitHub Advisory Database records
+only, CC BY 4.0), which CodeInspectus's Synvoya Actions matcher reads instead of osv-scanner.
+Distribution ecosystems are never downloaded. OSV
 publishes no signature for these archives, so integrity rests on TLS to that one host plus a
 SHA-256 CodeInspectus records at install time.
 
@@ -139,6 +141,7 @@ package distributed by npm retains its own package metadata and license file.
 | Package | Version | License | Copyright / project |
 |---|---:|---|---|
 | `@modelcontextprotocol/sdk` | 1.30.0 | MIT | Copyright (c) 2024 Anthropic, PBC |
+| `@babel/parser` | 7.25.0 | MIT | Copyright (C) 2012-2014 by various contributors (see AUTHORS); JavaScript/TypeScript parser for the native packs, no runtime dependencies of its own |
 | `@contentauth/c2pa-node` | 0.9.3 | MIT | Content Authenticity Initiative / Adobe contributors; optional native C2PA validator |
 | `@contentauth/c2pa-types` | 0.7.4 | MIT | Copyright 2025 Adobe (package LICENSE) |
 | `@contentauth/c2pa-utilities` | 0.2.2 | MIT | Content Authenticity Initiative / Adobe contributors |

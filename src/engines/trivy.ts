@@ -17,7 +17,7 @@ import { execBinary } from "./exec.js";
 import { log } from "../logger.js";
 import type { EngineOutput } from "./types.js";
 import type { SarifLog } from "../sarif/types.js";
-import { invocationSignature, readTrivyDbContentDigest, signature } from "../provenance.js";
+import { invocationSignature, readTrivyDbContentDigest, signature, TRIVY_LICENSE_TOGGLED_INVOCATION } from "../provenance.js";
 import { devScopeFromReport, foldDevDuplicates, markDevScope } from "./trivy-dev-scope.js";
 import { osvEcosystemForFile } from "../osv/ecosystems.js";
 
@@ -75,6 +75,29 @@ export interface TrivySbomRun {
   content?: string;
 }
 
+/**
+ * The Trivy invocation signature, and the signature of the same invocation with `license` added to (or removed
+ * from) `--scanners`. Licence findings are opt-in, so an unchanged vuln/misconfig/secret check must not read as
+ * changed only because the licence scanner was switched; `componentSignaturesMatch` accepts either form.
+ */
+export function trivyInvocationSignatures(
+  target: string,
+  reportPath: string,
+  sarifPath: string,
+  scanners: TrivyScanner[],
+): Record<string, string> {
+  const signatureFor = (list: TrivyScanner[]): string =>
+    invocationSignature("trivy", [...buildTrivyArgs(target, reportPath, list), "&&", ...buildTrivyConvertArgs(reportPath, sarifPath)].map((arg) =>
+      arg === sarifPath || arg === reportPath ? "<managed-temp>"
+        : arg === MANAGED_TRIVY_CACHE ? "<managed-cache>"
+          : arg === target ? "<target>"
+            : arg));
+  const toggled = scanners.includes("license")
+    ? scanners.filter((scanner) => scanner !== "license")
+    : [...scanners, "license" as const];
+  return { "trivy:invocation": signatureFor(scanners), [TRIVY_LICENSE_TOGGLED_INVOCATION]: signatureFor(toggled) };
+}
+
 export async function runTrivy(
   target: string,
   tmpDir: string,
@@ -94,11 +117,7 @@ export async function runTrivy(
       "trivy:binary": `sha256:${bin.sha256}`,
       // Trivy's built-in secret/license/misconfiguration checks ship with the verified binary.
       "trivy:checks": signature(`trivy:checks\0${bin.sha256}`),
-      "trivy:invocation": invocationSignature("trivy", [...args, "&&", ...convertArgs].map((arg) =>
-        arg === sarifPath || arg === reportPath ? "<managed-temp>"
-          : arg === MANAGED_TRIVY_CACHE ? "<managed-cache>"
-            : arg === target ? "<target>"
-              : arg)),
+      ...trivyInvocationSignatures(target, reportPath, sarifPath, scanners),
       ...(dbSignature ? { "trivy:vulnerability-db": dbSignature } : {}),
     };
     await mkdir(MANAGED_TRIVY_CACHE, { recursive: true });

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 
-import { COVERAGE_GAP_IDS, SAST_COVERED_LANGUAGES, describeCoverageGap, discoverCoverageGaps, gapsFromFiles } from "./coverage-gaps.js";
+import { COVERAGE_GAP_IDS, SAST_COVERED_LANGUAGES, actionsUncheckedGap, describeCoverageGap, discoverCoverageGaps, gapsFromFiles } from "./coverage-gaps.js";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -26,14 +26,17 @@ async function tree(files: Record<string, string>): Promise<string> {
 describe("declared coverage gaps", () => {
   test("names each gap with its file count and examples, outside skipped and locked inputs", async () => {
     const root = await tree({
+      // The Synvoya PHP pack covers PHP source (.php, .phtml): no php-sast gap for these.
       "src/index.php": "<?php echo $_GET['q'];\n",
       "src/view.phtml": "<?= $x ?>\n",
-      "vendor/acme/lib/Lib.php": "<?php\n",
-      ".next/server/app/page.php": "<?php\n",
+      // Twig templates are not PHP to Opengrep and remain the php-sast gap.
+      "src/view.twig": "{{ q }}\n",
+      "vendor/acme/lib/base.twig": "{{ q }}\n",
+      ".next/server/app/page.twig": "{{ q }}\n",
       // Review M3: Opengrep's skip list is case-sensitive, so Build/ is scanned and counted.
-      "Build/Gen.php": "<?php\n",
+      "Build/Gen.twig": "{{ q }}\n",
       // Fix round 3: only BUILD_DIRS are skipped; Opengrep scans coverage/, so it is counted.
-      "coverage/lcov-report/x.php": "<?php\n",
+      "coverage/lcov-report/x.twig": "{{ q }}\n",
       "tests/helper.rb": "puts 1\n",
       "cmd/main.go": "package main\n",
       "app.ts": "export {};\n",
@@ -63,7 +66,7 @@ describe("declared coverage gaps", () => {
 
     expect(limitation).toBeUndefined();
     expect(gaps).toEqual([
-      { id: "php-sast", files: 4, examples: ["Build/Gen.php", "coverage/lcov-report/x.php", "src/index.php", "src/view.phtml"] },
+      { id: "php-sast", files: 3, examples: ["Build/Gen.twig", "coverage/lcov-report/x.twig", "src/view.twig"] },
       { id: "go-sast", files: 1, examples: ["cmd/main.go"] },
       { id: "deno-lock", files: 1, examples: ["deno.lock"] },
       { id: "bun-lockb", files: 1, examples: ["edge/bun.lockb"] },
@@ -114,11 +117,11 @@ describe("declared coverage gaps", () => {
   // Security review: gap and note examples never show a name with a bidi override or separator.
   test("unsafe file names are counted but not shown as examples", async () => {
     const { gaps, scriptNote } = await discoverCoverageGaps(await tree({
-      "src/evil\u202egnp.php": "<?php\n",
-      "src/ok.php": "<?php\n",
+      "src/evil\u202egnp.twig": "{{ q }}\n",
+      "src/ok.twig": "{{ q }}\n",
       "bin/run\u2028x.sh": "#!/bin/sh\n",
     }));
-    expect(gaps).toEqual([{ id: "php-sast", files: 2, examples: ["src/ok.php"] }]);
+    expect(gaps).toEqual([{ id: "php-sast", files: 2, examples: ["src/ok.twig"] }]);
     expect(scriptNote).toBe("No bundled SAST rules read 1 shell file(s) (informational, not a coverage gap).");
   });
 
@@ -134,7 +137,8 @@ describe("declared coverage gaps", () => {
       "templates/base.html.twig": "{{ q|raw }}\n",
     }));
     expect(gaps).toEqual([
-      { id: "php-sast", files: 2, examples: ["resources/views/home.blade.php", "templates/base.html.twig"] },
+      // The Synvoya PHP pack parses .blade.php as PHP (plus a Blade raw-output rule); Twig stays a gap.
+      { id: "php-sast", files: 1, examples: ["templates/base.html.twig"] },
       { id: "ruby-sast", files: 1, examples: ["app/views/home.html.erb"] },
       { id: "java-sast", files: 2, examples: ["web/index.jsp", "web/page.jspx"] },
       { id: "csharp-sast", files: 2, examples: ["Components/Counter.razor", "Pages/Index.cshtml"] },
@@ -175,6 +179,34 @@ describe("declared coverage gaps", () => {
         "org/shared/.github/workflows/build.yml@main (.github/workflows/ci.yml)",
         "actions/checkout@v4 (.github/workflows/ci.yml)", "tj-actions/changed-files@v35 (.github/workflows/ci.yml)"] },
     ]);
+  });
+
+  // Task M2-5: once the Synvoya Actions matcher ran, only the references it could not evaluate stay in the gap.
+  test("discovery lists every workflow reference and file; the gap keeps only references the Actions matcher did not evaluate", async () => {
+    const workflow = "jobs:\n  t:\n    steps:\n      - uses: actions/checkout@v4\n      - uses: tj-actions/changed-files@main\n      - uses: docker://alpine:3.20\n";
+    const discovery = await discoverCoverageGaps(await tree({
+      ".github/workflows/a.yml": workflow,
+      ".github/workflows/b.yml": "jobs:\n  t:\n    steps:\n      - uses: actions/checkout@v4\n",
+    }));
+    expect(discovery.actionReferences).toEqual([
+      { reference: "actions/checkout@v4", file: ".github/workflows/a.yml" },
+      { reference: "tj-actions/changed-files@main", file: ".github/workflows/a.yml" },
+      { reference: "docker://alpine:3.20", file: ".github/workflows/a.yml" },
+      { reference: "actions/checkout@v4", file: ".github/workflows/b.yml" },
+    ]);
+    // Discovery alone: every reference, once, as before.
+    expect(discovery.gaps.find((gap) => gap.id === "actions-unchecked")?.files).toBe(3);
+    const evaluated = new Set([".github/workflows/a.yml\0actions/checkout@v4"]);
+    // b.yml's checkout was not evaluated (say its file was skipped), so that reference stays, named with b.yml;
+    // a composite action's reference the reader saw but could not evaluate joins the gap.
+    expect(actionsUncheckedGap([...discovery.actionReferences!, { reference: "x/y@dev", file: "action.yml" }], evaluated)).toEqual({
+      id: "actions-unchecked", files: 4, examples: [
+        "actions/checkout@v4 (.github/workflows/b.yml)", "tj-actions/changed-files@main (.github/workflows/a.yml)",
+        "docker://alpine:3.20 (.github/workflows/a.yml)", "x/y@dev (action.yml)",
+      ],
+    });
+    const all = new Set(discovery.actionReferences!.map((entry) => `${entry.file}\0${entry.reference}`));
+    expect(actionsUncheckedGap(discovery.actionReferences!, all)).toBeUndefined();
   });
 
   // Security review: repeated entries in a crafted lockfile are counted once, in linear time.
@@ -346,11 +378,23 @@ describe("declared coverage gaps", () => {
   });
 
   test("describes a gap and marks an accepted one as still not covered", () => {
-    const gap = { id: "php-sast" as const, files: 7, examples: ["a.php", "b.php", "c.php", "d.php", "e.php"] };
+    const gap = { id: "go-sast" as const, files: 7, examples: ["a.go", "b.go", "c.go", "d.go", "e.go"] };
     expect(describeCoverageGap(gap, false)).toBe(
-      "7 php source file(s) have no bundled SAST rules (php-sast): a.php, b.php, c.php, d.php, e.php, ….",
+      "7 go source file(s) have no bundled SAST rules (go-sast): a.go, b.go, c.go, d.go, e.go, ….",
+    );
+    expect(describeCoverageGap({ id: "php-sast", files: 2, examples: ["a.twig", "b.twig"] }, false)).toBe(
+      "2 Twig template file(s) have no bundled SAST rules (the Synvoya PHP pack reads .php, .phtml and .blade.php only) (php-sast): a.twig, b.twig.",
     );
     expect(describeCoverageGap(gap, true)).toMatch(/Accepted with accept_gaps; still not covered\.$/);
+  });
+
+  test("describes the Synvoya pack's skipped bundles (M4 Task 4)", () => {
+    expect(describeCoverageGap({ id: "third-party-bundles", files: 2, examples: ["assets/js/ckeditor/ckeditor.js", "lib/x.js"] }, false)).toBe(
+      "2 vendored or minified bundle file(s) were skipped by the Opengrep taint rules, which cannot finish on them " +
+        "(the Synvoya PHP and Node packs and the taint-mode baseline rules: syn-php-*, syn-node-*, ci-baseline-sql-injection-string-build); " +
+        "the other baseline Opengrep rules still scanned them (third-party-bundles): " +
+        "assets/js/ckeditor/ckeditor.js, lib/x.js.",
+    );
   });
 
   test("ids are stable lowercase strings", () => {
@@ -365,9 +409,12 @@ describe("declared coverage gaps", () => {
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
       for (const match of (await readFile(join(directory, file), "utf8")).matchAll(/languages:\s*\[([^\]]*)\]/g)) {
-        for (const language of match[1]!.split(",")) declared.add(language.trim());
+        // `generic` (regex over named deploy files) is not a code language and closes no `<language>-sast` gap.
+        for (const language of match[1]!.split(",")) if (language.trim() !== "generic") declared.add(language.trim());
       }
     }
+    // `generic` rules read configuration files and Blade templates, not a source language.
+    declared.delete("generic");
     expect([...declared].sort()).toEqual([...SAST_COVERED_LANGUAGES].sort());
   });
 });

@@ -44,3 +44,13 @@ rule's originality is ever in doubt, remove it pending review rather than ship i
 Every rule carries `metadata.cwe` so CodeInspectus's normalizer and compliance
 mapper work unchanged. Files are plain local YAML — fully offline, no scan-time
 fetch. Keep all files ASCII-only (Opengrep reads rule files as ASCII).
+
+**2026-11-04 precision pass (design 10.6).** Field triage over 27 public repositories found the
+string-built SQL and DOM HTML-sink rules reporting mostly constants, escaped values and same-origin
+markup. `ci-baseline-sql-injection-string-build` was rewritten in Opengrep taint mode,
+`ci-baseline-dom-xss-innerhtml` now needs a DOM-XSS source in the written value (directly or through
+one variable), `ci-baseline-nosql-injection` was narrowed to MongoDB-style receivers, and
+`ci-baseline-dangerous-eval` gained literal-only exclusions. The source, sink and sanitizer lists
+were written from the field triage and the framework APIs they name (Express/Next.js request
+objects, the browser URL and postMessage APIs, MongoDB/Mongoose query methods); no registry or
+third-party rule was consulted or copied. Rule ids are unchanged.

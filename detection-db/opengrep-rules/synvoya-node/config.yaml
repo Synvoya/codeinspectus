@@ -1,0 +1,123 @@
+# Synvoya Node.js pack (original Apache-2.0 rules; see LICENSE-PROVENANCE.md). ASCII-only.
+# Framework configuration and insecure application defaults (Express, Fastify, Koa, NestJS).
+# ci-ai-insecure-session-cookie (native pack) covers res.cookie()/cookies().set() calls; the
+# session rules here cover the session middleware options instead, so the two never meet.
+rules:
+  - id: syn-node-session-cookie-insecure
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      The session middleware sets its cookie with secure: false or httpOnly: false outside a
+      development-only branch. The session id then travels over plain HTTP or is readable by page
+      scripts. Set secure: true (with trust proxy configured for a TLS-terminating proxy) and keep
+      httpOnly: true.
+    metadata:
+      cwe: "CWE-614: Sensitive Cookie in HTTPS Session Without 'Secure' Attribute"
+      owasp: "A05:2021 - Security Misconfiguration"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-node
+      references:
+        - https://cwe.mitre.org/data/definitions/614.html
+        - https://cwe.mitre.org/data/definitions/1004.html
+    # Minified / bundled browser files are not server code, and taint analysis of a big bundle can
+    # run past Opengrep's per-file timeout. Only file-basename globs: Opengrep matches rule paths
+    # against the absolute path, so a folder name here could match a parent of the project.
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.min.mjs"
+        - "*-min.js"
+        - "*.bundle.js"
+        - "*-bundle.js"
+        - "*.chunk.js"
+    patterns:
+      - pattern-either:
+          - pattern: '$SESSION({..., cookie: {..., secure: false, ...}, ...})'
+          - pattern: '$SESSION({..., cookie: {..., httpOnly: false, ...}, ...})'
+          - pattern: '$SESSION({..., secure: false, ...})'
+          - pattern: '$SESSION({..., httpOnly: false, ...})'
+      - metavariable-regex:
+          metavariable: $SESSION
+          regex: ^(session|expressSession|cookieSession|koaSession)$
+      - pattern-not-inside: |
+          if (<... $ENV.NODE_ENV ...>) { ... }
+      - pattern-not-inside: |
+          if (<... $APP.get("env") ...>) { ... }
+      - pattern-not-inside: |
+          if (<... $ENV.NODE_ENV ...>) { ... } else { ... }
+
+  - id: syn-node-nestjs-validation-pipe-no-whitelist
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      The global NestJS ValidationPipe is created without whitelist: true. Properties that the
+      DTO does not declare pass through to the handler, so a client can set fields such as role
+      or isAdmin on objects you save. Use new ValidationPipe({ whitelist: true,
+      forbidNonWhitelisted: true }).
+    metadata:
+      cwe: "CWE-915: Improperly Controlled Modification of Dynamically-Determined Object Attributes"
+      owasp: "A08:2021 - Software and Data Integrity Failures"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-node
+      references:
+        - https://cwe.mitre.org/data/definitions/915.html
+        - https://docs.nestjs.com/techniques/validation
+    # Minified / bundled browser files are not server code, and taint analysis of a big bundle can
+    # run past Opengrep's per-file timeout. Only file-basename globs: Opengrep matches rule paths
+    # against the absolute path, so a folder name here could match a parent of the project.
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.min.mjs"
+        - "*-min.js"
+        - "*.bundle.js"
+        - "*-bundle.js"
+        - "*.chunk.js"
+    patterns:
+      - pattern-either:
+          - pattern-inside: $APP.useGlobalPipes(...)
+          - pattern-inside: '{..., provide: APP_PIPE, ...}'
+      - pattern-either:
+          - pattern: new ValidationPipe()
+          - pattern: new ValidationPipe({...})
+      - pattern-not: 'new ValidationPipe({..., whitelist: true, ...})'
+
+  - id: syn-node-trust-proxy-unconditional
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      The framework is told to trust every proxy hop unconditionally. Any client can then set
+      X-Forwarded-For / X-Forwarded-Proto and choose the IP address and protocol the app sees,
+      which defeats IP rate limits, IP allow-lists, audit logs and secure-cookie checks. Trust only
+      the number of proxies you run (for example 1) or their addresses.
+    metadata:
+      cwe: "CWE-348: Use of Less Trusted Source"
+      owasp: "A05:2021 - Security Misconfiguration"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-node
+      references:
+        - https://cwe.mitre.org/data/definitions/348.html
+        - https://expressjs.com/en/guide/behind-proxies.html
+    # Minified / bundled browser files are not server code, and taint analysis of a big bundle can
+    # run past Opengrep's per-file timeout. Only file-basename globs: Opengrep matches rule paths
+    # against the absolute path, so a folder name here could match a parent of the project.
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.min.mjs"
+        - "*-min.js"
+        - "*.bundle.js"
+        - "*-bundle.js"
+        - "*.chunk.js"
+    patterns:
+      - pattern-either:
+          - pattern: $APP.set("trust proxy", true)
+          - pattern: $APP.enable("trust proxy")
+          - pattern: '$FASTIFY({..., trustProxy: true, ...})'
+      - pattern-not-inside: |
+          if (...) { ... }
+      - pattern-not-inside: |
+          if (...) { ... } else { ... }

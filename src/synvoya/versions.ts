@@ -438,6 +438,8 @@ const ECOSYSTEM_SCHEMES: Record<string, VersionScheme> = {
   go: "go",
   nuget: "dotnet",
   maven: "maven",
+  // Action release tags are compared as semver once their leading `v` is removed.
+  "github actions": "semver",
 };
 
 export function schemeFor(target: SynvoyaAdvisory["target"]): VersionScheme {

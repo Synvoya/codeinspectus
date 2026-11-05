@@ -110,6 +110,36 @@ const TOKEN_RE = /[A-Za-z0-9+/_=-]{20,}/g;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SRI_RE = /^sha(?:256|384|512)-[A-Za-z0-9+/]+=*$/;
 const COMMIT_SHA_RE = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
+// The tail of a Go pseudo-version after its last dot: `0-20191009234506-e7c1f5e7dbb8` (a timestamp and a commit prefix).
+const GO_PSEUDO_VERSION_RE = /^(?:\d+-)?\d{14}-[0-9a-f]{12}$/;
+// A path part that reads as a name: lowercase words and numbers, CamelCase humps, or an all-caps word.
+const PATH_WORD_RE = /^(?:[a-z0-9]+|[A-Z]?[a-z0-9]+(?:[A-Z][a-z0-9]+)*|[A-Z]{2,})$/;
+
+// A provider secret prefix at the start of a segment or of one of its `-`/`_` pieces.
+const SECRET_PREFIX_RE = /(?:^|[_-])(?:sk_|rk_|pk_live|gh[pousr][_-]|github_pat_|glpat-|xox[abp]-|AKIA|ASIA|AIza|SG\.|eyJ)/;
+
+/** One `/`-separated segment of a path, judged whole and then by its `-`/`_` pieces. */
+function isPathSegment(segment: string): boolean {
+  if (segment === "") return true;
+  if (SECRET_PREFIX_RE.test(segment)) return false;
+  // A long letter-and-digit segment of high entropy is a token, however its pieces read (`Qx7Rt9-Lm3Np8-Vb2Wk6`).
+  if (segment.length >= 16 && /[0-9]/.test(segment) && /[A-Za-z]/.test(segment) && shannonEntropy(segment) >= 3.5) return false;
+  // Fail closed on pieces: a 20+ character letter-and-digit piece is never a path word, whatever its entropy.
+  return segment.split(/[_.-]/).every((part) =>
+    part === "" || (PATH_WORD_RE.test(part) && !(part.length >= 20 && /[0-9]/.test(part) && /[A-Za-z]/.test(part))));
+}
+
+/**
+ * A repository or URL path (`github/workflows/desktop-e2e` of `.github/workflows/desktop-e2e.yml`,
+ * `com/nvd/cve-2026-67312`): no base64 `+` or `=`, and every `/`-separated segment reads as a path segment
+ * as a whole (no provider secret prefix, no long high-entropy letter-and-digit run) and by its pieces (all
+ * names, none a 20+ character letter-and-digit run). A base64 secret that contains `/` has mixed-case runs (`wJalrXUtnFEMI/K7MDENG/…`), and a secret
+ * split by `-`/`_` after a `/` fails the whole-segment test, so both are still masked.
+ */
+function isPlainPath(token: string): boolean {
+  if (!token.includes("/") || /[+=]/.test(token)) return false;
+  return token.split("/").every(isPathSegment);
+}
 
 function shannonEntropy(value: string): number {
   const counts = new Map<string, number>();
@@ -186,7 +216,7 @@ export function scrubCredentialContext(text: string, options: CredentialScrubOpt
       ? match
       : `${prefix}${masked(value.length)}`);
   return out.replace(TOKEN_RE, (token, offset: number, whole: string) => {
-    if (UUID_RE.test(token) || SRI_RE.test(token)) return token;
+    if (UUID_RE.test(token) || SRI_RE.test(token) || GO_PSEUDO_VERSION_RE.test(token) || isPlainPath(token)) return token;
     if (whole[offset - 1] === "@" && COMMIT_SHA_RE.test(token)) return token;
     return /[0-9]/.test(token) && /[A-Za-z]/.test(token) && shannonEntropy(token) >= 3.5 ? masked(token.length) : token;
   });

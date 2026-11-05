@@ -13,7 +13,7 @@
  * - verdict `verified` / `corrected` ships non-provisional with the verified affected, fixed and sources;
  *   `provisional` ships `provisional: true` with the candidate range, where a fixed release the verifier
  *   did not confirm becomes a `limit` (the range stays, the fix claim goes); `drop` never ships.
- * - Entries whose reader is a later milestone's (GitHub Actions, the Go stdlib via SBOM) get `requires: "M2"`;
+ * - Entries whose reader does not exist yet (the mutable-tag config class) get `requires: "M2"`;
  *   entries whose flaw needs a platform no reader can see (Windows PHP-CGI) get `requires: "platform-detection"`.
  * - Adobe Commerce, ColdFusion, WebLogic and WSO2 fixes are hotfixes or patch levels a version string does
  *   not show: `product_rule: "verify-hotfix"` with the bulletin id in `aliases`; a range bounded by `limit`
@@ -83,6 +83,16 @@ const PACKAGE_ECOSYSTEM = {
   CPAN: "CPAN",
   RubyGems: "RubyGems",
   "crates.io": "crates.io",
+};
+
+/**
+ * Locked package → the package name GitHub advisories file it under. The OSV Packagist database keys Magento
+ * Open Source advisories on `magento/community-edition` (362 advisories, checked 2026-11-04), never on the
+ * packages a Composer install locks; it names no Adobe Commerce package, so none is aliased.
+ */
+const PACKAGE_ALIASES = {
+  "Packagist:magento/magento2-base": "Packagist:magento/community-edition",
+  "Packagist:magento/product-community-edition": "Packagist:magento/community-edition",
 };
 
 /**
@@ -200,18 +210,21 @@ const EOL_PRODUCTS = [
   { slug: "apache-http-server", keys: ["httpd"] },
 ];
 
-/** Later-milestone readers: GitHub Actions matcher and Go stdlib via SBOM (design §10.1, §4.4). */
-const REQUIRES_M2 = new Set([
-  "SYN-2026-019", "SYN-2026-020", "SYN-2026-219", // Go stdlib (go.mod → pkg:golang/stdlib SBOM)
-  "SYN-2026-068", "SYN-2026-069", "SYN-2026-070", "SYN-2026-076", "SYN-2026-077", "SYN-2026-326", // GitHub Actions
-]);
+/**
+ * Entries still waiting for a reader. M2 activated the Go stdlib entries (runtime reader + the go.mod SBOM route)
+ * and the GitHub Actions advisories (Actions matcher); SYN-2026-070 is a hygiene class ("mutable action tag") with
+ * no version to compare, which M2 reports as one info note and not as a finding.
+ */
+const REQUIRES_M2 = new Set(["SYN-2026-070"]);
 
 /**
  * Flaws with a platform precondition no M1 reader can see: never evaluated until one can (`requires`).
  * SYN-2026-150, CVE-2024-4577: PHP-CGI on Windows with certain code pages only (NVD, php.net advisory
  * GHSA-3qgc-jrrr-25jv); a version alone fires on every Linux image and Composer platform value.
+ * SYN-2026-219, CVE-2020-0601: a Windows CryptoAPI flaw; the Go change is a Windows-only workaround, so a Go
+ * version alone (a Linux golang image) is no evidence of exposure.
  */
-const REQUIRES_PLATFORM = new Set(["SYN-2026-150"]);
+const REQUIRES_PLATFORM = new Set(["SYN-2026-150", "SYN-2026-219"]);
 
 /**
  * Approved but not representable without inventing data: no version, range or tag in any source.
@@ -797,7 +810,7 @@ async function main() {
   const issues = validate(advisories, verdicts, eol.entries);
   if (issues.length > 0) throw new Error(issues.join("\n"));
 
-  const aliases = { packages: {}, imageAliases: IMAGE_ALIASES, productImages: PRODUCT_IMAGES };
+  const aliases = { packages: PACKAGE_ALIASES, imageAliases: IMAGE_ALIASES, productImages: PRODUCT_IMAGES };
   await mkdir(args.out, { recursive: true });
   await writeFile(join(args.out, "advisories.json"), `${JSON.stringify({ advisories }, null, 2)}\n`);
   await writeFile(join(args.out, "aliases.json"), `${JSON.stringify(aliases, null, 2)}\n`);

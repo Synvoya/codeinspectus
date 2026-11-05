@@ -187,6 +187,69 @@ const eolEntrySchema = z
 
 const eolFileSchema = z.object({ entries: z.array(eolEntrySchema).min(1) }).strict();
 
+/** Anchored, one capture group, no unbounded repeated group (a ReDoS shape); matched only against bounded comment text. */
+const bannerSchema = z
+  .string()
+  .min(2)
+  .max(300)
+  .superRefine((source, ctx) => {
+    if (!source.startsWith("^")) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A banner regex must be anchored with ^." });
+      return;
+    }
+    if (/\)[*+]|\)\{\d+,\}/.test(source)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A banner regex must not repeat a group without an upper bound." });
+      return;
+    }
+    let groups: number;
+    try {
+      groups = (new RegExp(`${source}|`).exec("")?.length ?? 1) - 1;
+    } catch {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A banner regex must compile." });
+      return;
+    }
+    if (groups !== 1) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A banner regex must have exactly one capture group (the version)." });
+    }
+  });
+
+const npmNameSchema = z.string().regex(/^(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*$/).max(214);
+
+const libraryEntrySchema = z
+  .object({
+    npm: npmNameSchema,
+    banners: z.array(bannerSchema).max(8),
+    fileStems: z.array(z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/)).max(8),
+    cdnPaths: z.array(z.string().regex(/^[a-z0-9@][a-z0-9._@/-]{0,95}$/)).max(8),
+  })
+  .strict()
+  .refine((entry) => entry.banners.length + entry.fileStems.length + entry.cdnPaths.length > 0, {
+    message: "A library must list at least one banner, file stem or CDN path.",
+  });
+
+const librariesFileSchema = z
+  .object({ libraries: z.array(libraryEntrySchema).min(1).max(500) })
+  .strict()
+  .superRefine((file, ctx) => {
+    const claimed = new Map<string, string>();
+    for (const entry of file.libraries) {
+      const keys = [
+        `npm:${entry.npm}`,
+        ...entry.fileStems.map((stem) => `stem:${stem}`),
+        ...entry.cdnPaths.map((path) => `cdn:${path}`),
+      ];
+      for (const key of keys) {
+        const owner = claimed.get(key);
+        if (owner !== undefined && owner !== entry.npm) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${key} is claimed by both ${owner} and ${entry.npm}.` });
+        } else if (owner === entry.npm && key.startsWith("npm:")) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Duplicate library ${entry.npm}.` });
+        }
+        claimed.set(key, entry.npm);
+      }
+    }
+  });
+
 const manifestSchema = z
   .object({
     schema_version: z.literal("1.0.0"),
@@ -197,6 +260,7 @@ const manifestSchema = z
         "advisories.json": digestSchema,
         "aliases.json": digestSchema,
         "eol.json": digestSchema,
+        "libraries.json": digestSchema,
       })
       .strict(),
   })
@@ -293,6 +357,7 @@ export async function loadSynvoyaDataset(dir: string = SYNVOYA_DATASET_DIR): Pro
     const advisories = parseJson("advisories.json", verified.get("advisories.json")!, advisoriesFileSchema);
     const aliases = parseJson("aliases.json", verified.get("aliases.json")!, aliasesFileSchema);
     const eol = parseJson("eol.json", verified.get("eol.json")!, eolFileSchema);
+    const libraries = parseJson("libraries.json", verified.get("libraries.json")!, librariesFileSchema);
 
     return {
       ok: true,
@@ -305,6 +370,7 @@ export async function loadSynvoyaDataset(dir: string = SYNVOYA_DATASET_DIR): Pro
         imageAliases: aliases.imageAliases,
         productImages: aliases.productImages,
         eol: eol.entries,
+        libraries,
       },
     };
   } catch (error) {

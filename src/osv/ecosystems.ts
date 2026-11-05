@@ -2,7 +2,8 @@
  * OSV database ecosystems CodeInspectus may download, and the lockfile names that say a
  * repository uses one.
  *
- * The allow-list is language ecosystems only. Distro ecosystems (Debian, Alpine, Ubuntu, Wolfi,
+ * The allow-list is language ecosystems, plus "GitHub Actions" (read by the Synvoya Actions matcher, never
+ * by osv-scanner: see OSV_DB_NOTES). Distro ecosystems (Debian, Alpine, Ubuntu, Wolfi,
  * Chainguard, ...) are deliberately absent: osv-scanner scans package manifests here, and a
  * distro database would be a large download that no lockfile in a source repository can use.
  *
@@ -26,11 +27,15 @@ export const OSV_ECOSYSTEMS = [
   "Maven",
   "NuGet",
   "Pub",
+  "GitHub Actions",
 ] as const;
 
 export type OsvEcosystem = (typeof OSV_ECOSYSTEMS)[number];
 
-/** Size of each `all.zip`, in bytes, measured 2026-10-30. Estimates only: the databases change upstream. */
+/**
+ * Size of each `all.zip`, in bytes, measured 2026-10-30 (GitHub Actions: 2026-11-04, Content-Length of the
+ * live bucket object). Estimates only: the databases change upstream.
+ */
 export const OSV_DB_SIZE_ESTIMATES: Record<OsvEcosystem, number> = {
   npm: 219_599_455,
   PyPI: 37_544_046,
@@ -41,6 +46,18 @@ export const OSV_DB_SIZE_ESTIMATES: Record<OsvEcosystem, number> = {
   Maven: 10_466_352,
   NuGet: 2_680_919,
   Pub: 25_896,
+  "GitHub Actions": 100_334,
+};
+
+/**
+ * What the setup plan says about a database beyond its size: where its records come from and their licence,
+ * and which engine reads it. GitHub Actions records are GitHub Advisory Database (GHSA) entries, licensed
+ * CC-BY-4.0 (attribution in docs/RULE-PROVENANCE.md).
+ */
+export const OSV_DB_NOTES: Readonly<Partial<Record<OsvEcosystem, string>>> = {
+  "GitHub Actions":
+    "GitHub Advisory Database (GHSA) records, CC-BY-4.0; read by the Synvoya Actions matcher for third-party `uses:` " +
+    "references in workflows, never by osv-scanner",
 };
 
 /**
@@ -290,9 +307,38 @@ export async function detectOsvLockfiles(target: string): Promise<OsvLockfile[]>
   return found.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
 }
 
-/** Ecosystems whose lockfiles appear under `target` (see detectOsvLockfiles), in allow-list order. */
+const WORKFLOW_FILE = /\.ya?ml$/i;
+
+/**
+ * Whether `target` has a GitHub Actions workflow: a regular `.yml`/`.yaml` file directly in its
+ * `.github/workflows/` folder, or the target is one. Names only; a link is never followed.
+ */
+async function hasWorkflow(target: string): Promise<boolean> {
+  try {
+    const info = await lstat(target);
+    if (info.isFile()) return WORKFLOW_FILE.test(target) && /[\\/]\.github[\\/]workflows[\\/][^\\/]+$/.test(target);
+    if (!info.isDirectory()) return false;
+    const folder = join(target, ".github", "workflows");
+    if (!(await lstat(join(target, ".github"))).isDirectory() || !(await lstat(folder)).isDirectory()) return false;
+    let inspected = 0;
+    for await (const entry of await opendir(folder)) {
+      if (entry.isFile() && WORKFLOW_FILE.test(entry.name)) return true;
+      if (++inspected >= DEFAULT_DETECTION_LIMITS.maxEntries) return false;
+    }
+  } catch {
+    // Unreadable: nothing is offered for it.
+  }
+  return false;
+}
+
+/**
+ * Ecosystems whose lockfiles appear under `target` (see detectOsvLockfiles), plus GitHub Actions when it has a
+ * workflow (never a lockfile: osv-scanner does not read it), in allow-list order.
+ */
 export async function detectOsvEcosystems(target: string): Promise<OsvEcosystem[]> {
-  const found = new Set((await detectOsvLockfiles(target)).map((lockfile) => lockfile.ecosystem));
+  const [lockfiles, workflow] = await Promise.all([detectOsvLockfiles(target), hasWorkflow(target)]);
+  const found = new Set<OsvEcosystem>(lockfiles.map((lockfile) => lockfile.ecosystem));
+  if (workflow) found.add("GitHub Actions");
   return OSV_ECOSYSTEMS.filter((ecosystem) => found.has(ecosystem));
 }
 

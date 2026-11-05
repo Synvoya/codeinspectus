@@ -53,6 +53,59 @@ describe("Opengrep file-level coverage", () => {
     expect(coverage.parseErrors).toEqual({ id: "sast-parse-errors", files: 1, examples: ["src/broken.js"] });
   });
 
+  // Field run 2026-11-05: 22/40 repos read SAST-partial only because images, PDFs, binaries or lockfiles exceeded
+  // the size limit (the pack pass's generic rules list every file). Those files are no source a bundled rule reads.
+  test("size skips of images, fonts, media, archives, documents, binaries, lockfiles, maps and data dumps are a note, not partial", () => {
+    const files = [
+      "screenshot.gif", "docs/Manual.PDF", "src/composer.lock", "package-lock.json", "assets/logo.png", "fonts/a.ttf",
+      "fonts/b.woff2", "media/intro.mp4", "release.zip", "bin/addon.dylib.node", "dist/app.js.map", "dump/lobbywatch.sql",
+      "data/export.csv", "yarn.lock", "pnpm-lock.yaml", "fixtures/photo.jpeg", "composer.phar",
+    ];
+    const coverage = opengrepFileCoverage(report({
+      skipped: files.map((rel) => ({ path: `${TARGET}/${rel}`, reason: "exceeded_size_limit" })),
+    }), TARGET);
+    expect(coverage.warning).toBeUndefined();
+    expect(coverage.parseErrors).toBeUndefined();
+    expect(coverage.note).toBe(
+      "Opengrep skipped 17 non-source file(s) over its file size limit (images, fonts, media, archives, documents, " +
+        "binaries, lockfiles, source maps or data dumps); no bundled SAST rule reads them (informational, not a coverage gap): " +
+        "screenshot.gif, docs/Manual.PDF, src/composer.lock, package-lock.json, assets/logo.png, ….",
+    );
+  });
+
+  test.each(["src/huge.js", "lib/big.ts", "app/view.tsx", "a.jsx", "m.mjs", "c.cjs", "tool/gen.py", "web/index.php", "t/page.phtml",
+    "Dockerfile", "docker-compose.yml", ".env", "phpstan-baseline.neon", "index.html", "data.json", "noextension"])(
+    "a size skip of %s (a source language or an unlisted kind) stays partial beside the note",
+    (rel) => {
+      const coverage = opengrepFileCoverage(report({
+        skipped: [
+          { path: `${TARGET}/${rel}`, reason: "exceeded_size_limit" },
+          { path: `${TARGET}/logo.png`, reason: "exceeded_size_limit" },
+        ],
+      }), TARGET);
+      expect(coverage.warning).toBe(`Opengrep SAST coverage partial: 1 over Opengrep's file size limit: ${rel}.`);
+      expect(coverage.note).toMatch(/^Opengrep skipped 1 non-source file\(s\) over its file size limit .*: logo\.png\.$/);
+    },
+  );
+
+  test("only a size skip can be non-source: a timeout on a .sql file and a size skip outside the target stay partial", () => {
+    const coverage = opengrepFileCoverage(report({
+      skipped: [{ path: "/elsewhere/logo.png", reason: "exceeded_size_limit" }],
+      errors: [{ type: "Timeout", level: "warn", path: `${TARGET}/lobbywatch.sql`, message: "…" }],
+    }), TARGET);
+    expect(coverage).toEqual({
+      warning: "Opengrep SAST coverage partial: 1 over Opengrep's file size limit; 1 with a timeout, memory limit or engine error: lobbywatch.sql.",
+    });
+  });
+
+  test("a non-source size skip with an unsafe name is counted in the note but never echoed", () => {
+    const coverage = opengrepFileCoverage(report({ skipped: [{ path: `${TARGET}/x‮gnp.png`, reason: "too_big" }] }), TARGET);
+    expect(coverage).toEqual({
+      note: "Opengrep skipped 1 non-source file(s) over its file size limit (images, fonts, media, archives, documents, " +
+        "binaries, lockfiles, source maps or data dumps); no bundled SAST rule reads them (informational, not a coverage gap).",
+    });
+  });
+
   // Ruling 14: parser limits are an acceptable declared gap, never a non-acceptable warning.
   test("syntax, lexical and partial-parsing errors alone add only the sast-parse-errors gap", () => {
     const files = ["z.ts", "a.js", "m/b.py", "c.js", "d.js", "e.js"].map((name) => `${TARGET}/${name}`);

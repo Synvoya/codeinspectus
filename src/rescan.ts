@@ -10,7 +10,7 @@
 
 import { lstat } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { executeScan } from "./scan.js";
+import { executeScan, scanIncludedLicenses } from "./scan.js";
 import { requireSafeScanTarget } from "./path-safety.js";
 import { getScan, getLatestScanForTarget, isFullScan, normalizeStoredScanForRuntime } from "./store.js";
 import { findingsMatch, pairMovedFindings } from "./dedup.js";
@@ -19,7 +19,7 @@ import { SEVERITY_RANK } from "./types.js";
 import type { Finding, RescanResult, ScanResult, Severity } from "./types.js";
 import type { RescanInput } from "./schemas.js";
 import { diffRepositoryTrust } from "./repository-trust/diff.js";
-import { SYNVOYA_PRODUCERS, synvoyaProducerOf, type SynvoyaProducer } from "./provenance.js";
+import { componentSignaturesMatch, SYNVOYA_PRODUCERS, synvoyaProducerOf, type SynvoyaProducer } from "./provenance.js";
 
 /**
  * Diff a prior scan against a fresh rescan by fingerprint, gating "resolved" on provability.
@@ -96,9 +96,16 @@ export function diffRescan(prior: ScanResult, fresh: ScanResult, missingFiles: R
       reasons.add(`${missing.join(", ")} did not run in the rescan`);
       continue;
     }
-    // A Synvoya finding resolves only from its own producers; one with no recorded producer never does.
+    // Trivy runs in a scan that did not ask for licences, so its engine row cannot vouch for a licence finding.
+    if (f.finding_kind === "license" && fresh.scan_config?.include_licenses === false) {
+      not_rechecked.push(f);
+      reasons.add("licence findings were not requested in the rescan (include_licenses / --licenses)");
+      continue;
+    }
+    // A Synvoya finding resolves only from its own producers; one with no recorded producer never does. So
+    // does any finding that records a Synvoya producer (osv-scanner's findings from the vendored-library SBOM).
     const producers = (f.producer_components ?? []).flatMap((component) => synvoyaProducerOf(component) ?? []);
-    if (f.engines.includes("synvoya") && (producers.length === 0 || producers.some((producer) => !checkedByProducer.get(producer)!.has(f.location.file)))) {
+    if ((f.engines.includes("synvoya") || producers.length > 0) && (producers.length === 0 || producers.some((producer) => !checkedByProducer.get(producer)!.has(f.location.file)))) {
       not_rechecked.push(f);
       reasons.add("the Synvoya gap layer did not fully re-check this finding's file in the rescan (skipped, read only in part, removed or moved)");
       continue;
@@ -109,11 +116,10 @@ export function diffRescan(prior: ScanResult, fresh: ScanResult, missingFiles: R
       reasons.add("the prior scan did not record which detector components produced this finding");
       continue;
     }
-    const changedComponents = requiredComponents.filter((component) => {
-      const priorSignature = prior.component_signatures?.[component];
-      const freshSignature = fresh.component_signatures?.[component];
-      return !priorSignature || !freshSignature || priorSignature !== freshSignature;
-    });
+    const changedComponents = requiredComponents.filter((component) =>
+      f.finding_kind === "license"
+        ? !prior.component_signatures?.[component] || prior.component_signatures[component] !== fresh.component_signatures?.[component]
+        : !componentSignaturesMatch(component, prior.component_signatures, fresh.component_signatures));
     if (changedComponents.length) {
       not_rechecked.push(f);
       reasons.add("we can't tell whether you fixed this; the checks changed");
@@ -236,6 +242,7 @@ export async function runRescan(input: RescanInput): Promise<RescanResult> {
     severity_threshold: undefined,
     scanners: input.scanners ?? prior.scan_config?.scanners,
     max_findings: input.max_findings ?? prior.scan_config?.max_findings,
+    include_licenses: scanIncludedLicenses(prior),
     include_compliance: false,
   })).canonical;
 

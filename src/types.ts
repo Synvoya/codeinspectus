@@ -380,14 +380,15 @@ export interface ScanResult {
   /** Component id -> content/semantic signature. Optional only for legacy stored scans. */
   component_signatures?: Record<string, string>;
   /**
-   * Per Synvoya producer (`runtime`, `images`, `products` readers; `inventory:osv-scanner`,
-   * `inventory:trivy`), the target-relative files it fully checked in this scan. Rescan proof only: a prior
+   * Per Synvoya producer (`runtime`, `images`, `products`, `vendored` readers; `inventory:osv-scanner`,
+   * `inventory:trivy`; `sbom:osv-scanner`, the osv-scanner run over vendored libraries), the target-relative
+   * files it fully checked in this scan. Rescan proof only: a prior
    * Synvoya finding resolves only when every producer it records (`synvoya:<producer>` producer
    * components) lists its file here; otherwise (skipped, read in part, unresolvable, removed, moved, or the
    * set omitted) it is not re-checked. Kept in the canonical (stored) scan; not in the display projection
    * or the export.
    */
-  synvoya_checked?: Partial<Record<"runtime" | "images" | "products" | "inventory:osv-scanner" | "inventory:trivy", string[]>>;
+  synvoya_checked?: Partial<Record<"runtime" | "images" | "products" | "inventory:osv-scanner" | "inventory:trivy" | "vendored" | "sbom:osv-scanner" | "actions", string[]>>;
   /** Code-visible runtime-control evidence. Metadata only; never affects posture scores. */
   security_control_evidence?: SecurityControlEvidence[];
   /** Actionable advisory when a completed Trivy vuln scan lacks install-time DB provenance. */
@@ -417,6 +418,11 @@ export interface ScanConfig {
   severity_threshold?: Severity;
   /** The effective max_findings cap actually applied. */
   max_findings: number;
+  /**
+   * Whether Trivy licence findings were requested (4.0: opt-in). Absent on scans stored before 4.0, which always
+   * ran licences unless a scanner filter left them out; use `scanIncludedLicenses`.
+   */
+  include_licenses?: boolean;
 }
 
 export interface RescanResult {

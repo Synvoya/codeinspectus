@@ -73,8 +73,8 @@ vi.mock("../osv/database.js", async (importOriginal) => ({
 const { MANAGED_OSV_DB, MANAGED_OSV_CONFIG } = await import("../config.js");
 const { EngineUnavailableError, resolveEngine } = await import("./resolve.js");
 const { osvDbZipPath } = await import("../osv/database.js");
-const { buildOsvScannerArgs, runOsvScanner } = await import("./osv-scanner.js");
-const { osvScannerFindingComponents } = await import("../provenance.js");
+const { buildOsvScannerArgs, buildOsvScannerSbomArgs, OSV_SBOM_FILE_NAME, osvSbomInvocationSignature, runOsvScanner, runOsvScannerOnSbom } = await import("./osv-scanner.js");
+const { osvSbomFindingComponents, osvScannerFindingComponents } = await import("../provenance.js");
 
 const FIXTURES = resolve(process.cwd(), "fixtures/osv");
 const STOPPED_EARLY =
@@ -574,6 +574,19 @@ describe("osv-scanner result mapping", () => {
     expect(line("brotli")).toMatchObject({ start_line: 2, end_line: 2 });
     expect(line("brotlicffi")).toMatchObject({ start_line: 3, end_line: 3 });
     expect(line("requests")).toMatchObject({ start_line: 4, end_line: 4 });
+  });
+
+  it("locates the package's own versioned entry, never a longer name containing it (PicGo tar)", async () => {
+    const lockfile = [
+      "lockfileVersion: '9.0'", "packages:", "  '@babel/helper-compilation-targets@7.27.2':", "    resolution: {}",
+      "  tar@6.2.1:", "    resolution: {}", "  tar@7.5.2:", "    resolution: {}",
+    ].join("\n");
+    const output = doc("pnpm-lock.yaml", [pkg("npm", "tar", "7.5.2", [{ ids: ["GHSA-aaaa-bbbb-cccc"] }])]);
+    const { result } = await scan({ code: 1, output, lockfiles: { "pnpm-lock.yaml": lockfile }, db: { npm: "installed" } });
+
+    expect(result.findings[0]!.location).toMatchObject({ start_line: 7, end_line: 7 });
+    // The line is not a fingerprint input.
+    expect(result.findings[0]!.fingerprint).toBe(makeFingerprint(["osv-scanner", "pnpm-lock.yaml", "tar", "7.5.2", "GHSA-aaaa-bbbb-cccc"]));
   });
 
   it("falls back to line 1 when the lockfile cannot be read", async () => {
@@ -1566,5 +1579,205 @@ describe("osv-scanner run outcomes", () => {
 
     expect(result.findings).toEqual([]);
     expect(result.info.ran).toBe(false);
+  });
+});
+
+describe("osv-scanner over the per-scan SBOM", () => {
+  const JQUERY = pkg("npm", "jquery", "1.12.4", [{ ids: ["GHSA-6c3j-c64m-qhgq"], aliases: ["CVE-2019-11358"], max_severity: "6.1" }], [
+    { id: "GHSA-6c3j-c64m-qhgq", summary: "Prototype Pollution in jQuery", affected: [{ package: { ecosystem: "npm", name: "jquery" }, ranges: [{ type: "SEMVER", events: [{ introduced: "0" }, { fixed: "3.4.0" }] }] }] },
+  ]);
+  const declared = (file: string, line: number) => ({ file, line, lead: `${file}:${line} ships npm package jquery@1.12.4.` });
+
+  async function sbomRun(options: {
+    output?: object | null;
+    code?: number;
+    timedOut?: boolean;
+    stderr?: string;
+    db?: Partial<Record<OsvEcosystem, DbMode>>;
+    ecosystems?: OsvEcosystem[];
+    locate?: Parameters<typeof runOsvScannerOnSbom>[2]["locate"];
+    expected?: Parameters<typeof runOsvScannerOnSbom>[2]["expected"];
+  } = {}) {
+    const base = await mkdtemp(join(tmpdir(), "codeinspectus-osv-sbom-"));
+    cleanup.push(base);
+    const workDir = join(base, "synvoya-sbom");
+    await mkdir(workDir, { recursive: true });
+    const sbomPath = join(workDir, OSV_SBOM_FILE_NAME);
+    await writeFile(sbomPath, "{}", "utf8");
+    state.records.clear();
+    for (const [ecosystem, mode] of Object.entries(options.db ?? { npm: "installed" }) as Array<[OsvEcosystem, DbMode]>) {
+      if (mode !== "archive-only") state.records.set(ecosystem, dbRecord(ecosystem));
+      if (mode !== "record-only") {
+        await mkdir(join(osvDbZipPath(ecosystem), ".."), { recursive: true });
+        await writeFile(osvDbZipPath(ecosystem), mode === "mismatched" ? "zip!+" : "zip!", "utf8");
+      }
+    }
+    execBinary.mockImplementation(async (_binary: string, args: string[]) => {
+      const outputPath = args[args.indexOf("--output-file") + 1]!;
+      if (options.output !== null) {
+        const document = options.output ?? { results: [{ source: { path: sbomPath, type: "sbom" }, packages: [JQUERY] }] };
+        await writeFile(outputPath, JSON.stringify(document), "utf8");
+      }
+      return { code: options.code ?? 1, stdout: "", stderr: options.stderr ?? "", timedOut: options.timedOut ?? false };
+    });
+    const result = await runOsvScannerOnSbom(sbomPath, workDir, {
+      ecosystems: options.ecosystems ?? ["npm"],
+      expected: options.expected ?? [],
+      locate: options.locate ?? ((found) => (found.name === "jquery" && found.version === "1.12.4" ? [declared("public/js/jquery-1.12.4.min.js", 1), declared("index.html", 3)] : [])),
+    });
+    return { result, workDir, base };
+  }
+
+  it("takes the main run's flags with -L and the SBOM's own name, never -r", () => {
+    const args = buildOsvScannerSbomArgs(OSV_SBOM_FILE_NAME, "/managed-temp/out.json", "/managed/osv-scanner.toml");
+    expect(args).toEqual([
+      ...buildOsvScannerArgs("/repo", "/managed-temp/out.json", "/managed/osv-scanner.toml").slice(0, -2),
+      "-L", "inventory.cdx.json",
+    ]);
+    expect(args).not.toContain("-r");
+    expect(() => buildOsvScannerSbomArgs("sbom.json", "/o", "/c")).toThrow(/inventory\.cdx\.json/);
+    expect(osvSbomInvocationSignature()).toBe(invocationSignature("osv-scanner", buildOsvScannerSbomArgs(OSV_SBOM_FILE_NAME, "<managed-temp>", "<managed-config>")));
+  });
+
+  it("runs offline in the SBOM's folder with its own overlay, and reports each package at every declaration, never at the SBOM", async () => {
+    const { result, workDir, base } = await sbomRun();
+    const [binary, args, execOptions] = execBinary.mock.calls[0]!;
+    expect(binary).toBe("/test/osv-scanner");
+    expect(args.at(-1)).toBe(OSV_SBOM_FILE_NAME);
+    expect(execOptions).toMatchObject({ cwd: workDir, offline: true, env: { OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY: join(workDir, "osv-db-overlay") } });
+    expect(result).toMatchObject({ state: "ran", complete: true, warnings: [], missingDatabases: [] });
+    expect(result.findings.map((finding) => `${finding.rule_id}@${finding.location.file}:${finding.location.start_line}`)).toEqual([
+      "CVE-2019-11358@public/js/jquery-1.12.4.min.js:1",
+      "CVE-2019-11358@index.html:3",
+    ]);
+    for (const finding of result.findings) {
+      expect(findingSchema.parse(finding)).toBeTruthy();
+      expect(finding).toMatchObject({ engine: "osv-scanner", engines: ["osv-scanner"], package: { ecosystem: "npm", name: "jquery", version: "1.12.4" } });
+      expect(finding.producer_components).toEqual(osvSbomFindingComponents("npm"));
+      expect(finding.message.startsWith(`${finding.location.file}:${finding.location.start_line} ships npm package jquery@1.12.4. `)).toBe(true);
+      expect(JSON.stringify(finding)).not.toContain(base);
+      expect(JSON.stringify(finding)).not.toContain(OSV_SBOM_FILE_NAME);
+    }
+  });
+
+  it("a location grouped by vendored root keys its fingerprint on the root, not on the file it is shown at", async () => {
+    const at = (file: string) => ({ ...declared(file, 1), fingerprintScope: "public/libs/jquery" });
+    const fingerprintAt = async (file: string) =>
+      (await sbomRun({ locate: (found) => (found.name === "jquery" ? [at(file)] : []) })).result.findings[0]!;
+    const first = await fingerprintAt("public/libs/jquery/jquery.min.js");
+    const moved = await fingerprintAt("public/libs/jquery/a/jquery.min.js");
+    expect(first.location.file).toBe("public/libs/jquery/jquery.min.js");
+    expect(moved.fingerprint).toBe(first.fingerprint);
+    expect(first.id).toBe(first.fingerprint);
+    expect(first.fingerprint).toBe(makeFingerprint(["osv-scanner", "vendored-root", "public/libs/jquery", "jquery", "1.12.4", "CVE-2019-11358"]));
+  });
+
+  it("never runs without the needed database: unavailable, naming it", async () => {
+    const { result } = await sbomRun({ db: { PyPI: "installed" } });
+    expect(execBinary).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ state: "unavailable", missingDatabases: ["npm"], complete: false, findings: [] });
+  });
+
+  it("a missing database for one needed ecosystem does not stop the others: the run goes ahead and names it", async () => {
+    const { result } = await sbomRun({
+      db: { npm: "installed" },
+      ecosystems: ["npm", "Packagist"],
+      expected: [{ ecosystem: "npm", name: "jquery", version: "1.12.4" }, { ecosystem: "Packagist", name: "magento/community-edition", version: "2.4.7-p2" }],
+    });
+    expect(execBinary).toHaveBeenCalledTimes(1);
+    // Complete for what it could check; the caller treats the missing ecosystem's packages as not checked.
+    expect(result).toMatchObject({ state: "ran", complete: true, missingDatabases: ["Packagist"], warnings: [] });
+    expect(result.findings).toHaveLength(2);
+  });
+
+  it("a package checked under its advisory name is reported under the name the repository declares, with the advisory's fixes", async () => {
+    const magento = pkg("Packagist", "magento/community-edition", "2.4.7-p2", [{ ids: ["GHSA-2qhq-fw98-h6wg"], aliases: ["CVE-2024-45115"], max_severity: "9.8" }], [{
+      id: "GHSA-2qhq-fw98-h6wg",
+      summary: "Magento Open Source allows Improper Authentication",
+      affected: [{ package: { ecosystem: "Packagist", name: "magento/community-edition" }, ranges: [{ type: "ECOSYSTEM", events: [{ introduced: "2.4.7-beta1" }, { fixed: "2.4.7-p3" }] }] }],
+    }]);
+    const { result } = await sbomRun({
+      db: { Packagist: "installed" },
+      ecosystems: ["Packagist"],
+      output: { results: [{ source: { path: "<sbom>", type: "sbom" }, packages: [magento] }] },
+      expected: [{ ecosystem: "Packagist", name: "magento/community-edition", version: "2.4.7-p2" }],
+      locate: (found) => found.name === "magento/community-edition"
+        ? [{ file: "src/composer.lock", line: 17142, lead: "src/composer.lock:17142 locks magento/product-community-edition 2.4.7-p2.", declaredName: "magento/product-community-edition" }]
+        : [],
+    });
+    expect(result).toMatchObject({ state: "ran", complete: true });
+    const [finding] = result.findings;
+    expect(findingSchema.parse(finding)).toBeTruthy();
+    expect(finding).toMatchObject({
+      rule_id: "CVE-2024-45115",
+      vulnerability_aliases: ["GHSA-2qhq-fw98-h6wg"],
+      location: { file: "src/composer.lock", start_line: 17142, end_line: 17142 },
+      package: { ecosystem: "Packagist", name: "magento/product-community-edition", version: "2.4.7-p2" },
+      title: "Magento Open Source allows Improper Authentication (magento/product-community-edition@2.4.7-p2)",
+      producer_components: osvSbomFindingComponents("Packagist"),
+    });
+    expect(finding!.remediation.summary).toBe("Upgrade magento/product-community-edition to 2.4.7-p3, the fixed release listed upstream, or remove the package.");
+    expect(finding!.message.startsWith("src/composer.lock:17142 locks magento/product-community-edition 2.4.7-p2. CVE-2024-45115")).toBe(true);
+    // The fingerprint is the main run's formula over the declared package, so the main run's own finding
+    // for the same advisory on that package in that file is the same finding (the caller folds it).
+    expect(finding!.fingerprint).toBe(makeFingerprint(["osv-scanner", "src/composer.lock", "magento/product-community-edition", "2.4.7-p2", "CVE-2024-45115"]));
+  });
+
+  it("an engine that is not installed is unavailable", async () => {
+    vi.mocked(resolveEngine).mockRejectedValueOnce(new EngineUnavailableError("osv-scanner", "missing", "Engine 'osv-scanner' is not available."));
+    const { result } = await sbomRun();
+    expect(result).toMatchObject({ state: "unavailable", reason: "osv-scanner is not installed", findings: [] });
+  });
+
+  it.each([
+    ["a timeout", { timedOut: true }, /timed out/],
+    ["an unexpected exit", { code: 2, stderr: "boom: failed to read" }, /exited with code 2/],
+    ["no output file", { output: null, code: 0 }, /no output file/],
+    ["output that is not a result", { output: { nope: true }, code: 0 }, /not the expected JSON/],
+    ["exit 1 with nothing mappable", { locate: () => [] }, /could not be mapped/],
+  ])("%s is a failed run with a reason that names no local path", async (_label, options, reason) => {
+    const { result, base } = await sbomRun(options as Parameters<typeof sbomRun>[0]);
+    expect(result.state).toBe("failed");
+    expect(result.reason).toMatch(reason);
+    expect(result.reason).not.toContain(base);
+    expect(result.complete).toBe(false);
+  });
+
+  it("a package the SBOM names that osv-scanner does not list makes the run incomplete (review m1)", async () => {
+    const clean = pkg("npm", "bootstrap", "3.3.7");
+    const listedAll = await sbomRun({
+      output: { results: [{ source: { path: "<sbom>" }, packages: [JQUERY, clean] }] },
+      expected: [{ ecosystem: "npm", name: "jquery", version: "1.12.4" }, { ecosystem: "npm", name: "bootstrap", version: "3.3.7" }],
+    });
+    expect(listedAll.result).toMatchObject({ state: "ran", complete: true, warnings: [] });
+
+    const skipped = await sbomRun({
+      output: { results: [{ source: { path: "<sbom>" }, packages: [JQUERY] }] },
+      expected: [{ ecosystem: "npm", name: "jquery", version: "1.12.4" }, { ecosystem: "npm", name: "bootstrap", version: "3.3.7" }],
+    });
+    expect(skipped.result).toMatchObject({ state: "ran", complete: false });
+    expect(skipped.result.findings).toHaveLength(2);
+    expect(skipped.result.warnings).toEqual(["osv-scanner did not list 1 package the SBOM names, so it was not checked."]);
+
+    // A clean run (exit 0) that lists nothing at all is incomplete too, never a clean check.
+    const empty = await sbomRun({ output: { results: [] }, code: 0, expected: [{ ecosystem: "npm", name: "bootstrap", version: "3.3.7" }] });
+    expect(empty.result).toMatchObject({ state: "ran", complete: false, findings: [] });
+  });
+
+  it("an advisory for a package the SBOM did not name, a stop at a database, or an unrecorded database makes the run incomplete", async () => {
+    const other = pkg("npm", "left-pad", "1.0.0", [{ ids: ["GHSA-xxxx-yyyy-zzzz"] }]);
+    const sbomPath = "<sbom>";
+    const unnamed = await sbomRun({ output: { results: [{ source: { path: sbomPath }, packages: [JQUERY, other] }] } });
+    expect(unnamed.result).toMatchObject({ state: "ran", complete: false });
+    expect(unnamed.result.findings).toHaveLength(2);
+    expect(unnamed.result.warnings.join(" ")).toContain("did not name");
+
+    const stopped = await sbomRun({ stderr: "could not load db for npm ecosystem" });
+    expect(stopped.result).toMatchObject({ state: "ran", complete: false });
+    expect(stopped.result.warnings).toContain(STOPPED_EARLY);
+
+    const unrecorded = await sbomRun({ db: { npm: "mismatched" } });
+    expect(unrecorded.result).toMatchObject({ state: "ran", complete: false });
+    expect(unrecorded.result.warnings.join(" ")).toContain("no install record");
   });
 });

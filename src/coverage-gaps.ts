@@ -13,6 +13,7 @@ import { basename, dirname, join, posix, relative } from "node:path";
 
 import { BUILD_DIRS } from "./config.js";
 import { isDisplayablePath } from "./display-path.js";
+import { OPENGREP_BUNDLE_SKIPPING_RULES_LABEL } from "./provenance.js";
 import type { ScanResult } from "./types.js";
 
 export const COVERAGE_GAP_IDS = [
@@ -22,8 +23,9 @@ export const COVERAGE_GAP_IDS = [
   "vue-sast", "svelte-sast", "astro-sast", "objc-sast", "elixir-sast", "erlang-sast", "lua-sast", "perl-sast",
   "groovy-sast", "clojure-sast", "haskell-sast", "ocaml-sast", "r-sast", "julia-sast", "zig-sast", "solidity-sast",
   "vb-sast",
-  // Reported by the Opengrep run, not by discovery: files whose only errors were parser limits.
-  "sast-parse-errors",
+  // Reported by the Opengrep run, not by discovery: files whose only errors were parser limits, and
+  // vendored or minified bundles the bundle-skipping Opengrep pass skipped (M4 Task 4; taint baseline rules since the M4 perf fix).
+  "sast-parse-errors", "third-party-bundles",
   // Reported by the native packs and technology detection (native-gaps.ts): deterministic limits.
   "native-parse-errors", "oversized-files", "native-token-budget", "express-routes-unresolved", "nextjs-routes-unresolved",
   "symlinked-paths",
@@ -32,14 +34,17 @@ export const COVERAGE_GAP_IDS = [
   // Review I-1 / re-review N-2: Maven dependencies Trivy drops even with --include-dev-deps.
   "dev-deps-unscanned",
   "deno-lock", "bun-lockb", "no-lockfile-npm", "no-lockfile-composer", "npm-shrinkwrap-unread",
+  // Reported by the Synvoya layer: exact vendored or CDN libraries osv-scanner could not check (no engine or npm DB).
+  "vendored-js",
 ] as const;
 export type CoverageGapId = (typeof COVERAGE_GAP_IDS)[number];
 
 /** Languages with source files but no bundled code-pattern (Opengrep) rules: `<language>-sast`. */
 const SAST_GAP_EXTENSIONS: Readonly<Partial<Record<CoverageGapId, readonly string[]>>> = {
-  // Server templates with embedded code count toward their language (fix round 3); `.blade.php` is `.php`,
-  // and Twig (Symfony, Drupal) counts as PHP.
-  "php-sast": [".php", ".phtml", ".twig"],
+  // Server templates with embedded code count toward their language (fix round 3). The Synvoya PHP pack
+  // (detection-db/opengrep-rules/synvoya-php) covers .php, .phtml and .blade.php, which Opengrep parses
+  // as PHP; Twig templates (Symfony, Drupal) are not PHP to Opengrep and stay a php-sast gap.
+  "php-sast": [".twig"],
   "ruby-sast": [".rb", ".erb"],
   "java-sast": [".java", ".jsp", ".jspx"],
   "kotlin-sast": [".kt", ".kts"],
@@ -84,8 +89,11 @@ const SCRIPT_KINDS: ReadonlyArray<readonly [string, (name: string, extension: st
   ["PowerShell", (_name, extension) => [".ps1", ".psm1", ".psd1"].includes(extension)],
   ["Makefile", (name, extension) => ["Makefile", "makefile", "GNUmakefile"].includes(name) || extension === ".mk"],
 ];
-/** Bundled Opengrep rules declare these languages; tests keep this in step with detection-db. */
-export const SAST_COVERED_LANGUAGES = ["javascript", "typescript", "python"] as const;
+/**
+ * Bundled Opengrep rules declare these languages; tests keep this in step with detection-db. Rules in
+ * `generic` (configuration files and Blade templates) cover no source language and are not listed.
+ */
+export const SAST_COVERED_LANGUAGES = ["javascript", "typescript", "python", "php"] as const;
 
 export interface CoverageGap {
   id: CoverageGapId;
@@ -133,6 +141,11 @@ export interface CoverageGapDiscovery {
   limitation?: string;
   /** Informational: shell, PowerShell and Makefile files no SAST rule reads (not a gap). */
   scriptNote?: string;
+  /**
+   * Every distinct third-party `uses:` reference and workflow file pair (capped), in discovery order: once the
+   * Synvoya Actions matcher has run, actionsUncheckedGap rebuilds `actions-unchecked` from it.
+   */
+  actionReferences?: Array<{ reference: string; file: string }>;
 }
 
 // Directories the managed Opengrep ignore list skips (detection-db/opengrep-ignore): third-party,
@@ -428,6 +441,7 @@ export async function gapsFromFiles(
   const declarations = new Map<string, Promise<WorkspaceDeclaration>>();
   const wordpressUnits = new Set<string>();
   const actionReferences = new Set<string>();
+  const actionPairs = new Map<string, { reference: string; file: string }>();
   const lockFolders = new Set(files.filter((rel) => NPM_LOCKFILES.includes(posix.basename(rel))).map((rel) => posix.dirname(rel)));
   const scripts = new Map<string, number>();
   const scriptExamples: string[] = [];
@@ -471,13 +485,16 @@ export async function gapsFromFiles(
         add("wordpress-plugins", unit);
       }
     }
-    // Recheck item 8: no bundled engine checks third-party GitHub Actions against advisories.
+    // Recheck item 8: third-party GitHub Actions. The Synvoya Actions matcher, when its database is installed,
+    // narrows this to the references it could not evaluate (actionsUncheckedGap).
     if (/^\.github\/workflows\/[^/]+\.ya?ml$/i.test(rel)) {
       let matches = 0;
       for (const match of (await readText(rel))?.matchAll(WORKFLOW_USES) ?? []) {
         if (++matches > MAX_MATCHES_PER_FILE || actionReferences.size >= MAX_MATCHES_PER_FILE) break;
         const reference = match[1]!;
-        if (reference.startsWith("./") || actionReferences.has(reference)) continue;
+        if (reference.startsWith("./")) continue;
+        if (actionPairs.size < MAX_MATCHES_PER_FILE && !actionPairs.has(`${rel}\0${reference}`)) actionPairs.set(`${rel}\0${reference}`, { reference, file: rel });
+        if (actionReferences.has(reference)) continue;
         actionReferences.add(reference);
         add("actions-unchecked", `${reference} (${rel})`);
       }
@@ -506,7 +523,27 @@ export async function gapsFromFiles(
       `file(s) (informational, not a coverage gap)` +
       `${scriptExamples.length ? `: ${scriptExamples.join(", ")}${scriptCount > scriptExamples.length ? ", …" : ""}` : ""}.`
     : undefined;
-  return { gaps, ...(scriptNote ? { scriptNote } : {}) };
+  return { gaps, ...(scriptNote ? { scriptNote } : {}), ...(actionPairs.size ? { actionReferences: [...actionPairs.values()] } : {}) };
+}
+
+/**
+ * `actions-unchecked` once the Synvoya Actions matcher ran: each distinct reference (in first-seen order) with
+ * at least one occurrence the matcher did not evaluate (`evaluated` holds `${file}\0${reference}`), named with
+ * that occurrence's file; undefined when every reference was evaluated.
+ */
+export function actionsUncheckedGap(
+  references: ReadonlyArray<{ reference: string; file: string }>,
+  evaluated: ReadonlySet<string>,
+): CoverageGap | undefined {
+  const firstUnchecked = new Map<string, string | undefined>();
+  for (const { reference, file } of references) {
+    if (!firstUnchecked.has(reference)) firstUnchecked.set(reference, undefined);
+    if (firstUnchecked.get(reference) === undefined && !evaluated.has(`${file}\0${reference}`)) firstUnchecked.set(reference, file);
+  }
+  const unchecked = [...firstUnchecked].filter((entry): entry is [string, string] => entry[1] !== undefined);
+  if (unchecked.length === 0) return undefined;
+  const examples = unchecked.map(([reference, file]) => `${reference} (${file})`).filter(isDisplayablePath).slice(0, MAX_EXAMPLES);
+  return { id: "actions-unchecked", files: unchecked.length, examples };
 }
 
 /** Human description used in coverage evidence and summaries. */
@@ -514,6 +551,9 @@ export function describeCoverageGap(gap: CoverageGap, accepted: boolean): string
   const n = gap.files;
   const other: Record<Exclude<CoverageGapId, `${string}-sast`>, string> = {
     "sast-parse-errors": `${n} file(s) have code Opengrep's parsers could not read, so SAST rules did not see that code`,
+    "third-party-bundles": `${n} vendored or minified bundle file(s) were skipped by the Opengrep taint rules, which cannot finish on them ` +
+      `(the Synvoya PHP and Node packs and the taint-mode baseline rules: ${OPENGREP_BUNDLE_SKIPPING_RULES_LABEL}); ` +
+      "the other baseline Opengrep rules still scanned them",
     "native-parse-errors": `${n} file(s) the native packs' bounded parsers could not read, so native AI and SAST checks skipped them`,
     "oversized-files": `${n} file(s) exceed a native per-file size or call-count bound (often vendored or minified bundles), so native checks skipped them`,
     "native-token-budget": `${n} file(s) come after the native JavaScript/TypeScript project token budget was spent, so native checks skipped them`,
@@ -527,12 +567,19 @@ export function describeCoverageGap(gap: CoverageGap, accepted: boolean): string
     "npm-shrinkwrap-unread": `${n} npm-shrinkwrap.json file(s) have no lockfile beside them that Trivy reads, so no versions are checked`,
     "dev-deps-unscanned": `${n} Maven pom.xml entr(ies) (test, provided, system, optional or property-scoped dependencies, or an unreadable pom.xml) are dropped by Trivy even with development dependencies included, so their versions are not checked`,
     "wordpress-plugins": `${n} WordPress plugin(s) or theme(s) have no advisory data in any bundled engine, so their versions are not checked`,
-    "actions-unchecked": `${n} third-party GitHub Actions reference(s) in workflows are not checked against advisories by any bundled engine`,
+    "actions-unchecked": `${n} third-party GitHub Actions reference(s) in workflows are not checked against advisories: the OSV GitHub Actions database ` +
+      "is not installed (`codeinspectus setup` offers it), or the Synvoya Actions matcher could not evaluate the reference " +
+      "(a branch or commit the advisory data does not list, a docker:// step, or a file it could not read)",
+    "vendored-js": `${n} file(s) ship vendored or CDN-loaded JavaScript libraries at exact versions, but osv-scanner or its OSV npm database is not installed, so they were not checked. ` +
+      "Known limits even when it is installed: only exact versions are checked (floating or unversioned ones are notes); vendor folders outside a web asset root " +
+      "(other than Rails vendor/assets) and dist/ or other build output are not read, while WordPress plugin and theme vendor folders under wp-content are",
   };
   const component = COMPONENT_GAPS[gap.id];
   const what = component
     ? `${n} ${component} component file(s) have script code no bundled SAST rule or native pack reads`
-    : gap.id.endsWith("-sast")
+    : gap.id === "php-sast"
+      ? `${n} Twig template file(s) have no bundled SAST rules (the Synvoya PHP pack reads .php, .phtml and .blade.php only)`
+      : gap.id.endsWith("-sast")
       ? `${n} ${gap.id.slice(0, -"-sast".length)} source file(s) have no bundled SAST rules`
       : other[gap.id as keyof typeof other];
   const examples = gap.examples.length ? `: ${gap.examples.join(", ")}${n > gap.examples.length ? ", …" : ""}` : "";

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { osvScannerFindingComponents, synvoyaFindingComponents } from "../provenance.js";
+import { osvSbomFindingComponents, osvScannerFindingComponents, synvoyaFindingComponents } from "../provenance.js";
 import type { Finding } from "../types.js";
-import { enrichUpstream } from "./enrich.js";
+import { enrichUpstream, foldSbomDuplicates } from "./enrich.js";
 
 function upstream(over: Partial<Finding> = {}): Finding {
   return {
@@ -112,7 +112,7 @@ describe("enrichUpstream", () => {
     }
   });
 
-  it("never enriches from or into a finding without a package (runtime, product, image)", () => {
+  it("a Synvoya finding without a package never enriches another file's finding, and a package-less upstream finding is never enriched", () => {
     const up = upstream();
     const runtime = synvoya({ package: undefined, location: { file: ".nvmrc", start_line: 1, end_line: 1 } });
     const result = enrichUpstream([up], [runtime]);
@@ -165,5 +165,118 @@ describe("enrichUpstream", () => {
     expect(result.standalone).toHaveLength(1);
     const license = upstream({ finding_kind: "license" });
     expect(enrichUpstream([license], [synvoya()]).upstream[0]).toBe(license);
+  });
+});
+
+describe("foldSbomDuplicates: Magento editions checked under their advisory name", () => {
+  const MAGENTO = { ecosystem: "Packagist", name: "magento/product-community-edition", version: "2.3.1" };
+  // The main run matched the locked name itself; the SBOM run matched the advisory name and reports the locked one.
+  const main = upstream({
+    rule_id: "CVE-2019-8121",
+    vulnerability_aliases: ["GHSA-89ch-hqf9-rgp3"],
+    location: { file: "composer.lock", start_line: 120, end_line: 120 },
+    package: MAGENTO,
+  });
+  const sbom = (over: Partial<Finding> = {}): Finding => upstream({
+    id: "sha256:sbom",
+    fingerprint: "sha256:sbom",
+    rule_id: "CVE-2019-8121",
+    vulnerability_aliases: ["GHSA-89ch-hqf9-rgp3"],
+    location: { file: "composer.lock", start_line: 120, end_line: 120 },
+    producer_components: osvSbomFindingComponents("Packagist"),
+    package: MAGENTO,
+    ...over,
+  });
+
+  it("the same advisory on the locked package in the same file is one finding: the main run's", () => {
+    expect(foldSbomDuplicates([main], [sbom()])).toEqual({ kept: [], folded: 1 });
+  });
+
+  it("another advisory, or the same one in another lock, stands alone", () => {
+    const other = sbom({ rule_id: "CVE-2024-34102", vulnerability_aliases: ["GHSA-m3ww-2c2x-6x2r"] });
+    const elsewhere = sbom({ location: { file: "shop/composer.lock", start_line: 9, end_line: 9 } });
+    expect(foldSbomDuplicates([main], [other, elsewhere])).toEqual({ kept: [other, elsewhere], folded: 0 });
+  });
+});
+
+describe("enrichUpstream: Synvoya findings without a package (product, runtime) in the same file", () => {
+  // SYN-2026-10801 (CosmicSting) on a Magento 2.4.6-p3 lock, and the SBOM run's finding for the same CVE at the
+  // same composer.lock line (the edition checked as magento/community-edition, reported under its locked name).
+  const product = synvoya({
+    id: "sha256:syn-product",
+    fingerprint: "sha256:syn-product",
+    title: "Verify APSB24-40 is applied to Magento Open Source 2.4.6-p3 (declared in composer.lock)",
+    severity: "medium",
+    rule_id: "SYN-2026-10801",
+    vulnerability_aliases: ["APSB24-40", "BIT-magento-2024-34102", "CVE-2024-34102", "GHSA-m8cj-3v68-3cxj", "SYN-2026-108"],
+    location: { file: "composer.lock", start_line: 12, end_line: 12, snippet: "2.4.6-p3" },
+    message: "composer.lock:12 declares Magento Open Source 2.4.6-p3 (composer.lock magento/product-community-edition).",
+    remediation: { summary: "Verify APSB24-40 is applied.", steps: ["Verify the VULN-27015 hotfix is applied (vendor/bin/patch-status)."], references: [] },
+    producer_components: [...synvoyaFindingComponents(), "synvoya:products"],
+    package: undefined,
+  });
+  const sbom = upstream({
+    id: "sha256:sbom-cosmic",
+    fingerprint: "sha256:sbom-cosmic",
+    title: "Magento Open Source XXE (magento/product-community-edition@2.4.6-p3)",
+    severity: "critical",
+    rule_id: "CVE-2024-34102",
+    vulnerability_aliases: ["GHSA-m8cj-3v68-3cxj"],
+    location: { file: "composer.lock", start_line: 12, end_line: 12 },
+    remediation: { summary: "Upgrade magento/product-community-edition to 2.4.6-p6.", steps: ["Upgrade magento/product-community-edition to 2.4.6-p6."], references: [] },
+    producer_components: osvSbomFindingComponents("Packagist"),
+    package: { ecosystem: "Packagist", name: "magento/product-community-edition", version: "2.4.6-p3" },
+  });
+
+  it("a Magento product advisory sharing a CVE with the SBOM finding in the same lock is one finding: the SBOM one, gaining the Synvoya steps", () => {
+    const before = structuredClone(sbom);
+    const result = enrichUpstream([sbom], [product]);
+    expect(result.standalone).toEqual([]);
+    expect(result.enriched).toBe(1);
+    const kept = result.upstream[0]!;
+    expect(withoutSteps(kept)).toEqual(withoutSteps(before));
+    expect(kept.producer_components).toEqual(osvSbomFindingComponents("Packagist"));
+    expect(kept.remediation.steps).toEqual([
+      "Upgrade magento/product-community-edition to 2.4.6-p6.",
+      "Synvoya SYN-2026-10801: Verify APSB24-40 is applied.",
+      "Verify the VULN-27015 hotfix is applied (vendor/bin/patch-status).",
+    ]);
+  });
+
+  it("a Go runtime advisory sharing a GO id with the stdlib SBOM finding at go.mod is one finding", () => {
+    const runtime = synvoya({
+      id: "sha256:syn-go", fingerprint: "sha256:syn-go", rule_id: "SYN-2026-019",
+      vulnerability_aliases: ["CVE-2026-33818", "GO-2026-5972", "GO-2026-6088"],
+      location: { file: "go.mod", start_line: 5, end_line: 5, snippet: "1.26.5" },
+      remediation: { summary: "Upgrade the declared Go to 1.26.6 or later.", steps: ["Raise the toolchain line to go1.26.6."], references: [] },
+      producer_components: [...synvoyaFindingComponents(), "synvoya:runtime"],
+      package: undefined,
+    });
+    const stdlib = upstream({
+      id: "sha256:sbom-go", fingerprint: "sha256:sbom-go", rule_id: "GO-2026-5972", vulnerability_aliases: ["CVE-2026-33818"],
+      location: { file: "go.mod", start_line: 5, end_line: 5 },
+      producer_components: osvSbomFindingComponents("Go"),
+      package: { ecosystem: "Go", name: "stdlib", version: "v1.26.5" },
+    });
+    const result = enrichUpstream([stdlib], [runtime]);
+    expect(result.standalone).toEqual([]);
+    expect(result.upstream[0]!.fingerprint).toBe("sha256:sbom-go");
+    expect(result.upstream[0]!.remediation.steps).toContain("Synvoya SYN-2026-019: Upgrade the declared Go to 1.26.6 or later.");
+  });
+
+  it("no shared advisory id, or another file, keeps the Synvoya finding standalone and the upstream object untouched", () => {
+    const unrelated = synvoya({ ...product, vulnerability_aliases: ["CVE-2026-99999"] });
+    const elsewhere = synvoya({ ...product, location: { file: "shop/composer.lock", start_line: 12, end_line: 12 } });
+    for (const syn of [unrelated, elsewhere]) {
+      const result = enrichUpstream([sbom], [syn]);
+      expect(result.standalone).toEqual([syn]);
+      expect(result.upstream[0]).toBe(sbom);
+    }
+  });
+
+  it("the Synvoya rule id alone (SYN-…) never matches", () => {
+    const upstreamNamingSyn = upstream({ ...sbom, rule_id: "SYN-2026-10801", vulnerability_aliases: [] });
+    const onlyId = synvoya({ ...product, vulnerability_aliases: [] });
+    expect(enrichUpstream([upstreamNamingSyn], [onlyId]).standalone).toEqual([onlyId]);
   });
 });

@@ -154,7 +154,7 @@ describe("listRules native pack inventory", () => {
     expect(result.native_packs[1]?.languages).toContain("dart");
     expect(result.native_packs[1]?.frameworks).toContain("flutter");
     expect(result.native_packs[1]?.limitations.join(" ")).toMatch(/source-ordered|does not claim complete/i);
-    expect(result.custom_rule_count).toBe(94);
+    expect(result.custom_rule_count).toBe(126);
     expect(result.engines.some((engine) => engine.engine === "codeinspectus-pub" && engine.available)).toBe(true);
     expect(result.advisory_databases).toEqual([
       expect.objectContaining({
@@ -183,7 +183,7 @@ describe("listRules native pack inventory", () => {
     expect(nativeRules.filter((rule) => rule.pack_id === "ruby-ai")).toHaveLength(1);
     expect(nativeRules.filter((rule) => rule.pack_id === "firebase")).toHaveLength(3);
     expect(nativeRules.filter((rule) => rule.pack_id === "github-actions")).toHaveLength(2);
-    expect(externalRules).toHaveLength(22);
+    expect(externalRules).toHaveLength(54); // 18 ci-baseline + 19 syn-php + 12 syn-node Opengrep, 5 Gitleaks
     expect(externalRules.every((rule) => !("pack_id" in rule))).toBe(true);
   });
 
@@ -236,8 +236,8 @@ describe("listRules native pack inventory", () => {
     ]);
 
     expect(native.custom_rule_count).toBe(72);
-    expect(opengrep.custom_rule_count).toBe(18);
-    expect(gitleaks.custom_rule_count).toBe(4);
+    expect(opengrep.custom_rule_count).toBe(49); // 18 ci-baseline-* + 19 syn-php-* + 12 syn-node-*
+    expect(gitleaks.custom_rule_count).toBe(5);
     expect(native.native_packs).toEqual(opengrep.native_packs);
     expect(opengrep.native_packs).toEqual(gitleaks.native_packs);
   });

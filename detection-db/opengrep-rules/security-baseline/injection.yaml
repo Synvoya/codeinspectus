@@ -1,29 +1,7 @@
 # CodeInspectus original Apache-2.0 security ruleset (see LICENSE-PROVENANCE.md). ASCII-only.
 # Injection classes (OWASP A03): SQLi, command injection, code eval, NoSQL, path traversal.
+# The JS/TS SQL injection rule is taint mode and lives in injection-taint.yaml.
 rules:
-  - id: ci-baseline-sql-injection-string-build
-    languages: [javascript, typescript]
-    severity: ERROR
-    message: >
-      Potential SQL injection: a SQL query is built by string concatenation or
-      template interpolation. Use parameterized queries / prepared statements.
-    metadata:
-      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
-      owasp: "A03:2021 - Injection"
-      category: security
-      confidence: MEDIUM
-      references:
-        - https://owasp.org/Top10/A03_2021-Injection/
-    patterns:
-      - pattern-either:
-          - pattern: $DB.query("..." + ...)
-          - pattern: $DB.query(`...${...}...`)
-          - pattern: $DB.query(... + ..., ...)
-          - pattern: $DB.execute("..." + ...)
-          - pattern: $DB.execute(`...${...}...`)
-          - pattern: $DB.raw("..." + ...)
-          - pattern: $DB.raw(`...${...}...`)
-
   - id: ci-baseline-sql-injection-python
     languages: [python]
     severity: ERROR
@@ -93,6 +71,12 @@ rules:
           - pattern: eval($X)
           - pattern: new Function(..., $X)
       - pattern-not: eval("...")
+      # Precision pass (design 10.6): a Function built only from string literals (for example the
+      # ESM import shim new Function('s', 'return import(s)')) runs author-written code.
+      - pattern-not: new Function("...")
+      - pattern-not: new Function("...", "...")
+      - pattern-not: new Function("...", "...", "...")
+      - pattern-not: new Function("...", "...", "...", "...")
 
   - id: ci-baseline-eval-python
     languages: [python]
@@ -116,17 +100,47 @@ rules:
     languages: [javascript, typescript]
     severity: WARNING
     message: >
-      Potential NoSQL injection: a query operator is built from request data.
-      Validate/cast inputs and avoid passing raw user objects into queries.
+      Potential NoSQL injection: a MongoDB-style query filter takes a request body or
+      query-string value that can be an object (such as {"$ne": null}). Cast the value to the
+      expected type or validate it before it reaches the filter.
     metadata:
       cwe: "CWE-943: Improper Neutralization of Special Elements in Data Query Logic"
       owasp: "A03:2021 - Injection"
       category: security
       confidence: LOW
+    # Precision pass (design 10.6): the field hits were a SQL query builder's find({ id: ... }), not
+    # MongoDB. The filter must now belong to a Mongoose-style model (a capitalised receiver) or a
+    # driver collection, or sit in a file that imports mongoose or mongodb. Route parameters
+    # (req.params) are always strings, so they cannot carry an operator object.
     patterns:
       - pattern-either:
-          - pattern: '$COL.find({ ..., $FIELD: req.$SRC.$NAME, ... })'
-          - pattern: '$COL.find({ $WHERE: req.$SRC.$NAME })'
+          - patterns:
+              - pattern: '$COL.$FIND({ ..., $FIELD: req.$SRC.$NAME, ... }, ...)'
+              - metavariable-regex:
+                  metavariable: $COL
+                  regex: ^[A-Z][A-Za-z0-9_]*$
+          - pattern: '$DB.collection(...).$FIND({ ..., $FIELD: req.$SRC.$NAME, ... }, ...)'
+          - patterns:
+              - pattern: '$COL.$FIND({ ..., $FIELD: req.$SRC.$NAME, ... }, ...)'
+              - pattern-either:
+                  - pattern-inside: |
+                      import $M from "mongoose";
+                      ...
+                  - pattern-inside: |
+                      import { ... } from "mongodb";
+                      ...
+                  - pattern-inside: |
+                      $M = require("mongoose");
+                      ...
+                  - pattern-inside: |
+                      $M = require("mongodb");
+                      ...
+      - metavariable-regex:
+          metavariable: $FIND
+          regex: ^(find|findOne|findOneAndUpdate|findOneAndDelete|updateOne|updateMany|deleteOne|deleteMany|countDocuments|exists)$
+      - metavariable-regex:
+          metavariable: $SRC
+          regex: ^(body|query)$
 
   - id: ci-baseline-path-traversal
     languages: [javascript, typescript]

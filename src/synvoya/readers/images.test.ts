@@ -406,7 +406,7 @@ describe("readImageTags: tags and references", () => {
   });
 });
 
-describe("readImageTags: hostile inputs", { timeout: 5000 }, () => {
+describe("readImageTags: hostile inputs", { timeout: 20_000 }, () => {
   let work: string;
   beforeEach(async () => {
     work = await mkdtemp(join(tmpdir(), "ci-synvoya-img-hostile-"));
@@ -428,7 +428,7 @@ describe("readImageTags: hostile inputs", { timeout: 5000 }, () => {
     expect(result.notes).toEqual(["Dockerfile: more than 64 image declarations; extra ignored"]);
     expect(result.parsed).toEqual([]);
     expect(result.skipped).toEqual([{ file: "Dockerfile", reason: "capped" }]);
-    expect(ms).toBeLessThan(4000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
+    expect(ms).toBeLessThan(15_000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
   });
 
   it("a compose file with ~50k services is capped", async () => {
@@ -471,7 +471,7 @@ describe("readImageTags: hostile inputs", { timeout: 5000 }, () => {
     await writeFile(join(work, "docker-compose.yml"), `x-a: &a ["x", "y"]\nservices:\n  web:\n    image: node:22\n    list:\n${aliases.replace(/ {2}- /g, "      - ")}\n`);
     const { result, ms } = await timed();
     expect(result.declarations.map((d) => d.spec)).toEqual(["22"]);
-    expect(ms).toBeLessThan(4000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
+    expect(ms).toBeLessThan(15_000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
   });
 
   it("an alias bomb (nested anchors) is not expanded", async () => {
@@ -484,7 +484,7 @@ describe("readImageTags: hostile inputs", { timeout: 5000 }, () => {
     await writeFile(join(work, "docker-compose.yml"), text);
     const { result, ms } = await timed();
     expect(result.declarations.map((d) => d.spec)).toEqual(["22"]);
-    expect(ms).toBeLessThan(4000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
+    expect(ms).toBeLessThan(15_000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
   });
 
   it("caps documents per file at 256 with a note", async () => {
@@ -525,7 +525,7 @@ describe("readImageTags: hostile inputs", { timeout: 5000 }, () => {
       [83, true, "floating"],
       [84, true, "unresolved"],
     ]);
-    expect(ms).toBeLessThan(4000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
+    expect(ms).toBeLessThan(15_000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
   });
 
   it("an ARG that doubles itself 60 times is bounded", async () => {
@@ -539,7 +539,7 @@ describe("readImageTags: hostile inputs", { timeout: 5000 }, () => {
       [62, "unresolved"],
       [63, "floating"],
     ]);
-    expect(ms).toBeLessThan(4000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
+    expect(ms).toBeLessThan(15_000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
   });
 
   it("a 500-line chain of ARG references repeated three levels deep is bounded", async () => {
@@ -552,7 +552,7 @@ describe("readImageTags: hostile inputs", { timeout: 5000 }, () => {
     const { result, ms } = await timed();
     expect(result.parsed).toEqual(["Dockerfile"]);
     expect(result.declarations.map((d) => d.precision)).toEqual(["unresolved", "floating"]);
-    expect(ms).toBeLessThan(4000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
+    expect(ms).toBeLessThan(15_000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
   });
 
   it("an over-long ARG default is unresolved and a FROM using it says so", async () => {

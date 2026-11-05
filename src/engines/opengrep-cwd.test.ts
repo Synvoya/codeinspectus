@@ -12,9 +12,12 @@ vi.mock("./resolve.js", () => ({
 
 vi.mock("./exec.js", () => ({
   execBinary: vi.fn(async (_binary: string, args: string[], options: { cwd?: string; env?: Record<string, string> }) => {
-    seen.cwd = options.cwd ?? "";
-    seen.ignoreFile = options.env?.SEMGREP_R2C_INTERNAL_EXPLICIT_SEMGREPIGNORE ?? "";
-    seen.ignoreList = await readFile(seen.ignoreFile, "utf8").catch(() => "");
+    // The baseline pass is the one these tests describe (the Synvoya pack pass: opengrep-passes.test.ts).
+    if (!args.some((arg) => arg.includes("synvoya-"))) {
+      seen.cwd = options.cwd ?? "";
+      seen.ignoreFile = options.env?.SEMGREP_R2C_INTERNAL_EXPLICIT_SEMGREPIGNORE ?? "";
+      seen.ignoreList = await readFile(seen.ignoreFile, "utf8").catch(() => "");
+    }
     if (seen.failStderr) return { code: 2, stdout: "", stderr: seen.failStderr, timedOut: false };
     const sarif = args.find((arg) => arg.startsWith("--sarif-output="))!.slice("--sarif-output=".length);
     await writeFile(sarif, JSON.stringify({ version: "2.1.0", runs: [] }), "utf8");

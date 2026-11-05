@@ -59,6 +59,7 @@ export interface SarifLocation {
     region?: {
       startLine?: number;
       endLine?: number;
+      endColumn?: number;
       snippet?: { text?: string };
     };
   };

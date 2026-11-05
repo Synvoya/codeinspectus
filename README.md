@@ -38,16 +38,19 @@ scanners miss:
 
 - **Opengrep** — SAST / OWASP Top 10 (SARIF)
 - **Gitleaks** — secrets
-- **Trivy** — dependency CVEs (SCA), IaC misconfig, secrets, license, SBOM
+- **Trivy** — dependency CVEs (SCA), IaC misconfig, secrets, SBOM, and licence findings when you opt in (`include_licenses: true` / `--licenses`; off by default)
 - **osv-scanner** (Google) — offline dependency matching against OSV.dev data, including
   OpenSSF malicious-package (`MAL-`) advisories. It runs only on the OSV databases you approved
   for the ecosystems your repository uses
 - **Synvoya (CodeInspectus)** — an offline gap-advisory layer for what those engines miss:
   declared Node.js, PHP, Python, Ruby, Go, .NET and Java versions (version-manager pins, manifests,
   CI setup steps, image tags), end-of-life lines, exploited products such as Adobe Commerce and
-  WordPress core, and malicious package versions. It reads only what the repository declares, ships
-  inside the package with SHA-256 integrity checks, and folds into an upstream finding rather than
-  duplicating it. See [docs/SYNVOYA.md](docs/SYNVOYA.md)
+  WordPress core, malicious package versions, vendored and CDN-loaded JavaScript libraries (checked
+  by osv-scanner through a per-scan SBOM), Magento editions, the declared Go toolchain, and GitHub
+  Actions advisories. It reads only what the repository declares, ships inside the package with
+  SHA-256 integrity checks, and folds into an upstream finding rather than duplicating it. Synvoya also
+  provides the PHP and Node.js Opengrep rule packs (`syn-php-*`, `syn-node-*`). See
+  [docs/SYNVOYA.md](docs/SYNVOYA.md)
 - **CodeInspectus Pub** — first-party, exact-version Dart/Flutter dependency matching and
   CycloneDX/SPDX inventory from `pubspec.lock`, backed by a bundled offline OSV Pub snapshot
 - **CodeInspectus native checks** — client-side secret/bundle exposure, Supabase
@@ -75,11 +78,13 @@ scanners miss:
   Actions pack contributes two workflow rules for direct untrusted-context shell interpolation and
   exact `pull_request_target` checkout-and-execute chains.
 
-The shipped manifest contains **94 curated detections**: **72 first-party native rule
+The shipped manifest contains **126 curated detections**: **72 first-party native rule
 IDs** (29 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, and
 2 Expo, plus 10 Python AI/API, 1 Go AI, 1 Java AI, 1 C# AI, 1 PHP AI, 1 Rust AI, 1 Ruby AI,
 3 Firebase configuration, 2 GitHub Actions workflow, and 2 JavaScript baseline SAST rules), 18 Opengrep-owned
-SAST rules, and 4 custom Gitleaks rules. All 20 Opengrep YAML rules remain physically active:
+SAST rules, 19 Synvoya PHP Opengrep rules (`syn-php-*`), 12 Synvoya Node.js Opengrep rules
+(`syn-node-*`), and 5 custom Gitleaks rules. All 20
+`ci-baseline-*` Opengrep YAML rules remain physically active:
 the two native-owned rules reconcile exact results and fall back to Opengrep on mismatch or
 native unavailability. Opengrep, Gitleaks, Trivy, and osv-scanner are optional, managed, additive engines.
 
@@ -143,8 +148,9 @@ osv-scanner's vulnerability data is one OSV database per package ecosystem. Setu
 database only after you approve it, only for the ecosystems your repository's lockfiles name
 (`--path`, or the `path` the MCP setup tool takes) or the ones you list with `--osv-ecosystems`, and
 only from `osv-vulnerabilities.storage.googleapis.com`. The allow-list is language ecosystems: npm,
-PyPI, Packagist, Go, crates.io, RubyGems, Maven, NuGet, and Pub. Distribution ecosystems are never
-downloaded. The npm database is over 200 MB zipped, so setup shows each size before you approve.
+PyPI, Packagist, Go, crates.io, RubyGems, Maven, NuGet, and Pub, plus the small "GitHub Actions" database
+(about 100 KB, offered when the repository has workflows) that Synvoya's Actions matcher reads. Distribution
+ecosystems are never downloaded. The npm database is over 200 MB zipped, so setup shows each size before you approve.
 OSV publishes no signature for these files; integrity is TLS to that one host plus a SHA-256
 CodeInspectus records at install time. Setup (unless you declined osv-scanner) and a bare
 `repair-engines` (while osv-scanner is installed) also refresh an OSV database you already
@@ -177,6 +183,8 @@ codeinspectus scan . --format sarif --output results.sarif
 codeinspectus scan . --format csv --output findings.csv
 codeinspectus scan . --format sarif --output results.sarif --fail-on-severity high
 codeinspectus scan . --baseline SCAN_ID --fail-on-new-severity high
+codeinspectus scan . --licenses
+codeinspectus scan . --fail-on-severity high --accept-gaps vendored-js,third-party-bundles
 codeinspectus scan . --diff origin/main --head HEAD
 codeinspectus scan . --working-tree --base HEAD
 codeinspectus bundle create SCAN_ID --output-dir /outside/repository/scan-results
@@ -223,6 +231,13 @@ unknown; coverage takes precedence over finding severity. Exit 1 is reserved for
 after complete coverage. See the [CLI command reference](docs/CLI-REFERENCE.md) and
 [CI policy and SHA-pinned GitHub Actions workflow](docs/CI-POLICY.md)
 for the full exit contract, SARIF upload, artifact privacy, and fork/Dependabot behavior.
+
+Two options shape what a scan reports. Licence findings are off by default since 4.0 (they are
+informational and none is fixable); `--licenses` (MCP `include_licenses: true`, SDK `includeLicenses`)
+turns them on, and a scan without them carries an informational coverage note. `--accept-gaps`
+(MCP `accept_gaps`) names declared coverage gaps you accept so that they alone do not fail CI; the
+gap stays listed and coverage still reads `partial`. Gap ids are in
+[CI policy](docs/CI-POLICY.md#declared-coverage-gaps).
 
 Baseline enforcement fails only on findings proven new against a compatible explicit stored scan.
 Incompatible, partial, or unknown comparison evidence fails closed with exit 2. Local triage adds
@@ -323,7 +338,7 @@ useful when you want the same policy persisted explicitly in a repository.
 
 | Tool | Purpose |
 |------|---------|
-| `codeinspectus_scan` | Full local scan of a path (engines + AI checks). Returns CWE-keyed findings, detected technologies, exact native-pack and Pub dependency coverage, remediations, framework tags, and three-state repository evidence for supported runtime controls. |
+| `codeinspectus_scan` | Full local scan of a path (engines + AI checks). Options: `scanners`, `severity_threshold`, `max_findings`, `include_compliance`, `accept_gaps`, and `include_licenses` (licence findings are off by default; the result carries an informational coverage note when they were not requested). Returns CWE-keyed findings, detected technologies, exact native-pack and Pub dependency coverage, remediations, framework tags, and three-state repository evidence for supported runtime controls. |
 | `codeinspectus_setup` | Offline setup plan, saved decline choices, or approval-gated verified downloads to `~/.codeinspectus`; never writes to the target repository. |
 | `codeinspectus_rescan` | Re-scan after fixes; diffs vs a prior scan → resolved / remaining / introduced, with fresh technology and pack coverage. |
 | `codeinspectus_plan_cleanup` | Fresh read-only V3.3 plan for exact verified repository-trust artifact IDs, including preimage hashes, transformations, blockers and approval requirements. |
@@ -427,11 +442,10 @@ See the [V3 migration guide](docs/V3-REPOSITORY-TRUST-MIGRATION.md) for schema a
 `detected_technologies` explains the bounded repository signals CodeInspectus saw.
 `pack_coverage` separately reports how many registered native analyzers and rules actually ran.
 A pack state of `ran` means those listed rules executed; it is not a claim of complete security
-coverage for the named language or framework. Native packs use a lightweight lexer, not a full parser:
-they are pattern checks for ordinary code and can be evaded by deliberately crafted code (for example a
-call hidden from the lexer while the file still reads as parsed). When the SAST scanner runs,
-Opengrep's full parser still scans the same files for generic sinks; a full parser replacement is
-planned for 4.0. `not_applicable` means the installed pack did not match detected project technology; `not_run`, `partial`, and `unavailable` distinguish scanner
+coverage for the named language or framework. Native JavaScript/TypeScript packs read files with a full parser
+(`@babel/parser`) and report a file they cannot parse as the gap `native-parse-errors`; their rules are
+intrafile patterns with no type checker or data flow, so code written to avoid a pattern can avoid it.
+When the SAST scanner runs, Opengrep's parser still scans the same files for generic sinks. `not_applicable` means the installed pack did not match detected project technology; `not_run`, `partial`, and `unavailable` distinguish scanner
 filtering from incomplete or failed execution. The Flutter pack runs only when bounded repository
 signals identify Flutter; an ordinary Dart package does not activate it. Android and iOS packs
 likewise require bounded platform-project evidence and report their own platform metadata.
@@ -709,9 +723,9 @@ coverage than the executed pack reports.
 | **Secrets** — Gitleaks + applicable native client-secret checks | hard-coded credentials, leaked keys | **Gitleaks: any language** because its detection is value/pattern-based. Native client-secret analysis remains pack-specific: JavaScript/TypeScript bundle and env exposure, plus Supabase privileged keys passed to Flutter client initialization. |
 | **Dependencies (CVEs/SCA), IaC misconfig, SBOM, license** — Trivy | vulnerable deps, infra misconfig, bill of materials | **Many language & package ecosystems and IaC formats** — see [Trivy's docs](https://trivy.dev). |
 | **Dependencies (known vulnerabilities and malicious packages)** — osv-scanner | vulnerable and known-malicious package versions recorded in lockfiles and manifests, matched offline against OSV.dev data | **Only the OSV ecosystems you approved and installed:** npm, PyPI, Packagist, Go, crates.io, RubyGems, Maven, NuGet, and Pub (language ecosystems; never distribution ones). An ecosystem without its database is reported `unavailable`, not clean. No reachability or call analysis, no dependency resolution, and no online lookups; coverage is the package versions osv-scanner can extract from the files in the repository. |
-| **Declared runtimes, images, end-of-life lines and exploited products** — Synvoya | Node.js/PHP/Python/Ruby/Go/.NET/Java versions declared in pin files, manifests, workflows and image tags; end-of-life lines; Adobe Commerce, Magento Open Source and WordPress core versions; malicious package versions; package advisories the upstream databases do not list | **What the repository declares, not what is deployed.** Version pins, `Dockerfile`/Compose/Kubernetes/Helm image tags and `composer.lock`, judged offline against a bundled, integrity-checked dataset ([docs/SYNVOYA.md](docs/SYNVOYA.md)). A floating tag on a supported line is a note, not a finding. Vendored or CDN JavaScript libraries, GitHub Actions advisories and PHP/Node rule packs are planned for 4.0 and not shipped. |
+| **Declared runtimes, images, end-of-life lines and exploited products** — Synvoya | Node.js/PHP/Python/Ruby/Go/.NET/Java versions declared in pin files, manifests, workflows and image tags; end-of-life lines; Adobe Commerce, Magento Open Source and WordPress core versions; malicious package versions; package advisories the upstream databases do not list | **What the repository declares, not what is deployed.** Version pins, `Dockerfile`/Compose/Kubernetes/Helm image tags and `composer.lock`, judged offline against a bundled, integrity-checked dataset ([docs/SYNVOYA.md](docs/SYNVOYA.md)). A floating tag on a supported line is a note, not a finding. Vendored or CDN JavaScript libraries (exact versions only), Magento editions, the declared Go toolchain and GitHub Actions `uses:` references are also checked. The Go toolchain check needs the OSV Go database and the OSV-sourced Actions advisories need the OSV GitHub Actions database; without osv-scanner's npm database, vendored libraries are the declared gap `vendored-js`. The PHP and Node.js rule packs are listed under SAST. |
 | **Native Pub SCA/SBOM** — CodeInspectus Pub | exact locked-version matches against the bundled advisory snapshot; native Pub inventory and Trivy merge/fallback | **Dart/Flutter `pubspec.lock` only.** Official `pub.dev`/legacy official-host packages are matched by exact enumerated version. Custom registries, Git, path, SDK, malformed, oversized, and unreadable inputs are excluded and reported. No generic SemVer inference, reachability claim, license inference, or complete dependency-graph claim. |
-| **SAST** — Opengrep + CodeInspectus `security-baseline` | injection, XSS, SSRF, weak crypto, insecure deserialization, explicit CORS misconfiguration | **JavaScript, TypeScript, Python.** CodeInspectus ships its own Apache-2.0 ruleset and runs Opengrep with **no network registry packs**, so SAST coverage is exactly these languages — deliberately narrower than Opengrep's full engine. |
+| **SAST** — Opengrep + CodeInspectus `security-baseline` and the Synvoya PHP and Node.js packs | injection, XSS, SSRF, weak crypto, insecure deserialization, explicit CORS misconfiguration; for PHP (plain, Laravel, Symfony, WordPress): SQL/command/code injection, file inclusion, unserialize and phar paths, SSRF, `extract()`, client-named uploads, Blade raw output, predictable tokens, weak password hashing, disabled TLS verification, debug settings in deployable env files, unchecked WordPress REST/admin-ajax writes; for Node.js (Express, NestJS, Next.js, Nuxt/H3, Hono): command injection, `vm`/`Function`, zip-slip, unsafe deserialization, JWT verification without fixed algorithms, cookie/session flags, NestJS validation, placeholder deploy secrets | **JavaScript, TypeScript, Python, PHP** (`.php`, `.phtml`, `.blade.php`; Twig templates are the `php-sast` gap). CodeInspectus ships its own Apache-2.0 rules and runs Opengrep with **no network registry packs**, so SAST coverage is exactly these languages and rules — deliberately narrower than Opengrep's full engine. `list_rules` shows the rule count per language. PHP (`syn-php-*`) and Node.js (`syn-node-*`) rules are original and precision-gated: every rule was measured on 12 holdout repositories it was never tuned on, and ships only if at most 1 in 5 of its holdout hits was a false positive, or, with no holdout hit, if it had no false positive on the tuning repositories and its fixtures pass. Seven rules that were 100% precise on their tuning repositories failed on the holdout set and are held back as experimental for 4.1: PHP path traversal, open redirect, XXE, `preg_replace` `/e` and unguarded Eloquent models, and Node.js SQL injection and path traversal (PHP reflected XSS and four other Node.js rules were already held back). Two PHP rules with few holdout hits are kept for the real issues they found there: disabled TLS verification (2 of 4 hits true) and predictable tokens (1 of 2). Precision limits (4.0): SQL injection is reported only when Express, Koa, Hono, Next.js or H3/Nuxt request input reaches a query built by concatenation or interpolation in the call itself, in the same file (the baseline rule); queries held in a variable first, NestJS and server-action input, Knex/Prisma/Sequelize/TypeORM raw methods and cross-file flows are not reported; DOM XSS is reported only when the URL, the referrer, `window.name` or a message payload reaches an HTML sink directly or through one or two variables, so stored or fetched markup, `localStorage`, jQuery `.html()` and React `dangerouslySetInnerHTML` are not covered by this rule, and a value looked up in a constant table by a URL part is still reported (a known false positive); NoSQL injection needs a MongoDB-style receiver. Code findings under `vendor/` or in `*.min.js` files are not reported (Opengrep's own scope); code findings in scripts that look like copied libraries (minified, licence banner, UMD wrapper, `vendors/`-style folder) are reported at low; both are named in coverage notes. |
 | **Native JavaScript/TypeScript pack** | client-side secret/bundle exposure, Supabase RLS, prompt-injection sinks, model tool arguments reaching Node shell execution, client-writable `user_metadata` authz, unsanitized-output XSS, API response/error leaks, unsafe request writes, sensitive logging, explicit runtime-control misconfiguration | **JavaScript / TypeScript** (incl. `.jsx/.tsx/.mjs/.cjs`; client-secret checks also read `.vue/.svelte/.astro/.html`). Supabase RLS analyzes `.sql` plus `.ts/.js` Edge Functions; runtime-control evidence also reads recognized configuration formats. Model-tool command flow is intrafile and bounded to direct flow or one named wrapper; it does not resolve cross-module dispatch or runtime approval/sandbox state. |
 | **Native Flutter/Dart pack** | disabled TLS verification, sensitive SharedPreferences writes, untrusted JavaScript-enabled WebView navigation, sensitive logs, Supabase privileged client keys, cleartext production endpoints | **Flutter projects only.** Token-aware, source-ordered intrafile Dart analysis; no type resolution, path-sensitive branch merge, complete dataflow, or runtime mobile testing. Pub SCA/SBOM is reported by the separate native Pub engine. File/total bounds and omissions are explicit in pack coverage. |
 | **Native Android configuration pack** | debuggable release manifests, effective cleartext traffic, production user-CA trust, exported AndroidX FileProvider | **Android project evidence only.** Bounded structured XML with supported main-to-release precedence; no Gradle execution, arbitrary flavor/DSL evaluation, full manifest merger, runtime testing, or complete Android review. |

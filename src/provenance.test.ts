@@ -40,6 +40,8 @@ import {
   aiSignaturesForComponents,
   externalFindingComponents,
   synvoyaFindingComponents,
+  synvoyaActionsFindingComponents,
+  SYNVOYA_ACTIONS_MATCHER_COMPONENT,
   synvoyaStaticComponentSignatures,
   invocationSignature,
   rulesetSignature,
@@ -465,9 +467,9 @@ describe("Flutter detection manifest", () => {
     };
     const flutterRules = manifest.custom_rules.filter((rule) => rule.pack_id === "flutter");
 
-    expect(manifest.version).toBe("1.19.1");
-    expect(manifest.date).toBe("2026-10-31");
-    expect(manifest.custom_rules).toHaveLength(94);
+    expect(manifest.version).toBe("2.0.0");
+    expect(manifest.date).toBe("2026-11-05");
+    expect(manifest.custom_rules).toHaveLength(126);
     expect(flutterRules).toHaveLength(6);
     expect(flutterRules.map((rule) => ({
       id: rule.id,
@@ -493,9 +495,19 @@ describe("Synvoya component signatures", () => {
     expect(components).toEqual([PIPELINE_COMPONENT, SYNVOYA_DATASET_COMPONENT, SYNVOYA_MATCHER_COMPONENT]);
     expect(externalFindingComponents("synvoya", "vulnerability")).toEqual(components);
     // Plus one signed component per producer, which each finding adds for the producer(s) that made it.
-    const producers = ["synvoya:runtime", "synvoya:images", "synvoya:products", "synvoya:inventory:osv-scanner", "synvoya:inventory:trivy"];
+    const producers = [
+      "synvoya:runtime", "synvoya:images", "synvoya:products", "synvoya:inventory:osv-scanner", "synvoya:inventory:trivy",
+      "synvoya:vendored", "synvoya:sbom:osv-scanner", "synvoya:actions", "synvoya:actions-matcher",
+    ];
     expect(Object.keys(synvoyaStaticComponentSignatures(dataset)).sort()).toEqual([...components, ...producers].sort());
     for (const producer of producers) expect(synvoyaStaticComponentSignatures(dataset)[producer]).toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
+  test("an Actions advisory finding depends on the pipeline, the Actions matcher, its producer and the installed GitHub Actions database", () => {
+    expect(synvoyaActionsFindingComponents()).toEqual([
+      PIPELINE_COMPONENT, SYNVOYA_ACTIONS_MATCHER_COMPONENT, "synvoya:actions", "osv-scanner:vulnerability-db:GitHub Actions",
+    ]);
+    expect(synvoyaStaticComponentSignatures(dataset)[SYNVOYA_ACTIONS_MATCHER_COMPONENT]).toMatch(/^sha256:[a-f0-9]{64}$/);
   });
 
   test("the dataset signature is the supplied digest, so another dataset changes the signature; a malformed digest is refused", () => {

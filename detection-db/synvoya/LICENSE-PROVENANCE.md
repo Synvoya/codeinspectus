@@ -81,3 +81,10 @@ does not match. The data files are rebuilt with `node scripts/build-synvoya-data
 maintainer-only script that takes the reviewed research files as arguments). After editing a data
 file, run `node scripts/synvoya-manifest.mjs`. To verify the digests, run
 `node scripts/synvoya-manifest.mjs --check`.
+
+## libraries.json
+
+- Authorship: the table is authored by CodeInspectus. Each entry names the npm package exactly as it is
+  published and lists the banner comments, file-name stems and CDN paths that identify it. Libraries
+  whose banner, file name or CDN path is not known with certainty are left out rather than guessed.
+- Licence: Apache-2.0, like the rest of `detection-db/`.

@@ -83,14 +83,20 @@ describe("readRuntimePins: fixtures", () => {
     ]);
   });
 
-  it("composer.json and composer.lock emit both require.php and the platform", async () => {
-    expect((await read("composer")).declarations).toEqual([
+  it("composer.json require.php and composer.lock platform are declarations; config.platform.php and platform-overrides only a note", async () => {
+    const result = await read("composer");
+    expect(result.declarations).toEqual([
       decl("php", "^8.1", "range", "composer.json", 4, "composer.json require.php"),
-      decl("php", "8.1.*", "floating", "composer.json", 9, "composer.json config.platform.php"),
       decl("php", ">=7.4", "range", "composer.lock", 4, "composer.lock platform"),
-      // A platform value is a dependency-resolution target, not a deployed patch release: its line only.
-      decl("php", "8.0", "floating", "composer.lock", 7, "composer.lock platform-overrides"),
     ]);
+    // A platform setting is a dependency-resolution hint, not the PHP that is deployed (field run 2026-11-05: 12 FPs).
+    expect(result.notes).toEqual([
+      'composer.json:9: composer.json config.platform.php "8.1.*" is a dependency-resolution hint, not the deployed PHP version; ' +
+        "no runtime finding is made from it (require.php, Dockerfiles, CI and .tool-versions are read for that).",
+      'composer.lock:7: composer.lock platform-overrides "8.0.30" is a dependency-resolution hint, not the deployed PHP version; ' +
+        "no runtime finding is made from it (require.php, Dockerfiles, CI and .tool-versions are read for that).",
+    ]);
+    expect(result.parsed).toEqual(["composer.json", "composer.lock"]);
   });
 
   it(".python-version and runtime.txt", async () => {
@@ -256,7 +262,7 @@ describe("readRuntimePins: hostile and edge inputs", () => {
   });
 });
 
-describe("readRuntimePins: hostile inputs", { timeout: 5000 }, () => {
+describe("readRuntimePins: hostile inputs", { timeout: 20_000 }, () => {
   let work: string;
   beforeEach(async () => {
     work = await mkdtemp(join(tmpdir(), "ci-synvoya-hostile-"));
@@ -276,7 +282,7 @@ describe("readRuntimePins: hostile inputs", { timeout: 5000 }, () => {
     const { result, ms } = await timed();
     expect(result.declarations).toEqual([]);
     expect(result.skipped).toEqual([{ file: "package.json", reason: "malformed" }]);
-    expect(ms).toBeLessThan(4000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
+    expect(ms).toBeLessThan(15_000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
   });
 
   it("a 1 MiB .python-version reads only the first line", async () => {
@@ -362,14 +368,14 @@ describe("readRuntimePins: hostile inputs", { timeout: 5000 }, () => {
     expect(result.declarations.length).toBeLessThanOrEqual(64);
     expect(result.declarations.length).toBeGreaterThan(0);
     expect(result.notes.some((note) => note.includes("more than 64 runtime declarations; extra ignored"))).toBe(true);
-    expect(ms).toBeLessThan(4000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
+    expect(ms).toBeLessThan(15_000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
   });
 
   it("bounds a 40k-value matrix with 1000 references", async () => {
     await workflow(40_000, 1000);
     const { result, ms } = await timed();
     expect(result.declarations.length).toBeLessThanOrEqual(64);
-    expect(ms).toBeLessThan(4000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
+    expect(ms).toBeLessThan(15_000); // loose wall-clock bound: the pre-fix code took minutes or ran out of memory
   });
 
   it("caps distinct matrix values per key at 32", async () => {

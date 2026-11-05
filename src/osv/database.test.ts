@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { crc32 } from "node:zlib";
+import { crc32, deflateRawSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { OsvEcosystem } from "./ecosystems.js";
@@ -32,7 +32,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   };
 });
 
-const { inspectOsvDatabases, installOsvEcosystemDb, osvDbDownloadLimit, osvDbZipPath, readOsvDbRecord } = await import("./database.js");
+const { inspectOsvDatabases, installOsvEcosystemDb, osvDbDownloadLimit, osvDbSourceUrl, osvDbZipPath, readOsvDbRecord, readZipArchive } = await import("./database.js");
 const { OSV_DB_SIZE_ESTIMATES, OSV_ECOSYSTEMS } = await import("./ecosystems.js");
 
 const ALLOWED_URL = (ecosystem: string) => `https://osv-vulnerabilities.storage.googleapis.com/${ecosystem}/all.zip`;
@@ -40,24 +40,29 @@ const recordPath = (ecosystem: string) => join(harness.root, "provenance", "osv-
 const sha256 = (bytes: Buffer) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 const io = () => ({ stdout: vi.fn(), stderr: vi.fn() });
 
-interface ZipOptions { zip64?: boolean; comment?: string }
+interface ZipOptions { zip64?: boolean; comment?: string; deflate?: boolean }
 
 /** Minimal spec-conformant stored zip so the central-directory check runs against real structure. */
-function buildZip(entries: Array<{ name: string; data: string }>, options: ZipOptions = {}): Buffer {
+function buildZip(entries: Array<{ name: string; data: string; flags?: number; method?: number; size?: number }>, options: ZipOptions = {}): Buffer {
   const parts: Buffer[] = [];
   const central: Buffer[] = [];
   let offset = 0;
   for (const entry of entries) {
     const name = Buffer.from(entry.name);
-    const data = Buffer.from(entry.data);
-    const crc = crc32(data);
+    const raw = Buffer.from(entry.data);
+    const crc = crc32(raw);
+    const method = entry.method ?? (options.deflate ? 8 : 0);
+    const data = method === 8 ? deflateRawSync(raw) : raw;
+    const size = entry.size ?? raw.length;
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(entry.flags ?? 0, 6);
+    local.writeUInt16LE(method, 8);
     local.writeUInt16LE(33, 12); // DOS date 1980-01-01
     local.writeUInt32LE(crc, 14);
     local.writeUInt32LE(data.length, 18);
-    local.writeUInt32LE(data.length, 22);
+    local.writeUInt32LE(size, 22);
     local.writeUInt16LE(name.length, 26);
     parts.push(local, name, data);
 
@@ -65,10 +70,12 @@ function buildZip(entries: Array<{ name: string; data: string }>, options: ZipOp
     header.writeUInt32LE(0x02014b50, 0);
     header.writeUInt16LE(20, 4);
     header.writeUInt16LE(20, 6);
+    header.writeUInt16LE(entry.flags ?? 0, 8);
+    header.writeUInt16LE(method, 10);
     header.writeUInt16LE(33, 14);
     header.writeUInt32LE(crc, 16);
     header.writeUInt32LE(data.length, 20);
-    header.writeUInt32LE(data.length, 24);
+    header.writeUInt32LE(size, 24);
     header.writeUInt16LE(name.length, 28);
     header.writeUInt32LE(offset, 42);
     central.push(header, name);
@@ -397,5 +404,63 @@ describe("OSV database health and provenance reads", () => {
 
     await writeFile(recordPath("PyPI"), JSON.stringify(good));
     expect(await readOsvDbRecord("PyPI")).toEqual(good);
+  });
+});
+
+describe("bounded in-process zip reading (the Synvoya Actions matcher's archive)", () => {
+  const LIMITS = { maxArchiveBytes: 1024 * 1024, maxEntries: 10, maxEntryBytes: 1024, maxTotalBytes: 4096 };
+  const archive = join(harness.root, "archive.zip");
+  const read = async (zip: Buffer, limits = LIMITS, accept = (name: string) => name.endsWith(".json")) => {
+    await mkdir(harness.root, { recursive: true });
+    await writeFile(archive, zip);
+    return readZipArchive(archive, limits, accept);
+  };
+
+  test("the GitHub Actions archive URL encodes the space in its ecosystem name", () => {
+    expect(osvDbSourceUrl("GitHub Actions")).toBe("https://osv-vulnerabilities.storage.googleapis.com/GitHub%20Actions/all.zip");
+    expect(osvDbSourceUrl("crates.io")).toBe(ALLOWED_URL("crates.io"));
+  });
+
+  test("reads stored and deflated entries, skips unaccepted names without inflating them, and hashes the bytes", async () => {
+    const deflated = buildZip([
+      { name: "GHSA-1.json", data: '{"id":"GHSA-1"}' },
+      { name: "README.txt", data: "x".repeat(5000) },
+      { name: "dir/", data: "" },
+    ], { deflate: true });
+    const result = await read(deflated);
+    expect(result.sha256).toBe(sha256(deflated));
+    expect(result.entries.map((entry) => [entry.name, entry.data.toString("utf8")])).toEqual([["GHSA-1.json", '{"id":"GHSA-1"}']]);
+    const stored = await read(buildZip([{ name: "a.json", data: "{}" }, { name: "b.json", data: "[]" }], { zip64: true }));
+    expect(stored.entries.map((entry) => entry.name)).toEqual(["a.json", "b.json"]);
+  });
+
+  test("fails closed on anything it cannot read whole: caps, encryption, methods, sizes and bounds", async () => {
+    const many = buildZip(Array.from({ length: 11 }, (_, index) => ({ name: `${index}.json`, data: "{}" })));
+    await expect(read(many)).rejects.toThrow(/more than 10 entries/);
+    await expect(read(buildZip([{ name: "big.json", data: "x".repeat(1025) }], { deflate: true }))).rejects.toThrow(/larger than 1024 bytes/);
+    const total = buildZip(Array.from({ length: 5 }, (_, index) => ({ name: `${index}.json`, data: "y".repeat(1000) })), { deflate: true });
+    await expect(read(total)).rejects.toThrow(/more than 4096 bytes/);
+    await expect(read(buildZip([{ name: "e.json", data: "{}", flags: 1 }]))).rejects.toThrow(/encrypted/);
+    await expect(read(buildZip([{ name: "m.json", data: "{}", method: 12 }]))).rejects.toThrow(/compression method 12/);
+    // The central directory understates the entry: inflating past the declared size stops, never grows.
+    await expect(read(buildZip([{ name: "s.json", data: "z".repeat(900), size: 10 }], { deflate: true }))).rejects.toThrow(/corrupt/);
+    await expect(read(Buffer.alloc(2048))).rejects.toThrow(/end-of-central-directory/);
+    await expect(read(buildZip([{ name: "a.json", data: "{}" }]), { ...LIMITS, maxArchiveBytes: 16 })).rejects.toThrow(/larger than 16 bytes/);
+    // A local header pointing past the central directory.
+    const shifted = buildZip([{ name: "a.json", data: "{}" }]);
+    const directory = shifted.length - 22 - 46 - "a.json".length;
+    shifted.writeUInt32LE(0x7fff, directory + 42);
+    await expect(read(shifted)).rejects.toThrow(/outside/);
+    // Review C4 (probe P5): an end record that counts fewer entries than the directory holds is never read in part.
+    const lying = buildZip([{ name: "a.json", data: "{}" }, { name: "b.json", data: "[]" }]);
+    lying.writeUInt16LE(1, lying.length - 22 + 8);
+    lying.writeUInt16LE(1, lying.length - 22 + 10);
+    await expect(read(lying)).rejects.toThrow(/central directory/);
+  });
+
+  test("a missing archive or one that is not a regular file is an error, never an empty read", async () => {
+    await expect(readZipArchive(join(harness.root, "absent.zip"), LIMITS, () => true)).rejects.toThrow();
+    await mkdir(join(harness.root, "folder.zip"), { recursive: true });
+    await expect(readZipArchive(join(harness.root, "folder.zip"), LIMITS, () => true)).rejects.toThrow(/not a regular file/);
   });
 });

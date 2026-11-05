@@ -34,7 +34,7 @@ jobs:
 
       # Network-permitted preparation. Install the exact released scanner outside the target.
       # --ignore-scripts prevents npm lifecycle execution; no target package/build code runs.
-      - name: Install CodeInspectus 3.3.2 outside the repository
+      - name: Install CodeInspectus 4.0.0 outside the repository
         shell: bash
         run: |
           npm install \
@@ -42,7 +42,7 @@ jobs:
             --no-save \
             --no-package-lock \
             --prefix "$RUNNER_TEMP/codeinspectus-cli" \
-            codeinspectus@3.3.2
+            codeinspectus@4.0.0
 
       - name: Explicitly approve and install verified engines and the offline vulnerability database
         run: node "$RUNNER_TEMP/codeinspectus-cli/node_modules/codeinspectus/dist/index.js" setup --all
@@ -58,8 +58,8 @@ jobs:
         run: |
           set +e
           # Declared coverage gaps (for example PHP with no bundled SAST rules) exit 2. To accept named
-          # gaps, which stay listed as partial coverage, add this option to the scan below once you
-          # install a release that has it (after 3.3.2); ids are in docs/CI-POLICY.md:
+          # gaps, which stay listed as partial coverage, add this option to the scan below (it needs
+          # 4.0.0 or later); ids are in docs/CI-POLICY.md:
           #   --accept-gaps php-sast,no-lockfile-npm \
           node "$RUNNER_TEMP/codeinspectus-cli/node_modules/codeinspectus/dist/index.js" scan "$GITHUB_WORKSPACE" \
             --format sarif \

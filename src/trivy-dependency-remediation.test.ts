@@ -8,9 +8,11 @@
  * and rescans made with 3.3.x still match. Only the title and remediation may change.
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { describe, expect, test, vi } from "vitest";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { afterAll, describe, expect, test, vi } from "vitest";
 
 const FIXTURE = resolve(process.cwd(), "fixtures/coverage-honesty-corpus/trivy-dependency");
 
@@ -32,6 +34,21 @@ vi.mock("./engines/trivy.js", async () => {
   };
 });
 vi.mock("./store.js", async (original) => ({ ...(await original<typeof import("./store.js")>()), saveScan: vi.fn(async () => undefined) }));
+
+// Only Trivy is replayed: an empty managed home keeps a locally installed osv-scanner (and its OSV
+// databases) out of the scan, so the result does not depend on the machine. Set before scan.js loads,
+// because the managed root is read from the home directory at module load.
+const ORIGINAL_HOME = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+const ISOLATED_HOME = mkdtempSync(join(tmpdir(), "ci-trivy-remediation-home-"));
+process.env.HOME = ISOLATED_HOME;
+process.env.USERPROFILE = ISOLATED_HOME;
+afterAll(() => {
+  for (const [name, value] of Object.entries(ORIGINAL_HOME)) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+  rmSync(ISOLATED_HOME, { recursive: true, force: true });
+});
 
 const { executeScan } = await import("./scan.js");
 const { safeParseScanJson } = await import("./store.js");

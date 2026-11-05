@@ -14,14 +14,15 @@
  * interruption degrades to `provenance_missing`; the old signature is never left beside new bytes.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
+import { inflateRawSync } from "node:zlib";
 
 import { MANAGED_OSV_DB, MANAGED_PROVENANCE, TRIVY_DB_STALE_AFTER_MS } from "../config.js";
 import type { InstallIo } from "../install.js";
@@ -44,8 +45,9 @@ export interface OsvDbRecord {
   recorded_at: string;
 }
 
+/** The archive's URL; the ecosystem is one percent-encoded path segment ("GitHub Actions" → `GitHub%20Actions`). */
 export function osvDbSourceUrl(ecosystem: OsvEcosystem): string {
-  return `${OSV_DB_BASE_URL}/${ecosystem}/all.zip`;
+  return `${OSV_DB_BASE_URL}/${encodeURIComponent(ecosystem)}/all.zip`;
 }
 
 /** Where osv-scanner 2.7.0 looks for an ecosystem's archive. */
@@ -85,61 +87,164 @@ async function readAt(handle: FileHandle, length: number, position: number): Pro
   return buffer;
 }
 
+/** Reads `length` bytes at `position`, or throws "file is truncated". */
+type ReadAt = (length: number, position: number) => Promise<Buffer>;
+
+interface CentralDirectory {
+  entries: number;
+  offset: number;
+  size: number;
+}
+
 /**
- * Prove the central directory opens without reading the archive body: locate the end-of-central-directory
- * record (following the ZIP64 locator when the 16/32-bit fields overflow, as the large npm archive's do),
- * check the directory lies inside the file, and check it starts with a central-directory header.
+ * Locate the central directory: find the end-of-central-directory record (following the ZIP64 locator when
+ * the 16/32-bit fields overflow, as the large npm archive's do) and check the directory lies inside the file
+ * and starts with a central-directory header. Throws a short reason when it does not.
+ */
+async function locateCentralDirectory(read: ReadAt, size: number): Promise<CentralDirectory> {
+  if (size < EOCD_LENGTH) throw new Error("file is too short");
+  const tailLength = Math.min(size, EOCD_LENGTH + MAX_ZIP_COMMENT);
+  const tail = await read(tailLength, size - tailLength);
+
+  let eocd = -1;
+  for (let index = tailLength - EOCD_LENGTH; index >= 0; index--) {
+    if (tail.readUInt32LE(index) === EOCD_SIGNATURE && index + EOCD_LENGTH + tail.readUInt16LE(index + 20) === tailLength) {
+      eocd = index;
+      break;
+    }
+  }
+  if (eocd < 0) throw new Error("no end-of-central-directory record");
+
+  const eocdPosition = size - tailLength + eocd;
+  let entries = tail.readUInt16LE(eocd + 10);
+  let directorySize = tail.readUInt32LE(eocd + 12);
+  let directoryOffset = tail.readUInt32LE(eocd + 16);
+  let directoryLimit = eocdPosition;
+
+  if (entries === 0xffff || directorySize === 0xffffffff || directoryOffset === 0xffffffff) {
+    if (eocdPosition < ZIP64_LOCATOR_LENGTH) throw new Error("ZIP64 locator is missing");
+    const locator = await read(ZIP64_LOCATOR_LENGTH, eocdPosition - ZIP64_LOCATOR_LENGTH);
+    if (locator.readUInt32LE(0) !== ZIP64_LOCATOR_SIGNATURE) throw new Error("ZIP64 locator is missing");
+    const recordPosition = Number(locator.readBigUInt64LE(8));
+    if (!Number.isSafeInteger(recordPosition) || recordPosition < 0 || recordPosition + ZIP64_EOCD_LENGTH > size) {
+      throw new Error("ZIP64 end-of-central-directory record is out of range");
+    }
+    const record = await read(ZIP64_EOCD_LENGTH, recordPosition);
+    if (record.readUInt32LE(0) !== ZIP64_EOCD_SIGNATURE) throw new Error("ZIP64 end-of-central-directory record is invalid");
+    entries = Number(record.readBigUInt64LE(32));
+    directorySize = Number(record.readBigUInt64LE(40));
+    directoryOffset = Number(record.readBigUInt64LE(48));
+    directoryLimit = recordPosition;
+  }
+
+  if (entries === 0) throw new Error("archive has no entries");
+  if (!Number.isSafeInteger(entries) || !Number.isSafeInteger(directoryOffset) || !Number.isSafeInteger(directorySize) ||
+    directorySize < 46 || directoryOffset + directorySize > directoryLimit) {
+    throw new Error("central directory lies outside the file");
+  }
+  const header = await read(4, directoryOffset);
+  if (header.readUInt32LE(0) !== CENTRAL_HEADER_SIGNATURE) throw new Error("central directory is unreadable");
+  return { entries, offset: directoryOffset, size: directorySize };
+}
+
+/**
+ * Prove the central directory opens without reading the archive body (see locateCentralDirectory).
  * Throws a short reason when it does not.
  */
 async function assertZipCentralDirectory(path: string): Promise<void> {
   const handle = await open(path, "r");
   try {
     const { size } = await handle.stat();
-    if (size < EOCD_LENGTH) throw new Error("file is too short");
-    const tailLength = Math.min(size, EOCD_LENGTH + MAX_ZIP_COMMENT);
-    const tail = await readAt(handle, tailLength, size - tailLength);
-
-    let eocd = -1;
-    for (let index = tailLength - EOCD_LENGTH; index >= 0; index--) {
-      if (tail.readUInt32LE(index) === EOCD_SIGNATURE && index + EOCD_LENGTH + tail.readUInt16LE(index + 20) === tailLength) {
-        eocd = index;
-        break;
-      }
-    }
-    if (eocd < 0) throw new Error("no end-of-central-directory record");
-
-    const eocdPosition = size - tailLength + eocd;
-    let entries = tail.readUInt16LE(eocd + 10);
-    let directorySize = tail.readUInt32LE(eocd + 12);
-    let directoryOffset = tail.readUInt32LE(eocd + 16);
-    let directoryLimit = eocdPosition;
-
-    if (entries === 0xffff || directorySize === 0xffffffff || directoryOffset === 0xffffffff) {
-      if (eocdPosition < ZIP64_LOCATOR_LENGTH) throw new Error("ZIP64 locator is missing");
-      const locator = await readAt(handle, ZIP64_LOCATOR_LENGTH, eocdPosition - ZIP64_LOCATOR_LENGTH);
-      if (locator.readUInt32LE(0) !== ZIP64_LOCATOR_SIGNATURE) throw new Error("ZIP64 locator is missing");
-      const recordPosition = Number(locator.readBigUInt64LE(8));
-      if (!Number.isSafeInteger(recordPosition) || recordPosition < 0 || recordPosition + ZIP64_EOCD_LENGTH > size) {
-        throw new Error("ZIP64 end-of-central-directory record is out of range");
-      }
-      const record = await readAt(handle, ZIP64_EOCD_LENGTH, recordPosition);
-      if (record.readUInt32LE(0) !== ZIP64_EOCD_SIGNATURE) throw new Error("ZIP64 end-of-central-directory record is invalid");
-      entries = Number(record.readBigUInt64LE(32));
-      directorySize = Number(record.readBigUInt64LE(40));
-      directoryOffset = Number(record.readBigUInt64LE(48));
-      directoryLimit = recordPosition;
-    }
-
-    if (entries === 0) throw new Error("archive has no entries");
-    if (!Number.isSafeInteger(directoryOffset) || !Number.isSafeInteger(directorySize) ||
-      directorySize < 46 || directoryOffset + directorySize > directoryLimit) {
-      throw new Error("central directory lies outside the file");
-    }
-    const header = await readAt(handle, 4, directoryOffset);
-    if (header.readUInt32LE(0) !== CENTRAL_HEADER_SIGNATURE) throw new Error("central directory is unreadable");
+    await locateCentralDirectory((length, position) => readAt(handle, length, position), size);
   } finally {
     await handle.close().catch(() => undefined);
   }
+}
+
+// ── bounded in-process zip reading ──────────────────────────────────────────
+
+const LOCAL_HEADER_SIGNATURE = 0x04034b50;
+const LOCAL_HEADER_LENGTH = 30;
+const CENTRAL_HEADER_LENGTH = 46;
+
+/** Hard bounds for reading an archive whole in memory: hostile or damaged archives fail closed. */
+export interface ZipReadLimits {
+  maxArchiveBytes: number;
+  maxEntries: number;
+  /** Largest inflated entry that is read. */
+  maxEntryBytes: number;
+  /** Sum of the inflated entries that are read. */
+  maxTotalBytes: number;
+}
+
+export interface ZipArchive {
+  /** `sha256:<hex>` of the archive bytes, comparable with an install record's signature. */
+  sha256: string;
+  entries: Array<{ name: string; data: Buffer }>;
+}
+
+/**
+ * Read an archive's accepted entries in memory, with no new dependency: the same central-directory location
+ * as the install-time check, then every central header in order, stored (0) or deflated (8) entries only.
+ * Throws a short reason, never returns a partial read, when anything is outside the limits or cannot be read
+ * whole (an encrypted, ZIP64-sized or otherwise unsupported entry, data outside the file, an inflated size
+ * other than the one declared). Entries the filter does not accept are never inflated.
+ */
+export async function readZipArchive(path: string, limits: ZipReadLimits, accept: (name: string) => boolean): Promise<ZipArchive> {
+  const info = await lstat(path);
+  if (!info.isFile()) throw new Error("archive is not a regular file");
+  if (info.size > limits.maxArchiveBytes) throw new Error(`archive is larger than ${limits.maxArchiveBytes} bytes`);
+  const bytes = await readFile(path);
+  if (bytes.length > limits.maxArchiveBytes) throw new Error(`archive is larger than ${limits.maxArchiveBytes} bytes`);
+  const read: ReadAt = async (length, position) => {
+    if (position < 0 || position + length > bytes.length) throw new Error("file is truncated");
+    return bytes.subarray(position, position + length);
+  };
+  const directory = await locateCentralDirectory(read, bytes.length);
+  if (directory.entries > limits.maxEntries) throw new Error(`archive has more than ${limits.maxEntries} entries`);
+
+  const entries: ZipArchive["entries"] = [];
+  const end = directory.offset + directory.size;
+  let at = directory.offset;
+  let total = 0;
+  for (let index = 0; index < directory.entries; index++) {
+    if (at + CENTRAL_HEADER_LENGTH > end || bytes.readUInt32LE(at) !== CENTRAL_HEADER_SIGNATURE) throw new Error("central directory is unreadable");
+    const flags = bytes.readUInt16LE(at + 8);
+    const method = bytes.readUInt16LE(at + 10);
+    const compressed = bytes.readUInt32LE(at + 20);
+    const size = bytes.readUInt32LE(at + 24);
+    const nameLength = bytes.readUInt16LE(at + 28);
+    const next = at + CENTRAL_HEADER_LENGTH + nameLength + bytes.readUInt16LE(at + 30) + bytes.readUInt16LE(at + 32);
+    const localOffset = bytes.readUInt32LE(at + 42);
+    if (next > end) throw new Error("central directory is unreadable");
+    const name = bytes.subarray(at + CENTRAL_HEADER_LENGTH, at + CENTRAL_HEADER_LENGTH + nameLength).toString("utf8");
+    at = next;
+    if (name.endsWith("/") || !accept(name)) continue;
+    if ((flags & 0x1) !== 0) throw new Error(`entry ${index + 1} is encrypted`);
+    if (method !== 0 && method !== 8) throw new Error(`entry ${index + 1} uses unsupported compression method ${method}`);
+    if (compressed === 0xffffffff || size === 0xffffffff || localOffset === 0xffffffff) throw new Error(`entry ${index + 1} needs ZIP64 sizes`);
+    if (size > limits.maxEntryBytes) throw new Error(`entry ${index + 1} is larger than ${limits.maxEntryBytes} bytes`);
+    total += size;
+    if (total > limits.maxTotalBytes) throw new Error(`entries hold more than ${limits.maxTotalBytes} bytes`);
+    if (localOffset + LOCAL_HEADER_LENGTH > directory.offset || bytes.readUInt32LE(localOffset) !== LOCAL_HEADER_SIGNATURE) {
+      throw new Error(`entry ${index + 1} lies outside the archive body`);
+    }
+    const start = localOffset + LOCAL_HEADER_LENGTH + bytes.readUInt16LE(localOffset + 26) + bytes.readUInt16LE(localOffset + 28);
+    if (start + compressed > directory.offset) throw new Error(`entry ${index + 1} lies outside the archive body`);
+    const body = bytes.subarray(start, start + compressed);
+    let data: Buffer;
+    try {
+      // Inflation stops at the declared size: a lying header cannot make the output grow.
+      data = method === 0 ? Buffer.from(body) : inflateRawSync(body, { maxOutputLength: Math.max(1, size) });
+    } catch {
+      throw new Error(`entry ${index + 1} is corrupt`);
+    }
+    if (data.length !== size) throw new Error(`entry ${index + 1} is corrupt`);
+    entries.push({ name, data });
+  }
+  // A directory longer than its end record says (a lying entry count) would otherwise be read only in part.
+  if (at !== end) throw new Error("central directory holds more entries than its end record counts");
+  return { sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`, entries };
 }
 
 // ── provenance records ──────────────────────────────────────────────────────

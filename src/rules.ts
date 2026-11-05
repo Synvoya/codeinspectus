@@ -4,15 +4,18 @@
  */
 
 import { z } from "zod";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { join, relative, sep } from "node:path";
+import { parse as parseYaml } from "yaml";
 import {
   DETECTION_DB_DIR,
   CODEINSPECTUS_AI_VERSION,
   CODEINSPECTUS_PUB_VERSION,
+  OPENGREP_RULES_DIR,
   type EngineName,
 } from "./config.js";
 import { readTrivyDbDate } from "./engines/trivy.js";
+import { log } from "./logger.js";
 import { inspectEngineSetup } from "./engine-health.js";
 import { nativePackInventory, registeredNativeAnalyzers } from "./packs/registry.js";
 import type { advisoryDatabaseInfoSchema, listRulesOutput, ruleInfoSchema } from "./schemas.js";
@@ -24,6 +27,40 @@ import { inspectOsvDatabases, osvDbSourceUrl, readOsvDbRecord } from "./osv/data
 
 type ListRulesResult = z.infer<typeof listRulesOutput>;
 type RuleInfo = z.infer<typeof ruleInfoSchema>;
+type SastRuleLanguages = NonNullable<ListRulesResult["sast_rule_languages"]>;
+
+/**
+ * Rule counts per declared language over the rule files Opengrep loads (every .yaml under the bundled
+ * rules directory), so the count cannot drift from what runs. Sorted by language.
+ */
+export async function opengrepRuleLanguages(dir: string = OPENGREP_RULES_DIR): Promise<SastRuleLanguages> {
+  const byLanguage = new Map<string, { rule_count: number; rulesets: Set<string> }>();
+  for (const entry of await readdir(dir, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile() || !/\.ya?ml$/.test(entry.name)) continue;
+    const path = join(entry.parentPath, entry.name);
+    const ruleset = relative(dir, entry.parentPath).split(sep)[0] || "(root)";
+    const doc = parseYaml(await readFile(path, "utf8")) as { rules?: Array<{ languages?: unknown }> } | null;
+    for (const rule of doc?.rules ?? []) {
+      for (const language of Array.isArray(rule.languages) ? rule.languages : []) {
+        if (typeof language !== "string") continue;
+        const count = byLanguage.get(language) ?? { rule_count: 0, rulesets: new Set<string>() };
+        count.rule_count++;
+        count.rulesets.add(ruleset);
+        byLanguage.set(language, count);
+      }
+    }
+  }
+  return [...byLanguage.entries()]
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([language, { rule_count, rulesets }]) => ({ language, rule_count, rulesets: [...rulesets].sort() }));
+}
+
+/** One human line for the per-language Opengrep rule counts. */
+export function sastRuleLanguagesLine(languages: SastRuleLanguages | undefined): string {
+  return languages?.length
+    ? `Opengrep rules by language: ${languages.map((entry) => `${entry.language} ${entry.rule_count}`).join(", ")}`
+    : "Opengrep rules by language: unavailable";
+}
 type AdvisoryDatabaseInfo = z.infer<typeof advisoryDatabaseInfoSchema>;
 type SynvoyaDatasetInfo = ListRulesResult["synvoya_dataset"];
 
@@ -217,15 +254,20 @@ export async function listRules(input: ListRulesInput): Promise<ListRulesResult>
   }));
 
   const engineNames: EngineName[] = ["opengrep", "gitleaks", "trivy", "osv-scanner"];
-  const [engineSetup, trivyDbDate, pubDatabase, osvDatabases, synvoyaDataset] = await Promise.all([
+  const [engineSetup, trivyDbDate, pubDatabase, osvDatabases, synvoyaDataset, sastLanguages] = await Promise.all([
     inspectEngineSetup(),
     readTrivyDbDate(),
     inspectPubDatabase(),
     osvAdvisoryDatabases(),
     synvoyaDatasetInfo(),
+    opengrepRuleLanguages().catch((error: unknown) => {
+      log.warn("list_rules: could not read the bundled Opengrep rule files", error);
+      return undefined;
+    }),
   ]);
+  const opengrepRulesets = [...new Set((sastLanguages ?? []).flatMap((entry) => entry.rulesets))].sort();
   const rulesets: Record<EngineName, string> = {
-    opengrep: "security-baseline",
+    opengrep: opengrepRulesets.length ? opengrepRulesets.join(" + ") : "security-baseline",
     gitleaks: "codeinspectus.toml + defaults",
     trivy: "embedded + vuln DB",
     "osv-scanner": "offline OSV databases (installed ecosystems only)",
@@ -272,6 +314,7 @@ export async function listRules(input: ListRulesInput): Promise<ListRulesResult>
     engines,
     synvoya_dataset: synvoyaDataset,
     rule_groups: groupRules(custom),
+    ...(sastLanguages ? { sast_rule_languages: sastLanguages } : {}),
     ...(trivyDbDate ? { trivy_db_date: trivyDbDate } : {}),
     engine_setup: engineSetup,
     native_packs: nativePacks,

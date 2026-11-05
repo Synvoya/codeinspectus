@@ -1,0 +1,241 @@
+# Synvoya Node.js pack (original Apache-2.0 rules; see LICENSE-PROVENANCE.md). ASCII-only.
+# File-system paths taken from archive entry names (zip slip). The request-input path rule
+# (syn-node-path-traversal) failed the holdout gate and is held in opengrep-rules-experimental/.
+# A path value counts as checked (a by-side-effect sanitizer) once it is tested with startsWith /
+# includes / indexOf / a regex, or passed to path.relative. No sanitizer is inferred from a function name.
+rules:
+  - id: syn-node-zip-slip
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      An archive entry name is joined into a destination path and written without a containment
+      check (zip slip). An entry named ../../app.js or with an absolute path is written outside the
+      extraction folder. Resolve each target path and skip the entry unless it stays inside the
+      destination folder.
+    metadata:
+      cwe: "CWE-22: Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')"
+      owasp: "A01:2021 - Broken Access Control"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-node
+      references:
+        - https://cwe.mitre.org/data/definitions/22.html
+    # Minified / bundled browser files are not server code, and taint analysis of a big bundle can
+    # run past Opengrep's per-file timeout. Only file-basename globs: Opengrep matches rule paths
+    # against the absolute path, so a folder name here could match a parent of the project.
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.min.mjs"
+        - "*-min.js"
+        - "*.bundle.js"
+        - "*-bundle.js"
+        - "*.chunk.js"
+    mode: taint
+    pattern-sources:
+      # adm-zip entries carry their stored name in entryName.
+      - pattern: $ENTRY.entryName
+      # yauzl, unzipper and tar-stream hand each entry to an "entry" event handler.
+      - patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  $Z.on("entry", ($ENTRY, ...) => { ... })
+              - pattern-inside: |
+                  $Z.on("entry", async ($ENTRY, ...) => { ... })
+              - pattern-inside: |
+                  $Z.on("entry", function ($ENTRY, ...) { ... })
+          - pattern-either:
+              - pattern: $ENTRY.fileName
+              - pattern: $ENTRY.path
+              - pattern: $ENTRY.name
+      # JSZip: keys of zip.files and the relative path handed to zip.forEach.
+      - patterns:
+          - pattern-inside: |
+              $Z = await $JSZIP.loadAsync(...);
+              ...
+          - pattern-either:
+              - pattern: Object.keys($Z.files)
+              - pattern: Object.entries($Z.files)
+              - patterns:
+                  - pattern-inside: |
+                      $Z.forEach(($REL, ...) => { ... })
+                  - pattern: $REL
+    pattern-sanitizers:
+      - pattern: $PATH.basename(...)
+      - pattern: basename(...)
+      # Value checks clear the value only in the right polarity, as the condition of an `if` that exits
+      # (return / throw / continue), or for uses inside the branch that accepts it. One entry per shape:
+      # inside a single pattern-either, arms that share a match range collapse into one.
+      # (a) Allow-list regex, negated: if (!/^[a-z0-9_-]+$/i.test(p)) return. Classes may only use a-z,
+      #     A-Z, 0-9, \d, \w, _ and a trailing -, so no class admits a dot, slash or backslash; flags only
+#     from g, i, u, y (with m or s, ^ and $ anchor per line).
+#     A ".." deny check is not a guard: an absolute path has no "..", reaches fs directly, and
+#     path.resolve(root, p) ignores root when p is absolute. Only resolve + containment counts.
+      - by-side-effect: true
+        patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  if (!$RE.test($P)) return ...;
+              - pattern-inside: |
+                  if (!$RE.test($P)) { ... return ...; }
+              - pattern-inside: |
+                  if (!$RE.test($P)) throw $ERR;
+              - pattern-inside: |
+                  if (!$RE.test($P)) { ... throw $ERR; }
+              - pattern-inside: |
+                  if (!$RE.test($P)) continue;
+              - pattern-inside: |
+                  if (!$RE.test($P)) { ... continue; }
+          - pattern: $RE.test($P)
+          - metavariable-regex:
+              metavariable: $RE
+              regex: ^/\^(?:(?:\[(?:a-z|A-Z|0-9|\\d|\\w|_)+-?\]|\\[dw]|[A-Za-z0-9_-])(?:[+*?]|\{\d+(?:,\d*)?\})?)+\$/[giuy]*$
+          - focus-metavariable: $P
+      - by-side-effect: true
+        patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  if (!$P.match($RE)) return ...;
+              - pattern-inside: |
+                  if (!$P.match($RE)) { ... return ...; }
+              - pattern-inside: |
+                  if (!$P.match($RE)) throw $ERR;
+              - pattern-inside: |
+                  if (!$P.match($RE)) { ... throw $ERR; }
+              - pattern-inside: |
+                  if (!$P.match($RE)) continue;
+              - pattern-inside: |
+                  if (!$P.match($RE)) { ... continue; }
+          - pattern: $P.match($RE)
+          - metavariable-regex:
+              metavariable: $RE
+              regex: ^/\^(?:(?:\[(?:a-z|A-Z|0-9|\\d|\\w|_)+-?\]|\\[dw]|[A-Za-z0-9_-])(?:[+*?]|\{\d+(?:,\d*)?\})?)+\$/[giuy]*$
+          - focus-metavariable: $P
+      # (c) Containment, negated, on a value path.resolve / normalize / join produced (a prefix check on
+      #     the raw request value does not stop "../" after the prefix), against a root that ends in a
+      #     separator (root + path.sep, root + "/", "/srv/files/": a bare root lets /srv/uploads-evil
+      #     through) and never one taken from the request.
+      - by-side-effect: true
+        patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  $P = $PATHMOD.$NORM(...);
+                  ...
+          - metavariable-regex:
+              metavariable: $NORM
+              regex: ^(resolve|normalize|join)$
+          - pattern-either:
+              - pattern-inside: |
+                  if (!$P.startsWith($ROOT)) return ...;
+              - pattern-inside: |
+                  if (!$P.startsWith($ROOT)) { ... return ...; }
+              - pattern-inside: |
+                  if (!$P.startsWith($ROOT)) throw $ERR;
+              - pattern-inside: |
+                  if (!$P.startsWith($ROOT)) { ... throw $ERR; }
+              - pattern-inside: |
+                  if (!$P.startsWith($ROOT)) continue;
+              - pattern-inside: |
+                  if (!$P.startsWith($ROOT)) { ... continue; }
+          - pattern: $P.startsWith($ROOT)
+          - metavariable-regex:
+              metavariable: $ROOT
+              regex: ^(?!.*\b(?:req|request|ctx|context|event)\b)(?:.+\+\s*(?:[\w$]+\.sep|["'`][/\\]{1,2}["'`])|["'`]/[^"'`]*/["'`])$
+          - focus-metavariable: $P
+      - by-side-effect: true
+        patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  if (!$PATHMOD.resolve(..., $P, ...).startsWith($ROOT)) return ...;
+              - pattern-inside: |
+                  if (!$PATHMOD.resolve(..., $P, ...).startsWith($ROOT)) { ... return ...; }
+              - pattern-inside: |
+                  if (!$PATHMOD.resolve(..., $P, ...).startsWith($ROOT)) throw $ERR;
+              - pattern-inside: |
+                  if (!$PATHMOD.resolve(..., $P, ...).startsWith($ROOT)) { ... throw $ERR; }
+              - pattern-inside: |
+                  if (!$PATHMOD.resolve(..., $P, ...).startsWith($ROOT)) continue;
+              - pattern-inside: |
+                  if (!$PATHMOD.resolve(..., $P, ...).startsWith($ROOT)) { ... continue; }
+          - pattern: $PATHMOD.resolve(..., $P, ...).startsWith($ROOT)
+          - metavariable-regex:
+              metavariable: $ROOT
+              regex: ^(?!.*\b(?:req|request|ctx|context|event)\b)(?:.+\+\s*(?:[\w$]+\.sep|["'`][/\\]{1,2}["'`])|["'`]/[^"'`]*/["'`])$
+          - focus-metavariable: $P
+      - by-side-effect: true
+        patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  if (!$PATHMOD.normalize($P).startsWith($ROOT)) return ...;
+              - pattern-inside: |
+                  if (!$PATHMOD.normalize($P).startsWith($ROOT)) { ... return ...; }
+              - pattern-inside: |
+                  if (!$PATHMOD.normalize($P).startsWith($ROOT)) throw $ERR;
+              - pattern-inside: |
+                  if (!$PATHMOD.normalize($P).startsWith($ROOT)) { ... throw $ERR; }
+              - pattern-inside: |
+                  if (!$PATHMOD.normalize($P).startsWith($ROOT)) continue;
+              - pattern-inside: |
+                  if (!$PATHMOD.normalize($P).startsWith($ROOT)) { ... continue; }
+          - pattern: $PATHMOD.normalize($P).startsWith($ROOT)
+          - metavariable-regex:
+              metavariable: $ROOT
+              regex: ^(?!.*\b(?:req|request|ctx|context|event)\b)(?:.+\+\s*(?:[\w$]+\.sep|["'`][/\\]{1,2}["'`])|["'`]/[^"'`]*/["'`])$
+          - focus-metavariable: $P
+      - by-side-effect: true
+        patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  if ($PATHMOD.relative($BASE, $P).startsWith("..")) return ...;
+              - pattern-inside: |
+                  if ($PATHMOD.relative($BASE, $P).startsWith("..")) { ... return ...; }
+              - pattern-inside: |
+                  if ($PATHMOD.relative($BASE, $P).startsWith("..")) throw $ERR;
+              - pattern-inside: |
+                  if ($PATHMOD.relative($BASE, $P).startsWith("..")) { ... throw $ERR; }
+              - pattern-inside: |
+                  if ($PATHMOD.relative($BASE, $P).startsWith("..")) continue;
+              - pattern-inside: |
+                  if ($PATHMOD.relative($BASE, $P).startsWith("..")) { ... continue; }
+          - pattern: $PATHMOD.relative($BASE, $P)
+          - focus-metavariable: $P
+      # (d) Inside the branch a positive containment check accepts, uses of the checked value are clean.
+      - patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  $P = $PATHMOD.$NORM(...);
+                  ...
+          - metavariable-regex:
+              metavariable: $NORM
+              regex: ^(resolve|normalize|join)$
+          - pattern-inside: if ($P.startsWith($ROOT)) { ... }
+          - metavariable-regex:
+              metavariable: $ROOT
+              regex: ^(?!.*\b(?:req|request|ctx|context|event)\b)(?:.+\+\s*(?:[\w$]+\.sep|["'`][/\\]{1,2}["'`])|["'`]/[^"'`]*/["'`])$
+          - pattern: $P
+      - patterns:
+          - pattern-either:
+              - pattern-inside: if ($PATHMOD.resolve(..., $P, ...).startsWith($ROOT)) { ... }
+              - pattern-inside: if ($PATHMOD.normalize($P).startsWith($ROOT)) { ... }
+          - metavariable-regex:
+              metavariable: $ROOT
+              regex: ^(?!.*\b(?:req|request|ctx|context|event)\b)(?:.+\+\s*(?:[\w$]+\.sep|["'`][/\\]{1,2}["'`])|["'`]/[^"'`]*/["'`])$
+          - pattern: $P
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $FS.$METHOD($P, ...)
+              - pattern: $FS.promises.$METHOD($P, ...)
+          - metavariable-regex:
+              metavariable: $FS
+              regex: ^(fs|fsp|fsPromises|fse|fsx|fsExtra|promises)$
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^(writeFile|writeFileSync|createWriteStream|mkdir|mkdirSync|outputFile|outputFileSync|ensureDir|ensureDirSync|ensureFile|copyFile|copyFileSync|rename|renameSync|symlink|symlinkSync|appendFile|appendFileSync)$
+          - focus-metavariable: $P
+      - patterns:
+          - pattern: $FN($P, ...)
+          - metavariable-regex:
+              metavariable: $FN
+              regex: ^(writeFile|writeFileSync|createWriteStream|mkdir|mkdirSync|outputFile)$
+          - focus-metavariable: $P

@@ -12,11 +12,13 @@ import type { EngineOutput } from "../engines/types.js";
 import type { SarifLog, SarifRule, SarifResult, SarifProps } from "./types.js";
 import { normalizeSeverity } from "../severity.js";
 import { findSecret, hashSecret, redactSecretText } from "../redact.js";
+import { recordGitleaksMatchEnd } from "../secret-match-key.js";
 import { dependencyRemediation, remediationForCwe } from "../remediation.js";
 import { fingerprint as fp } from "../util/hash.js";
 import { externalFindingComponents } from "../provenance.js";
 import { osvEcosystemForFile } from "../osv/ecosystems.js";
 import { DEPENDENCY_SCOPE_PROPERTY, DEV_SCOPE_NOTE } from "../engines/trivy-dev-scope.js";
+import { compareVersions } from "../synvoya/versions.js";
 
 const CWE_RE = /CWE[-_ ]?(\d{1,5})/gi;
 const OWASP_WEB_RE = /OWASP[-_ ]?(A\d{2}:\d{4})/gi;
@@ -197,6 +199,68 @@ function trivyDependency(message: string): { name: string; installed: string; fi
   return fixed.every((version) => version.length <= 128) ? { name, installed, fixed } : undefined;
 }
 
+/**
+ * Magento 2 core packages GitHub advisories (and so Trivy) key Magento advisories on, or that a Composer install
+ * locks; all are versioned as the product (`2.4.7`, then patch releases `2.4.7-p1`, `-p2`, ...).
+ */
+const MAGENTO_CORE_PACKAGES: ReadonlySet<string> = new Set([
+  "magento/community-edition",
+  "magento/product-community-edition",
+  "magento/project-community-edition",
+  "magento/magento2-base",
+  "magento/product-enterprise-edition",
+]);
+
+/** A Trivy finding on a Magento core package that is provably fixed at its installed `-pN` release. */
+export interface MagentoPatchSuppression {
+  file: string;
+  name: string;
+  version: string;
+  rule_id: string;
+}
+
+/**
+ * Trivy orders a Magento `-pN` patch release before its base release (as a semver pre-release) and compares N
+ * as text, so it reports `2.4.7-p3` as affected by an advisory fixed in `2.4.7`, and `2.4.6-p11` by one fixed
+ * in `2.4.6-p6` (field N2: 91 such findings on one 2.4.6-p11 store). Such a finding is split out when, under
+ * Magento ordering (base release, then `-pN` by number), the installed `-pN` release is at or above every fixed
+ * release Trivy lists on the same release line, and at least one is listed there. Anything Magento ordering
+ * cannot read, a release with no `-pN` suffix, no fix on that line, or any other package is kept unchanged (the
+ * same object, so ids and fingerprints never move). The caller must disclose what was split out.
+ */
+export function splitMagentoPatchFixed(findings: readonly Finding[]): { kept: Finding[]; suppressed: MagentoPatchSuppression[] } {
+  const kept: Finding[] = [];
+  const suppressed: MagentoPatchSuppression[] = [];
+  const base = (version: string): string => version.split("-")[0]!;
+  for (const finding of findings) {
+    const dependency = finding.engine === "trivy" && finding.finding_kind === "vulnerability" ? trivyDependency(finding.message) : undefined;
+    const fixed = dependency !== undefined && MAGENTO_CORE_PACKAGES.has(dependency.name.toLowerCase()) && /-p\d+$/i.test(dependency.installed)
+      ? provablyFixed(dependency.installed, dependency.fixed, base)
+      : false;
+    if (!fixed) {
+      kept.push(finding);
+      continue;
+    }
+    suppressed.push({ file: finding.location.file, name: dependency!.name, version: dependency!.installed, rule_id: finding.rule_id });
+  }
+  return { kept, suppressed };
+}
+
+function provablyFixed(installed: string, fixed: readonly string[], base: (version: string) => string): boolean {
+  if (compareVersions("magento", installed, installed) === undefined || fixed.length === 0) return false;
+  let sameLine = 0;
+  for (const version of fixed) {
+    const line = compareVersions("magento", base(version), base(installed));
+    // A fix Magento ordering cannot read could be on any line: nothing is proven.
+    if (line === undefined || compareVersions("magento", version, version) === undefined) return false;
+    if (line !== 0) continue;
+    sameLine++;
+    const order = compareVersions("magento", installed, version);
+    if (order === undefined || order < 0) return false;
+  }
+  return sameLine > 0;
+}
+
 export function normalizeEngineOutput(output: EngineOutput, target: string): Finding[] {
   if (!output.sarif) return [];
   return normalizeSarif(output.sarif, output.engine, target);
@@ -326,7 +390,7 @@ function normalizeResult(
     remediation,
     frameworks: [],
     confidence: precisionToConfidence(rule?.properties, isSecret),
-    producer_components: externalFindingComponents(engine, findingKind),
+    producer_components: externalFindingComponents(engine, findingKind, ruleId),
     finding_kind: findingKind,
   };
   if (owaspWeb.length) finding.owasp_web = owaspWeb;
@@ -334,6 +398,9 @@ function normalizeResult(
   if (isSecret) {
     finding.is_secret = true;
     if (secretValueHash) finding.secret_value_hash = secretValueHash;
+    // Gitleaks redacts its value (--redact=100): keep only where the match ends, so routing can read the
+    // value back for its reuse check. Nothing is added to the finding.
+    else if (engine === "gitleaks") recordGitleaksMatchEnd(finding, loc?.region?.endColumn);
   }
   if (engine === "trivy" && findingKind === "vulnerability") {
     const pkg = trivyPackage(message, file);

@@ -1,0 +1,787 @@
+# Synvoya PHP pack -- original Apache-2.0 rules (see LICENSE-PROVENANCE.md). ASCII-only.
+# Taint rules for plain PHP, Laravel, Symfony and WordPress: request input reaching a SQL, shell,
+# code, include, deserialization, phar-path, URL-fetch or variable-import sink, and client file names
+# reaching an upload target. (The HTML-output, path-traversal and open-redirect rules are held in
+# experimental/.) The last two rules were rebuilt after a failed field run (see the triage record) and
+# are kept in their machine-written form, re-using the anchors.
+# All taint rules live in this one file so they share one vocabulary (YAML anchors are file-local),
+# defined in the first rule:
+#   *php_request_input  -- values an HTTP client controls (superglobals and framework request objects)
+#   *php_scalar_result  -- expressions whose result cannot carry an injection payload
+#   *php_propagators    -- library functions whose result carries the taint of their input
+# Every rule sets taint_assume_safe_functions and taint_assume_safe_indexes: a call (or an array
+# lookup by a request-supplied key) returns clean data unless the call is listed as a
+# propagator. Field triage showed that letting every call propagate (getters on request-derived
+# objects, database loaders keyed by a request id, translation helpers) was the main source of
+# false positives; the propagator list keeps the string and array helpers real flows go through.
+# Functions defined in the same file are followed (intrafile taint), whatever their name. Escapers
+# are propagators; each rule lists only the escapers that protect its own sink as sanitizers.
+# Accepted limit: a helper defined in another file and not listed is assumed not to carry taint.
+# Deliberately not sources: $_FILES (PHP strips directory parts from client file names; the file-name
+# risk has its own rule below), $_SERVER['HTTP_HOST'] (a client only controls its own Host header) and
+# a bare $request[...] (WordPress code often names HTTP *responses* $request).
+rules:
+  - id: syn-php-sql-injection
+    languages: [php]
+    severity: ERROR
+    message: >-
+      SQL injection: request input is built into a SQL statement. Pass the value as a bound
+      parameter (PDO/mysqli prepared statement, $wpdb->prepare placeholders, Laravel query
+      bindings, Doctrine parameters) instead of concatenating it into the query text.
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks: [php, laravel, symfony, wordpress]
+    options:
+      taint_assume_safe_functions: true
+      taint_assume_safe_indexes: true
+    mode: taint
+    pattern-sources:
+      - &php_request_input
+        pattern-either:
+          - pattern: $_GET
+          - pattern: $_POST
+          - pattern: $_REQUEST
+          - pattern: $_COOKIE
+          - patterns:
+              - pattern: $_SERVER[$KEY]
+              - metavariable-regex:
+                  metavariable: $KEY
+                  regex: ^["'](?:HTTP_(?!HOST["'])[A-Z0-9_]+|REQUEST_URI|QUERY_STRING|PHP_SELF|PATH_INFO|ORIG_PATH_INFO)["']$
+          - pattern: file_get_contents("php://input")
+          - pattern: getallheaders()
+          - pattern: get_query_var(...)
+          - patterns:
+              - pattern: filter_input($TYPE, $NAME, ...)
+              - pattern-not: filter_input($TYPE, $NAME, $FILTER, ...)
+          - patterns:
+              - pattern: filter_input($TYPE, $NAME, $FILTER, ...)
+              - metavariable-regex:
+                  metavariable: $FILTER
+                  regex: ^(?:FILTER_DEFAULT|FILTER_UNSAFE_RAW)$
+          - patterns:
+              - pattern: $REQ->$METHOD(...)
+              - metavariable-regex:
+                  metavariable: $REQ
+                  regex: ^\$(?:this->)?(?:request|req)$
+              - metavariable-regex:
+                  metavariable: $METHOD
+                  regex: ^(?:input|get|query|post|all|only|except|cookie|header|json|string|str|route|getContent|get_param|get_params|get_json_params|get_body_params|get_query_params|get_body)$
+          - patterns:
+              - pattern: request()->$METHOD(...)
+              - metavariable-regex:
+                  metavariable: $METHOD
+                  regex: ^(?:input|get|query|post|all|only|except|cookie|header|json|string|str|route)$
+          - pattern: request($KEY, ...)
+          - patterns:
+              - pattern: $FACADE::$METHOD(...)
+              - metavariable-regex:
+                  metavariable: $FACADE
+                  regex: ^(?:.*\\)?(?:Request|Input)$
+              - metavariable-regex:
+                  metavariable: $METHOD
+                  regex: ^(?:input|get|query|post|all|only|except|cookie|header|json)$
+          - patterns:
+              - pattern: $REQ->$BAG->$METHOD(...)
+              - metavariable-regex:
+                  metavariable: $REQ
+                  regex: ^\$(?:this->)?(?:request|req)$
+              - metavariable-regex:
+                  metavariable: $BAG
+                  regex: ^(?:query|request|cookies|headers|attributes)$
+              - metavariable-regex:
+                  metavariable: $METHOD
+                  regex: ^(?:get|all|getString|keys)$
+    pattern-propagators: &php_propagators
+      - patterns:
+          - pattern: $F($FROM, ...)
+          - metavariable-regex:
+              metavariable: $F
+              regex: ^(?:trim|ltrim|rtrim|chop|wp_unslash|stripslashes|stripslashes_deep|stripcslashes|sanitize_text_field|sanitize_textarea_field|base64_decode|urldecode|rawurldecode|html_entity_decode|htmlspecialchars_decode|strtolower|strtoupper|mb_strtolower|mb_strtoupper|ucfirst|lcfirst|ucwords|substr|mb_substr|strval|nl2br|str_pad|strrev|wordwrap|array_values|array_filter|array_unique|array_reverse|array_slice|reset|end|current|array_shift|array_pop|json_decode|wp_parse_args|str_split|mb_convert_encoding|iconv|utf8_decode|utf8_encode|wp_kses_stripslashes|untrailingslashit|trailingslashit|storage_path|public_path|base_path|app_path|resource_path|wp_normalize_path|realpath|dirname|sanitize_url|htmlspecialchars|htmlentities|strip_tags|esc_html|esc_attr|esc_url|esc_url_raw|esc_js|esc_textarea|esc_sql|addslashes|mysqli_real_escape_string|mysql_real_escape_string|real_escape_string|escape_string|escapeHtml|basename|sanitize_file_name|escapeshellarg|escapeshellcmd)$
+        from: $FROM
+        to: $F
+      # Escaping methods return the (escaped) input: the escaping only counts for the sink it is meant
+      # for, which each rule lists as its own sanitizer.
+      - patterns:
+          - pattern: $TO = $OBJ->$F($FROM, ...);
+          - metavariable-regex:
+              metavariable: $F
+              regex: ^(?:real_escape_string|escape_string|escapeString|quote|escapeHtml|escapeHtmlAttr|escapeJs|escapeUrl|escape)$
+        from: $FROM
+        to: $TO
+      - patterns:
+          - pattern: $F($A, $B, $FROM, ...)
+          - metavariable-regex:
+              metavariable: $F
+              regex: ^(?:str_replace|str_ireplace|preg_replace|substr_replace)$
+        from: $FROM
+        to: $F
+      - patterns:
+          - pattern: $F($A, $FROM, ...)
+          - metavariable-regex:
+              metavariable: $F
+              regex: ^(?:implode|join|explode|preg_split|array_map|apply_filters)$
+        from: $FROM
+        to: $F
+      - patterns:
+          - pattern: $F(..., $FROM, ...)
+          - metavariable-regex:
+              metavariable: $F
+              regex: ^(?:array_merge|array_merge_recursive|array_replace|compact|path_join)$
+        from: $FROM
+        to: $F
+      # sprintf('%d', $x) yields digits only: the format must hold a string conversion (or be dynamic).
+      - patterns:
+          - pattern: $F($FROM, ...)
+          - metavariable-regex:
+              metavariable: $F
+              regex: ^(?:sprintf|vsprintf)$
+        from: $FROM
+        to: $F
+      - patterns:
+          - pattern: $F($FMT, ..., $FROM, ...)
+          - metavariable-regex:
+              metavariable: $F
+              regex: ^(?:sprintf|vsprintf)$
+          - metavariable-regex:
+              metavariable: $FMT
+              regex: ^(?:[^"']|["'](?s:.*)%(?:\d+\$)?[-+ 0#]*(?:'.)?\d*(?:\.\d+)?[sS])
+        from: $FROM
+        to: $F
+    pattern-sanitizers:
+      # An allow-list check on a value (reset it or bail out when it is not listed) cleans that value
+      # for every later use; a check on some other variable protects nothing here.
+      - patterns:
+          - pattern: in_array($X, ...)
+          - focus-metavariable: $X
+        by-side-effect: true
+      - &php_scalar_result
+        pattern-either:
+          - pattern: (int) $X
+          - pattern: (integer) $X
+          - pattern: (float) $X
+          - pattern: (double) $X
+          - pattern: (bool) $X
+          - pattern: (boolean) $X
+          - pattern: $A == $B
+          - pattern: $A === $B
+          - pattern: $A != $B
+          - pattern: $A !== $B
+          - pattern: $A < $B
+          - pattern: $A > $B
+          - pattern: $A <= $B
+          - pattern: $A >= $B
+          - pattern: $A <=> $B
+          - pattern: $A instanceof $B
+          - pattern: isset(...)
+          - pattern: empty(...)
+          # Session data is written by the server, not sent by the client.
+          - pattern: $_SESSION
+          # in_array() is deliberately not in the call list below: as a plain sanitizer it would mask
+          # the by-side-effect allow-list sanitizer that the SQL and include rules tie to the checked
+          # value (verified on Opengrep 1.33.1).
+          # An allow-list ternary yields only listed values (or the default).
+          - pattern: "in_array($X, ...) ? $X : $DEFAULT"
+          - pattern: "!in_array($X, ...) ? $DEFAULT : $X"
+          - patterns:
+              - pattern: $FN(...)
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(?:intval|floatval|doubleval|boolval|absint|count|sizeof|strlen|mb_strlen|is_[a-z_]+|ctype_[a-z]+|array_key_exists|key_exists|array_search|preg_match|preg_match_all|strpos|stripos|strrpos|str_contains|str_starts_with|str_ends_with|strcmp|strcasecmp|strncmp|strncasecmp|hash_equals|password_verify|password_hash|md5|sha1|crc32|hash|hash_hmac|round|floor|ceil|abs|max|min|number_format|checkdate|strtotime|mktime|filter_has_var|wp_verify_nonce|check_ajax_referer|check_admin_referer|current_user_can|user_can|sanitize_key|sanitize_title|sanitize_title_with_dashes|sanitize_html_class|wp_validate_boolean|rest_sanitize_boolean|wp_parse_id_list|uuid_is_valid)$
+          - patterns:
+              - pattern-either:
+                  - pattern: filter_var($X, $FILTER, ...)
+                  - pattern: filter_input($TYPE, $NAME, $FILTER, ...)
+              - metavariable-regex:
+                  metavariable: $FILTER
+                  regex: ^FILTER_(?:VALIDATE_(?:INT|FLOAT|BOOL|BOOLEAN|IP|MAC)|SANITIZE_NUMBER_(?:INT|FLOAT))$
+          - patterns:
+              - pattern: array_map("$CAST", ...)
+              - metavariable-regex:
+                  metavariable: $CAST
+                  regex: ^(?:intval|absint|floatval|boolval)$
+          # Stripping a character class (preg_replace('/[^a-z0-9_]/', '', $x)) is a deliberate filter.
+          - patterns:
+              - pattern: preg_replace("$RE", "", $X)
+              - metavariable-regex:
+                  metavariable: $RE
+                  regex: ^\s*([^A-Za-z0-9\s\\])\[[^\]]+\][+*]?\1[a-zA-Z]*\s*$
+      - patterns:
+          - pattern-either:
+              - pattern: $FN(...)
+              - pattern: $OBJ->$FN(...)
+          - metavariable-regex:
+              metavariable: $FN
+              regex: ^(?:esc_sql|mysqli_real_escape_string|mysql_real_escape_string|mysql_escape_string|pg_escape_string|pg_escape_literal|pg_escape_identifier|sqlite_escape_string|addslashes|quote|real_escape_string|escape_string|escapeString|quoteIdentifier|quoteSingleIdentifier)$
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: mysqli_query($C, $Q, ...)
+              - pattern: mysqli_multi_query($C, $Q)
+              - pattern: mysqli_real_query($C, $Q)
+              - pattern: mysqli_prepare($C, $Q)
+              - pattern: mysql_query($Q, ...)
+              - pattern: mysql_unbuffered_query($Q, ...)
+              - pattern: mysql_db_query($D, $Q, ...)
+              - pattern: pg_query($Q)
+              - pattern: pg_query($C, $Q)
+              - pattern: pg_send_query($C, $Q)
+              - pattern: pg_prepare($C, $N, $Q)
+              - pattern: sqlsrv_query($C, $Q, ...)
+              - pattern: odbc_exec($C, $Q, ...)
+              - patterns:
+                  - pattern: $DB->$M($Q, ...)
+                  # A nested prepare() is checked on its own text (below), not as this query.
+                  - pattern-not: $DB->$M($DB2->prepare(...), ...)
+                  - metavariable-regex:
+                      metavariable: $DB
+                      regex: (?i)^(?:\$|.*(?:->|::))(?:wpdb|db|dbh|pdo|conn|connection|link|mysqli|mysql|database|sqlite|em|entitymanager|getconnection\(\)|getentitymanager\(\)|connection\([^()]*\)|db\(\))$
+                  - metavariable-regex:
+                      metavariable: $M
+                      regex: ^(?:query|exec|prepare|multi_query|real_query|unbuffered_query|get_results|get_row|get_var|get_col|executeQuery|executeStatement|executeUpdate|fetchAll|fetchAllAssociative|fetchAllNumeric|fetchAllKeyValue|fetchAssociative|fetchNumeric|fetchOne|fetchColumn|fetchArray|fetchFirstColumn|iterateAssociative|createQuery|createNativeQuery|select|selectOne|statement|unprepared|insert|update|delete|affectingStatement)$
+              - patterns:
+                  - pattern: $QB->$M($Q, ...)
+                  - metavariable-regex:
+                      metavariable: $M
+                      regex: ^(?:whereRaw|orWhereRaw|havingRaw|orHavingRaw|orderByRaw|selectRaw|groupByRaw|fromRaw)$
+              - patterns:
+                  - pattern: $FACADE::$M($Q, ...)
+                  - metavariable-regex:
+                      metavariable: $FACADE
+                      regex: ^(?:.*\\)?DB$
+                  - metavariable-regex:
+                      metavariable: $M
+                      regex: ^(?:raw|select|selectOne|statement|unprepared|insert|update|delete|affectingStatement|cursor|scalar)$
+          - focus-metavariable: $Q
+
+  - id: syn-php-command-injection
+    languages: [php]
+    severity: ERROR
+    message: >-
+      OS command injection: request input reaches a shell command. Avoid the shell, or pass each
+      value through escapeshellarg(); prefer an argument array (proc_open with an array, Symfony or
+      Laravel Process with an array) so no shell parses the input.
+    metadata:
+      cwe: "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks: [php, laravel, symfony, wordpress]
+    options:
+      taint_assume_safe_functions: true
+      taint_assume_safe_indexes: true
+    mode: taint
+    pattern-sources:
+      - *php_request_input
+    pattern-propagators: *php_propagators
+    pattern-sanitizers:
+      - *php_scalar_result
+      - pattern: escapeshellarg(...)
+      - pattern: escapeshellcmd(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: system($X, ...)
+              - pattern: exec($X, ...)
+              - pattern: shell_exec($X)
+              - pattern: passthru($X, ...)
+              - pattern: popen($X, $MODE)
+              - pattern: proc_open($X, ...)
+              - pattern: pcntl_exec($X, ...)
+              - pattern: mail($TO, $SUBJECT, $BODY, $HEADERS, $X)
+              - patterns:
+                  - pattern: $P::fromShellCommandline($X, ...)
+                  - metavariable-regex:
+                      metavariable: $P
+                      regex: ^(?:.*\\)?Process$
+              - patterns:
+                  - pattern: $P::$M($X, ...)
+                  - metavariable-regex:
+                      metavariable: $P
+                      regex: ^(?:.*\\)?Process$
+                  - metavariable-regex:
+                      metavariable: $M
+                      regex: ^(?:run|start)$
+          - pattern-not: proc_open([...], ...)
+          - pattern-not: $P::$M([...], ...)
+          - focus-metavariable: $X
+      - pattern: "`...`"
+
+  - id: syn-php-code-injection
+    languages: [php]
+    severity: ERROR
+    message: >-
+      Code injection: request input is evaluated as PHP code or chooses the function that runs.
+      Never pass input to eval, assert, create_function or a dynamic call; map allowed values to
+      fixed callables instead.
+    metadata:
+      cwe: "CWE-94: Improper Control of Generation of Code ('Code Injection')"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks: [php, laravel, symfony, wordpress]
+    options:
+      taint_assume_safe_functions: true
+      taint_assume_safe_indexes: true
+    mode: taint
+    pattern-sources:
+      - *php_request_input
+    pattern-propagators: *php_propagators
+    pattern-sanitizers:
+      - *php_scalar_result
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: eval($X)
+              - pattern: assert($X, ...)
+              - pattern: create_function($X, ...)
+              - pattern: create_function($ARGS, $X)
+              - pattern: call_user_func($X, ...)
+              - pattern: call_user_func_array($X, ...)
+              - pattern: array_map($X, ...)
+              - patterns:
+                  - pattern: $X(...)
+                  - metavariable-regex:
+                      metavariable: $X
+                      regex: ^\$[A-Za-z_][A-Za-z0-9_]*$
+          # A closure or a literal function name is code the developer wrote, even when it captures
+          # request values.
+          - metavariable-regex:
+              metavariable: $X
+              regex: ^(?!\s*(?:["']|(?:static\s+)?(?:function|fn)\s*\())
+          # An allow-list check of the callable before the call.
+          - pattern-not-inside: |
+              if (<... in_array($X, ...) ...>) { ... }
+          - pattern-not-inside: |
+              if (<... in_array($X, ...) ...>) { ... }
+              ...
+          - pattern-not-inside: |
+              if (<... $X === $Y ...>) { ... }
+          - focus-metavariable: $X
+
+  - id: syn-php-unserialize-input
+    languages: [php]
+    severity: ERROR
+    message: >-
+      Insecure deserialization: request input is passed to unserialize(), which can instantiate
+      arbitrary classes (PHP object injection). Use json_decode, or pass
+      ['allowed_classes' => false].
+    metadata:
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+      owasp: "A08:2021 - Software and Data Integrity Failures"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks: [php, laravel, symfony, wordpress]
+    options:
+      taint_assume_safe_functions: true
+      taint_assume_safe_indexes: true
+    mode: taint
+    pattern-sources:
+      - *php_request_input
+    pattern-propagators: *php_propagators
+    pattern-sanitizers:
+      - *php_scalar_result
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: unserialize($X)
+              - pattern: unserialize($X, $OPTIONS)
+              - pattern: maybe_unserialize($X)
+          - pattern-not: unserialize($X, ["allowed_classes" => false])
+          - pattern-not: unserialize($X, ["allowed_classes" => [...]])
+          - focus-metavariable: $X
+
+  - id: syn-php-ssrf
+    languages: [php]
+    severity: ERROR
+    message: >-
+      Server-side request forgery: request input chooses the host of an outgoing HTTP request, so a
+      client can make the server call internal services or cloud metadata endpoints. Fix the host
+      in code, or check the URL against an allow-list (wp_safe_remote_* in WordPress).
+    metadata:
+      cwe: "CWE-918: Server-Side Request Forgery (SSRF)"
+      owasp: "A10:2021 - Server-Side Request Forgery (SSRF)"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks: [php, laravel, symfony, wordpress]
+    options:
+      taint_assume_safe_functions: true
+      taint_assume_safe_indexes: true
+    mode: taint
+    pattern-sources:
+      - *php_request_input
+    pattern-propagators: *php_propagators
+    pattern-sanitizers:
+      - *php_scalar_result
+      - pattern: wp_http_validate_url(...)
+      - pattern: urlencode(...)
+      - pattern: rawurlencode(...)
+      - pattern: http_build_query(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: curl_init($U)
+              - pattern: curl_setopt($C, CURLOPT_URL, $U)
+              - pattern: curl_setopt_array($C, [..., CURLOPT_URL => $U, ...])
+              - pattern: fsockopen($U, ...)
+              - pattern: pfsockopen($U, ...)
+              - pattern: stream_socket_client($U, ...)
+              - pattern: get_headers($U, ...)
+              - patterns:
+                  - pattern: $FN($U, ...)
+                  - metavariable-regex:
+                      metavariable: $FN
+                      regex: ^(?:wp_remote_get|wp_remote_post|wp_remote_head|wp_remote_request|download_url)$
+              - patterns:
+                  - pattern: $HTTP::$M($U, ...)
+                  - metavariable-regex:
+                      metavariable: $HTTP
+                      regex: ^(?:.*\\)?Http$
+                  - metavariable-regex:
+                      metavariable: $M
+                      regex: ^(?:get|post|put|patch|delete|head)$
+              # Guzzle / Symfony HttpClient objects the code itself creates or receives by type; a
+              # variable merely named $client is not evidence of an HTTP client.
+              - patterns:
+                  - pattern-either:
+                      - pattern-inside: |
+                          $C = new $CLS(...);
+                          ...
+                      - pattern-inside: |
+                          $C = $CLS::create(...);
+                          ...
+                      - pattern-inside: |
+                          function $FUNC(..., $CLS $C, ...) { ... }
+                  - metavariable-regex:
+                      metavariable: $CLS
+                      regex: (?i)^\\?(?:GuzzleHttp\\Client(?:Interface)?|(?:Symfony\\(?:Component|Contracts)\\HttpClient\\)?HttpClient(?:Interface)?)$
+                  - pattern-either:
+                      - patterns:
+                          - pattern: $C->$M($U, ...)
+                          - metavariable-regex:
+                              metavariable: $M
+                              regex: ^(?:get|post|put|patch|delete|head|getAsync|postAsync|putAsync|deleteAsync)$
+                      - patterns:
+                          - pattern: $C->$M($METHOD, $U, ...)
+                          - metavariable-regex:
+                              metavariable: $M
+                              regex: ^(?:request|requestAsync)$
+              # `use GuzzleHttp\Client;` then `new Client(...)`: the import names the class.
+              - patterns:
+                  - pattern-inside: |
+                      use GuzzleHttp\Client;
+                      ...
+                  - pattern-inside: |
+                      $C = new Client(...);
+                      ...
+                  - pattern-either:
+                      - patterns:
+                          - pattern: $C->$M($U, ...)
+                          - metavariable-regex:
+                              metavariable: $M
+                              regex: ^(?:get|post|put|patch|delete|head|getAsync|postAsync|putAsync|deleteAsync)$
+                      - patterns:
+                          - pattern: $C->$M($METHOD, $U, ...)
+                          - metavariable-regex:
+                              metavariable: $M
+                              regex: ^(?:request|requestAsync)$
+              # A class property whose declared or constructor type is an HTTP client (fully qualified
+              # Guzzle/Symfony types or Symfony's HttpClientInterface), and whose name reads as a client.
+              - patterns:
+                  - pattern-either:
+                      - pattern-inside: |
+                          class $CL { ... private $T $P; ... }
+                      - pattern-inside: |
+                          class $CL { ... protected $T $P; ... }
+                      - pattern-inside: |
+                          class $CL { ... public $T $P; ... }
+                      - pattern-inside: |
+                          class $CL { ... function __construct(..., $T $ARG, ...) { ... } ... }
+                  - metavariable-regex:
+                      metavariable: $T
+                      regex: (?i)^\\?(?:GuzzleHttp\\Client(?:Interface)?|Symfony\\(?:Component|Contracts)\\HttpClient\\HttpClient(?:Interface)?|HttpClientInterface)$
+                  - pattern-either:
+                      - patterns:
+                          - pattern: $this->$Q->$M($U, ...)
+                          - metavariable-regex:
+                              metavariable: $M
+                              regex: ^(?:get|post|put|patch|delete|head|getAsync|postAsync|putAsync|deleteAsync)$
+                      - patterns:
+                          - pattern: $this->$Q->$M($METHOD, $U, ...)
+                          - metavariable-regex:
+                              metavariable: $M
+                              regex: ^(?:request|requestAsync)$
+                  - metavariable-regex:
+                      metavariable: $Q
+                      regex: (?i)^\w*(?:client|http|guzzle)\w*$
+              # The same with a short Client(Interface) type the file imports from GuzzleHttp.
+              - patterns:
+                  - pattern-either:
+                      - pattern-inside: |
+                          use GuzzleHttp\Client;
+                          ...
+                      - pattern-inside: |
+                          use GuzzleHttp\ClientInterface;
+                          ...
+                  - pattern-either:
+                      - pattern-inside: |
+                          class $CL { ... private $T $P; ... }
+                      - pattern-inside: |
+                          class $CL { ... protected $T $P; ... }
+                      - pattern-inside: |
+                          class $CL { ... public $T $P; ... }
+                      - pattern-inside: |
+                          class $CL { ... function __construct(..., $T $ARG, ...) { ... } ... }
+                  - metavariable-regex:
+                      metavariable: $T
+                      regex: ^(?:Client|ClientInterface)$
+                  - pattern-either:
+                      - patterns:
+                          - pattern: $this->$Q->$M($U, ...)
+                          - metavariable-regex:
+                              metavariable: $M
+                              regex: ^(?:get|post|put|patch|delete|head|getAsync|postAsync|putAsync|deleteAsync)$
+                      - patterns:
+                          - pattern: $this->$Q->$M($METHOD, $U, ...)
+                          - metavariable-regex:
+                              metavariable: $M
+                              regex: ^(?:request|requestAsync)$
+                  - metavariable-regex:
+                      metavariable: $Q
+                      regex: (?i)^\w*(?:client|http|guzzle)\w*$
+              - patterns:
+                  - pattern-either:
+                      - patterns:
+                          - pattern: (new $CLS(...))->$M($U, ...)
+                          - metavariable-regex:
+                              metavariable: $M
+                              regex: ^(?:get|post|put|patch|delete|head|getAsync|postAsync|putAsync|deleteAsync)$
+                      - patterns:
+                          - pattern: (new $CLS(...))->$M($METHOD, $U, ...)
+                          - metavariable-regex:
+                              metavariable: $M
+                              regex: ^(?:request|requestAsync)$
+                  - metavariable-regex:
+                      metavariable: $CLS
+                      regex: (?i)^\\?GuzzleHttp\\Client$
+              # The file API fetches URLs (allow_url_fopen): an argument that is a URL by name or by a
+              # scheme-only literal prefix.
+              - patterns:
+                  - pattern: $FN($U, ...)
+                  - metavariable-regex:
+                      metavariable: $FN
+                      regex: ^(?:file_get_contents|fopen|copy|readfile|file|simplexml_load_file)$
+                  - metavariable-regex:
+                      metavariable: $U
+                      regex: (?is)^(?:.*(?:url|uri\b|href|endpoint|\bfeeds?\b|feed_?url|webhook)|["'](?:https?|ftp)://["'{$])
+          - metavariable-regex:
+              metavariable: $U
+              regex: ^(?!["'](?:(?:https?|ftp)://[^/"'{$\s]+[/?#]|/))
+          - focus-metavariable: $U
+
+  - id: syn-php-extract-request-input
+    languages: [php]
+    severity: WARNING
+    message: >-
+      extract() or one-argument parse_str() turns request input into local variables, so a client
+      can overwrite any variable in scope (authorization flags, file paths, SQL fragments). Read the
+      fields you need explicitly instead.
+    metadata:
+      cwe: "CWE-621: Variable Extraction Error"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks: [php, wordpress]
+    options:
+      taint_assume_safe_functions: true
+      taint_assume_safe_indexes: true
+    mode: taint
+    pattern-sources:
+      - *php_request_input
+    pattern-propagators: *php_propagators
+    pattern-sanitizers:
+      - *php_scalar_result
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: extract($X, ...)
+              - pattern: parse_str($X)
+          - focus-metavariable: $X
+
+  - id: syn-php-upload-client-filename
+    languages: [php]
+    severity: ERROR
+    message: >-
+      Uploaded file stored under the client's own file name or extension. If the target directory
+      is served by PHP (web root, Laravel public/ or storage link, WordPress uploads), a client can
+      upload shell.php and run it. Generate the name on the server (random name plus an
+      allow-listed extension, hashName() in Laravel) and keep uploads outside PHP-executable paths.
+    metadata:
+      cwe: "CWE-434: Unrestricted Upload of File with Dangerous Type"
+      owasp: "A04:2021 - Insecure Design"
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks: [php, laravel, symfony, wordpress]
+    options:
+      taint_assume_safe_functions: true
+      taint_assume_safe_indexes: true
+    mode: taint
+    pattern-sources:
+      - pattern: $_FILES[$FIELD]["name"]
+      - patterns:
+          - pattern: $UPLOAD->$M()
+          - metavariable-regex:
+              metavariable: $M
+              regex: ^(?:getClientOriginalName|getClientOriginalExtension)$
+    pattern-propagators: *php_propagators
+    pattern-sanitizers:
+      - pattern: md5(...)
+      - pattern: sha1(...)
+      - pattern: hash(...)
+      - pattern: wp_check_filetype(...)
+      - pattern: wp_check_filetype_and_ext(...)
+      - pattern: pathinfo($X, PATHINFO_FILENAME)
+      - pattern: $A == $B
+      - pattern: $A === $B
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: move_uploaded_file($TMP, $X)
+              - pattern: $FILE->move($DIR, $X)
+              - pattern: $FILE->storeAs($DIR, $X, "public")
+              - pattern: $FILE->storePubliclyAs($DIR, $X, ...)
+          # An allow-list check of the name or extension in the same function (or, outside any
+          # function, in an enclosing or preceding if) makes the upload safe.
+          - pattern-either:
+              - patterns:
+                  - pattern-inside: |
+                      function $F(...) { $...BODY; }
+                  - metavariable-regex:
+                      metavariable: $...BODY
+                      regex: (?s)\A(?!.*(?i:in_array|preg_match|substr_compare|str_ends_with|fnmatch|allowed|whitelist|allowlist|mimes|extensions)).*\z
+              - patterns:
+                  - pattern: move_uploaded_file($TMP, $X)
+                  - pattern-not-inside: |
+                      function $F(...) { ... }
+                  - pattern-not-inside: |
+                      if (<... in_array(...) ...>) { ... }
+                  - pattern-not-inside: |
+                      if (<... preg_match(...) ...>) { ... }
+                  - pattern-not-inside: |
+                      if (<... in_array(...) ...>) { ... }
+                      ...
+                  - pattern-not-inside: |
+                      if (<... preg_match(...) ...>) { ... }
+                      ...
+          - focus-metavariable: $X
+
+  - id: syn-php-file-inclusion
+    languages:
+      - php
+    severity: ERROR
+    message: "File inclusion from request input: include/require loads a path the client chooses, which can run arbitrary local files (or remote ones with allow_url_include). Map input to a fixed list of templates instead of building the path from it."
+    metadata:
+      cwe: "CWE-98: Improper Control of Filename for Include/Require Statement in PHP Program ('PHP Remote File Inclusion')"
+      owasp: A03:2021 - Injection
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks:
+        - php
+        - wordpress
+    options:
+      taint_assume_safe_functions: true
+      taint_assume_safe_indexes: true
+    mode: taint
+    pattern-sources:
+      - *php_request_input
+    pattern-propagators: *php_propagators
+    pattern-sanitizers:
+      # An allow-list check on a value (reset it or bail out when it is not listed) cleans that value
+      # for every later use; a check on some other variable protects nothing here.
+      - patterns:
+          - pattern: in_array($X, ...)
+          - focus-metavariable: $X
+        by-side-effect: true
+      # Project path cleaners, by name (fm_clean_path, sanitize_path, safe_filename, ...). Name-based
+      # sanitizers apply to path sinks only; they say nothing about SQL, shell or HTML.
+      - patterns:
+          - pattern-either:
+              - pattern: $FN(...)
+              - pattern: $OBJ->$FN(...)
+              - pattern: $CLASS::$FN(...)
+          - metavariable-regex:
+              metavariable: $FN
+              regex: (?i)^(?:[a-z0-9]+_)?(?:clean|saniti[sz]e|safe|secure|normali[sz]e)_?(?:path|file_?name|file|dir(?:ectory)?)\w*$
+      - *php_scalar_result
+      - pattern: basename(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: include $X;
+              - pattern: include_once $X;
+              - pattern: require $X;
+              - pattern: require_once $X;
+          - focus-metavariable: $X
+  - id: syn-php-phar-path-input
+    languages:
+      - php
+    severity: WARNING
+    message: A file-status function receives a path taken whole from request input. A phar:// path makes PHP before 8.0 unserialize the archive's metadata (object injection) even for file_exists or filesize. Prefix input with a fixed directory and reject stream wrappers.
+    metadata:
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+      owasp: A08:2021 - Software and Data Integrity Failures
+      category: security
+      confidence: MEDIUM
+      synvoya_pack: synvoya-php
+      frameworks:
+        - php
+        - wordpress
+    options:
+      taint_assume_safe_functions: true
+      taint_assume_safe_indexes: true
+    mode: taint
+    pattern-sources:
+      - *php_request_input
+    pattern-propagators: *php_propagators
+    pattern-sanitizers:
+      # Project path cleaners, by name (fm_clean_path, sanitize_path, safe_filename, ...). Name-based
+      # sanitizers apply to path sinks only; they say nothing about SQL, shell or HTML.
+      - patterns:
+          - pattern-either:
+              - pattern: $FN(...)
+              - pattern: $OBJ->$FN(...)
+              - pattern: $CLASS::$FN(...)
+          - metavariable-regex:
+              metavariable: $FN
+              regex: (?i)^(?:[a-z0-9]+_)?(?:clean|saniti[sz]e|safe|secure|normali[sz]e)_?(?:path|file_?name|file|dir(?:ectory)?)\w*$
+      - *php_scalar_result
+      - pattern: basename(...)
+    pattern-sinks:
+      - patterns:
+          - pattern: $FN($P, ...)
+          - metavariable-regex:
+              metavariable: $FN
+              regex: ^(?:file_exists|is_file|is_dir|is_link|is_readable|is_writable|is_writeable|is_executable|filesize|filemtime|filectime|fileatime|fileinode|filegroup|fileowner|fileperms|filetype|stat|lstat|getimagesize|exif_read_data|exif_thumbnail|exif_imagetype|md5_file|sha1_file|mime_content_type)$
+          - metavariable-regex:
+              metavariable: $P
+              regex: ^(?:(?:wp_unslash|stripslashes|trim|urldecode|rawurldecode|sanitize_text_field)\s*\(\s*)*(?:\$_(?:GET|POST|REQUEST|COOKIE)\s*\[|\$(?:this->)?(?:request|req)\s*->\s*(?:input|get|query|post)\s*\(|\$(?:this->)?(?:request|req)\s*->\s*(?:query|request)\s*->\s*get\s*\(|request\s*\()
+          - focus-metavariable: $P
+      - patterns:
+          - pattern: $FN("$L" . $X, ...)
+          - metavariable-regex:
+              metavariable: $FN
+              regex: ^(?:file_exists|is_file|is_dir|filesize|filemtime|file_get_contents|fopen|copy|getimagesize|md5_file|sha1_file|mime_content_type|include|require|opendir|scandir)$
+          - metavariable-regex:
+              metavariable: $L
+              regex: (?i)^phar://$
+          - focus-metavariable: $X

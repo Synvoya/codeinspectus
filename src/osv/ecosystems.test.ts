@@ -8,6 +8,7 @@ import {
   detectOsvLockfiles,
   normalizePackageName,
   OSV_DB_SIZE_ESTIMATES,
+  OSV_DB_NOTES,
   OSV_ECOSYSTEMS,
   OSV_OVERLAY_ECOSYSTEMS,
   OSV_PUBLISHED_ECOSYSTEMS,
@@ -41,7 +42,7 @@ describe("OSV ecosystem allow-list", () => {
 
   test("lists exactly the language ecosystems, each with a measured size estimate", () => {
     expect([...OSV_ECOSYSTEMS]).toEqual([
-      "npm", "PyPI", "Packagist", "Go", "crates.io", "RubyGems", "Maven", "NuGet", "Pub",
+      "npm", "PyPI", "Packagist", "Go", "crates.io", "RubyGems", "Maven", "NuGet", "Pub", "GitHub Actions",
     ]);
     expect(OSV_DB_SIZE_ESTIMATES).toEqual({
       npm: 219_599_455,
@@ -53,7 +54,13 @@ describe("OSV ecosystem allow-list", () => {
       Maven: 10_466_352,
       NuGet: 2_680_919,
       Pub: 25_896,
+      "GitHub Actions": 100_334,
     });
+  });
+
+  test("names the data licence of the GitHub Actions database, which only the Synvoya Actions matcher reads", () => {
+    expect(OSV_DB_NOTES["GitHub Actions"]).toMatch(/GHSA.*CC-BY-4\.0/);
+    expect(OSV_DB_NOTES["GitHub Actions"]).toMatch(/never by osv-scanner/);
   });
 });
 
@@ -112,6 +119,24 @@ describe("detectOsvEcosystems", () => {
     await touch("node_modules/x/package-lock.json");
 
     expect(await detectOsvEcosystems(root)).toEqual(["PyPI", "Packagist"]);
+  });
+
+  test("offers the GitHub Actions database for a repository with workflows, never as a lockfile", async () => {
+    await touch("requirements.txt");
+    await touch(".github/workflows/ci.yml");
+
+    expect(await detectOsvEcosystems(root)).toEqual(["PyPI", "GitHub Actions"]);
+    // osv-scanner never reads workflows: they are not lockfiles for its run or its reconciliation.
+    expect(await detectOsvLockfiles(root)).toEqual([{ path: "requirements.txt", ecosystem: "PyPI" }]);
+  });
+
+  test("does not offer the GitHub Actions database for a workflows folder with no workflow, or a linked one", async () => {
+    await touch(".github/workflows/README.md");
+    expect(await detectOsvEcosystems(root)).toEqual([]);
+    await mkdir(join(root, "elsewhere"), { recursive: true });
+    await writeFile(join(root, "elsewhere", "ci.yml"), "on: push\n");
+    await symlink(join(root, "elsewhere", "ci.yml"), join(root, ".github", "workflows", "linked.yml"));
+    expect(await detectOsvEcosystems(root)).toEqual([]);
   });
 
   test("lists each lockfile with its ecosystem, relative to the target and sorted by path", async () => {

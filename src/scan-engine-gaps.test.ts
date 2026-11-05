@@ -31,7 +31,7 @@ const PARSE_GAP = { id: "sast-parse-errors" as const, files: 2, examples: ["src/
 async function target(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "ci-engine-gaps-scan-"));
   await writeFile(join(dir, "app.ts"), "export const safe = true;\n", "utf8");
-  await writeFile(join(dir, "index.php"), "<?php echo 1;\n", "utf8");
+  await writeFile(join(dir, "index.html.twig"), "{{ q }}\n", "utf8");
   return dir;
 }
 
@@ -56,7 +56,7 @@ describe("engine-reported coverage gaps", () => {
     const { canonical, partial } = await scan(["sast-parse-errors"]);
 
     expect(canonical.coverage_gaps).toEqual([
-      { id: "php-sast", files: 1, examples: ["index.php"] },
+      { id: "php-sast", files: 1, examples: ["index.html.twig"] },
       PARSE_GAP,
     ]);
     expect(canonical.accepted_gaps).toEqual(["sast-parse-errors"]);
@@ -73,6 +73,27 @@ describe("engine-reported coverage gaps", () => {
     const { partial } = await scan(["sast-parse-errors", "php-sast"]);
 
     expect(partial.filter((component) => !component.startsWith("gap:")).length).toBeGreaterThan(0);
+  });
+
+  // Field run 2026-11-05: non-source files over Opengrep's size limit made CI exit 2 with nothing to fix.
+  test("an engine's informational note reaches the coverage notes and the export without lowering coverage", async () => {
+    const note = "Opengrep skipped 1 non-source file(s) over its file size limit (images, fonts, media, archives, documents, " +
+      "binaries, lockfiles, source maps or data dumps); no bundled SAST rule reads them (informational, not a coverage gap): logo.png.";
+    opengrep = { coverageNotes: [note] };
+    const { canonical, partial } = await scan(["php-sast"]);
+
+    expect(canonical.coverage_notes).toContainEqual({ component: "engine:opengrep", detail: note });
+    expect(canonical.warnings).not.toContain(note);
+    expect(partial).toEqual(["gap:php-sast"]);
+    const evidence = createJsonExport({ ...canonical, storage_schema_version: "2.0.0", canonical_findings: true }).coverage.evidence;
+    expect(evidence).toContainEqual({ category: "declared_scope", component: "engine:opengrep", state: "informational", detail: note });
+  });
+
+  test("a note from an engine that did not run is ignored", async () => {
+    opengrep = { ran: false, note: "Opengrep is not installed.", coverageNotes: ["Opengrep skipped 1 non-source file(s)"] };
+    const { canonical } = await scan();
+
+    expect(canonical.coverage_notes?.some((note) => note.detail.startsWith("Opengrep skipped 1 non-source"))).toBeFalsy();
   });
 
   test("a gap from an engine that did not run is ignored", async () => {

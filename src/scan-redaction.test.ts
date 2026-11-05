@@ -124,6 +124,36 @@ describe("scrubCredentialContext", () => {
     for (const file of ["src/app.ts", "main.py", "yaml.ts", "Dockerfile"]) expect(isConfigurationFile(file), file).toBe(false);
   });
 
+  // Field run 2026-11-05: Synvoya titles read "(Node.js 24.15 declared in .[redacted, 28 chars].yml)".
+  test.each([
+    ["a short workflow path", "Node.js 20 is end of life (Node.js 20 declared in .github/workflows/ci.yml)"],
+    ["a workflow path in a Synvoya title","Node.js 24.15 reached end of life (Node.js 24.15 declared in .github/workflows/desktop-e2e.yml)"],
+    ["a note opening with a nested workflow path", "apps/web/.github/workflows/release-candidate2.yml:12: actions/setup-node@v4 is not pinned to a commit"],
+    ["a CamelCase source path", "src/components/UserProfile2/EditDialog.tsx:4 declares React 18.2.0"],
+    ["an advisory link", "Link: [CVE-2026-67312](https://avd.aquasec.com/nvd/cve-2026-67312)"],
+    ["a Go module path", "backend/go.mod resolves Go package github.com/aws/aws-sdk-go-v2/service/s3@1.80.1."],
+    ["a Go pseudo-version", "backend/go.mod resolves Go package golang.org/x/image@0.0.0-20191009234506-e7c1f5e7dbb8."],
+  ])("keeps %s readable", (_label, text) => {
+    expect(scrubCredentialContext(text)).toBe(text);
+  });
+
+  test.each([
+    ["a base64 secret whose slashes split it into short runs", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"],
+    ["a slash-separated secret with a long mixed run", "deploy/9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c"],
+    ["a secret with base64 padding and a slash", "Zm9vYmFy/YmF6cXV4c2VjcmV0dG9rZW4xMjM0NTY="],
+    // Secrets split by `-`/`_` after a `/`: every piece alone reads as a name, the segment as a whole does not.
+    ["a key with an sk_ prefix after a slash", `x/${"sk_"}AbC123dEf456GhI789`],
+    ["a dash-joined GitHub-style token after a slash", `deploy/${"ghp-"}Ab12Cd34Ef56Gh78Ij`],
+    ["an AWS-style key id joined by underscores after a slash", `aws/${"AKIA"}ABCDEFGH_Ij12Kl34Mn56`],
+    ["a GitLab-style token after a slash", `ci/${"glpat-"}Xy12Zw34Ab56Cd78`],
+    ["a long mixed segment of CamelCase pieces", `assets/${"Qx7Rt9"}-Lm3Np8-Vb2Wk6`],
+    // The segment alone is low-entropy (2.0), so only the piece rule (20+ characters with letters and digits is
+    // never a path word) keeps the token masked. A token whose own entropy is under 3.5 was never masked.
+    ["a 24-character low-entropy letter-and-digit piece after a slash", `src/Kx9Qm/Vw7Zt/${"ab12".repeat(6)}`],
+  ])("still masks %s", (_label, secret) => {
+    expect(leaks(scrubCredentialContext(`value ${secret} end`), secret)).toBe(false);
+  });
+
   test("keeps ordinary code readable", () => {
     const code = `if (user.user_metadata.role === "admin") { return renderDashboard(sessionId); }`;
     expect(scrubCredentialContext(code)).toBe(code);

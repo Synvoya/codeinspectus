@@ -45,6 +45,8 @@ export interface CliScanConfiguration {
   git_scope?: { mode: "commit_diff" | "working_tree"; base: string; head?: string };
   /** Declared coverage gap ids accepted for CI (`--accept-gaps`). */
   accept_gaps?: CoverageGapId[];
+  /** Include licence findings (`--licenses`); off by default since 4.0. */
+  include_licenses?: boolean;
 }
 
 export interface PreflightPackApplicability {
