@@ -4,7 +4,7 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
-## [4.0.0] — unreleased
+## [4.0.0] — 2026-11-05
 
 CodeInspectus 4.0 adds Google's osv-scanner as a fourth engine, Synvoya (an offline gap-advisory layer
 plus PHP and Node.js rule packs), parser-backed native JavaScript/TypeScript checks, and a quieter
