@@ -5555,9 +5555,11 @@ async function main() {
           const timing = JSON.parse(await readFile(report, "utf8")).time;
           const ran = (file: string): string[] => (timing.targets.find((entry: any) => entry.path.endsWith(file))?.match_times ?? [])
             .map(([rule]: [string, number]) => rule.split(".").pop());
-          if (process.platform === "win32" && timing.targets.every((entry: any) => !entry.match_times?.length)) {
+          if (process.platform === "win32") {
             // CI 2026-11-05: Opengrep's Windows build lists the targets but no per-rule match times, so the
-            // prefilter cannot be observed here. The rules are the same files on every platform; Linux and macOS prove it.
+            // prefilter cannot be observed here. CI 2026-11-15: it can also list match times for only some rules,
+            // so its timing report is not a reliable record on Windows at all. The rules are the same files on every
+            // platform; Linux and macOS prove the prefilter.
             for (const file of ["sink.js", "plain.js"]) {
               assert(timing.targets.some((entry: any) => entry.path.endsWith(file)), `the Windows timing report does not list ${file}`);
             }
@@ -5952,7 +5954,11 @@ async function main() {
           assert(document.dry_run === true, "not a dry run");
           const steps = Object.fromEntries(document.plan.clients.map((step: any) => [step.client, step]));
           assertExactJson(Object.keys(steps).sort(), ["claude", "codex", "cursor", "windsurf"], "detected clients");
-          assertExactJson(steps.claude.argv, ["claude", "mcp", "add-json", "--scope", "user", "codeinspectus", '{"command":"npx","args":["-y","codeinspectus"]}'], "Claude Code argv");
+          // On Windows npx is a .cmd shim, so the registered entry runs it through cmd /c (src/init/clients.ts).
+          const claudeEntry = process.platform === "win32"
+            ? '{"command":"cmd","args":["/c","npx","-y","codeinspectus"]}'
+            : '{"command":"npx","args":["-y","codeinspectus"]}';
+          assertExactJson(steps.claude.argv, ["claude", "mcp", "add-json", "--scope", "user", "codeinspectus", claudeEntry], "Claude Code argv");
           assert(steps.claude.kind === "command" && steps.claude.status === "add", `Claude Code step: ${JSON.stringify(steps.claude)}`);
           assert(steps.codex.path === join(home, ".codex", "config.toml") && steps.codex.status === "add" && steps.codex.create === true,
             `Codex step: ${JSON.stringify(steps.codex)}`);
