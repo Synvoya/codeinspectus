@@ -307,6 +307,189 @@ function isUntrustedExpressionBody(body: string): boolean {
   ].some((pattern) => pattern.test(value));
 }
 
+// ── 4.1 M9: boolean-only use of untrusted context ──────────────────────────────────────────────────
+// A small parser for the GitHub Actions expression language. An expression whose every possible result is
+// a literal or a boolean (an untrusted reference appears only as an operand of contains/startsWith/endsWith,
+// a comparison, `!`, or a fromJSON membership test) substitutes no attacker text. Anything the parser does
+// not understand fails closed: the expression is treated as interpolation.
+
+type ExprNode =
+  | { kind: "literal" }
+  | { kind: "ref"; text: string; indexTainted: boolean }
+  | { kind: "not" | "compare"; operands: ExprNode[] }
+  | { kind: "and" | "or"; left: ExprNode; right: ExprNode }
+  | { kind: "call"; name: string; args: ExprNode[] };
+
+const BOOLEAN_FUNCTIONS = new Set(["contains", "startswith", "endswith", "success", "failure", "always", "cancelled"]);
+
+function tokenizeExpression(body: string): string[] | undefined {
+  const tokens: string[] = [];
+  const re = /\s+|'(?:[^']|'')*'|-?\d+(?:\.\d+)?(?:e[+-]?\d+)?|0x[0-9a-f]+|[A-Za-z_][\w-]*|&&|\|\||==|!=|<=|>=|[<>!().,[\]*]/giy;
+  let index = 0;
+  while (index < body.length) {
+    re.lastIndex = index;
+    const match = re.exec(body);
+    if (!match || match[0].length === 0) return undefined;
+    if (!/^\s+$/.test(match[0])) tokens.push(match[0]);
+    index = re.lastIndex;
+  }
+  return tokens;
+}
+
+function parseExpression(body: string): ExprNode | undefined {
+  const tokens = tokenizeExpression(body);
+  if (!tokens || tokens.length === 0 || tokens.length > 512) return undefined;
+  let position = 0;
+  const peek = () => tokens[position];
+  const fail = (): never => { throw new Error("unparsable"); };
+  const expect = (value: string) => (tokens[position] === value ? position++ : fail());
+  let depth = 0;
+
+  const primary = (): ExprNode => {
+    if (++depth > 64) fail();
+    try {
+      const token = peek() ?? fail();
+      if (token === "(") {
+        position++;
+        const inner = orExpr();
+        expect(")");
+        return inner;
+      }
+      if (token === "!") {
+        position++;
+        return { kind: "not", operands: [unary()] };
+      }
+      if (/^'/.test(token) || /^-?\d|^0x/i.test(token) || /^(?:true|false|null)$/i.test(token)) {
+        position++;
+        return { kind: "literal" };
+      }
+      if (/^[A-Za-z_]/.test(token)) {
+        position++;
+        if (peek() === "(") {
+          position++;
+          const args: ExprNode[] = [];
+          if (peek() !== ")") {
+            args.push(orExpr());
+            while (peek() === ",") {
+              position++;
+              args.push(orExpr());
+            }
+          }
+          expect(")");
+          return { kind: "call", name: token.toLowerCase(), args };
+        }
+        let text = token;
+        let indexTainted = false;
+        for (;;) {
+          if (peek() === ".") {
+            position++;
+            const part = peek() ?? fail();
+            if (part !== "*" && !/^[A-Za-z_][\w-]*$/.test(part)) fail();
+            position++;
+            text += `.${part}`;
+          } else if (peek() === "[") {
+            position++;
+            const indexToken = peek();
+            if (indexToken && /^'/.test(indexToken) && tokens[position + 1] === "]") {
+              text += `.${indexToken.slice(1, -1).replace(/''/g, "'")}`;
+              position += 2;
+            } else if (indexToken === "*" && tokens[position + 1] === "]") {
+              text += ".*";
+              position += 2;
+            } else {
+              const index = orExpr();
+              expect("]");
+              indexTainted = indexTainted || taintedExpression(index);
+              text += ".?";
+            }
+          } else break;
+        }
+        return { kind: "ref", text, indexTainted };
+      }
+      return fail();
+    } finally {
+      depth--;
+    }
+  };
+  const unary = (): ExprNode => primary();
+  const comparison = (): ExprNode => {
+    const left = unary();
+    if (["==", "!=", "<", "<=", ">", ">="].includes(peek() ?? "")) {
+      const operands = [left];
+      while (["==", "!=", "<", "<=", ">", ">="].includes(peek() ?? "")) {
+        position++;
+        operands.push(unary());
+      }
+      return { kind: "compare", operands };
+    }
+    return left;
+  };
+  const andExpr = (): ExprNode => {
+    let left = comparison();
+    while (peek() === "&&") {
+      position++;
+      left = { kind: "and", left, right: comparison() };
+    }
+    return left;
+  };
+  const orExpr = (): ExprNode => {
+    let left = andExpr();
+    while (peek() === "||") {
+      position++;
+      left = { kind: "or", left, right: andExpr() };
+    }
+    return left;
+  };
+  try {
+    const tree = orExpr();
+    return position === tokens.length ? tree : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether the expression's value can carry attacker-controlled text into the substitution. */
+function taintedExpression(node: ExprNode): boolean {
+  switch (node.kind) {
+    case "literal":
+    case "not":
+    case "compare":
+      return false;
+    case "ref":
+      return node.indexTainted || isUntrustedExpressionBody(node.text);
+    case "and":
+    case "or":
+      return taintedExpression(node.left) || taintedExpression(node.right);
+    case "call":
+      return BOOLEAN_FUNCTIONS.has(node.name) ? false : node.args.some(taintedExpression);
+  }
+}
+
+/** An untrusted reference whose expression yields only literals or booleans is not interpolation. */
+function interpolatesUntrusted(body: string): boolean {
+  if (!isUntrustedExpressionBody(body)) return false;
+  const tree = parseExpression(body);
+  // Fail closed when the parse does not see the untrusted reference the text match saw.
+  return tree === undefined || !containsUntrustedRef(tree) || taintedExpression(tree);
+}
+
+function containsUntrustedRef(node: ExprNode): boolean {
+  switch (node.kind) {
+    case "ref":
+      return isUntrustedExpressionBody(node.text);
+    case "and":
+    case "or":
+      return containsUntrustedRef(node.left) || containsUntrustedRef(node.right);
+    case "call":
+      return node.args.some(containsUntrustedRef);
+    case "not":
+    case "compare":
+      return node.operands.some(containsUntrustedRef);
+    default:
+      return false;
+  }
+}
+
 function isShellCommentAt(value: string, offset: number): boolean {
   const lineStart = value.lastIndexOf("\n", offset - 1) + 1;
   let quote: "single" | "double" | "backtick" | undefined;
@@ -354,7 +537,7 @@ function expressionInjectionFindings(document: WorkflowDocument, steps: readonly
     if (!range) continue;
     const raw = document.content.slice(range[0], range[1]);
     for (const expression of raw.matchAll(/\$\{\{([\s\S]*?)\}\}/g)) {
-      if (!isUntrustedExpressionBody(expression[1] ?? "")) continue;
+      if (!interpolatesUntrusted(expression[1] ?? "")) continue;
       const localOffset = expression.index ?? 0;
       if (isShellCommentAt(raw, localOffset)) continue;
       const absoluteOffset = range[0] + localOffset;

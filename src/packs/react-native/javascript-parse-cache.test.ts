@@ -2,6 +2,9 @@ import { describe, expect, test } from "vitest";
 
 import { parseJavaScriptSource } from "./javascript.js";
 import {
+  COMMENT_CACHE_MAX_OFFSETS,
+  maskCommentsFromParser,
+  parseJavaScriptTokens,
   PARSE_CACHE_MAX_CHARS,
   PARSE_CACHE_MAX_TOKENS,
   activeJavaScriptParseCache,
@@ -75,5 +78,46 @@ describe("JavaScript/TypeScript parse cache", () => {
       expect(parseJavaScriptSource("a.cjs", source).balanced).toBe(true);
       expect(parseJavaScriptSource("a.js", source).balanced).toBe(false);
     });
+  });
+});
+
+// 4.1 M4 field timing: the four regex analyzers each sweep every file for its comment ranges. With only the
+// token-bounded cache, a large repository's parses were evicted before the next analyzer reached them, and
+// each analyzer parsed every file again (directus native scan 6.9 s -> 12.0 s).
+describe("comment-range cache (4.1 M4)", () => {
+  test("a file parsed once in a scan is comment-masked without a second parse after eviction", async () => {
+    await withJavaScriptParseCache(async () => {
+      const cache = activeJavaScriptParseCache()!;
+      const files = Array.from({ length: 2000 }, (_, index) => `// file ${index}\n${smallFile(index)}`);
+      for (const file of files) expect(parseJavaScriptSource("a.ts", file).balanced).toBe(true);
+      expect(cache.get("01100:200000", files.at(-1)!)).toBeDefined();
+      expect(cache.get("01100:200000", files[0]!)).toBeUndefined(); // evicted by the token bound
+      expect(maskCommentsFromParser(files[0]!, "b.ts")).toBe(`${" ".repeat("// file 0".length)}\n${smallFile(0)}`);
+      expect(cache.get("01100:200000", files[0]!)).toBeUndefined(); // served from comment ranges, not re-parsed
+    });
+    // 2,000 parses: the 5 s default timed out once under a parallel field run (4.1 M8).
+  }, 30_000);
+
+  // Review nit (M4 cleanup 5): comments read under another token bound are never reused by the mask, whose
+  // own bound could refuse the file.
+  test("the mask never reuses comment ranges read under another token bound", async () => {
+    await withJavaScriptParseCache(async () => {
+      const cache = activeJavaScriptParseCache()!;
+      const file = `// note\n${smallFile(1)}`;
+      parseJavaScriptTokens("a.ts", file, 1_000_000);
+      expect(cache.get("01100:200000", file)).toBeUndefined();
+      expect(maskCommentsFromParser(file, "a.ts")).toBe(`${" ".repeat("// note".length)}\n${smallFile(1)}`);
+      expect(cache.get("01100:200000", file)).toBeDefined(); // parsed at the mask's own bound
+    });
+  });
+
+  test("comment ranges are bounded and cleared with the scan", () => {
+    const cache = new JavaScriptParseCache();
+    const ranges = Array.from({ length: 1000 }, (_, index) => index);
+    for (let index = 0; index < 3 * COMMENT_CACHE_MAX_OFFSETS / ranges.length; index++) cache.setComments(`k${index}`, ranges);
+    expect(cache.commentOffsets).toBeLessThanOrEqual(COMMENT_CACHE_MAX_OFFSETS);
+    expect(cache.getComments("k0")).toBeUndefined();
+    cache.clear();
+    expect(cache.commentOffsets).toBe(0);
   });
 });

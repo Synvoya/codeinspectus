@@ -209,6 +209,19 @@ describe("declared coverage gaps", () => {
     expect(actionsUncheckedGap(discovery.actionReferences!, all)).toBeUndefined();
   });
 
+  // 4.1 M8 Task 6: a single workflow file target is still a workflow, shown by its bare name.
+  test("a single workflow file target lists its unchecked actions under its file name", async () => {
+    const root = await tree({ ".github/workflows/ci.yml": "jobs:\n  t:\n    steps:\n      - uses: tj-actions/changed-files@v45\n      - uses: ./local\n" });
+    const discovery = await discoverCoverageGaps(join(root, ".github", "workflows", "ci.yml"));
+    expect(discovery.gaps.find((gap) => gap.id === "actions-unchecked")).toEqual({
+      id: "actions-unchecked", files: 1, examples: ["tj-actions/changed-files@v45 (ci.yml)"],
+    });
+    expect(discovery.actionReferences).toEqual([{ reference: "tj-actions/changed-files@v45", file: "ci.yml" }]);
+    // A file named like a workflow outside .github/workflows/ is not one.
+    const other = await tree({ "ci/ci.yml": "jobs:\n  t:\n    steps:\n      - uses: tj-actions/changed-files@v45\n" });
+    expect((await discoverCoverageGaps(join(other, "ci", "ci.yml"))).gaps.find((gap) => gap.id === "actions-unchecked")).toBeUndefined();
+  });
+
   // Security review: repeated entries in a crafted lockfile are counted once, in linear time.
   test("a lockfile of 200,000 repeated WordPress entries is read fast and counted once", async () => {
     const lock = `{"packages": [${Array.from({ length: 200_000 }, () => '{"name": "wpackagist-plugin/x"}').join(",")}]}`;
@@ -390,9 +403,9 @@ describe("declared coverage gaps", () => {
 
   test("describes the Synvoya pack's skipped bundles (M4 Task 4)", () => {
     expect(describeCoverageGap({ id: "third-party-bundles", files: 2, examples: ["assets/js/ckeditor/ckeditor.js", "lib/x.js"] }, false)).toBe(
-      "2 vendored or minified bundle file(s) were skipped by the Opengrep taint rules, which cannot finish on them " +
-        "(the Synvoya PHP and Node packs and the taint-mode baseline rules: syn-php-*, syn-node-*, ci-baseline-sql-injection-string-build); " +
-        "the other baseline Opengrep rules still scanned them (third-party-bundles): " +
+      "2 vendored, minified or identified third-party library file(s) were skipped by the Opengrep taint rules " +
+        "(the Synvoya PHP and Node packs and the taint-mode baseline rules: syn-php-*, syn-node-*, ci-baseline-sql-injection-string-build), " +
+        "which are slow or time out on such code; the other baseline Opengrep rules still scanned them (third-party-bundles): " +
         "assets/js/ckeditor/ckeditor.js, lib/x.js.",
     );
   });

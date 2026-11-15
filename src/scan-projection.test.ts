@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { projectScanForDisplay, routingNotes } from "./scan.js";
+import { orderAndIdentifyFindings, projectScanForDisplay, routingNotes } from "./scan.js";
+import { DISPLAY_ID_PATTERN } from "./display-id.js";
 import type { Finding, ScanResult } from "./types.js";
 import { createUnavailableRepositoryTrust } from "./repository-trust/schemas.js";
 
@@ -36,6 +37,20 @@ describe("canonical scan display projection", () => {
     const display = await projectScanForDisplay(raw, { include_compliance: false });
     expect(display.compliance_overview).toBeUndefined();
     expect(raw.compliance_overview).toBeDefined();
+  });
+});
+
+describe("canonical order and display ids (4.1)", () => {
+  test("scan assigns pattern ids and keeps severity order", () => {
+    const at = (id: string, severity: Finding["severity"], file: string, line: number): Finding =>
+      ({ ...finding(id, severity), location: { file, start_line: line, end_line: line } });
+    const input = [at("c", "low", "a.ts", 1), at("a", "critical", "z.ts", 9), at("b", "high", "b.ts", 2), at("d", "high", "a.ts", 5)];
+    const ordered = orderAndIdentifyFindings(input);
+    expect(ordered.map((item) => item.rule_id)).toEqual(["a", "d", "b", "c"]);
+    for (const item of ordered) expect(item.id).toMatch(DISPLAY_ID_PATTERN);
+    expect(new Set(ordered.map((item) => item.id)).size).toBe(4);
+    const again = orderAndIdentifyFindings([...input].reverse().map((item) => ({ ...item })));
+    expect(again.map((item) => [item.fingerprint, item.id])).toEqual(ordered.map((item) => [item.fingerprint, item.id]));
   });
 });
 

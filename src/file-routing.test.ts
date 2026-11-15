@@ -412,8 +412,28 @@ describe("contextFor — target-relative, case-sensitive path segments and basen
     for (const rel of [
       "src/app.ts", "src/contest/entry.ts", "src/latest.ts", "src/testimonials/list.tsx", "src/Tests/a.ts", "Test/a.ts",
       "src/Docs/a.ts", "src/readme.ts", "src/spec.ts", "src/test.ts", "src/mytest/a.ts", "src/auth.tests.ts", "config/recaptcha.php",
-      ".env", "src/Examples/a.js", "src/specs/a.ts", "src/e2e/a.ts", "src/demo/a.ts", "src/sampler.ts",
+      ".env", "src/Examples/a.js", "src/specs/a.ts", "src/demo/a.ts", "src/sampler.ts",
     ]) expect(contextFor(rel), rel).toBeUndefined();
+  });
+
+  // 4.1 M9 Task 2: end-to-end suites and language test-file conventions.
+  test.each([
+    "surveyform/cypress/e2e/e2e/login.cy.ts", "cypress/support/commands.js", "src/e2e/a.ts", "e2e/auth.ts",
+    "playwright/fixtures.ts", "pkg/testdata/sample.json", "app/integration_test/app_test.dart",
+    "web/login.cy.tsx", "machine-learning/test_main.py", "svc/models_test.py", "conftest.py", "pkg/tests_helpers/conftest.py",
+    "internal/auth/handler_test.go", "mobile/lib/auth_test.dart", "app/models/user_spec.rb", "lib/user_test.rb",
+  ])("M9 test-context name %s is test", (rel) => {
+    expect(contextFor(rel)).toBe("test");
+  });
+
+  test.each([
+    "src/e2e-encryption/x.ts", "src/cypressHelpers.ts", "testdata_loader.py", "contest.py", "latest_test_results.ts",
+    "src/Cypress/a.ts", "src/E2E/a.ts", "src/playwright.config.ts", "src/test_helpers.ts", "attest.py", "my_test.pyc",
+    "src/protest_test.txt", "lib/handler_test.go.bak", "src/cy.ts", "src/a.cy", "src/testdata.ts",
+    // Fix round 1 (review item 10): `.cy.` marks Cypress specs only for script extensions.
+    "deploy/policy.cy.yml", "config/app.cy.json", "docs-src/intro.cy.html",
+  ])("M9 look-alike %s is not context", (rel) => {
+    expect(contextFor(rel)).toBeUndefined();
   });
 
   test("only target-relative paths are classified, never a parent folder outside the target", () => {
@@ -466,6 +486,16 @@ describe("routeFindings — test/example context (tracked files, design §4.6)",
     const { findings, stats } = routeFindings(all, tracked);
     expect(findings.map((f) => f.severity)).toEqual(rules.map(() => "critical"));
     expect(stats.context_lowered).toBe(0);
+  });
+
+  test("M9: a named-provider secret in cypress/ keeps its severity; a code finding there is lowered", () => {
+    const aws = mk("cypress/e2e/login.cy.ts", { rule_id: "aws-access-token", severity: "critical" });
+    const code = mk("cypress/e2e/login.cy.ts", {
+      engine: "codeinspectus-ai", engines: ["codeinspectus-ai"], rule_id: "ci-ai-sensitive-log", cwe: ["CWE-532"],
+      finding_kind: "ai", is_secret: false, severity: "high", fingerprint: "fp-code",
+    });
+    const { findings } = routeFindings([aws, code], tracked);
+    expect(findings.map((f) => f.severity)).toEqual(["critical", "low"]);
   });
 
   test("a generic rule name from another engine is not lowered", () => {

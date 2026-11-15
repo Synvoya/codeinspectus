@@ -55,12 +55,12 @@ describe("ci-ai-llm-output-dangerous-html — frozen corpus lock (CG-51)", () =>
     findings = await runLlmDangerousHtmlCheck(CORPUS);
   });
 
-  test.each(TP)("TP $file fires (high, medium-confidence, CWE-79/116)", (tp) => {
+  test.each(TP)("TP $file fires (low, low-confidence after the 4.1 fresh-set gate, CWE-79/116)", (tp) => {
     const hits = atFile(findings, tp.file).filter((f) => f.rule_id === RULE);
     expect(hits.length).toBe(1);
     const f = hits[0]!;
-    expect(f.severity).toBe("high");
-    expect(f.confidence).toBe("medium"); // hedge in wording, not a dropped severity
+    expect(f.severity).toBe("low"); // 4.1 M9 fresh-set gate (Ruling 3): 1 field hit, a false positive
+    expect(f.confidence).toBe("low");
     expect(f.cwe).toContain("CWE-79");
     expect(f.cwe).toContain("CWE-116");
     expect(f.owasp_web).toContain("A03:2021");

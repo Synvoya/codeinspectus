@@ -4,7 +4,8 @@
 rules:
   - id: ci-baseline-sql-injection-python
     languages: [python]
-    severity: ERROR
+    # 4.1 M9 fresh-set gate (Ruling 3): 1 hit, a false positive (DDL from constants and int()); low severity, low confidence.
+    severity: INFO
     message: >
       Potential SQL injection: a SQL query is built with string formatting/
       concatenation. Use parameterized queries.
@@ -12,12 +13,107 @@ rules:
       cwe: "CWE-89: SQL Injection"
       owasp: "A03:2021 - Injection"
       category: security
-      confidence: MEDIUM
+      confidence: LOW
+    # 4.1 M9: fire only when some interpolated operand is not a constant. A constant is a literal, or an
+    # UPPER_SNAKE name assigned exactly a string or number literal at module level (structural: `NAME = "..."`,
+    # `NAME = 10`; an f-string, call, env read or parameter is not) and never written in the enclosing function
+    # (no assignment, `+=`, loop target or `global NAME`). Any other identifier is reported.
+    # Schema migrations are not request code.
+    paths:
+      exclude:
+        - "**/migrations/**"
+        - "**/alembic/versions/**"
     patterns:
       - pattern-either:
           - pattern: $CUR.execute("..." % ...)
           - pattern: $CUR.execute("..." + ...)
           - pattern: $CUR.execute(f"...")
+      - pattern-either:
+          # A lower-case or mixed-case name, attribute, call or subscript operand.
+          - patterns:
+              - pattern: $CUR.execute(<... $X ...>, ...)
+              - metavariable-regex:
+                  metavariable: $X
+                  regex: ^(?![A-Z][A-Z0-9_]*$)(?!(?:None|True|False)$)[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*|\[[^]]*\]|\([^)]*\))*$
+          # An UPPER_SNAKE operand with no assignment in scope.
+          - patterns:
+              - pattern: $CUR.execute(<... $C ...>, ...)
+              - metavariable-regex:
+                  metavariable: $C
+                  regex: ^[A-Z][A-Z0-9_]*$
+              - pattern-not-inside: |
+                  $C = $ANY_VALUE
+                  ...
+          # Fix round 1: an UPPER_SNAKE operand written anywhere in the enclosing function (assigned in any nested
+          # block, before or after the query, augmented, a loop target or declared global) is not the module constant.
+          - patterns:
+              - pattern-inside: |
+                  def $FUNC(...):
+                    $...BODY
+              - pattern: $CUR.execute(<... $C ...>, ...)
+              - metavariable-regex:
+                  metavariable: $C
+                  regex: ^[A-Z][A-Z0-9_]*$
+              - metavariable-pattern:
+                  metavariable: $...BODY
+                  pattern-either:
+                    - pattern: $C = $W
+                    - pattern: $C += $W
+                    - pattern: global $C
+                    - pattern: |
+                        for $C in $W:
+                          ...
+          # Fix round 2: a read inside a nested def or lambda of a function that assigns an UPPER_SNAKE name later.
+          # Python binds the closure late, so the later write is what the query reads. Opengrep resolves the name
+          # before the write is seen and cannot equate the two, so any later UPPER_SNAKE write counts.
+          - patterns:
+              - pattern-either:
+                  - patterns:
+                      - pattern-inside: |
+                          def $FUNC(...):
+                            ...
+                            def $INNER(...):
+                              ...
+                            ...
+                            $LATER = $LW
+                            ...
+                      - pattern-inside: |
+                          def $INNER(...):
+                            ...
+                  # Fix round 3: any lambda (with or without parameters, assigned or passed to a call).
+                  - patterns:
+                      - pattern-inside: |
+                          def $FUNC(...):
+                            ...
+                            <... lambda $...LARGS: $LBODY ...>
+                            ...
+                            $LATER = $LW
+                            ...
+                      - pattern-inside: |
+                          lambda $...LARGS: $LBODY
+              - pattern: $CUR.execute(<... $C ...>, ...)
+              - metavariable-regex:
+                  metavariable: $C
+                  regex: ^[A-Z][A-Z0-9_]*$
+              - metavariable-regex:
+                  metavariable: $LATER
+                  regex: ^[A-Z][A-Z0-9_]*$
+          # An UPPER_SNAKE operand assigned anything but a string or number literal.
+          - patterns:
+              - pattern-inside: |
+                  $C = $V
+                  ...
+              - pattern: $CUR.execute(<... $C ...>, ...)
+              - metavariable-regex:
+                  metavariable: $C
+                  regex: ^[A-Z][A-Z0-9_]*$
+              - metavariable-pattern:
+                  metavariable: $V
+                  patterns:
+                    - pattern: $VALUE
+                    - pattern-not: |
+                        "..."
+                    - pattern-not-regex: \A-?[0-9][0-9_]*(?:\.[0-9_]+)?\Z
 
   - id: ci-baseline-command-injection
     languages: [javascript, typescript]
@@ -39,7 +135,8 @@ rules:
 
   - id: ci-baseline-command-injection-python
     languages: [python]
-    severity: ERROR
+    # 4.1 M9 fresh-set gate (Ruling 3): 4 hits, none true (app-defined paths, documentation samples); low severity, low confidence.
+    severity: INFO
     message: >
       Potential command injection: a shell command is built from non-literal data
       with shell=True. Pass an argument list and avoid shell=True.
@@ -47,7 +144,7 @@ rules:
       cwe: "CWE-77: Command Injection"
       owasp: "A03:2021 - Injection"
       category: security
-      confidence: MEDIUM
+      confidence: LOW
     patterns:
       - pattern-either:
           - pattern: subprocess.$F("..." + ..., shell=True)
@@ -77,24 +174,6 @@ rules:
       - pattern-not: new Function("...", "...")
       - pattern-not: new Function("...", "...", "...")
       - pattern-not: new Function("...", "...", "...", "...")
-
-  - id: ci-baseline-eval-python
-    languages: [python]
-    severity: ERROR
-    message: >
-      Dynamic evaluation of non-literal input can lead to code injection. Avoid
-      eval/exec on untrusted data.
-    metadata:
-      cwe: "CWE-94: Code Injection"
-      owasp: "A03:2021 - Injection"
-      category: security
-      confidence: MEDIUM
-    patterns:
-      - pattern-either:
-          - pattern: eval($X)
-          - pattern: exec($X)
-      - pattern-not: eval("...")
-      - pattern-not: exec("...")
 
   - id: ci-baseline-nosql-injection
     languages: [javascript, typescript]

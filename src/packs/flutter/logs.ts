@@ -118,7 +118,7 @@ export async function runFlutterSensitiveLog(input: FlutterProjectInput): Promis
       if (isKDebugModeGuarded(document, call.tokenIndex)) continue;
       const labels = new Set<string>();
       for (const argument of call.arguments) {
-        for (const label of sensitiveCredentialLabels(expressionFromTokens(argument.tokens))) {
+        for (const label of sensitiveCredentialLabels(expressionFromTokens(argument.tokens), { literalText: false })) {
           labels.add(label);
         }
       }

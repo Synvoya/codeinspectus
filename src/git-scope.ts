@@ -10,6 +10,7 @@ import { releaseTemporaryDirectory, trackTemporaryDirectory } from "./util/tempo
 import { requireSafeScanTarget } from "./path-safety.js";
 import { detectGitSafety } from "./git-safety.js";
 import { findingsMatch } from "./scan-history.js";
+import { secretContainmentAgainst } from "./dedup.js";
 import { isDocumentationName } from "./path-safety.js";
 import { pairMovedFindings } from "./dedup.js";
 import { escapeScanDisplayText } from "./display-path.js";
@@ -383,10 +384,13 @@ async function findingsIntroducedOutsideChanges(
     return { introduced: new Set(), limitation: `The base commit could not be scanned to find findings introduced outside the changed paths: ${error instanceof Error ? error.message : String(error)}` };
   }
   try {
-    const baseFindings = (await executeScan({ ...input, path: snapshot.directory }, { persist: false })).canonical.findings;
-    const unmatched = supporting.filter((finding) => !baseFindings.some((candidate) => findingsMatch(candidate, finding)));
+    const baseScan = (await executeScan({ ...input, path: snapshot.directory }, { persist: false })).canonical;
+    const baseFindings = baseScan.findings;
+    // Both scans are made by this release, so the pre-4.1 containment match never applies.
+    const matchOptions = secretContainmentAgainst(baseScan, baseScan);
+    const unmatched = supporting.filter((finding) => !baseFindings.some((candidate) => findingsMatch(candidate, finding, matchOptions)));
     const moved = pairMovedFindings(
-      baseFindings.filter((candidate) => !findings.some((finding) => findingsMatch(candidate, finding))),
+      baseFindings.filter((candidate) => !findings.some((finding) => findingsMatch(candidate, finding, matchOptions))),
       unmatched,
     );
     // Submodule contents are not in the base snapshot, so findings inside a submodule are not

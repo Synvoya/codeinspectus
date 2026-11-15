@@ -105,6 +105,8 @@
     "pihole/pihole": "pihole",
     "kestra/kestra": "kestra",
     "wordpress": "wordpress",
-    "erlang": "erlang"
+    "erlang": "erlang",
+    "minio/minio": "minio",
+    "quay.io/minio/minio": "minio"
   }
 }

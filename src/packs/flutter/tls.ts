@@ -35,7 +35,7 @@ function finding(file: string, line: number, snippet: string): Finding {
   return makeAiFinding({
     ruleId: FLUTTER_TLS_RULE_ID,
     title: "Flutter TLS certificate verification is unconditionally disabled",
-    severity: "high",
+    severity: "low", // 4.1 M9 fresh-set gate: 1 hit, 0 true (Ruling 3)
     cwe: ["CWE-295"],
     file,
     startLine: line,
@@ -55,7 +55,7 @@ function finding(file: string, line: number, snippet: string): Finding {
         "https://api.dart.dev/dart-io/HttpClient/badCertificateCallback.html",
       ],
     },
-    confidence: "high",
+    confidence: "low",
   });
 }
 

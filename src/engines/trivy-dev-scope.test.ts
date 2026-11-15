@@ -68,18 +68,20 @@ describe("Trivy development-dependency scope", () => {
     }
   });
 
-  test("a dev finding names its scope in the text and keeps the fingerprint of an unmarked run", () => {
+  test("a dev licence result names its scope in the text; vulnerability findings get theirs after dedup (4.1)", () => {
     const plain = normalizeSarif(sarif(), "trivy", "/repo");
     const log = sarif();
     markDevScope(log, devScopeFromReport(report));
     const scoped = normalizeSarif(log, "trivy", "/repo");
 
     expect(scoped.map((finding) => finding.fingerprint)).toEqual(plain.map((finding) => finding.fingerprint));
-    expect(scoped[0]!.title).toMatch(/\(handlebars@4\.7\.9, dev dependency\)$/);
-    expect(scoped[0]!.message).toContain("Dependency scope: development only");
+    // src/dependency-scope.ts labels vulnerabilities from every engine's evidence, after dedup.
+    expect(scoped[0]!.title).toMatch(/\(handlebars@4\.7\.9\)$/);
+    expect(scoped[0]!.message).not.toContain("Dependency scope");
     expect(scoped[1]!.title).toMatch(/\(lodash@4\.17\.20\)$/);
     expect(scoped[1]!.message).not.toContain("Dependency scope");
     expect(scoped[4]!.title).toMatch(/\(dev dependency\)$/);
+    expect(scoped[4]!.message).toContain("Dependency scope: development only");
   });
 
   // Field validation re-scan: ghostfolio's production undici@7.30.0 (line 241) and development
@@ -112,8 +114,9 @@ describe("Trivy development-dependency scope", () => {
     const production = scoped.find((finding) => finding.rule_id === "CVE-2026-0001");
     expect(production?.fingerprint).toBe(plain[0]!.fingerprint);
     expect(production?.title).not.toMatch(/dev dependency/);
-    // A CVE only the development copy has is still reported, and marked.
-    expect(scoped.find((finding) => finding.rule_id === "CVE-2026-0002")?.title).toMatch(/\(undici@7\.29\.0, dev dependency\)$/);
+    // A CVE only the development copy has is still reported (and marked for the scope pass).
+    expect(scoped.find((finding) => finding.rule_id === "CVE-2026-0002")?.title).toMatch(/\(undici@7\.29\.0\)$/);
+    expect(log.runs![0]!.results!.map((result) => result.properties?.[DEPENDENCY_SCOPE_PROPERTY] ?? "-")).toEqual(["-", "dev"]);
     expect(scoped).toHaveLength(2);
   });
 });

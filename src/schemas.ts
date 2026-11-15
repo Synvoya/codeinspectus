@@ -1,8 +1,9 @@
 /**
  * Zod schemas for every tool's input and output (PRD §11).
  *
- * registerTool() takes ZodRawShape for inputSchema/outputSchema. We define full
- * z.object schemas here and pass `.shape` at registration. The SDK validates
+ * registerTool() takes the full z.object schemas defined here, so object-level metadata (the
+ * `additionalProperties: false` on inputs, the `id`s that make shared output definitions
+ * `$ref`s) reaches the advertised JSON Schema. The SDK validates
  * structuredContent against outputSchema, so the orchestrator MUST return
  * objects that satisfy these schemas exactly.
  */
@@ -100,7 +101,9 @@ export const findingSchema = z.object({
   finding_kind: z.enum(["vulnerability", "license", "misconfiguration", "secret", "sast", "ai", "other"]).optional(),
   scope_role: z.enum(["primary", "supporting_context"]).optional(),
   package: z.object({ ecosystem: z.string(), name: z.string(), version: z.string() }).optional(),
-});
+  dependency_scope: z.enum(["dev", "prod"]).optional(),
+  fixed_versions: z.array(z.string()).optional(),
+}).meta({ id: "Finding" });
 
 export const summarySchema = z.object({
   critical: z.number().int(),
@@ -275,6 +278,18 @@ export const repositoryHistoryRevisionSchema = z.object({
 });
 
 // ── scan / rescan output envelope (PRD §5) ──────────────────────────────────
+// 4.1: the 24-hour database update prompt, relayed by the agent (never answered by a scan).
+const updateAnswerEnum = z.enum(["yes", "not_now", "not_for_a_week"]);
+export const databaseUpdatePromptSchema = z.object({
+  due: z.literal(true),
+  question: z.string(),
+  databases: z.array(z.object({ id: z.string(), updated_at: z.string().optional(), detail: z.string() })),
+  package_content: z.array(z.object({ id: z.enum(["synvoya", "opengrep-rules", "gitleaks-rules"]), version: z.string() })),
+  large_downloads: z.array(z.object({ id: z.string(), approx_size: z.string() })),
+  answers: z.array(z.object({ answer: updateAnswerEnum, call: z.string() })),
+  warning: z.string().optional(),
+}).meta({ id: "DatabaseUpdatePrompt" });
+
 export const scanResultSchema = z.object({
   scan_id: z.string(),
   target: z.string(),
@@ -290,6 +305,17 @@ export const scanResultSchema = z.object({
   dependency_coverage: z.array(dependencyCoverageSchema).optional(),
   trivy_db_date: z.string().optional(),
   summary: summarySchema,
+  upgrade_actions: z.array(z.object({
+    ecosystem: z.string(),
+    name: z.string(),
+    version: z.string(),
+    upgrade_to: z.string().optional(),
+    resolves: z.number().int().nonnegative(),
+    unresolved: z.number().int().nonnegative(),
+    unresolved_fix_lines: z.array(z.string()).optional(),
+    highest_severity: severityEnum,
+    dev_only: z.boolean(),
+  })).optional(),
   findings: z.array(findingSchema),
   truncated: z.boolean(),
   total_findings_before_limit: z.number().int(),
@@ -305,7 +331,7 @@ export const scanResultSchema = z.object({
   })).optional(),
   accepted_gaps: z.array(z.enum(COVERAGE_GAP_IDS)).optional(),
   coverage_notes: z.array(z.object({ component: z.string(), detail: z.string() })).optional(),
-  component_signatures: z.record(z.string()).optional(),
+  component_signatures: z.record(z.string(), z.string()).optional(),
   synvoya_checked: z
     .object({
       runtime: z.array(z.string()).optional(),
@@ -326,6 +352,7 @@ export const scanResultSchema = z.object({
     })
     .optional(),
   engine_setup: engineSetupSchema.optional(),
+  database_update: databaseUpdatePromptSchema.optional(),
   git_safety: gitSafetySchema,
   // CG-75: effective scan config, captured so a bare rescan is like-for-like and rescan can
   // prove re-checkability. Optional so pre-CG-75 stored scans still validate on load.
@@ -348,6 +375,11 @@ export const scanResultSchema = z.object({
 // of an older scan validates instead of crashing. (Any field that is optional on
 // scanResultSchema — including the CG-75 scan-config fields once they are added — is
 // inherited leniently here.)
+const engineUncheckedSetSchema = z.union([
+  z.literal("all"),
+  z.object({ files: z.array(z.string()), rules: z.array(z.string()).optional(), ecosystems: z.array(z.string()).optional() }),
+]);
+
 export const storedScanResultSchema = scanResultSchema.extend({
   storage_schema_version: z.literal("2.0.0").optional(),
   canonical_findings: z.literal(true).optional(),
@@ -359,9 +391,27 @@ export const storedScanResultSchema = scanResultSchema.extend({
       .transform((coverage) => ({ ...coverage, platforms: coverage.platforms ?? [] })),
   ).optional(),
   repository_trust: repositoryTrustDocumentSchema.optional(),
+  // Rescan proof only (4.1 M8): stored, never part of the scan tool's output schema.
+  synvoya_subjects: z.object({
+    images: z.object({
+      blocked: z.record(z.string(), z.array(z.string())).optional(),
+      findings: z.record(z.string(), z.string()).optional(),
+    }).optional(),
+  }).optional(),
+  // Rescan proof only (M6 fix round 1): stored, never part of the scan tool's output schema.
+  engine_unchecked: z.object({
+    "opengrep:baseline": engineUncheckedSetSchema.optional(),
+    "opengrep:pack": engineUncheckedSetSchema.optional(),
+    native: engineUncheckedSetSchema.optional(),
+    "osv-scanner": engineUncheckedSetSchema.optional(),
+  }).optional(),
 });
 
 // ── Tool INPUT schemas ──────────────────────────────────────────────────────
+// Unknown arguments are stripped at parse time; the advertised JSON Schema says so with
+// `additionalProperties: false` (zod 3's converter emitted it for every object, zod 4's does not
+// for input schemas, so each tool input states it explicitly).
+const NO_UNKNOWN_ARGUMENTS = { additionalProperties: false } as const;
 // MCP clients run in a different working directory than the server, so a relative or empty path
 // would silently resolve against the server's cwd. Every path-taking tool requires an absolute path.
 const absolutePath = (description: string) =>
@@ -402,7 +452,7 @@ export const scanInput = z.object({
       "Coverage gap ids to accept for CI (e.g. php-sast, deno-lock). Coverage still reads partial and the " +
         "gaps stay listed; CI passes coverage only when every other cause is absent.",
     ),
-});
+}).meta(NO_UNKNOWN_ARGUMENTS);
 
 export const rescanInput = z.object({
   path: absolutePath("Absolute path to the repository or directory to rescan."),
@@ -412,19 +462,19 @@ export const rescanInput = z.object({
   severity_threshold: severityEnum.optional(),
   scanners: z.array(scannerEnum).optional(),
   max_findings: z.number().int().positive().optional(),
-});
+}).meta(NO_UNKNOWN_ARGUMENTS);
 
 export const complianceReportInput = z.object({
   scan_id: scanIdSchema.describe("scan_id returned by a prior codeinspectus_scan call."),
   framework: frameworkEnum
     .optional()
     .describe("Restrict the report to one framework. Default: all frameworks."),
-});
+}).meta(NO_UNKNOWN_ARGUMENTS);
 
 export const explainFindingInput = z.object({
   scan_id: scanIdSchema.describe("scan_id the finding belongs to."),
-  finding_id: z.string().describe("The finding id (e.g. CI-0007) to explain in depth."),
-});
+  finding_id: z.string().describe("The finding id from that scan's results (e.g. CI-4b53368c3f; scans stored before 4.1 use positional ids such as CI-0007)."),
+}).meta(NO_UNKNOWN_ARGUMENTS);
 
 export const generateSbomInput = z.object({
   path: absolutePath("Absolute path to the project to generate an SBOM for."),
@@ -436,16 +486,16 @@ export const generateSbomInput = z.object({
     .string()
     .optional()
     .describe("Absolute .json path for the SBOM. An existing file is replaced only if it is already a CycloneDX/SPDX SBOM. Default: ~/.codeinspectus/sbom/<project>.<fmt>.json."),
-});
+}).meta(NO_UNKNOWN_ARGUMENTS);
 
 export const listRulesInput = z.object({
   engine: engineEnum.optional().describe("Filter to one engine's rules/detectors."),
-});
+}).meta(NO_UNKNOWN_ARGUMENTS);
 
 export const setupComponentEnum = z.enum(["opengrep", "gitleaks", "trivy", "osv-scanner"]);
 export const setupInput = z.object({
-  action: z.enum(["plan", "install", "decline"]).default("plan")
-    .describe("Plan is offline/read-only. Install downloads only after confirm_downloads=true. Decline saves the choice."),
+  action: z.enum(["plan", "install", "decline", "update", "snooze"]).default("plan")
+    .describe("Plan is offline/read-only. Install downloads only after confirm_downloads=true. Decline saves the choice. Update answers a database_update yes: without confirm_downloads it returns the offline update plan; with it, it downloads the installed databases' updates. Snooze answers not now or not for a week (pass snooze)."),
   components: z.array(setupComponentEnum).optional()
     .describe("Components to install or decline. Default: all four external engines."),
   path: absolutePath(
@@ -455,7 +505,13 @@ export const setupInput = z.object({
     .describe("Exact OSV ecosystem databases the user approved, e.g. [\"npm\", \"PyPI\"]. Overrides the detection from path. Omitted or empty (an empty list is no list): the databases path needs (none without path), plus a refresh of any installed database that went stale. To download no OSV database, leave osv-scanner out of components."),
   confirm_downloads: z.boolean().optional()
     .describe("Must be true for an install that needs network downloads."),
-});
+  confirm_large_downloads: z.boolean().optional()
+    .describe("With action=update: must also be true when the update plan lists a database over 100 MB (large_downloads). Pass it only after the user gave a separate yes for those downloads."),
+  skip_large_downloads: z.boolean().optional()
+    .describe("With action=update and confirm_downloads=true: refresh only the databases under 100 MB and leave out those the update plan lists in large_downloads (when the user declined them). The prompt then comes back as after a partial update."),
+  snooze: z.enum(["not_now", "not_for_a_week"]).optional()
+    .describe("With action=snooze: not_now asks again in 24 hours, not_for_a_week in 7 days."),
+}).meta(NO_UNKNOWN_ARGUMENTS);
 
 export const cleanupPlanInput = z.object({
   path: absolutePath("Absolute path to the repository directory to clean."),
@@ -465,7 +521,7 @@ export const cleanupPlanInput = z.object({
     .describe("Acknowledge that supported media adapters remove complete metadata containers and create a new asset copy."),
   acknowledge_provenance_copy: z.boolean().optional()
     .describe("Acknowledge that selected C2PA/content provenance will be absent from the cleaned copy while the original is preserved."),
-});
+}).meta(NO_UNKNOWN_ARGUMENTS);
 
 export const cleanupApplyInput = z.object({
   plan_id: z.string().regex(/^cleanup-plan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
@@ -474,12 +530,12 @@ export const cleanupApplyInput = z.object({
   confirm_cleanup: z.boolean().describe("Must be true after the user reviews and approves the exact plan."),
   confirm_rights_to_modify: z.boolean().optional()
     .describe("Required when removing explicit attribution or provenance; confirms the user is authorized to create the proposed change."),
-});
+}).meta(NO_UNKNOWN_ARGUMENTS);
 
 export const cleanupRollbackInput = z.object({
   cleanup_id: z.string().regex(/^cleanup-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
   confirm_rollback: z.boolean().describe("Must be true after reviewing the exact cleanup record to restore."),
-});
+}).meta(NO_UNKNOWN_ARGUMENTS);
 
 // ── Tool OUTPUT schemas ─────────────────────────────────────────────────────
 export const rescanResultSchema = z.object({
@@ -507,6 +563,7 @@ export const rescanResultSchema = z.object({
   partial: z.boolean(),
   /** Reason(s) findings could not be confirmed resolved; present iff partial. */
   not_rechecked_note: z.string().optional(),
+  database_update: databaseUpdatePromptSchema.optional(),
   disclaimer: z.string(),
 });
 
@@ -679,6 +736,7 @@ export const listRulesOutput = z.object({
   sast_rule_languages: z.array(sastRuleLanguageSchema).optional(),
   trivy_db_date: z.string().optional(),
   engine_setup: engineSetupSchema,
+  database_update: databaseUpdatePromptSchema.optional(),
   native_packs: z.array(nativePackInfoSchema),
   advisory_databases: z.array(advisoryDatabaseInfoSchema),
   custom_rules: z.array(ruleInfoSchema),
@@ -725,10 +783,46 @@ export const setupPlanSchema = z.object({
   warnings: z.array(z.string()),
 });
 
+export const databaseUpdatePlanSchema = z.object({
+  databases: z.array(z.object({
+    id: z.string(),
+    kind: z.enum(["trivy", "osv"]),
+    ecosystem: osvEcosystemEnum.optional(),
+    updated_at: z.string().optional(),
+    approx_size: z.string(),
+    on_disk: z.string().optional(),
+    large: z.boolean(),
+    source: z.string(),
+  })),
+  skipped: z.array(z.object({ id: z.string(), detail: z.string() })),
+  large_downloads: z.array(z.object({ id: z.string(), approx_size: z.string() })),
+  package_check: z.object({ source: z.string(), running: z.string() }),
+  message: z.string(),
+});
+
+export const databaseUpdateResultSchema = z.object({
+  outcome: z.enum(["updated", "partial", "failed"]),
+  databases: z.array(z.object({
+    id: z.string(),
+    before: z.string().optional(),
+    after: z.string().optional(),
+    changed: z.union([z.number().int().nonnegative(), z.literal("unavailable")]).optional(),
+    error: z.string().optional(),
+  })),
+  skipped: z.array(z.object({ id: z.string(), detail: z.string() })),
+  package: z.object({ running: z.string(), latest: z.string().optional(), newer: z.boolean(), note: z.string() }),
+  message: z.string(),
+  warning: z.string().optional(),
+});
+
 export const setupOutput = z.object({
-  outcome: z.enum(["planned", "installed", "declined"]),
+  outcome: z.enum(["planned", "installed", "declined", "updated", "update_partial", "update_failed", "snoozed"]),
   message: z.string(),
   plan: setupPlanSchema,
+  update_plan: databaseUpdatePlanSchema.optional(),
+  update: databaseUpdateResultSchema.optional(),
+  /** Set when an update plan lists downloads over 100 MB that still need the user's separate yes. */
+  next_step: z.string().optional(),
 });
 
 // Inferred TS types for convenience.

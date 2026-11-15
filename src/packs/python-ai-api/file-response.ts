@@ -249,7 +249,7 @@ function finding(file: string, line: number): Finding {
   return makeAiFinding({
     ruleId: PYTHON_UNTRUSTED_FILE_RESPONSE_RULE_ID,
     title: "Untrusted path reaches a file response",
-    severity: "high",
+    severity: "low", // 4.1 M9 fresh-set gate: 1 hit, 0 true (Ruling 3)
     cwe: ["CWE-22", "CWE-73"],
     owasp_web: ["A01:2021"],
     file,
@@ -271,7 +271,7 @@ function finding(file: string, line: number): Finding {
         "https://docs.djangoproject.com/en/5.2/ref/request-response/",
       ],
     },
-    confidence: "high",
+    confidence: "low",
   });
 }
 

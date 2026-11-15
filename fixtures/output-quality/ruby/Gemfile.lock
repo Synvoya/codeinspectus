@@ -1,0 +1,15 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    crass (1.0.7)
+    shopify_app (23.0.2)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  crass
+  shopify_app
+
+BUNDLED WITH
+   2.5.22

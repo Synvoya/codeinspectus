@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { trivyReportPackages } from "./trivy.js";
@@ -23,6 +25,15 @@ describe("trivyReportPackages (the Synvoya inventory from Trivy's --list-all-pkg
       { ecosystem: "npm", name: "lodash", version: "4.17.4", file: "web/package-lock.json", line: 12 },
       { ecosystem: "npm", name: "left-pad", version: "1.3.0", file: "web/package-lock.json", line: 0 },
       { ecosystem: "Packagist", name: "magento/framework", version: "103.0.7", file: "composer.lock", line: 0 },
+    ]);
+  });
+
+  it("keeps each package's Dev flag", async () => {
+    // Real Trivy 0.76.1 report for fixtures/output-quality/pnpm (no Locations for pnpm-lock.yaml).
+    const report = JSON.parse(await readFile(resolve(process.cwd(), "fixtures/output-quality/trivy-pnpm.json"), "utf8"));
+    expect(trivyReportPackages(report)).toEqual([
+      { ecosystem: "npm", name: "handlebars", version: "4.7.9", file: "pnpm-lock.yaml", line: 0, dev: true },
+      { ecosystem: "npm", name: "lodash", version: "4.17.20", file: "pnpm-lock.yaml", line: 0 },
     ]);
   });
 

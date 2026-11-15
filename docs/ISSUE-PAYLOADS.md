@@ -3,7 +3,7 @@
 CodeInspectus generates reviewable JSON for one exact stored finding at a time:
 
 ```bash
-codeinspectus issue export SCAN_ID CI-0001 \
+codeinspectus issue export SCAN_ID CI-4b53368c3f \
   --adapter github --visibility private \
   --output /safe/evidence/github-issue.json
 ```

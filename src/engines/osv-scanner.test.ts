@@ -816,10 +816,59 @@ describe("osv-scanner dependency coverage", () => {
       db: { npm: "installed", PyPI: "installed" },
     });
     expect(result.packages).toEqual([
-      { ecosystem: "npm", name: "lodash", version: "4.17.4", file: "web/package-lock.json" },
-      { ecosystem: "npm", name: "left-pad", version: "1.3.0", file: "web/package-lock.json" },
+      // A package-lock.json entry without a "dev" dependency group is production evidence (4.1 dependency scope).
+      { ecosystem: "npm", name: "lodash", version: "4.17.4", file: "web/package-lock.json", dev: false },
+      { ecosystem: "npm", name: "left-pad", version: "1.3.0", file: "web/package-lock.json", dev: false },
       { ecosystem: "PyPI", name: "requests", version: "2.19.0", file: "requirements.txt" },
     ]);
+  });
+
+  it("reads dependency_groups from real 2.7.0 output", async () => {
+    // Captured offline from osv-scanner 2.7.0 on coverage-honesty-corpus/dev-deps (fixtures/output-quality/README.md).
+    const raw = (await readFile(resolve(process.cwd(), "fixtures/output-quality/osv-dev-deps.json"), "utf8")).replaceAll("/fixture/dev-deps", "<target>");
+    const { result } = await scan({
+      output: raw,
+      code: 1,
+      lockfiles: {
+        "package-lock.json": await readFile(resolve(process.cwd(), "fixtures/coverage-honesty-corpus/dev-deps/package-lock.json"), "utf8"),
+        "composer.lock": await readFile(resolve(process.cwd(), "fixtures/coverage-honesty-corpus/dev-deps/composer.lock"), "utf8"),
+      },
+      db: { npm: "installed", Packagist: "installed" },
+    });
+    expect(result.packages).toEqual([
+      { ecosystem: "Packagist", name: "guzzlehttp/guzzle", version: "7.9.3", file: "composer.lock", dev: false },
+      { ecosystem: "Packagist", name: "phpunit/phpunit", version: "10.5.26", file: "composer.lock", dev: true },
+      { ecosystem: "npm", name: "handlebars", version: "4.7.9", file: "package-lock.json", dev: true },
+      { ecosystem: "npm", name: "lodash", version: "4.17.20", file: "package-lock.json", dev: false },
+    ]);
+    // The groups never change the findings themselves.
+    expect(result.findings.filter((finding) => finding.package?.name === "handlebars")).toHaveLength(3);
+    expect(result.findings.every((finding) => finding.dependency_scope === undefined)).toBe(true);
+  });
+
+  it("counts only dependency_groups exactly [\"dev\"] as dev; a devOptional entry is production (M5 fix 4)", async () => {
+    const { result } = await scan({
+      output: doc("package-lock.json", [
+        { ...pkg("npm", "handlebars", "4.7.9"), dependency_groups: ["dev"] },
+        // npm `devOptional`: needed by an optional production dependency as well, so not development-only.
+        { ...pkg("npm", "fsevents", "2.3.3"), dependency_groups: ["dev", "optional"] },
+        { ...pkg("npm", "left-pad", "1.3.0"), dependency_groups: ["optional"] },
+      ]),
+      code: 0,
+      lockfiles: { "package-lock.json": PACKAGE_LOCK },
+      db: { npm: "installed" },
+    });
+    expect(result.packages?.map((entry) => [entry.name, entry.dev])).toEqual([["handlebars", true], ["fsevents", false], ["left-pad", false]]);
+  });
+
+  it("gives no dev evidence for lockfiles osv-scanner writes no groups for", async () => {
+    const { result } = await scan({
+      output: doc("yarn.lock", [{ ...pkg("npm", "handlebars", "4.7.9"), dependency_groups: ["dev"] }]),
+      code: 0,
+      lockfiles: { "yarn.lock": "handlebars@4.7.9:\n  version \"4.7.9\"\n" },
+      db: { npm: "installed" },
+    });
+    expect(result.packages).toEqual([{ ecosystem: "npm", name: "handlebars", version: "4.7.9", file: "yarn.lock" }]);
   });
 
   it("marks a package whose source is outside the target, so its line is never looked up in a same-named file", async () => {
@@ -829,7 +878,7 @@ describe("osv-scanner dependency coverage", () => {
       lockfiles: { "package-lock.json": PACKAGE_LOCK },
       db: { npm: "installed" },
     });
-    expect(result.packages).toEqual([{ ecosystem: "npm", name: "left-pad", version: "1.3.0", file: "package-lock.json", outside: true }]);
+    expect(result.packages).toEqual([{ ecosystem: "npm", name: "left-pad", version: "1.3.0", file: "package-lock.json", outside: true, dev: false }]);
   });
 
   it("lists no packages for a run that did not complete", async () => {

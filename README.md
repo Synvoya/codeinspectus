@@ -78,12 +78,14 @@ best-in-class open-source engines, plus the **Synvoya engine**, our own, which c
   Actions pack contributes two workflow rules for direct untrusted-context shell interpolation and
   exact `pull_request_target` checkout-and-execute chains.
 
-The shipped manifest contains **126 curated detections**: **72 first-party native rule
-IDs** (29 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, and
+The shipped manifest contains **122 curated detections**: **70 first-party native rule
+IDs** (27 JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, and
 2 Expo, plus 10 Python AI/API, 1 Go AI, 1 Java AI, 1 C# AI, 1 PHP AI, 1 Rust AI, 1 Ruby AI,
-3 Firebase configuration, 2 GitHub Actions workflow, and 2 JavaScript baseline SAST rules), 18 Opengrep-owned
+3 Firebase configuration, 2 GitHub Actions workflow, and 2 JavaScript baseline SAST rules), 16 Opengrep-owned
 SAST rules, 19 Synvoya PHP Opengrep rules (`syn-php-*`), 12 Synvoya Node.js Opengrep rules
-(`syn-node-*`), and 5 custom Gitleaks rules. All 20
+(`syn-node-*`), and 5 custom Gitleaks rules. Four rules that failed the 4.1 fresh-set precision gate are
+experimental: not reported, not counted, and named in their pack's limitations or the experimental folder
+([precision](docs/RULE-PROVENANCE.md#native-and-ai-pack-precision-41)). All 18
 `ci-baseline-*` Opengrep YAML rules remain physically active:
 the two native-owned rules reconcile exact results and fall back to Opengrep on mismatch or
 native unavailability. Opengrep, Gitleaks, Trivy, and osv-scanner are optional, managed, additive engines.
@@ -117,6 +119,33 @@ downloads a platform-native binding during its own lifecycle script. Normal Code
 do not install that peer. Install it explicitly alongside CodeInspectus when local C2PA validation
 is required; otherwise candidate assets report partial `content_provenance` coverage.
 
+One command sets everything up:
+
+```bash
+npx codeinspectus init
+```
+
+`init` finds the AI assistants on this machine (Claude Code, Codex, Cursor, VS Code, Windsurf, Cline),
+then shows one screen with every change: each assistant and the exact command it runs or file it
+edits, each of the four open-source engines (Opengrep, Gitleaks, Trivy, OSV-Scanner) with its size and
+licence, and the OSV databases the current project's lockfiles need, with their sizes. Nothing is
+written or downloaded before you say yes (`--yes` without a terminal; `--dry-run` only shows the
+screen). A single download over 100 MB (on a first install the Cosign verifier, about 140–200 MB depending on
+platform, and the Trivy DB, about 140 MB; the OSV npm database, about 220 MB) is marked on that screen and gets a second question (a no installs everything else); with `--yes` it
+needs `--large`. Claude Code is registered with `claude mcp add-json --scope user` and VS Code with
+`code --add-mcp`; other assistants' config files are merged, never replaced. A file that is not plain
+JSON (comments, trailing commas) is left untouched and the manual step is printed, an existing
+different `codeinspectus` entry is left alone, and the first change to a file keeps a copy at
+`<file>.codeinspectus-backup`. Nothing from a config file (such as tokens in an `env` block) is ever
+printed. Running it again reports "already registered" and downloads nothing
+new. Options: `--path <repo>` (which project's lockfiles choose the OSV databases; default: the current
+folder unless it is your home folder or the filesystem root),
+`--clients claude,codex`, `--skip-engines`, `--json`. After a release, `npx codeinspectus@latest init --update`
+fetches new engine pins and refreshes your installed databases (npx may otherwise run a cached copy).
+
+To choose engines yourself, or to register an assistant by hand (see
+[Client registration](#client-registration)), use the commands below.
+
 ```bash
 # Interactive: inspect coverage, licenses, and sizes; then approve all or choose components.
 npx codeinspectus setup
@@ -132,7 +161,8 @@ npx codeinspectus setup --select osv-scanner --path /absolute/path/to/repository
 npx codeinspectus setup --select osv-scanner --osv-ecosystems npm,PyPI
 ```
 
-On a terminal, a first bare `npx codeinspectus` run opens this guided setup. MCP clients continue
+On a terminal, a first bare `npx codeinspectus` run opens this guided setup (its first line points
+to `npx codeinspectus init`). MCP clients continue
 to start over piped stdio and expose `codeinspectus_setup`: agents must request a plan, show it,
 ask permission, then call install with `confirm_downloads=true`. Declined choices are saved so
 users are not repeatedly prompted; `setup --reset` clears them.
@@ -176,6 +206,24 @@ Re-verify your pinned binaries any time:
 npx codeinspectus verify-engines
 ```
 
+### Keeping databases fresh
+
+Once a day, starting 24 hours after the newest database download (the Trivy DB or an OSV database),
+scan, rescan and list-rules results over MCP carry a `database_update` question that your agent relays: update now, not now (asks again in 24 hours), or not for a week (asks again in 7 days).
+Nothing touches the network before you say yes, and only public update sources are used: the OSV bucket,
+the Trivy DB through the pinned Trivy binary, and the npm registry (to report, never install, a newer
+CodeInspectus carrying newer Synvoya advisories and rules). OSV publishes no deltas, so each OSV database
+is re-downloaded in full; a database over 100 MB (the Trivy DB, about 140 MB, and the OSV npm export,
+about 220 MB) needs a second confirmation (over MCP your agent asks you separately for it). An update refreshes databases only: if Trivy or osv-scanner
+needs repair, run setup first. A failed download keeps the old database, and the question comes back in about an hour. There is no prompt on a fresh install, and CLI and CI scans never prompt.
+From a terminal, run the same update yourself:
+
+```bash
+npx codeinspectus update          # shows the plan, then asks
+npx codeinspectus update --yes    # add --large to approve databases over 100 MB
+npx codeinspectus@latest init --update   # after a release: new engine pins, then the same database refresh
+```
+
 ## CLI, CI, and local evidence workflows
 
 ```bash
@@ -191,7 +239,7 @@ codeinspectus bundle create SCAN_ID --output-dir /outside/repository/scan-result
 codeinspectus bundle verify /outside/repository/scan-results
 codeinspectus bulk scan /absolute/path/to/local-repositories --concurrency 2
 codeinspectus history scan . --from BASE_SHA --to HEAD_SHA --since 2026-07-01 --until 2026-07-30 --max-commits 20
-codeinspectus issue export SCAN_ID CI-0001 --adapter github --visibility private
+codeinspectus issue export SCAN_ID CI-4b53368c3f --adapter github --visibility private
 ```
 
 Git-scoped scans retain full repository context, tag changed versus supporting-context
@@ -231,6 +279,9 @@ unknown; coverage takes precedence over finding severity. Exit 1 is reserved for
 after complete coverage. See the [CLI command reference](docs/CLI-REFERENCE.md) and
 [CI policy and SHA-pinned GitHub Actions workflow](docs/CI-POLICY.md)
 for the full exit contract, SARIF upload, artifact privacy, and fork/Dependabot behavior.
+Since 4.1, a vulnerability in a development-only dependency (npm, Yarn, pnpm, Bun or Composer
+`dependency_scope: "dev"`) is reported one severity level lower, never below low, unless it is malware,
+known to be exploited or a Synvoya advisory; see [CI policy](docs/CI-POLICY.md#development-only-dependencies-and-declared-minimums-41).
 
 Two options shape what a scan reports. Licence findings are off by default since 4.0 (they are
 informational and none is fixable); `--licenses` (MCP `include_licenses: true`, SDK `includeLicenses`)
@@ -282,6 +333,9 @@ projects — it is **not** a per-repo `npm install` dependency.
 
 ## Client registration
 
+`npx codeinspectus init` does this for you (see [Install](#install)); the commands below are the
+manual route.
+
 The server command is the same across clients, but each client uses its own
 configuration format. Clients with JSON MCP configuration use:
 
@@ -295,7 +349,7 @@ configuration format. Clients with JSON MCP configuration use:
 
 | Client | How |
 |--------|-----|
-| **Claude Code** | `claude mcp add-json codeinspectus '{"command":"npx","args":["-y","codeinspectus"]}'` |
+| **Claude Code** | `claude mcp add-json --scope user codeinspectus '{"command":"npx","args":["-y","codeinspectus"]}'` (native Windows: `'{"command":"cmd","args":["/c","npx","-y","codeinspectus"]}'`) |
 | **Cursor** | add to `~/.cursor/mcp.json` (or project `.cursor/mcp.json`) |
 | **VS Code** | `code --add-mcp '{"name":"codeinspectus","command":"npx","args":["-y","codeinspectus"]}'` |
 | **Codex** | use one of the Codex-specific options below |
@@ -339,7 +393,7 @@ useful when you want the same policy persisted explicitly in a repository.
 | Tool | Purpose |
 |------|---------|
 | `codeinspectus_scan` | Full local scan of a path (engines + AI checks). Options: `scanners`, `severity_threshold`, `max_findings`, `include_compliance`, `accept_gaps`, and `include_licenses` (licence findings are off by default; the result carries an informational coverage note when they were not requested). Returns CWE-keyed findings, detected technologies, exact native-pack and Pub dependency coverage, remediations, framework tags, and three-state repository evidence for supported runtime controls. |
-| `codeinspectus_setup` | Offline setup plan, saved decline choices, or approval-gated verified downloads to `~/.codeinspectus`; never writes to the target repository. |
+| `codeinspectus_setup` | Offline setup plan, saved decline choices, or approval-gated verified downloads to `~/.codeinspectus`; also answers the daily `database_update` question (`action: "update"` or `"snooze"`); never writes to the target repository. |
 | `codeinspectus_rescan` | Re-scan after fixes; diffs vs a prior scan → resolved / remaining / introduced, with fresh technology and pack coverage. |
 | `codeinspectus_plan_cleanup` | Fresh read-only V3.3 plan for exact verified repository-trust artifact IDs, including preimage hashes, transformations, blockers and approval requirements. |
 | `codeinspectus_apply_cleanup` | Apply one explicitly approved exact plan with managed backups, atomic bounded edits/copy-only media cleanup, same-validator verification and a content-free audit log. |
@@ -499,6 +553,21 @@ eligible packages it analyzed, what it deliberately skipped, and the bundled sna
   code-evidenced — this is **not** an Essential Eight assessment.
 - **Prompt-injection detection is heuristic and immature** — those findings are
   worded "potential …" and marked medium confidence.
+- **Native and AI pack precision was measured once, on 30 fresh repositories, in 4.1** (blind two-reviewer
+  triage; [method and table](docs/RULE-PROVENANCE.md#native-and-ai-pack-precision-41)). Of the 75 rules measured,
+  only 19 had any hit, so most rules are **not field-measured in 4.1**: their fixtures pass, but nothing says how
+  precise they are on real code, and we do not call them precise. Four rules that came out too noisy are
+  **experimental** (not reported): `ci-ai-sensitive-api-response`, `ci-ai-sensitive-log`, and the Python Opengrep
+  rules `ci-baseline-eval-python` and `ci-baseline-weak-hash-python`. `ci-ai-client-hardcoded-secret` also came out
+  experimental (0 of 7 triaged hits true: a test-mock key and UI placeholders) and is shipped by maintainer decision (2026-11-15) for detection coverage; FP classes (test mocks, placeholders) to be fixed and re-measured in 4.2; it reports as
+  in 4.0 apart from the 4.1 PEM-marker fix. Ten are **low severity, low confidence**:
+  `ci-ai-client-error-leak` (12 of 18 true, many at reduced impact), `ci-ai-llm-output-dangerous-html`,
+  `ci-ai-public-env-secret`, `ci-ai-security-header-disabled`, `ci-python-hardcoded-signing-secret`,
+  `ci-python-untrusted-file-response`, `ci-flutter-tls-verification-disabled`, and the Python Opengrep rules
+  `ci-baseline-command-injection-python`, `ci-baseline-insecure-deserialization-python` and
+  `ci-baseline-sql-injection-python`. Four kept rules had 1-2 hits, all true (`ci-android-cleartext-traffic`,
+  `ci-android-user-ca-trust`, `ci-ios-ats-global-arbitrary-loads`, `ci-flutter-sensitive-shared-preferences`):
+  insufficient evidence, not a precision figure.
 - **Flutter/Dart native coverage is six narrow, first-party structural checks:**
   `ci-flutter-tls-verification-disabled`, `ci-flutter-sensitive-shared-preferences`,
   `ci-flutter-webview-untrusted-content`, `ci-flutter-sensitive-log`,
@@ -641,14 +710,16 @@ eligible packages it analyzed, what it deliberately skipped, and the bundled sna
   flows (planned) — see the [good-first-issue](docs/good-first-issues/user-metadata-authz-rule.md).
   It also catches the related footgun: a Supabase **`service_role` JWT or modern `sb_secret_`
   key value** in client-reachable code (**critical**), and a privileged key behind a
-  **client-exposed env prefix** such as `NEXT_PUBLIC_…` (**high**). Exact-format
+  **client-exposed env prefix** such as `NEXT_PUBLIC_…` (**low**, low confidence since the 4.1 fresh-set gate:
+  its 3 field hits were all by-design client tokens). Exact-format
   `sb_publishable_` keys remain silent because they are public by design. Each secret class is
   bounded to 1,024 remediation locations per file; repeated values on one minified line collapse,
   separate source lines remain visible, and reaching the bound emits an explicit coverage note.
 - **Unsanitized model or user output rendered as raw HTML is flagged** (`ci-ai-llm-output-dangerous-html`).
   CodeInspectus detects untrusted **request input** or **LLM/model output** flowing into
   `dangerouslySetInnerHTML` without sanitization — a direct XSS sink (CWE-79/116; OWASP **LLM05** on
-  the model-output path), **high** severity, **medium** confidence; wrapping the value in
+  the model-output path), **low** severity, **low** confidence since the 4.1 fresh-set gate (its one field hit
+  was HTML sanitised by a helper this intrafile check cannot see); wrapping the value in
   `DOMPurify.sanitize(...)` silences it. It follows one local function-component hop when a
   destructured prop is passed directly to `__html`; sanitizing at the JSX call site stays silent.
   It does **not** trace cross-file or arrow-component props, database rows, template data,
@@ -676,12 +747,13 @@ eligible packages it analyzed, what it deliberately skipped, and the bundled sna
   analysis treats default or explicit `verify_jwt = true` as platform authentication; only explicit
   anonymous deployment requires visible request authentication, and service-role/admin operations
   additionally require visible server authorization. Cross-module custom wrappers remain unknown.
-- **Server/API-boundary checks are narrow and code-visible.** Four JavaScript/TypeScript
-  analyzers flag client-visible raw/internal error details (`CWE-209`), explicit credential
-  fields in response objects (`CWE-201`), whole request objects passed directly to common
-  Prisma/Supabase/Mongoose writes without visible validation or allow-listing (`CWE-915`),
-  and explicit credentials/headers/cookies or auth/payment request bodies sent to logs
-  (`CWE-532`). They use intrafile dataflow and prefer silence when validation, a public-error
+- **Server/API-boundary checks are narrow and code-visible.** Two JavaScript/TypeScript
+  analyzers report: client-visible raw/internal error details (`CWE-209`, **low** severity and confidence since
+  the 4.1 fresh-set gate, where 6 of 18 field hits were deliberate user-facing messages) and whole request objects
+  passed directly to common Prisma/Supabase/Mongoose writes without visible validation or allow-listing
+  (`CWE-915`, not field-measured in 4.1). Explicit credential fields in response objects (`CWE-201`) and
+  credentials/headers/cookies or auth/payment request bodies sent to logs (`CWE-532`) are experimental in 4.1
+  and not reported (0 of 5 and 6 of 17 field hits true). They use intrafile dataflow and prefer silence when validation, a public-error
   mapper, or an explicit field projection is visible. Build output and minified vendor files are
   outside these source checks. They do not claim generic response minimization, complete
   business-authorization review, or runtime/gateway verification.
@@ -725,22 +797,22 @@ coverage than the executed pack reports.
 | **Dependencies (known vulnerabilities and malicious packages)** — osv-scanner | vulnerable and known-malicious package versions recorded in lockfiles and manifests, matched offline against OSV.dev data | **Only the OSV ecosystems you approved and installed:** npm, PyPI, Packagist, Go, crates.io, RubyGems, Maven, NuGet, and Pub (language ecosystems; never distribution ones). An ecosystem without its database is reported `unavailable`, not clean. No reachability or call analysis, no dependency resolution, and no online lookups; coverage is the package versions osv-scanner can extract from the files in the repository. |
 | **Declared runtimes, images, end-of-life lines and exploited products** — Synvoya | Node.js/PHP/Python/Ruby/Go/.NET/Java versions declared in pin files, manifests, workflows and image tags; end-of-life lines; Adobe Commerce, Magento Open Source and WordPress core versions; malicious package versions; package advisories the upstream databases do not list | **What the repository declares, not what is deployed.** Version pins, `Dockerfile`/Compose/Kubernetes/Helm image tags and `composer.lock`, judged offline against a bundled, integrity-checked dataset ([docs/SYNVOYA.md](docs/SYNVOYA.md)). A floating tag on a supported line is a note, not a finding. Vendored or CDN JavaScript libraries (exact versions only), Magento editions, the declared Go toolchain and GitHub Actions `uses:` references are also checked. The Go toolchain check needs the OSV Go database and the OSV-sourced Actions advisories need the OSV GitHub Actions database; without osv-scanner's npm database, vendored libraries are the declared gap `vendored-js`. The PHP and Node.js rule packs are listed under SAST. |
 | **Native Pub SCA/SBOM** — CodeInspectus Pub | exact locked-version matches against the bundled advisory snapshot; native Pub inventory and Trivy merge/fallback | **Dart/Flutter `pubspec.lock` only.** Official `pub.dev`/legacy official-host packages are matched by exact enumerated version. Custom registries, Git, path, SDK, malformed, oversized, and unreadable inputs are excluded and reported. No generic SemVer inference, reachability claim, license inference, or complete dependency-graph claim. |
-| **SAST** — Opengrep + CodeInspectus `security-baseline` and the Synvoya PHP and Node.js packs | injection, XSS, SSRF, weak crypto, insecure deserialization, explicit CORS misconfiguration; for PHP (plain, Laravel, Symfony, WordPress): SQL/command/code injection, file inclusion, unserialize and phar paths, SSRF, `extract()`, client-named uploads, Blade raw output, predictable tokens, weak password hashing, disabled TLS verification, debug settings in deployable env files, unchecked WordPress REST/admin-ajax writes; for Node.js (Express, NestJS, Next.js, Nuxt/H3, Hono): command injection, `vm`/`Function`, zip-slip, unsafe deserialization, JWT verification without fixed algorithms, cookie/session flags, NestJS validation, placeholder deploy secrets | **JavaScript, TypeScript, Python, PHP** (`.php`, `.phtml`, `.blade.php`; Twig templates are the `php-sast` gap). CodeInspectus ships its own Apache-2.0 rules and runs Opengrep with **no network registry packs**, so SAST coverage is exactly these languages and rules — deliberately narrower than Opengrep's full engine. `list_rules` shows the rule count per language. PHP (`syn-php-*`) and Node.js (`syn-node-*`) rules are original and precision-gated: every rule was measured on 12 holdout repositories it was never tuned on, and ships only if at most 1 in 5 of its holdout hits was a false positive, or, with no holdout hit, if it had no false positive on the tuning repositories and its fixtures pass. Seven rules that were 100% precise on their tuning repositories failed on the holdout set and are held back as experimental for 4.1: PHP path traversal, open redirect, XXE, `preg_replace` `/e` and unguarded Eloquent models, and Node.js SQL injection and path traversal (PHP reflected XSS and four other Node.js rules were already held back). Two PHP rules with few holdout hits are kept for the real issues they found there: disabled TLS verification (2 of 4 hits true) and predictable tokens (1 of 2). Precision limits (4.0): SQL injection is reported only when Express, Koa, Hono, Next.js or H3/Nuxt request input reaches a query built by concatenation or interpolation in the call itself, in the same file (the baseline rule); queries held in a variable first, NestJS and server-action input, Knex/Prisma/Sequelize/TypeORM raw methods and cross-file flows are not reported; DOM XSS is reported only when the URL, the referrer, `window.name` or a message payload reaches an HTML sink directly or through one or two variables, so stored or fetched markup, `localStorage`, jQuery `.html()` and React `dangerouslySetInnerHTML` are not covered by this rule, and a value looked up in a constant table by a URL part is still reported (a known false positive); NoSQL injection needs a MongoDB-style receiver. Code findings under `vendor/` or in `*.min.js` files are not reported (Opengrep's own scope); code findings in scripts that look like copied libraries (minified, licence banner, UMD wrapper, `vendors/`-style folder) are reported at low; both are named in coverage notes. |
-| **Native JavaScript/TypeScript pack** | client-side secret/bundle exposure, Supabase RLS, prompt-injection sinks, model tool arguments reaching Node shell execution, client-writable `user_metadata` authz, unsanitized-output XSS, API response/error leaks, unsafe request writes, sensitive logging, explicit runtime-control misconfiguration | **JavaScript / TypeScript** (incl. `.jsx/.tsx/.mjs/.cjs`; client-secret checks also read `.vue/.svelte/.astro/.html`). Supabase RLS analyzes `.sql` plus `.ts/.js` Edge Functions; runtime-control evidence also reads recognized configuration formats. Model-tool command flow is intrafile and bounded to direct flow or one named wrapper; it does not resolve cross-module dispatch or runtime approval/sandbox state. |
-| **Native Flutter/Dart pack** | disabled TLS verification, sensitive SharedPreferences writes, untrusted JavaScript-enabled WebView navigation, sensitive logs, Supabase privileged client keys, cleartext production endpoints | **Flutter projects only.** Token-aware, source-ordered intrafile Dart analysis; no type resolution, path-sensitive branch merge, complete dataflow, or runtime mobile testing. Pub SCA/SBOM is reported by the separate native Pub engine. File/total bounds and omissions are explicit in pack coverage. |
-| **Native Android configuration pack** | debuggable release manifests, effective cleartext traffic, production user-CA trust, exported AndroidX FileProvider | **Android project evidence only.** Bounded structured XML with supported main-to-release precedence; no Gradle execution, arbitrary flavor/DSL evaluation, full manifest merger, runtime testing, or complete Android review. |
-| **Native iOS configuration pack** | global ATS arbitrary loads, insecure domain exceptions, weak TLS policy, disabled default data protection | **iOS project evidence only.** Bounded XML plist/entitlements parsing plus literal Release/AppStore Xcode references; no Xcode execution, dynamic setting expansion, provisioning-profile inspection, runtime testing, or complete iOS review. |
-| **Native React Native pack** | sensitive AsyncStorage writes; untrusted, mixed-content, or file-origin WebView configurations | **Exact React Native dependency or statically proven Expo project evidence.** Expo uses React Native, so proven Expo evidence activates both packs; bare React Native evidence does not activate Expo rules. Bounded token/structure-aware JS/TS/JSX analysis; no module execution, type resolution, whole-program flow, dynamic-prop evaluation, runtime testing, or complete React Native review. |
-| **Native Expo pack** | server secrets exposed through public app config; unsigned cleartext production updates | **Exact Expo dependency or explicit top-level `expo` config evidence only; generic `name` + `slug` fields do not activate it.** Bounded root and nested-package discovery, comments/trailing-comma-aware JSON, and non-executing direct-object JavaScript/TypeScript config parsing; dynamic config is omitted and reported, never evaluated. |
-| **Native Python AI/API pack** | hardcoded signing secrets; credentialed wildcard CORS; untrusted file responses, redirects, and template source; LLM output returned as unsafe HTML; explicit dangerous LangChain FAISS deserialization; request-controlled LangChain web-loader fetches; prompt-injection sinks; model tool arguments reaching Python shell execution | **Python with bounded Django, Flask, FastAPI, Starlette, Jinja2, OpenAI, Anthropic, or LangChain evidence.** Non-executing Lezer-gated intrafile analysis; no type resolution, module graph, general interprocedural/path-sensitive flow, artifact-trust proof, complete SSRF/agent guard analysis, complete Python review, or runtime proof. Tool execution supports direct flow and one named local wrapper, not generic/cross-module dispatch. Unsupported syntax and bounded-out input fail closed and are reported in pack coverage. |
-| **Native Go AI pack** | model-produced OpenAI Go tool arguments reaching a recognized `os/exec` shell invocation | **Go with the exact official `github.com/openai/openai-go` module only.** One bounded, non-executing, intrafile medium-confidence rule; no general Go security coverage, other model SDKs, type/module resolution, cross-module flow, runtime approval/sandbox proof, or complete agent review. |
-| **Native Java AI pack** | model-produced OpenAI Java tool arguments reaching an actually-started recognized `ProcessBuilder` or `Runtime` shell invocation | **Java with exact official `com.openai:openai-java` or `openai-java-core` dependency evidence only.** One bounded, non-executing, intrafile medium-confidence rule; no general Java security coverage, Spring AI/LangChain4j/Azure OpenAI support, type/module resolution, cross-module flow, Java text-block parsing, runtime approval/sandbox proof, or complete agent review. |
-| **Native C# AI pack** | model-produced official OpenAI .NET tool arguments reaching an actually-started recognized `System.Diagnostics.Process` shell invocation | **C# with exact official `OpenAI` NuGet package evidence only.** One bounded, non-executing, intrafile medium-confidence rule; no general C# security coverage, Semantic Kernel/Azure OpenAI support, type/project-reference resolution, cross-file flow, raw-string-content analysis, runtime approval/sandbox proof, or complete agent review. |
-| **Native PHP AI pack** | model-produced OpenAI PHP ecosystem tool arguments reaching `exec`, `system`, `shell_exec`, or `passthru` | **PHP with exact community-maintained `openai-php/client` or `openai-php/laravel` Composer evidence only.** One bounded, non-executing, intrafile medium-confidence rule; no general PHP security coverage, official-SDK claim, type/Composer-graph resolution, cross-file flow, generic callable dispatch, runtime approval/sandbox proof, or complete agent review. |
-| **Native Rust AI pack** | model-produced community `async-openai` tool arguments reaching recognized standard/Tokio process or Bollard Docker exec shell invocations | **Rust with exact community-maintained `async-openai` Cargo dependency evidence only.** One bounded, non-executing, intrafile medium-confidence rule; no general Rust security coverage, official-SDK claim, rustc/type/Cargo-graph resolution, cross-crate flow, generic dispatch, runtime container/approval/sandbox proof, or complete agent review. |
-| **Native Ruby AI pack** | model-produced official OpenAI Ruby tool arguments reaching `system`, `exec`, `IO.popen`, or import-proven Open3 shell execution | **Ruby with exact official production `openai` Gemfile or runtime gemspec evidence only; lockfile-only evidence does not activate.** One bounded, non-executing, intrafile medium-confidence rule; no general Ruby security coverage, Bundler/type resolution, cross-file flow, backtick/percent-x/spawn coverage, runtime approval/sandbox proof, or complete agent review. |
-| **Native Firebase configuration pack** | literal unconditional public writes in Cloud Firestore, Cloud Storage, and Realtime Database Security Rules | **Firebase project/config/rule evidence only.** Three bounded, non-executing, high-confidence rules; public reads and non-literal conditions stay silent. No helper-function evaluation, deployed-policy/IAM/App Check proof, runtime testing, or complete Firebase review. |
-| **Native GitHub Actions workflow pack** | direct attacker-controlled GitHub context interpolation in `run`; exact `pull_request_target` untrusted checkout-and-execute chains | **Direct root `.github/workflows/*.yml`/`.yaml` files only.** Two bounded, non-executing rules with strict YAML 1.2 parsing. Safe `env`/`with` indirection, normal `pull_request`, checkout without execution, and protected checkout v7 stay silent. No general taint, custom-action, artifact, runner, deployed-policy, or complete Actions review. |
+| **SAST** — Opengrep + CodeInspectus `security-baseline` and the Synvoya PHP and Node.js packs | injection, XSS, SSRF, weak crypto, insecure deserialization, explicit CORS misconfiguration; for PHP (plain, Laravel, Symfony, WordPress): SQL/command/code injection, file inclusion, unserialize and phar paths, SSRF, `extract()`, client-named uploads, Blade raw output, predictable tokens, weak password hashing, disabled TLS verification, debug settings in deployable env files, unchecked WordPress REST/admin-ajax writes; for Node.js (Express, NestJS, Next.js, Nuxt/H3, Hono): command injection, `vm`/`Function`, zip-slip, unsafe deserialization, JWT verification without fixed algorithms, cookie/session flags, NestJS validation, placeholder deploy secrets | **JavaScript, TypeScript, Python, PHP** (`.php`, `.phtml`, `.blade.php`; Twig templates are the `php-sast` gap). Python baseline rules (4.1 fresh-set gate): `eval`/`exec` and MD5/SHA-1 rules are experimental (not loaded); SQL, command-injection and deserialization rules report at low severity and low confidence. CodeInspectus ships its own Apache-2.0 rules and runs Opengrep with **no network registry packs**, so SAST coverage is exactly these languages and rules — deliberately narrower than Opengrep's full engine. `list_rules` shows the rule count per language. PHP (`syn-php-*`) and Node.js (`syn-node-*`) rules are original and precision-gated: every rule was measured on 12 holdout repositories it was never tuned on, and ships only if at most 1 in 5 of its holdout hits was a false positive, or, with no holdout hit, if it had no false positive on the tuning repositories and its fixtures pass. Seven rules that were 100% precise on their tuning repositories failed on the holdout set and are held back as experimental for 4.1: PHP path traversal, open redirect, XXE, `preg_replace` `/e` and unguarded Eloquent models, and Node.js SQL injection and path traversal (PHP reflected XSS and four other Node.js rules were already held back). The seven were reworked and measured again for 4.1 on 20 fresh repositories with blind two-reviewer triage; none passed (too few hits, or too few true), so all stay experimental ([fresh-set gate](docs/RULE-PROVENANCE.md#fresh-set-gate-41)). Two PHP rules with few holdout hits are kept for the real issues they found there: disabled TLS verification (2 of 4 hits true) and predictable tokens (1 of 2; it also reports `mt_rand()` that only picks the length of a token built by a CSPRNG helper it does not recognise, a known false positive). Precision limits (4.0): SQL injection is reported only when Express, Koa, Hono, Next.js or H3/Nuxt request input reaches a query built by concatenation or interpolation in the call itself, in the same file (the baseline rule); queries held in a variable first, NestJS and server-action input, Knex/Prisma/Sequelize/TypeORM raw methods and cross-file flows are not reported; DOM XSS is reported only when the URL, the referrer, `window.name` or a message payload reaches an HTML sink directly or through one or two variables, so stored or fetched markup, `localStorage`, jQuery `.html()` and React `dangerouslySetInnerHTML` are not covered by this rule, and a value looked up in a constant table by a URL part is still reported (a known false positive); NoSQL injection needs a MongoDB-style receiver. Code findings under `vendor/` or in `*.min.js` files are not reported (Opengrep's own scope); code findings in scripts that look like copied libraries (minified, licence banner, UMD wrapper, `vendors/`-style folder) are reported at low; both are named in coverage notes. |
+| **Native JavaScript/TypeScript pack** | client-side secret/bundle exposure, Supabase RLS, prompt-injection sinks, model tool arguments reaching Node shell execution, client-writable `user_metadata` authz, unsanitized-output XSS, API error leaks, unsafe request writes, explicit runtime-control misconfiguration | **4.1 fresh-set gate:** sensitive API responses and sensitive logging are experimental (not reported); hard-coded client secrets also failed (0 of 7 true) but ship as in 4.0 (apart from the 4.1 PEM-marker fix) by maintainer decision, to be fixed and re-measured in 4.2; error leaks, unsanitized-output XSS, public-env secrets and disabled security headers are low/low; the other 22 rules had no field hit (not field-measured). **JavaScript / TypeScript** (incl. `.jsx/.tsx/.mjs/.cjs`; client-secret checks also read `.vue/.svelte/.astro/.html`). Supabase RLS analyzes `.sql` plus `.ts/.js` Edge Functions; runtime-control evidence also reads recognized configuration formats. Model-tool command flow is intrafile and bounded to direct flow or one named wrapper; it does not resolve cross-module dispatch or runtime approval/sandbox state. |
+| **Native Flutter/Dart pack** | disabled TLS verification, sensitive SharedPreferences writes, untrusted JavaScript-enabled WebView navigation, sensitive logs, Supabase privileged client keys, cleartext production endpoints | **4.1 fresh-set gate:** TLS verification low/low (1 hit, false); SharedPreferences 1 hit, true (insufficient evidence); the other four not field-measured. **Flutter projects only.** Token-aware, source-ordered intrafile Dart analysis; no type resolution, path-sensitive branch merge, complete dataflow, or runtime mobile testing. Pub SCA/SBOM is reported by the separate native Pub engine. File/total bounds and omissions are explicit in pack coverage. |
+| **Native Android configuration pack** | debuggable release manifests, effective cleartext traffic, production user-CA trust, exported AndroidX FileProvider | **4.1 fresh-set gate:** cleartext traffic and user-CA trust 1-2 hits, all true (insufficient evidence); the other two not field-measured. **Android project evidence only.** Bounded structured XML with supported main-to-release precedence; no Gradle execution, arbitrary flavor/DSL evaluation, full manifest merger, runtime testing, or complete Android review. |
+| **Native iOS configuration pack** | global ATS arbitrary loads, insecure domain exceptions, weak TLS policy, disabled default data protection | **4.1 fresh-set gate:** global ATS arbitrary loads 2 hits, both true (insufficient evidence); the other three not field-measured. **iOS project evidence only.** Bounded XML plist/entitlements parsing plus literal Release/AppStore Xcode references; no Xcode execution, dynamic setting expansion, provisioning-profile inspection, runtime testing, or complete iOS review. |
+| **Native React Native pack** | sensitive AsyncStorage writes; untrusted, mixed-content, or file-origin WebView configurations | **Not field-measured in 4.1** (no hit on the fresh set). **Exact React Native dependency or statically proven Expo project evidence.** Expo uses React Native, so proven Expo evidence activates both packs; bare React Native evidence does not activate Expo rules. Bounded token/structure-aware JS/TS/JSX analysis; no module execution, type resolution, whole-program flow, dynamic-prop evaluation, runtime testing, or complete React Native review. |
+| **Native Expo pack** | server secrets exposed through public app config; unsigned cleartext production updates | **Not field-measured in 4.1.** **Exact Expo dependency or explicit top-level `expo` config evidence only; generic `name` + `slug` fields do not activate it.** Bounded root and nested-package discovery, comments/trailing-comma-aware JSON, and non-executing direct-object JavaScript/TypeScript config parsing; dynamic config is omitted and reported, never evaluated. |
+| **Native Python AI/API pack** | hardcoded signing secrets; credentialed wildcard CORS; untrusted file responses, redirects, and template source; LLM output returned as unsafe HTML; explicit dangerous LangChain FAISS deserialization; request-controlled LangChain web-loader fetches; prompt-injection sinks; model tool arguments reaching Python shell execution | **4.1 fresh-set gate:** signing secrets (2 hits, 1 true) and file responses (1 hit, false) are low/low; the other eight not field-measured. **Python with bounded Django, Flask, FastAPI, Starlette, Jinja2, OpenAI, Anthropic, or LangChain evidence.** Non-executing Lezer-gated intrafile analysis; no type resolution, module graph, general interprocedural/path-sensitive flow, artifact-trust proof, complete SSRF/agent guard analysis, complete Python review, or runtime proof. Tool execution supports direct flow and one named local wrapper, not generic/cross-module dispatch. Unsupported syntax and bounded-out input fail closed and are reported in pack coverage. |
+| **Native Go AI pack** | model-produced OpenAI Go tool arguments reaching a recognized `os/exec` shell invocation | **Not field-measured in 4.1.** **Go with the exact official `github.com/openai/openai-go` module only.** One bounded, non-executing, intrafile medium-confidence rule; no general Go security coverage, other model SDKs, type/module resolution, cross-module flow, runtime approval/sandbox proof, or complete agent review. |
+| **Native Java AI pack** | model-produced OpenAI Java tool arguments reaching an actually-started recognized `ProcessBuilder` or `Runtime` shell invocation | **Not field-measured in 4.1.** **Java with exact official `com.openai:openai-java` or `openai-java-core` dependency evidence only.** One bounded, non-executing, intrafile medium-confidence rule; no general Java security coverage, Spring AI/LangChain4j/Azure OpenAI support, type/module resolution, cross-module flow, Java text-block parsing, runtime approval/sandbox proof, or complete agent review. |
+| **Native C# AI pack** | model-produced official OpenAI .NET tool arguments reaching an actually-started recognized `System.Diagnostics.Process` shell invocation | **Not field-measured in 4.1.** **C# with exact official `OpenAI` NuGet package evidence only.** One bounded, non-executing, intrafile medium-confidence rule; no general C# security coverage, Semantic Kernel/Azure OpenAI support, type/project-reference resolution, cross-file flow, raw-string-content analysis, runtime approval/sandbox proof, or complete agent review. |
+| **Native PHP AI pack** | model-produced OpenAI PHP ecosystem tool arguments reaching `exec`, `system`, `shell_exec`, or `passthru` | **Not field-measured in 4.1.** **PHP with exact community-maintained `openai-php/client` or `openai-php/laravel` Composer evidence only.** One bounded, non-executing, intrafile medium-confidence rule; no general PHP security coverage, official-SDK claim, type/Composer-graph resolution, cross-file flow, generic callable dispatch, runtime approval/sandbox proof, or complete agent review. |
+| **Native Rust AI pack** | model-produced community `async-openai` tool arguments reaching recognized standard/Tokio process or Bollard Docker exec shell invocations | **Not field-measured in 4.1.** **Rust with exact community-maintained `async-openai` Cargo dependency evidence only.** One bounded, non-executing, intrafile medium-confidence rule; no general Rust security coverage, official-SDK claim, rustc/type/Cargo-graph resolution, cross-crate flow, generic dispatch, runtime container/approval/sandbox proof, or complete agent review. |
+| **Native Ruby AI pack** | model-produced official OpenAI Ruby tool arguments reaching `system`, `exec`, `IO.popen`, or import-proven Open3 shell execution | **Not field-measured in 4.1.** **Ruby with exact official production `openai` Gemfile or runtime gemspec evidence only; lockfile-only evidence does not activate.** One bounded, non-executing, intrafile medium-confidence rule; no general Ruby security coverage, Bundler/type resolution, cross-file flow, backtick/percent-x/spawn coverage, runtime approval/sandbox proof, or complete agent review. |
+| **Native Firebase configuration pack** | literal unconditional public writes in Cloud Firestore, Cloud Storage, and Realtime Database Security Rules | **Not field-measured in 4.1.** **Firebase project/config/rule evidence only.** Three bounded, non-executing, high-confidence rules; public reads and non-literal conditions stay silent. No helper-function evaluation, deployed-policy/IAM/App Check proof, runtime testing, or complete Firebase review. |
+| **Native GitHub Actions workflow pack** | direct attacker-controlled GitHub context interpolation in `run`; exact `pull_request_target` untrusted checkout-and-execute chains | **Not field-measured in 4.1** (no hit on the fresh set). **Direct root `.github/workflows/*.yml`/`.yaml` files only.** Two bounded, non-executing rules with strict YAML 1.2 parsing. Safe `env`/`with` indirection, normal `pull_request`, checkout without execution, and protected checkout v7 stay silent. No general taint, custom-action, artifact, runner, deployed-policy, or complete Actions review. |
 
 ## Compliance frameworks (code-visible subset)
 

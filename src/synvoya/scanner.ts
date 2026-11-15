@@ -2,8 +2,9 @@
  * The Synvoya gap layer in a vulnerability scan (design §8 items 1, 2 and 5).
  *
  * The bundled dataset loads first (fail closed: any integrity or schema failure makes the engine
- * unavailable, never a silent zero). The declaration readers then start at once, concurrently with the
- * other engines, under one shared wall-clock deadline; evaluation waits for the package inventory the
+ * unavailable, never a silent zero). The declaration readers then run under one shared wall-clock deadline
+ * and a hard cap (startSynvoyaReaders); a scan runs them before it starts the other engines and the native
+ * packs, so their CPU use cannot push the readers past the deadline (4.1 M6). Evaluation waits for the package inventory the
  * upstream engines (osv-scanner `--all-packages`, Trivy `--list-all-pkgs`) already produce in the same
  * scan. Runtime and image inputs never lower coverage (§8.5): what the readers skip is evidence in the
  * engine note, not a coverage gap.
@@ -19,11 +20,11 @@ import type { TrivyReportPackage } from "../engines/trivy.js";
 import { log } from "../logger.js";
 import { packageEntryLine, readLockfileLines, type LockfileLines } from "../osv/package-line.js";
 import type { OsvDbRecord } from "../osv/database.js";
-import { OSV_SBOM_INVOCATION_COMPONENT, osvDatabaseComponent, synvoyaStaticComponentSignatures, type SynvoyaProducer } from "../provenance.js";
+import { OSV_SBOM_INVOCATION_COMPONENT, osvDatabaseComponent, synvoyaProducerComponent, synvoyaStaticComponentSignatures, type SynvoyaProducer } from "../provenance.js";
 import type { EngineRunInfo, Finding } from "../types.js";
 import { datasetActionAdvisories, loadActionsDb, matchActions, unpinnedActionsNote, withDatasetAdvisories, type ActionsDbLoad, type ActionsMatch } from "./actions-matcher.js";
-import { SYNVOYA_MAX_CHECKED_FILES, SYNVOYA_MAX_COVERAGE_NOTES, SYNVOYA_READER_DEADLINE_MS } from "./constants.js";
-import { loadSynvoyaDataset } from "./dataset.js";
+import { INTERNAL_SYNVOYA_HANG_READER_ENV, SYNVOYA_MAX_CHECKED_FILES, SYNVOYA_MAX_COVERAGE_NOTES, SYNVOYA_READER_DEADLINE_MS, SYNVOYA_READER_GRACE_MS } from "./constants.js";
+import { exploitedIdentities, loadSynvoyaDataset } from "./dataset.js";
 import { evaluateSynvoya, packageAdvisoryFilter, type InventoryPackage, type PackageInventory, type UpstreamDbDates } from "./evaluate.js";
 import { readActionReferences, type ActionsReaderResult } from "./readers/actions.js";
 import { readImageTags } from "./readers/images.js";
@@ -40,6 +41,10 @@ export interface SynvoyaScanOptions {
   now?: Date;
   /** Shared reader deadline; SYNVOYA_READER_DEADLINE_MS by default (which the internal env override can replace). Zero or less is already expired. */
   deadlineMs?: number;
+  /** Time readers get after the deadline before one still running is abandoned; SYNVOYA_READER_GRACE_MS by default. */
+  graceMs?: number;
+  /** Readers already started (startSynvoyaReaders with the same target and options); started here when absent. */
+  reading?: Promise<SynvoyaReading>;
   /** The scan's managed temp dir: the vendored-library SBOM and its osv-scanner run live below it. A private one when absent. */
   tmpDir?: string;
   /** The OSV GitHub Actions database (tests); the installed one and its install record by default. */
@@ -92,8 +97,27 @@ export interface SynvoyaScanResult {
     parsed: string[];
     skipped: Array<{ file: string; reason: string }>;
     checked: Partial<Record<SynvoyaProducer, string[]>>;
+    /**
+     * Per-subject rescan proof for the image producer (4.1 M8 Ruling 3), set only when `checked.images` is.
+     * `blocked`: image files the reader read whole whose only unjudged declarations carry a subject, with the
+     * sorted check keys (evaluate.ts checkKey) that were not judged; a file with no unjudged declaration is in
+     * `checked.images` instead, and one with a subject-less problem or a skip is in neither. `findings`: every
+     * image-producer finding's fingerprint → its check key. Each map is omitted above SYNVOYA_MAX_CHECKED_FILES.
+     */
+    subjects?: { images: SynvoyaImageSubjects };
   };
   componentSignatures: Record<string, string>;
+  /**
+   * Upper-cased ids and aliases of the dataset's `exploited: true` advisories, set whenever the dataset loaded
+   * (even when the layer then failed): the dev-scope rule never lowers these. Absent when the dataset did not load.
+   */
+  exploitedIdentities?: Set<string>;
+}
+
+/** Per-subject rescan proof for image files (SynvoyaScanResult.evidence.subjects). */
+export interface SynvoyaImageSubjects {
+  blocked?: Record<string, string[]>;
+  findings?: Record<string, string>;
 }
 
 /** Upstream engine output the inventory and DB dates are taken from; any of it may be absent. */
@@ -188,22 +212,25 @@ async function locateInventory(target: string, dataset: SynvoyaDataset, inventor
 /**
  * Where the readers start. A directory is walked. A file is read alone, relative to the folder that gives
  * it its meaning to the readers: a workflow under `.github/workflows/`, `wp-includes/version.php` under
- * its WordPress root, anything else under its own folder (as the other engines report a file target).
+ * its WordPress root, anything else under its own folder. Whatever the readers walk, a file target is shown
+ * (`shown`) by its bare name, as the other engines report a file target (4.1 M8 Ruling 4).
  */
-async function readerScope(target: string): Promise<{ root: string; only?: string }> {
+async function readerScope(target: string): Promise<{ root: string; only?: string; shown?: string }> {
   const isFile = await lstat(target).then((info) => !info.isDirectory(), () => false);
   if (!isFile) return { root: target };
   const name = basename(target);
   const parent = dirname(target);
   const grandparent = dirname(parent);
   if (basename(parent) === "workflows" && basename(grandparent) === ".github") {
-    return { root: dirname(grandparent), only: `.github/workflows/${name}` };
+    return { root: dirname(grandparent), only: `.github/workflows/${name}`, shown: name };
   }
-  if (name === "version.php" && basename(parent) === "wp-includes") return { root: grandparent, only: `wp-includes/${name}` };
-  return { root: parent, only: name };
+  if (name === "version.php" && basename(parent) === "wp-includes") return { root: grandparent, only: `wp-includes/${name}`, shown: name };
+  return { root: parent, only: name, shown: name };
 }
 
 const READER_NAMES = ["runtime", "image", "product", "library"] as const;
+/** Index of the GitHub Actions reader in SynvoyaReading.unfinished (after the four READER_NAMES readers). */
+const ACTIONS_READER = READER_NAMES.length;
 const READER_PRODUCERS = ["runtime", "images", "products", "vendored"] as const;
 const LIBRARY_READER = READER_PRODUCERS.indexOf("vendored");
 const PRODUCT_READER = READER_PRODUCERS.indexOf("products");
@@ -427,50 +454,125 @@ function unavailable(started: number, reason: string, version = "unknown"): Synv
   };
 }
 
+/** The Synvoya readers' results for one target (startSynvoyaReaders); `loaded` failed means the layer is unavailable. */
+export interface SynvoyaReading {
+  started: number;
+  loaded: Awaited<ReturnType<typeof loadSynvoyaDataset>>;
+  /** The dataset the evaluator uses (entries that need a later reader or matcher removed); set when `loaded` is ok. */
+  dataset?: SynvoyaDataset;
+  /** An unexpected failure before or while the readers ran: the layer then did not run. */
+  error?: unknown;
+  deadlineMs?: number;
+  /** runtime, image, product, library (READER_NAMES order). */
+  settled?: Array<PromiseSettledResult<ReaderResult>>;
+  actionsSettled?: PromiseSettledResult<ActionsReaderResult>;
+  /** Readers still running at the hard cap (indexes in READER_NAMES order, ACTIONS_READER for Actions): abandoned. */
+  unfinished?: ReadonlySet<number>;
+  /** A file target's path below the reader root (readerScope). */
+  only?: string;
+  /** The path the readers report that file by: its bare name (readerScope). */
+  shown?: string;
+}
+
+/**
+ * Load the dataset and run every Synvoya declaration reader under the shared deadline. A reader that has not
+ * returned `graceMs` after the deadline (it ignored the signal: a hung asynchronous read) is abandoned and
+ * counted as a deadline skip of the whole reader, so the run is declared partial instead of waiting. The cap
+ * bounds asynchronous hangs only: a reader stuck in synchronous code blocks the event loop and the timer with
+ * it. Never rejects.
+ */
+export async function startSynvoyaReaders(target: string, options: Pick<SynvoyaScanOptions, "datasetDir" | "deadlineMs" | "graceMs"> = {}): Promise<SynvoyaReading> {
+  const started = Date.now();
+  let loaded: SynvoyaReading["loaded"];
+  try {
+    loaded = await loadSynvoyaDataset(options.datasetDir);
+  } catch (error) {
+    loaded = { ok: false, reason: error instanceof Error ? error.message : String(error) } as SynvoyaReading["loaded"];
+  }
+  if (!loaded.ok) return { started, loaded };
+  // Entries that need a later milestone's reader or matcher, or a platform no reader can see, never evaluate yet.
+  const dataset = { ...loaded.dataset, advisories: loaded.dataset.advisories.filter((advisory) => advisory.requires === undefined) };
+  const deadlineMs = options.deadlineMs ?? SYNVOYA_READER_DEADLINE_MS;
+  const graceMs = options.graceMs ?? SYNVOYA_READER_GRACE_MS;
+  try {
+    const scope = await readerScope(target);
+    const controller = new AbortController();
+    // Both timers stay referenced (fix round 1): the readers run in front of the scan, so a reader awaiting a
+    // promise that never settles leaves no other handle, and an unreferenced timer would let the process exit
+    // silently before the cap. They are cleared as soon as the readers settle.
+    const timer = deadlineMs > 0 ? setTimeout(() => controller.abort(), deadlineMs) : undefined;
+    if (deadlineMs <= 0) controller.abort();
+    let capTimer: ReturnType<typeof setTimeout> | undefined;
+    const hardCap = new Promise<void>((resolve) => {
+      const arm = (): void => {
+        capTimer = setTimeout(resolve, Math.max(0, graceMs));
+      };
+      if (controller.signal.aborted) arm();
+      else controller.signal.addEventListener("abort", arm, { once: true });
+    });
+    const unfinished = new Set<number>();
+    const capped = <T>(index: number, task: Promise<T>, abandoned: T): Promise<T> => new Promise<T>((resolve, reject) => {
+      let done = false;
+      task.then((value) => { done = true; resolve(value); }, (error: unknown) => { done = true; reject(error); });
+      void hardCap.then(() => {
+        if (done) return;
+        unfinished.add(index);
+        resolve(abandoned);
+      });
+    });
+    const cut = { declarations: [], parsed: [], skipped: [{ file: ".", reason: "deadline" as const }], notes: [] };
+    // Verification-only (INTERNAL_SYNVOYA_HANG_READER_ENV): the named reader never settles.
+    const hung = process.env[INTERNAL_SYNVOYA_HANG_READER_ENV];
+    const run = <T>(name: string, start: () => Promise<T>): Promise<T> => (hung === name ? new Promise<T>(() => undefined) : start());
+    try {
+      const readerOptions = { signal: controller.signal, ...(scope.only !== undefined ? { only: scope.only, onlyAs: scope.shown } : {}) };
+      // Settled, not all: a reader that rejects never leaves the others running or discards what they read.
+      const [settled, [actionsSettled]] = await Promise.all([
+        Promise.allSettled([
+          capped<ReaderResult>(0, run("runtime", () => readRuntimePins(scope.root, readerOptions)), cut),
+          capped<ReaderResult>(1, run("image", () => readImageTags(scope.root, dataset, readerOptions)), cut),
+          capped<ReaderResult>(2, run("product", () => readProducts(scope.root, readerOptions)), cut),
+          capped<ReaderResult>(3, run("library", () => readLibraries(scope.root, dataset.libraries, readerOptions)), cut),
+        ]),
+        Promise.allSettled([capped<ActionsReaderResult>(ACTIONS_READER, run("actions", () => readActionReferences(scope.root, readerOptions)), { ...cut, references: [] })]),
+      ]);
+      log.debug(`synvoya readers finished in ${Date.now() - started} ms`);
+      return { started, loaded, dataset, deadlineMs, settled, actionsSettled: actionsSettled!, unfinished, ...(scope.only !== undefined ? { only: scope.only, shown: scope.shown } : {}) };
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (capTimer) clearTimeout(capTimer);
+    }
+  } catch (error) {
+    return { started, loaded, dataset, deadlineMs, error };
+  }
+}
+
 export async function runSynvoyaScan(
   target: string,
   inventory: Promise<PackageInventory> | PackageInventory,
   upstreamDbDates: Promise<UpstreamDbDates> | UpstreamDbDates,
   options: SynvoyaScanOptions = {},
 ): Promise<SynvoyaScanResult> {
-  const started = Date.now();
+  let started = Date.now();
   // Whatever happens below, a rejected input is never left unhandled.
   const inventoryReady = Promise.resolve(inventory);
   const datesReady = Promise.resolve(upstreamDbDates);
   inventoryReady.catch(() => undefined);
   datesReady.catch(() => undefined);
 
-  const loaded = await loadSynvoyaDataset(options.datasetDir);
-  if (!loaded.ok) return unavailable(started, loaded.reason);
-  // Entries that need a later milestone's reader or matcher, or a platform no reader can see, never evaluate yet.
-  const dataset = { ...loaded.dataset, advisories: loaded.dataset.advisories.filter((advisory) => advisory.requires === undefined) };
+  const reading = await (options.reading ?? startSynvoyaReaders(target, options));
+  if (!reading.loaded.ok) return unavailable(reading.started, reading.loaded.reason);
+  started = reading.started;
+  const exploited = exploitedIdentities(reading.loaded.dataset);
+  const dataset = reading.dataset!;
 
   // Awaited on every path out, so the SBOM run never outlives the scan's temp dir.
   let sbomTask: Promise<SbomCheck> | undefined;
   try {
-    const scope = await readerScope(target);
-    const deadlineMs = options.deadlineMs ?? SYNVOYA_READER_DEADLINE_MS;
-    const controller = new AbortController();
-    const timer = deadlineMs > 0 ? setTimeout(() => controller.abort(), deadlineMs) : undefined;
-    timer?.unref?.();
-    if (deadlineMs <= 0) controller.abort();
-    let settled: Array<PromiseSettledResult<ReaderResult>>;
-    let actionsSettled: PromiseSettledResult<ActionsReaderResult>;
-    try {
-      const options = { signal: controller.signal, ...(scope.only !== undefined ? { only: scope.only } : {}) };
-      // Settled, not all: a reader that rejects never leaves the others running or discards what they read.
-      [settled, [actionsSettled]] = await Promise.all([
-        Promise.allSettled([
-          readRuntimePins(scope.root, options),
-          readImageTags(scope.root, dataset, options),
-          readProducts(scope.root, options),
-          readLibraries(scope.root, dataset.libraries, options),
-        ]),
-        Promise.allSettled([readActionReferences(scope.root, options)]),
-      ]);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
+    if (reading.error !== undefined) throw reading.error;
+    const settled = reading.settled!;
+    const actionsSettled = reading.actionsSettled!;
+    const deadlineMs = reading.deadlineMs!;
     const readers: ReaderResult[] = settled.map((outcome, index) => {
       if (outcome.status === "fulfilled") {
         const producer = READER_PRODUCERS[index]!;
@@ -504,7 +606,7 @@ export async function runSynvoyaScan(
     const skipped = [...readers.flatMap((reader) => reader.skipped), ...actionsReader.skipped];
     const priority = [...readers.flatMap((reader) => reader.priorityNotes ?? []), ...(actionsReader.priorityNotes ?? [])];
     // A file target no reader reads: say so plainly; nothing about it is a checked file.
-    const only = scope.only;
+    const only = reading.shown ?? reading.only;
     if (only !== undefined && !parsed.includes(only) && !skipped.some((entry) => entry.file === only)) {
       priority.push(`Synvoya reads runtime, image, product and library declarations from directories; ${basename(target)} was not checked.`);
     }
@@ -558,6 +660,37 @@ export async function runSynvoyaScan(
       );
       if (files) checked[READER_PRODUCERS[index]!] = files;
     });
+    // 4.1 M8: per-subject proof for the image producer, only alongside its checked set (same reader, deadline and cap
+    // conditions). A file read whole whose unjudged entries all carry a check key is blocked for those keys only;
+    // a reader-level problem (a repository behind a variable, an unreadable reference) or a skip keeps it out.
+    let subjects: SynvoyaScanResult["evidence"]["subjects"];
+    if (checked.images) {
+      const imageReader = readers[IMAGE_READER]!;
+      const wholeFileProblems = new Set([...(imageReader.unjudged ?? []), ...imageReader.skipped.map((entry) => entry.file)]);
+      const keysByFile = new Map<string, Set<string>>();
+      for (const entry of evaluation.unjudged) {
+        if (entry.producer !== "images") continue;
+        keysByFile.set(entry.file, (keysByFile.get(entry.file) ?? new Set()).add(entry.subject));
+      }
+      const blocked = unique(imageReader.parsed)
+        .filter((file) => !wholeFileProblems.has(file) && keysByFile.has(file))
+        .sort()
+        .map((file) => [file, [...keysByFile.get(file)!].sort()] as const);
+      const imageComponent = synvoyaProducerComponent("images");
+      const findings = evaluation.findings
+        .filter((finding) => finding.producer_components?.includes(imageComponent))
+        .flatMap((finding) => {
+          const key = evaluation.subjectByFingerprint.get(finding.fingerprint);
+          return key === undefined ? [] : [[finding.fingerprint, key] as const];
+        });
+      subjects = {
+        images: {
+          // fromEntries defines own properties, so no file name or fingerprint can reach a prototype.
+          ...(blocked.length <= SYNVOYA_MAX_CHECKED_FILES ? { blocked: Object.fromEntries(blocked) } : {}),
+          ...(findings.length <= SYNVOYA_MAX_CHECKED_FILES ? { findings: Object.fromEntries(findings) } : {}),
+        },
+      };
+    }
     // The Actions producer re-checks a file only when its reader read it whole (no deadline skip anywhere) and
     // every reference in it got a definite answer from the matcher: a finding, or clean. A note (a moving tag
     // with a fixed release, an unlisted commit, a branch) or a reference the reader could not read leaves it out;
@@ -572,9 +705,17 @@ export async function runSynvoyaScan(
     const warnings: string[] = [];
     // Field run 2026-11-05: a rerun lost findings to the deadline, so it is partial coverage, never only a note.
     if (deadlineSkips > 0) {
+      // 4.1 M6 addendum: name each reader the deadline cut (or the hard cap abandoned), never only a count.
+      const cut = [...readers.map((reader, index) => [READER_NAMES[index]!, reader.skipped, index] as const), ["GitHub Actions", actionsReader.skipped, ACTIONS_READER] as const]
+        .flatMap(([name, readerSkipped, index]) => {
+          if (reading.unfinished!.has(index)) return [`${name} (still running at the hard cap)`];
+          const count = readerSkipped.filter((entry) => entry.reason === "deadline").length;
+          return count > 0 ? [`${name} (${count} not read)`] : [];
+        });
       warnings.push(
         `Synvoya coverage partial: the readers reached their ${Math.round(deadlineMs / 1000)} s deadline; ${deadlineSkips} file(s) or folder(s) ` +
-          "were not read, so runtime, image, product, library and GitHub Actions declarations in them were not checked.",
+          "were not read, so runtime, image, product, library and GitHub Actions declarations in them were not checked." +
+          ` Readers that did not finish: ${cut.join(", ")}.`,
       );
     }
     if (actionsDb.state === "failed") warnings.push(`Synvoya GitHub Actions check did not run: ${actionsDb.reason}`);
@@ -658,16 +799,17 @@ export async function runSynvoyaScan(
       },
       notes,
       warnings,
-      evidence: { parsed, skipped, checked },
+      evidence: { parsed, skipped, checked, ...(subjects ? { subjects } : {}) },
       // The SBOM run's arguments are constant, so its invocation is signed even when no SBOM was needed.
       componentSignatures: {
-        ...synvoyaStaticComponentSignatures(loaded.digest),
+        ...synvoyaStaticComponentSignatures(reading.loaded.digest),
         [OSV_SBOM_INVOCATION_COMPONENT]: osvSbomInvocationSignature(),
         // The Actions database is signed only when its install record matches it: else no Actions finding can resolve.
         ...(actionsSignature ? { [osvDatabaseComponent("GitHub Actions")]: actionsSignature } : {}),
       },
       sbomFindings: sbom.state === "ran" ? sbom.findings : [],
       coverageGaps,
+      exploitedIdentities: exploited,
       ...(actions && actionsSettled.status === "fulfilled"
         ? { actionsCoverage: { evaluated: actions.evaluated, references: actionsReader.references.map(({ file, uses }) => ({ file, reference: uses })) } }
         : {}),
@@ -686,6 +828,7 @@ export async function runSynvoyaScan(
       componentSignatures: {},
       sbomFindings: [],
       coverageGaps: [],
+      exploitedIdentities: exploited,
     };
   }
 }

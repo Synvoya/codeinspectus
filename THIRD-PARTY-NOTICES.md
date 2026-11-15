@@ -140,7 +140,7 @@ package distributed by npm retains its own package metadata and license file.
 
 | Package | Version | License | Copyright / project |
 |---|---:|---|---|
-| `@modelcontextprotocol/sdk` | 1.30.0 | MIT | Copyright (c) 2024 Anthropic, PBC |
+| `@modelcontextprotocol/sdk` | 1.32.2 | MIT | Copyright (c) 2024 Anthropic, PBC |
 | `@babel/parser` | 7.25.0 | MIT | Copyright (C) 2012-2014 by various contributors (see AUTHORS); JavaScript/TypeScript parser for the native packs, no runtime dependencies of its own |
 | `@contentauth/c2pa-node` | 0.9.3 | MIT | Content Authenticity Initiative / Adobe contributors; optional native C2PA validator |
 | `@contentauth/c2pa-types` | 0.7.4 | MIT | Copyright 2025 Adobe (package LICENSE) |
@@ -150,9 +150,9 @@ package distributed by npm retains its own package metadata and license file.
 | `@lezer/common` | 1.5.2 | MIT | Copyright (C) 2018 Marijn Haverbeke and others |
 | `@lezer/lr` | 1.4.10 | MIT | Copyright (C) 2018 Marijn Haverbeke and others |
 | `@lezer/highlight` | 1.2.3 | MIT | Copyright (C) 2018 Marijn Haverbeke and others |
-| `smol-toml` | 1.7.1 | BSD-3-Clause | Copyright (c) Squirrel Chat et al. |
+| `smol-toml` | 1.9.1 | BSD-3-Clause | Copyright (c) Squirrel Chat et al. |
 | `yaml` | 2.9.0 | ISC | Copyright Eemeli Aro |
-| `zod` | 3.25.76 | MIT | Copyright (c) 2025 Colin McDonnell |
+| `zod` | 4.6.7 | MIT | Copyright (c) 2025 Colin McDonnell |
 
 Transitive npm dependencies remain separately installed packages and retain their own licenses and
 copyright notices. The exact resolved dependency graph is recorded in `package-lock.json`; generated

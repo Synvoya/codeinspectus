@@ -1,0 +1,33 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      lodash:
+        specifier: 4.17.20
+        version: 4.17.20
+    devDependencies:
+      handlebars:
+        specifier: 4.7.9
+        version: 4.7.9
+
+packages:
+
+  handlebars@4.7.9:
+    resolution: {integrity: sha512-AAAA}
+    engines: {node: '>=0.4.7'}
+    hasBin: true
+
+  lodash@4.17.20:
+    resolution: {integrity: sha512-BBBB}
+
+snapshots:
+
+  handlebars@4.7.9: {}
+
+  lodash@4.17.20: {}

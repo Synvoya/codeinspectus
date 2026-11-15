@@ -1,4 +1,5 @@
 import { SERVER_VERSION } from "../config.js";
+import { displayIdHint } from "../display-id.js";
 import { createJsonExport } from "../export/model.js";
 import { redactSnippet } from "../redact.js";
 import type { StoredScanResult } from "../store.js";
@@ -67,7 +68,10 @@ function bodyFor(scan: StoredScanResult, finding: ReturnType<typeof createJsonEx
 export function createIssuePayload(scan: StoredScanResult, findingId: string, adapter: IssueAdapter, visibility: DestinationVisibility): IssuePayload {
   const exported = createJsonExport(scan);
   const finding = exported.findings.find((entry) => entry.id === findingId);
-  if (!finding) throw new Error(`Finding '${cleanText(findingId)}' does not exist in stored scan '${scan.scan_id}'.`);
+  if (!finding) {
+    const hint = displayIdHint(findingId, scan).trimEnd();
+    throw new Error(`Finding '${cleanText(findingId)}' does not exist in stored scan '${scan.scan_id}'.${hint ? ` ${hint}` : ""}`);
+  }
   const title = truncate(`[${finding.severity.toUpperCase()}] ${cleanText(finding.title).replace(/@/g, "@\u200b")} (${cleanText(finding.rule_id)})`, 240);
   const body = bodyFor(scan, finding, visibility, exported.coverage.aggregate);
   const common = {

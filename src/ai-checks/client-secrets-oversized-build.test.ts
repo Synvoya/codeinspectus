@@ -34,7 +34,8 @@ const AWS_KEY = "AKIAIOSFODNN7EXAMPLE"; // canonical AWS example id (AKIA + 16)
 const GH_TOKEN = "ghp_0123456789abcdefghijklmnopqrstuvwxyzAB"; // ghp_ + 38
 const SLACK_TOKEN = "xoxb-1234567890-abcdefghijklmno";
 const BARE_AIZA = "AIzaSyA00000000000000000000000000000abc"; // AIza + 35, NO firebase context → real-GCP-shaped
-const PEM = "-----BEGIN PRIVATE KEY-----\nMIIBVAIBADANBgkqFAKE0BAQEFAASCAT4wggE6AgEAfake1234567890\n-----END PRIVATE KEY-----";
+// 4.1 M9: a PEM block counts only with at least 64 base64 characters of (fake) key body.
+const PEM = "-----BEGIN PRIVATE KEY-----\nMIIBVAIBADANBgkqFAKE0BAQEFAASCAT4wggE6AgEAfake1234567890\nFAKEfakeFAKEfakeFAKEfake\n-----END PRIVATE KEY-----";
 
 // ── set (b): PUBLIC / generic, must STAY SILENT in the same >4MB chunk ─────────
 const ANON_JWT = jwt({ role: "anon", iss: "supabase", ref: "abcd" });

@@ -216,6 +216,7 @@ describe("CLI parser", () => {
   test("help documents interactive setup, piped MCP, and the first-class commands", () => {
     expect(cliHelp()).toMatch(/Guided setup in a terminal; MCP server over piped stdio/);
     expect(cliHelp()).toMatch(/codeinspectus setup \[options\]/);
+    expect(cliHelp()).toMatch(/codeinspectus init \[options\]/);
     expect(cliHelp()).toMatch(/codeinspectus scan <target>/);
     expect(cliHelp()).toMatch(/codeinspectus scans <list\|show\|rerun\|compare>/);
     expect(cliHelp()).toMatch(/codeinspectus bundle <create\|verify\|export\|compare>/);

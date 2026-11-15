@@ -61,6 +61,27 @@ describe("CSV export", () => {
     expect(JSON.parse(rows[2]![columns.get("producer_components_json")!]!)).toEqual(["engine:gitleaks"]);
   });
 
+  test("orders finding rows by severity, then file and line, not by id", () => {
+    const stored = scan();
+    const template = stored.findings[0]!;
+    stored.findings = [
+      { ...template, id: "CI-0000000001", fingerprint: "fp-low", severity: "low", location: { file: "a.ts", start_line: 1, end_line: 1 } },
+      { ...template, id: "CI-ffffffffff", fingerprint: "fp-crit", severity: "critical", location: { file: "z.ts", start_line: 9, end_line: 9 } },
+      { ...template, id: "CI-5555555555", fingerprint: "fp-high-b", severity: "high", location: { file: "b.ts", start_line: 3, end_line: 3 } },
+      { ...template, id: "CI-6666666666", fingerprint: "fp-high-a2", severity: "high", location: { file: "a.ts", start_line: 7, end_line: 7 } },
+      { ...template, id: "CI-7777777777", fingerprint: "fp-high-a1", severity: "high", location: { file: "a.ts", start_line: 2, end_line: 2 } },
+      { ...template, id: "CI-8888888888", fingerprint: "fp-info", severity: "info", location: { file: "a.ts", start_line: 1, end_line: 1 } },
+    ];
+    stored.summary = { critical: 1, high: 3, medium: 0, low: 1, info: 1, total: 6 };
+    stored.total_findings_before_limit = 6;
+    stored.engine_details[0]!.finding_count = 6;
+    const rows = parseCsv(createCsvExport(createJsonExport(stored)));
+    const columns = new Map(CSV_COLUMNS.map((column, index) => [column, index]));
+    expect(rows.slice(2).map((row) => row[columns.get("finding_id")!])).toEqual([
+      "CI-ffffffffff", "CI-7777777777", "CI-6666666666", "CI-5555555555", "CI-0000000001", "CI-8888888888",
+    ]);
+  });
+
   test("retains explicit partial coverage even with zero findings", () => {
     const document = createJsonExport(scan(0));
     const rows = parseCsv(createCsvExport(document));

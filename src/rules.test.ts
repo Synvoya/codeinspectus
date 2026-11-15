@@ -49,7 +49,7 @@ describe("listRules native pack inventory", () => {
       expect.objectContaining({
         id: "javascript-typescript",
         analyzer_count: 12,
-        rule_count: 29,
+        rule_count: 27, // 29 minus 2 experimental (4.1 M9 Ruling 4)
       }),
       expect.objectContaining({
         id: "flutter",
@@ -154,7 +154,7 @@ describe("listRules native pack inventory", () => {
     expect(result.native_packs[1]?.languages).toContain("dart");
     expect(result.native_packs[1]?.frameworks).toContain("flutter");
     expect(result.native_packs[1]?.limitations.join(" ")).toMatch(/source-ordered|does not claim complete/i);
-    expect(result.custom_rule_count).toBe(126);
+    expect(result.custom_rule_count).toBe(122); // 126 minus 2 native and 2 Opengrep experimental rules (4.1 M9)
     expect(result.engines.some((engine) => engine.engine === "codeinspectus-pub" && engine.available)).toBe(true);
     expect(result.advisory_databases).toEqual([
       expect.objectContaining({
@@ -166,8 +166,8 @@ describe("listRules native pack inventory", () => {
         license: "CC-BY-4.0",
       }),
     ]);
-    expect(nativeRules).toHaveLength(72);
-    expect(nativeRules.filter((rule) => rule.pack_id === "javascript-typescript")).toHaveLength(29);
+    expect(nativeRules).toHaveLength(70); // 72 minus 2 experimental (4.1 M9 Ruling 4)
+    expect(nativeRules.filter((rule) => rule.pack_id === "javascript-typescript")).toHaveLength(27);
     expect(nativeRules.filter((rule) => rule.pack_id === "flutter")).toHaveLength(6);
     expect(nativeRules.filter((rule) => rule.pack_id === "android")).toHaveLength(4);
     expect(nativeRules.filter((rule) => rule.pack_id === "ios")).toHaveLength(4);
@@ -183,7 +183,7 @@ describe("listRules native pack inventory", () => {
     expect(nativeRules.filter((rule) => rule.pack_id === "ruby-ai")).toHaveLength(1);
     expect(nativeRules.filter((rule) => rule.pack_id === "firebase")).toHaveLength(3);
     expect(nativeRules.filter((rule) => rule.pack_id === "github-actions")).toHaveLength(2);
-    expect(externalRules).toHaveLength(54); // 18 ci-baseline + 19 syn-php + 12 syn-node Opengrep, 5 Gitleaks
+    expect(externalRules).toHaveLength(52); // 16 ci-baseline (2 Python rules experimental, 4.1 M9) + 19 syn-php + 12 syn-node Opengrep, 5 Gitleaks
     expect(externalRules.every((rule) => !("pack_id" in rule))).toBe(true);
   });
 
@@ -235,8 +235,8 @@ describe("listRules native pack inventory", () => {
       listRules({ engine: "gitleaks" }),
     ]);
 
-    expect(native.custom_rule_count).toBe(72);
-    expect(opengrep.custom_rule_count).toBe(49); // 18 ci-baseline-* + 19 syn-php-* + 12 syn-node-*
+    expect(native.custom_rule_count).toBe(70);
+    expect(opengrep.custom_rule_count).toBe(47); // 16 ci-baseline-* (2 Python rules experimental, 4.1 M9) + 19 syn-php-* + 12 syn-node-*
     expect(gitleaks.custom_rule_count).toBe(5);
     expect(native.native_packs).toEqual(opengrep.native_packs);
     expect(opengrep.native_packs).toEqual(gitleaks.native_packs);

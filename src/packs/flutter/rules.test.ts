@@ -37,8 +37,8 @@ describe("Flutter TLS verification rule", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       rule_id: "ci-flutter-tls-verification-disabled",
-      severity: "high",
-      confidence: "high",
+      severity: "low", // 4.1 M9 fresh-set gate (Ruling 3)
+      confidence: "low",
       cwe: ["CWE-295"],
     });
     expect(result[0]?.location.snippet).not.toContain("hunter2");
@@ -192,6 +192,28 @@ describe("Flutter sensitive log rule", () => {
       catalog.info(accessToken);
     `);
     expect(result).toHaveLength(0);
+  });
+
+  test("4.1 M9: sensitivity comes from logged values, not words in the literal text", async () => {
+    await expect(findings(runFlutterSensitiveLog, `
+      final _log = Logger('AuthGuard');
+      _log.warning('Error validating access token from server: $e');
+      debugPrint('password reset failed: \${e.runtimeType}');
+      print('secret rotation finished for $userId');
+    `)).resolves.toHaveLength(0);
+    const real = await findings(runFlutterSensitiveLog, `
+      final _log = Logger('AuthGuard');
+      _log.info('token: $accessToken');
+      _log.info('refreshed: \${session.refreshToken}');
+      developer.log(session.refreshToken);
+      debugPrint('login with \${credentials.password} failed');
+    `);
+    expect(real.map((item) => item.location.start_line)).toEqual([3, 4, 6]);
+    // Fix round 1 (review item 12): words in the literal text ("device", "push") do not clear an interpolated token.
+    await expect(findings(runFlutterSensitiveLog, `
+      final _log = Logger('Push');
+      _log.info('device registered for push with session token $token');
+    `)).resolves.toHaveLength(1);
   });
 
   test("does not treat kDebugMode == false as a debug-only guard", async () => {

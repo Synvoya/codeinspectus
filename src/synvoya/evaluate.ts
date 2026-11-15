@@ -49,7 +49,9 @@ export interface SynvoyaEvaluation {
    * resolved to release lines, or an end-of-life line with no latest release listed. A rescan cannot
    * confirm a fix from such a file. Deduplicated, in evaluation order.
    */
-  unjudged: Array<{ file: string; producer?: SynvoyaProducer }>;
+  unjudged: Array<{ file: string; producer?: SynvoyaProducer; /** checkKey of the declaration or package. */ subject: string }>;
+  /** Every finding's fingerprint → the checkKey of the subject it was found on (4.1 M8 per-subject rescan proof). */
+  subjectByFingerprint: Map<string, string>;
 }
 
 type Subject = Declaration["subject"];
@@ -77,6 +79,7 @@ const RUNTIME_LABELS: Record<RuntimeId, string> = {
 const PRODUCT_LABELS: Record<string, string> = {
   "adobe-commerce": "Adobe Commerce",
   "magento-open-source": "Magento Open Source",
+  minio: "MinIO",
   wordpress: "WordPress",
 };
 
@@ -123,7 +126,7 @@ export function packageKey(ecosystem: string, name: string): string {
 }
 
 /** The dataset's "<ecosystem>:<name>" alias map with both sides normalised like packageKey. */
-function aliasTable(dataset: SynvoyaDataset): Map<string, string> {
+function aliasTable(dataset: Pick<SynvoyaDataset, "aliases">): Map<string, string> {
   const split = (text: string): string | undefined => {
     const at = text.indexOf(":");
     return at > 0 ? packageKey(text.slice(0, at), text.slice(at + 1)) : undefined;
@@ -144,6 +147,43 @@ function subjectKey(subject: Subject, aliases: Map<string, string>): string {
     return `package:${aliases.get(key) ?? key}`;
   }
   return `${subject.type}:${subject.product}`;
+}
+
+const RUNTIME_IDS: ReadonlySet<string> = new Set(Object.keys(RUNTIME_LABELS));
+
+/** The endoflife.date page a product's EOL entries cite (`https://endoflife.date/<slug>`), when they all cite one. */
+function eolFamily(product: string, table: readonly EolEntry[]): string | undefined {
+  const slugs = new Set(table.filter((entry) => entry.product === product).map((entry) => /^https:\/\/endoflife\.date\/([a-z0-9][a-z0-9._-]*)$/.exec(entry.source)?.[1]));
+  const [slug] = slugs;
+  return slugs.size === 1 && slug !== undefined ? slug : undefined;
+}
+
+/**
+ * The unit a rescan re-checks per image file (4.1 M8 Ruling 3): one key per piece of software, whatever image
+ * names it. `runtime:<id>`; `package:<key>` (aliases applied, as subjectKey); `product:<family>` for both product
+ * and end-of-life-only images, where the family is the endoflife.date page of the product's EOL entries (so
+ * `postgres` and `bitnami/postgresql` are both `postgresql`, `mongo` and `bitnami/mongodb` both `mongodb`), else
+ * the product name. An end-of-life-only image named for a runtime (`java`, `go`) folds into that runtime's key.
+ * Folding can only block more: two keys for one product would let a fix resolve while the product is still
+ * declared through something unjudged.
+ */
+export function checkKey(subject: Subject, dataset: Pick<SynvoyaDataset, "aliases" | "eol">): string {
+  return checkKeys(dataset)(subject);
+}
+
+function checkKeys(dataset: Pick<SynvoyaDataset, "aliases" | "eol">): (subject: Subject) => string {
+  const aliases = aliasTable(dataset);
+  const families = new Map<string, string>();
+  return (subject) => {
+    if (subject.type === "runtime" || subject.type === "package") return subjectKey(subject, aliases);
+    if (RUNTIME_IDS.has(subject.product)) return `runtime:${subject.product}`;
+    let family = families.get(subject.product);
+    if (family === undefined) {
+      family = eolFamily(subject.product, dataset.eol ?? []) ?? subject.product;
+      families.set(subject.product, family);
+    }
+    return `product:${family}`;
+  };
 }
 
 /** The advisory-index key a subject looks up: an EOL-only image also matches product advisories. */
@@ -495,14 +535,26 @@ interface Segment {
  * bundled table cannot know lines released after it shipped. An alternative that meets no listed cycle
  * is one segment of its own when it is bounded on both sides; an unbounded one cannot be enumerated
  * (undefined). Throws Incomparable.
+ *
+ * `complete` (4.1 M8 Ruling 2): the table lists every release line the vendor shipped between its oldest and
+ * newest cycle, so for an alternative that meets at least one listed cycle, a remainder lying wholly between the
+ * oldest listed line's start and the newest listed line's end holds no release and is dropped. The part below
+ * the oldest line and the tail above the newest are kept.
  */
-function resolvableSegments(scheme: VersionScheme, spans: Span[], cycles: readonly EolEntry[]): Segment[] | undefined {
+function resolvableSegments(scheme: VersionScheme, spans: Span[], cycles: readonly EolEntry[], complete = false): Segment[] | undefined {
   const lines = cycles
     .flatMap((cycle) => {
       const line = lineSpan(cycle.cycle);
       return line ? [{ cycle, line }] : [];
     })
     .sort((a, b) => cmp(scheme, a.line.lo!.v, b.line.lo!.v));
+  // The listed table's bounds: [oldest line start, newest line end).
+  let table: Span | undefined;
+  if (complete && lines.length > 0) {
+    let hi = lines[0]!.line.hi!;
+    for (const { line } of lines) if (cmp(scheme, line.hi!.v, hi.v) > 0) hi = line.hi!;
+    table = { lo: lines[0]!.line.lo, hi };
+  }
   const out: Segment[] = [];
   for (const span of spans) {
     const listed: Segment[] = [];
@@ -525,7 +577,8 @@ function resolvableSegments(scheme: VersionScheme, spans: Span[], cycles: readon
     }
     const tail = intersect(scheme, span, { lo: cursor, hi: null });
     if (tail) remainder.push(tail);
-    out.push(...listed, ...remainder.map((part) => ({ span: part })));
+    const kept = table ? remainder.filter((part) => !contains(scheme, table, part)) : remainder;
+    out.push(...listed, ...kept.map((part) => ({ span: part })));
   }
   return out.length > 0 ? out : undefined;
 }
@@ -756,6 +809,7 @@ function advisoryFinding(
     },
     confidence,
     ...(pkg ? { package: { ecosystem: pkg.ecosystem, name: pkg.name, version: origin.version } } : {}),
+    ...(pkg && !malware && !verify && !advisory.no_fix_available && advisory.fixed.length ? { fixed_versions: [...advisory.fixed] } : {}),
   };
 }
 
@@ -810,14 +864,18 @@ export function evaluateSynvoya(
   const table = dataset.eol ?? [];
   const found = new Map<string, Finding>();
   const notes = new Set<string>();
-  const unjudged = new Map<string, { file: string; producer?: SynvoyaProducer }>();
-  const unjudge = (file: string, producer: SynvoyaProducer | undefined): void => {
-    const key = `${producer ?? ""}\0${file}`;
-    if (!unjudged.has(key)) unjudged.set(key, { file, ...(producer ? { producer } : {}) });
+  const keyOf = checkKeys(dataset);
+  const unjudged = new Map<string, SynvoyaEvaluation["unjudged"][number]>();
+  const unjudge = (file: string, producer: SynvoyaProducer | undefined, subject: Subject): void => {
+    const check = keyOf(subject);
+    const key = `${producer ?? ""}\0${file}\0${check}`;
+    if (!unjudged.has(key)) unjudged.set(key, { file, ...(producer ? { producer } : {}), subject: check });
   };
+  const subjectByFingerprint = new Map<string, string>();
   const keep = (finding: Finding, origin: Origin): void => {
     const key = `${finding.rule_id}\0${origin.file}\0${origin.key}`;
     const kept = found.get(key);
+    if (!subjectByFingerprint.has(finding.fingerprint)) subjectByFingerprint.set(finding.fingerprint, keyOf(origin.subject));
     if (!kept) found.set(key, finding);
     // The same finding from another producer: both must re-check it before a rescan can call it fixed.
     else kept.producer_components = [...new Set([...(kept.producer_components ?? []), ...(finding.producer_components ?? [])])];
@@ -843,7 +901,7 @@ export function evaluateSynvoya(
     };
 
     if (decl.precision === "unresolved") {
-      unjudge(decl.file, decl.producer);
+      unjudge(decl.file, decl.producer, decl.subject);
       if (!decl.noted && (advisories.length > 0 || cycles.length > 0)) {
         notes.add(`${where}: ${decl.source} declares ${subjectLabel} "${clip(decl.spec)}", which is not a resolvable version; Synvoya could not check it against its ${subjectLabel} advisories or end-of-life dates.`);
       }
@@ -862,7 +920,7 @@ export function evaluateSynvoya(
         }
         const affected = isAffected(schemeFor(advisory.target), version, advisory.affected);
         if (affected === undefined) {
-          unjudge(decl.file, decl.producer);
+          unjudge(decl.file, decl.producer, decl.subject);
           notes.add(`${where}: could not compare ${clip(version)} for ${subjectLabel} against ${advisory.id}; no finding is possible for it.`);
           continue;
         }
@@ -877,7 +935,7 @@ export function evaluateSynvoya(
       if (product !== undefined && entry && isPast(entry.eol, now) && !eolAdvisoryHit) {
         // The cycle comes from the leading digits; a finding still needs a version the scheme can read.
         if (compareVersions(scheme, version, version) === undefined) {
-          unjudge(decl.file, decl.producer);
+          unjudge(decl.file, decl.producer, decl.subject);
           notes.add(`${where}: could not compare ${clip(version)} for ${subjectLabel} against the end-of-life table; no finding is possible for it.`);
         } else {
           keep(eolFinding(origin, product, [entry]), origin);
@@ -890,14 +948,14 @@ export function evaluateSynvoya(
     let segments: Segment[] | undefined;
     try {
       const spans = declaredSpans(scheme, decl.spec, decl.precision);
-      segments = spans && resolvableSegments(scheme, spans, cycles);
+      segments = spans && resolvableSegments(scheme, spans, cycles, product !== undefined && (dataset.eolComplete ?? []).includes(product));
     } catch (error) {
       if (!(error instanceof Incomparable)) throw error;
       segments = undefined;
     }
     if (!segments) {
       if (advisories.length > 0 || cycles.length > 0) {
-        unjudge(decl.file, decl.producer);
+        unjudge(decl.file, decl.producer, decl.subject);
         notes.add(`${where}: could not resolve ${subjectLabel} "${clip(decl.spec)}" to release lines; no finding is possible for it.`);
       }
       continue;
@@ -908,11 +966,11 @@ export function evaluateSynvoya(
         judgement = judgeSegments(schemeFor(advisory.target), advisory, segments, now);
       } catch (error) {
         if (!(error instanceof Incomparable)) throw error;
-        unjudge(decl.file, decl.producer);
+        unjudge(decl.file, decl.producer, decl.subject);
         notes.add(`${where}: could not compare ${clip(decl.spec)} for ${subjectLabel} against ${advisory.id}; no finding is possible for it.`);
         continue;
       }
-      if (judgement.missingLatest.length > 0) unjudge(decl.file, decl.producer);
+      if (judgement.missingLatest.length > 0) unjudge(decl.file, decl.producer, decl.subject);
       for (const cycle of judgement.missingLatest) {
         notes.add(`${where}: ${subjectLabel} ${cycle} is end-of-life and the end-of-life table lists no latest release for it, so Synvoya could not check whether ${advisory.id} affects the release ${clip(decl.spec)} resolves to; no finding is possible for it.`);
       }
@@ -952,7 +1010,7 @@ export function evaluateSynvoya(
     for (const advisory of advisories) {
       const affected = isAffected(schemeFor(advisory.target), pkg.version, advisory.affected);
       if (affected === undefined) {
-        unjudge(pkg.file, pkg.producer);
+        unjudge(pkg.file, pkg.producer, subject);
         notes.add(`${pkg.file}:${pkg.line}: could not compare ${clip(pkg.version)} for ${clip(pkg.name)} against ${advisory.id}; no finding is possible for it.`);
         continue;
       }
@@ -966,7 +1024,7 @@ export function evaluateSynvoya(
       a.location.start_line - b.location.start_line ||
       (a.rule_id < b.rule_id ? -1 : a.rule_id > b.rule_id ? 1 : 0),
   );
-  return { findings, notes: capNotes([...notes]), unjudged: [...unjudged.values()] };
+  return { findings, notes: capNotes([...notes]), unjudged: [...unjudged.values()], subjectByFingerprint };
 }
 
 function sortCycles(scheme: VersionScheme, cycles: EolEntry[]): EolEntry[] {

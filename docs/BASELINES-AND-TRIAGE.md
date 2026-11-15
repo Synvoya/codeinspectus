@@ -31,7 +31,9 @@ codeinspectus triage delete SCAN_ID ANNOTATION_ID --reason "Superseded by a corr
 
 State slugs are `accepted`, `false-positive`, `risk-accepted`, `needs-review`, and `fixed-pending-verification`. `--actor LABEL` is optional on mutations.
 
-Annotations are local, scoped to the exact repository and target, and matched by fingerprint, rule, file, and producer components. Every mutation appends an immutable audit event with source scan, tool version, timestamp, scope, finding identity, reason, state, and optional actor. Delete writes a tombstone; it does not remove history or alter findings.
+`FINDING_ID` is the id in that scan's results. Ids are per scan and never matched across scans: since 4.1 an id is `CI-` plus 10 hex characters derived from the finding's fingerprint (`CI-4b53368c3f`), and scans stored before 4.1 keep positional ids such as `CI-0001`. Use the id from the scan you name.
+
+Annotations are local, scoped to the exact repository and target, and matched by fingerprint, rule, file, and producer components. Because producer components are part of the match, a finding that absorbed a duplicate in 4.1 (one private key reported by Gitleaks and Trivy, a RubyGems CVE merged with its GHSA) has a larger producer set, so an annotation recorded on it with 4.0 no longer attaches and the finding resurfaces for review; an annotation is never silently moved to, or hidden behind, a different finding. Every mutation appends an immutable audit event with source scan, tool version, timestamp, scope, finding identity, reason, state, and optional actor. Delete writes a tombstone; it does not remove history or alter findings.
 
 Managed events live under `~/.codeinspectus/triage/`. Reads are bounded to 5,000 events, 16 MiB per scope, and 64 KiB per event. Invalid JSON, oversized records, symlinks, broken event chains, unavailable storage, or bound exhaustion are reported as partial. List/show can return bounded evidence with exit 2; add/update/delete refuse all mutations until the exact scope is complete and uncorrupted.
 

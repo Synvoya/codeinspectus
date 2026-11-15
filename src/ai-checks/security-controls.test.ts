@@ -113,7 +113,9 @@ describe("security-control analyzer — frozen evidence corpus", () => {
       expect(finding.cwe[0]).toMatch(/^CWE-(?:200|693|942|1004)$/);
       expect(finding.owasp_web).toContain("A05:2021");
       expect(finding.owasp_api).toContain("API8:2023");
-      expect(finding.confidence).toBe("high");
+      // 4.1 M9 fresh-set gate: ci-ai-security-header-disabled is low severity and low confidence.
+      expect(finding.confidence).toBe(finding.rule_id === "ci-ai-security-header-disabled" ? "low" : "high");
+      if (finding.rule_id === "ci-ai-security-header-disabled") expect(finding.severity).toBe("low");
     }
     const surfaced = JSON.stringify(findings);
     expect(surfaced).not.toContain("SUPABASE_AUTH_CAPTCHA_SECRET");

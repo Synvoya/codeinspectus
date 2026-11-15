@@ -103,6 +103,8 @@ destination lookup, issue submission, or network request. `issue submit` is inte
 ## Engine lifecycle and metadata
 
 ```bash
+codeinspectus init [--yes] [--large] [--path DIR] [--clients LIST] [--skip-engines] [--dry-run] [--json]
+codeinspectus init --update [--yes] [--large] [--dry-run] [--json]
 codeinspectus setup
 codeinspectus setup --status
 codeinspectus setup --all
@@ -110,6 +112,7 @@ codeinspectus setup --select opengrep,gitleaks,trivy,osv-scanner
 codeinspectus setup --select osv-scanner --path REPOSITORY
 codeinspectus setup --select osv-scanner --osv-ecosystems npm,PyPI
 codeinspectus setup --reset
+codeinspectus update [--yes] [--large] [--json]
 codeinspectus repair-engines [ENGINE] [--osv-ecosystems LIST]
 codeinspectus install-engines [ENGINE]
 codeinspectus verify-engines
@@ -118,8 +121,65 @@ codeinspectus --version
 codeinspectus --help
 ```
 
+`init` is the one-command path. It detects AI assistants: Claude Code (`claude` on PATH), Codex
+(`codex` on PATH or `~/.codex/`), Cursor (`~/.cursor/`), VS Code (`code` on PATH or the user settings
+folder: macOS `~/Library/Application Support/Code/User`, Linux `~/.config/Code/User`, Windows
+`%APPDATA%\Code\User`), Windsurf (`~/.codeium/windsurf/`) and Cline (its `globalStorage` folder in the
+VS Code user folder). It then prints one screen: each assistant with the exact command or file, each
+engine with its size and licence (an engine that cannot run on this platform is shown and skipped),
+the OSV databases for `--path DIR` (default: the current folder unless it is your home folder or the filesystem root) with
+their sizes, and the total download. Each single download over 100 MB (an engine binary, the Cosign
+verifier on a first install, about 140–200 MB depending on platform, the Trivy DB on a first install, about
+140 MB, an OSV database such as npm) is marked `(over 100 MB)`. On a
+terminal it asks `Set all of this up? [y/N]`, then, when the screen lists a download over 100 MB,
+`These include downloads over 100 MB (...). Download them too? [y/N]` (a no installs everything else:
+the assistants are still registered, and each large download is left out with whatever needs it, such as
+Trivy for the Trivy DB or the Cosign-verified engines for the verifier, and the question and the summary
+name those engines); without a terminal it needs `--yes`, and `--yes` needs `--large` when the screen lists a download over 100 MB
+(otherwise it exits 2 and changes nothing), as `update` does. On yes it registers the assistants, then
+installs all four engines once through the `setup` install path.
+
+- Claude Code: `claude mcp add-json --scope user codeinspectus '{"command":"npx","args":["-y","codeinspectus"]}'`
+  (on native Windows the server is `{"command":"cmd","args":["/c","npx","-y","codeinspectus"]}`, as Claude
+  Code requires for npx servers there; either form counts as registered). Its own `.claude.json`
+  (in `$CLAUDE_CONFIG_DIR` when set, else the home folder; not read over 50 MiB) is only read, and only
+  to tell whether the server is already there; only an identical entry found there is "already
+  registered". If the CLI itself answers that an entry named codeinspectus already exists, that is
+  reported as a conflict (left unchanged; check it with `claude mcp get codeinspectus`).
+- VS Code: `code --add-mcp '{"name":"codeinspectus","command":"npx","args":["-y","codeinspectus"]}'` when
+  `code` is on PATH, otherwise the user `mcp.json` (`servers` key, a `stdio` entry).
+- Codex: appends the `[mcp_servers.codeinspectus]` block with `tool_timeout_sec = 600` to
+  `~/.codex/config.toml` (created when absent), keeping the existing text exactly.
+- Cursor (`~/.cursor/mcp.json`), Windsurf (`mcp_config.json`) and Cline (`settings/cline_mcp_settings.json`):
+  the entry is merged into `mcpServers`.
+- A file that is not plain JSON or valid TOML is never rewritten; the manual step is printed with at
+  most a line and column, never the file's text. The same holds for JSON with a duplicate key or a number
+  that rewriting would change (an integer above 2^53, `1.0`), a file that cannot be read, one over
+  50 MiB, and a symbolic link to a missing file. An existing `codeinspectus` entry with the same command
+  is "already registered"; a different one is left alone and reported by client and file only. Only a
+  file shown as a change on the screen is written, and only if it still holds what init read: a file
+  changed meanwhile (checked again just before the rename) is skipped with "run init again". Before the
+  first change to an existing file, a copy is kept at `<file>.codeinspectus-backup` (never overwritten).
+  Writes are atomic and keep the file mode and CRLF line endings; a new file is created only if nobody
+  created it meanwhile.
+- `--clients LIST` limits registration to `claude`, `codex`, `cursor`, `vscode`, `windsurf`, `cline`;
+  `--skip-engines` registers only; `--dry-run` prints the screen and changes nothing; `--json` prints
+  one JSON document and needs `--yes` (plus `--large` for downloads over 100 MB) or `--dry-run`.
+- Exit status: 0 done, declined or nothing to do (a skipped or conflicting file is reported with the
+  manual step); 1 when an assistant's CLI or a file write failed, or the engine install failed; 2 for
+  an invalid option, when `--yes` is missing without a terminal, or when `--large` is missing for a
+  download over 100 MB.
+
+`init --update` downloads new engine pins and missing binaries for the engines enabled in `setup`,
+then refreshes the installed databases exactly as `update` does (same `--yes` and `--large` rules,
+same second question on a terminal). Every download over 100 MB counts, including a Trivy DB or OSV
+database the engine repair itself fetches (for example a missing Trivy binary and DB). A database the
+engine repair refreshed is not downloaded again by the database refresh. When npm has a newer CodeInspectus it says to run
+`npx codeinspectus@latest init --update`, because npx may run a cached copy. It never registers
+assistants. Exit status as `update`: 1 names the engine or database that failed.
+
 Bare `codeinspectus` starts guided setup only when stdin and stdout are interactive terminals;
-piped stdio still starts the MCP server. `setup` shows exact pinned binary asset sizes and a clearly
+piped stdio still starts the MCP server. Its first line points to `npx codeinspectus init`. `setup` shows exact pinned binary asset sizes and a clearly
 labelled Trivy database disk estimate before approval. `--all` and `--select` are explicit
 noninteractive approvals. Saved choices prevent repeat prompting; `--reset` removes them.
 
@@ -147,6 +207,28 @@ osv-scanner needs one OSV database per package ecosystem, downloaded only after 
   The one exception is a missing osv-scanner that you declined in `setup`: a bare `repair-engines`
   does not install it. Naming it, or passing `--osv-ecosystems`, installs it; once it is installed,
   a bare `repair-engines` maintains it and its databases like any other engine.
+
+`update` re-downloads the managed databases that are installed (the Trivy DB through the pinned
+Trivy binary, and each installed OSV database as a full export, after counting the OSV records
+changed since its download from that ecosystem's `modified_id.csv`), then asks the npm registry
+whether a newer CodeInspectus is published and reports it; it never installs one. It refreshes
+databases only: when Trivy or osv-scanner itself is not ready (missing, hash mismatch, a new pin), that
+engine's databases are listed as skipped and `codeinspectus setup` must repair the engine first.
+
+It prints the plan first (download sizes; the Trivy DB's on-disk size is labelled "on disk") and asks
+`Download these updates? [y/N]` on a terminal. A database over 100 MB (the Trivy DB, about 140 MB, and
+the OSV npm export, about 220 MB) gets a second question; answering no to either question downloads
+nothing and prints `No update downloaded.` `--yes` approves without asking and is required when stdin
+is not a terminal: without it, `update` prints the plan, prints `Re-run with --yes to download.` and
+exits 2. `--yes` does not approve a database over 100 MB; that needs `--yes --large`, or the command
+exits 2. `--json` needs `--yes` and never asks: without `--yes` it prints an error to stderr, nothing
+to stdout, and exits 2. With `--yes`, stdout is exactly one JSON document (the plan, plus the result
+when it ran) and progress goes to stderr.
+
+Exit status: 0 when the update succeeded, there was nothing to update, or a question was answered no;
+1 when a refresh failed (the old database is kept); 2 when the download was not approved or an option
+is invalid. Scans never run this step and never print the question; MCP agents relay it from
+`database_update` instead.
 
 A scan that finds a lockfile for an ecosystem whose OSV database is not installed reports that
 ecosystem as `unavailable` and warns that setup is needed. It never reports it as clean.

@@ -207,7 +207,9 @@ by being *precise*, not by flagging more.
     `ci-python-*`, `ci-go-*`, `ci-java-*`, `ci-csharp-*`, `ci-php-*`, `ci-rust-*`, `ci-ruby-*`,
     `ci-firebase-*`, `ci-github-actions-*`) for native
     checks / `ci-baseline-*` for SAST baseline / `codeinspectus-*` for secret rules.
-  - **Display ids** are the uppercase sequential form users see, e.g. `CI-0001`.
+  - **Display ids** are the form users see, e.g. `CI-4b53368c3f`: `CI-` plus 10 hex characters derived
+    from the finding's fingerprint and package (`src/display-id.ts`), unique per scan. They are never
+    matched across scans; scans stored before 4.1 keep positional ids such as `CI-0001`.
   - A shipped internal `ruleId` is a **stable fingerprint**: it feeds finding dedup/suppression
     **and rescan continuity** — the `scan → fix → rescan` loop matches findings across runs by
     fingerprint. Renaming, splitting, or merging an id **silently breaks rescan**: a fixed

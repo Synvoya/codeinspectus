@@ -20,7 +20,7 @@ import type {
 } from "../repository-trust/schemas.js";
 import type { CleanupPlan, CleanupResult } from "../repository-trust/cleanup.js";
 
-export const SDK_API_VERSION = "4.0.0" as const;
+export const SDK_API_VERSION = "4.1.0" as const;
 export const SDK_COMPATIBILITY = Object.freeze({
   cli_major: 4,
   export_schema: "3.0.0",

@@ -2,7 +2,7 @@ import { relative, resolve, sep } from "node:path";
 import { partialOnlyThroughAcceptedGaps } from "./ci-policy.js";
 import { assessAggregateCoverage } from "./export/model.js";
 import { pathIsWithin } from "./path-safety.js";
-import { findingsMatch, pairMovedFindings } from "./dedup.js";
+import { findingsMatch, pairMovedFindings, secretContainmentAgainst } from "./dedup.js";
 import { diffRescan } from "./rescan.js";
 import { executeScan, scanIncludedLicenses } from "./scan.js";
 import { componentSignaturesMatch } from "./provenance.js";
@@ -325,12 +325,14 @@ export function compareScanHistory(
   );
   const matchedOld = new Set<Finding>();
   const items: HistoryComparisonItem[] = [];
+  // OLD is the older side: a pre-4.1 OLD may match a 4.1 key-block survivor by containment.
+  const matchOptions = secretContainmentAgainst(oldScan, newScan);
   const moved = pairMovedFindings(
-    oldScan.findings.filter((candidate) => !newScan.findings.some((finding) => findingsMatch(candidate, finding))),
-    newScan.findings.filter((finding) => !oldScan.findings.some((candidate) => findingsMatch(candidate, finding))),
+    oldScan.findings.filter((candidate) => !newScan.findings.some((finding) => findingsMatch(candidate, finding, matchOptions))),
+    newScan.findings.filter((finding) => !oldScan.findings.some((candidate) => findingsMatch(candidate, finding, matchOptions))),
   );
   for (const finding of newScan.findings) {
-    const prior = oldScan.findings.find((candidate) => findingsMatch(candidate, finding)) ?? moved.get(finding);
+    const prior = oldScan.findings.find((candidate) => findingsMatch(candidate, finding, matchOptions)) ?? moved.get(finding);
     if (prior) {
       matchedOld.add(prior);
       items.push({ state: "Persisting", finding, prior_finding_id: prior.id, evidence: "The finding is present in both compared scans by fingerprint or dedup identity." });
@@ -345,7 +347,7 @@ export function compareScanHistory(
       .filter((scan) => Date.parse(scan.started_at) < Date.parse(oldScan.started_at))
       .sort((left, right) => right.started_at.localeCompare(left.started_at) || left.scan_id.localeCompare(right.scan_id));
     const priorOccurrences = earlierCandidates.flatMap((scan) =>
-      scan.findings.filter((candidate) => findingsMatch(candidate, finding)).map((occurrence) => ({ scan, occurrence })));
+      scan.findings.filter((candidate) => findingsMatch(candidate, finding, secretContainmentAgainst(scan, newScan))).map((occurrence) => ({ scan, occurrence })));
     if (!historyReliable) {
       items.push({ state: "Not rechecked / unknown", finding, evidence: "The finding is absent from OLD, but bounded history is incomplete so recurrence cannot be proven." });
     } else if (priorOccurrences.some(({ scan, occurrence }) => earlierOccurrenceWasProvablyResolved(scan, oldScan, occurrence))) {

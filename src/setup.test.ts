@@ -71,7 +71,7 @@ describe("consent-driven engine setup", () => {
       cosignAvailable: false,
     });
 
-    expect(plan.native.rule_count).toBe(72);
+    expect(plan.native.rule_count).toBe(70);
     expect(plan.native.download_required).toBe(false);
     expect(plan.components.map((item) => [item.id, item.action, item.download_size_bytes])).toEqual([
       ["opengrep", "download", 47_298_224],
@@ -86,7 +86,7 @@ describe("consent-driven engine setup", () => {
     expect(plan.estimated_osv_download_bytes).toBe(0);
     expect(plan.estimated_database_disk_bytes).toBeGreaterThan(1_000_000_000);
     const rendered = formatSetupPlan(plan);
-    expect(rendered).toContain("72 rules, ready immediately");
+    expect(rendered).toContain("70 rules, ready immediately");
     expect(rendered).toContain("License: GNU LGPL 2.1");
     expect(rendered).toContain("Required verifier: Cosign 3.1.2");
     expect(rendered).toContain("database download size changes upstream");
@@ -260,6 +260,23 @@ describe("consent-driven engine setup", () => {
     expect(output.join("\n")).toContain("requires glibc");
     expect(output.join("\n")).toContain("not usable on this runtime");
     expect(output.join("\n")).not.toContain("healthy");
+  });
+
+  test("bare-run guided setup opens with a first line pointing at `npx codeinspectus init`; `setup` does not", async () => {
+    const plan = await buildSetupPlan({ status: status({}, "ready"), lockfile, preferencesPath, cosignAvailable: true });
+    const automatic: string[] = [];
+    await runSetupCli([], {
+      automatic: true,
+      plan,
+      io: { stdinIsTTY: true, stdout: (text) => automatic.push(text), stderr: (text) => automatic.push(text), question: vi.fn() },
+    });
+    expect(automatic.join("").split("\n")[0]).toMatch(/`npx codeinspectus init`/);
+    const explicit: string[] = [];
+    await runSetupCli([], {
+      plan,
+      io: { stdinIsTTY: true, stdout: (text) => explicit.push(text), stderr: (text) => explicit.push(text), question: vi.fn() },
+    });
+    expect(explicit.join("")).not.toContain("codeinspectus init");
   });
 
   test("interactive component selection dispatches exactly the approved engines", async () => {

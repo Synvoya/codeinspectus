@@ -17,6 +17,11 @@
  *   so a long comment line (an inline source map, a licence blob) cannot make a first-party file
  *   "minified". A dense line over the native packs' 64 KiB line cap is such a line, so the native
  *   "oversized" files Opengrep still reads (at most 1,000,000 bytes) fall under this test.
+ * - (4.1 M6) or it belongs to an identified third-party library (opengrep-libraries.ts): a package of a
+ *   Composer vendor tree under another folder name (never the target itself), from Composer's own
+ *   `installed.json`, or a readable `.js` / `.mjs` copy whose file name and licence banner name the same Synvoya
+ *   library-table entry and whose SHA-256 equals a recorded release (a minified copy is skipped by the rule
+ *   above anyway; its identity only labels it).
  * Read-only and bounded: no symbolic link is followed, the walk stops at a fixed entry bound and a total read
  * bound; whatever is not classified simply stays in the pack pass, as before this routing existed.
  */
@@ -27,6 +32,11 @@ import { extname, join } from "node:path";
 import type { CoverageGap } from "../coverage-gaps.js";
 import { isDisplayablePath } from "../display-path.js";
 import { log } from "../logger.js";
+import { OPENGREP_BUNDLE_SKIPPING_RULES_LABEL } from "../provenance.js";
+import { LIBRARY_HEAD_BYTES } from "../synvoya/readers/libraries.js";
+import type { LibraryTable } from "../synvoya/types.js";
+
+import { composerVendorTree, jsLibraryCorroborated, jsLibraryIdentity, type LibraryRelease, type PackLibrary } from "./opengrep-libraries.js";
 
 /** Rule folders under the bundled ruleset that form the Synvoya pack pass; every other entry is baseline. */
 export const PACK_RULE_DIR_PREFIX = "synvoya-";
@@ -40,8 +50,10 @@ export const PACK_RULE_FILE_PATTERN = /-taint\.ya?ml$/i;
 /** Opengrep `--timeout` (seconds per rule per file) for the pack pass; the baseline pass keeps Opengrep's default. */
 export const PACK_TIMEOUT_SECONDS = 30;
 /** Bumped whenever classification changes, so a rescan never compares pack findings across classifiers. */
-export const BUNDLE_CLASSIFIER_REVISION = "2:minified-80pct-code-bytes-dense-lines-open-no-comment";
+export const BUNDLE_CLASSIFIER_REVISION = "3:minified-80pct-code-bytes-dense-lines-open-no-comment+composer-installed+js-library-name-banner";
 export const MAX_BUNDLE_EXAMPLES = 20;
+/** Libraries named in the identified-libraries coverage note; the rest are counted. */
+const MAX_NOTE_LIBRARIES = 10;
 
 /** Extensions Opengrep parses as JavaScript, TypeScript or PHP: the pack languages. */
 const PACK_EXTENSIONS: ReadonlySet<string> = new Set([
@@ -225,21 +237,59 @@ export function managedIgnorePredicate(list: string): (rel: string) => boolean {
   };
 }
 
+/** Why a file left the pack pass: its name, minified content, or an identified library (Composer package, JS library). */
+export type BundleReason = "name" | "minified" | "composer-package" | "js-library";
+
 export interface PackBundles {
   /** Paths relative to Opengrep's working directory (the target, or a file target's folder), sorted. */
   bundles: string[];
+  /** The reason of every file in `bundles`. */
+  reasons: ReadonlyMap<string, BundleReason>;
+  /** The library of every `composer-package` and `js-library` file in `bundles`. */
+  libraries: ReadonlyMap<string, PackLibrary>;
+  /** Identified library files the skip-list cap left in the pack pass (name and minified files are kept first). */
+  libraryOverflow: number;
 }
 
 /**
  * Walk the target the way Opengrep's pack pass would see it (the managed ignore list applied, no symbolic
- * links) and return the files classified as vendored or minified bundles.
+ * links) and return the files classified as vendored or minified bundles or identified library files. The JS
+ * library rule needs the Synvoya library table (`libraryTable`); without it only the other rules run.
  */
-export async function findPackBundles(target: string, ignoreList: string): Promise<PackBundles> {
+export async function findPackBundles(
+  target: string,
+  ignoreList: string,
+  options: {
+    libraryTable?: LibraryTable;
+    /** Recorded releases for the readable-copy hash check; the shipped KNOWN_LIBRARY_RELEASES by default (tests). */
+    libraryReleases?: readonly LibraryRelease[];
+    /** The skip-list cap; MAX_EXCLUDED by default (tests). */
+    maxExcluded?: number;
+  } = {},
+): Promise<PackBundles> {
   const matcher = ignoreListMatcher(ignoreList);
   const bundles: string[] = [];
+  const reasons = new Map<string, BundleReason>();
+  const libraries = new Map<string, PackLibrary>();
+  /** Composer package roots (target-relative) found so far: a file's innermost enclosing root names it. */
+  const packageRoots = new Map<string, PackLibrary>();
+  const budget: { bytes: number; exhausted?: boolean } = { bytes: MAX_READ_BYTES };
   let entries = 0;
-  let readBytes = 0;
   let stopped = false;
+
+  const add = (rel: string, reason: BundleReason, library?: PackLibrary): void => {
+    bundles.push(rel);
+    reasons.set(rel, reason);
+    if (library) libraries.set(rel, library);
+  };
+  const enclosingPackage = (rel: string): PackLibrary | undefined => {
+    if (packageRoots.size === 0) return undefined;
+    for (let cut = rel.lastIndexOf("/"); cut > 0; cut = rel.lastIndexOf("/", cut - 1)) {
+      const library = packageRoots.get(rel.slice(0, cut));
+      if (library) return library;
+    }
+    return undefined;
+  };
 
   const classify = async (absolute: string, rel: string): Promise<void> => {
     const extension = extname(rel).toLowerCase();
@@ -247,12 +297,24 @@ export async function findPackBundles(target: string, ignoreList: string): Promi
     if (!PACK_EXTENSIONS.has(extension) || matcher.ignored(rel, false) || anchoredIgnorePattern(rel) === undefined) return;
     const metadata = await lstat(absolute).catch(() => undefined);
     if (!metadata?.isFile() || metadata.size > OPENGREP_MAX_TARGET_BYTES) return;
-    if (bundleByName(rel)) { bundles.push(rel); return; }
+    if (bundleByName(rel)) { add(rel, "name"); return; }
+    const library = enclosingPackage(rel);
+    if (library) { add(rel, "composer-package", library); return; }
     if (metadata.size < LONG_LINE_CHARS) return;
-    if (readBytes + metadata.size > MAX_READ_BYTES) { stopped = true; return; }
-    readBytes += metadata.size;
-    const content = await readFile(absolute, "utf8").catch(() => undefined);
-    if (content !== undefined && minifiedSource(content, { php: extension === ".php" || extension === ".phtml" })) bundles.push(rel);
+    if (metadata.size > budget.bytes) { stopped = true; return; }
+    budget.bytes -= metadata.size;
+    const buffer = await readFile(absolute).catch(() => undefined);
+    if (buffer === undefined) return;
+    const content = buffer.toString("utf8");
+    const minified = minifiedSource(content, { php: extension === ".php" || extension === ".phtml" });
+    if (options.libraryTable && (extension === ".js" || extension === ".mjs")) {
+      const head = buffer.toString("utf8", 0, Math.min(buffer.length, LIBRARY_HEAD_BYTES));
+      const identity = jsLibraryIdentity(rel, head, buffer.length > LIBRARY_HEAD_BYTES, options.libraryTable);
+      // Name and banner are text anyone can write: a readable copy needs a release-hash match (a minified one is skipped anyway).
+      const library = identity && jsLibraryCorroborated(identity, buffer, minified, options.libraryReleases);
+      if (library) { add(rel, "js-library", library); return; }
+    }
+    if (minified) add(rel, "minified");
   };
 
   const visit = async (absoluteDir: string, relDir: string): Promise<void> => {
@@ -262,6 +324,9 @@ export async function findPackBundles(target: string, ignoreList: string): Promi
     } catch {
       return;
     }
+    // A Composer vendor tree under any folder name: its packages are found before the walk enters them.
+    for (const library of await composerVendorTree(absoluteDir, relDir, budget)) packageRoots.set(library.location, library);
+    if (budget.exhausted) stopped = true;
     for await (const entry of directory) {
       if (stopped) break;
       if (++entries > MAX_WALK_ENTRIES) { stopped = true; break; }
@@ -279,16 +344,94 @@ export async function findPackBundles(target: string, ignoreList: string): Promi
   if (stopped) {
     log.warn(`Synvoya pack routing stopped classifying bundles at its bound (${MAX_WALK_ENTRIES} entries, ${MAX_READ_BYTES} bytes read); the rest stay in the pack pass.`);
   }
-  bundles.sort();
-  return { bundles: bundles.slice(0, MAX_EXCLUDED) };
+  // Under the cap the 4.0 entries (name, minified) come first, each group in sorted order (fix round 1).
+  const cap = options.maxExcluded ?? MAX_EXCLUDED;
+  const sorted = (list: string[]): string[] => list.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  const plain = sorted(bundles.filter((rel) => !isLibraryReason(reasons.get(rel)))).slice(0, cap);
+  const libraryFiles = sorted(bundles.filter((rel) => isLibraryReason(reasons.get(rel))));
+  const keptLibraries = libraryFiles.slice(0, cap - plain.length);
+  const kept = sorted([...plain, ...keptLibraries]);
+  return {
+    libraryOverflow: libraryFiles.length - keptLibraries.length,
+    bundles: kept,
+    reasons: new Map(kept.map((rel) => [rel, reasons.get(rel)!])),
+    libraries: new Map(kept.flatMap((rel) => {
+      const library = libraries.get(rel);
+      return library ? [[rel, library] as const] : [];
+    })),
+  };
 }
 
-/** `third-party-bundles`: every file the pack pass skipped, with up to 20 displayable examples. */
-export function thirdPartyBundlesGap(skipped: readonly string[]): CoverageGap | undefined {
+const isLibraryReason = (reason: BundleReason | undefined): boolean => reason === "composer-package" || reason === "js-library";
+
+/**
+ * `third-party-bundles`: every file the pack pass skipped, with up to 20 displayable examples. Files skipped
+ * for their name or minified content come first (weakest evidence: a content-classified first-party file
+ * cannot hide behind hundreds of library files), then identified library files; each group stays sorted.
+ */
+export function thirdPartyBundlesGap(skipped: readonly string[], reasons?: ReadonlyMap<string, BundleReason>): CoverageGap | undefined {
   if (!skipped.length) return undefined;
+  const library = (rel: string): boolean => isLibraryReason(reasons?.get(rel));
+  const plain = skipped.filter((rel) => !library(rel) && isDisplayablePath(rel));
+  const libraryFiles = skipped.filter((rel) => library(rel) && isDisplayablePath(rel));
+  // At least one example per evidence label present (fix round 1): each library label keeps a slot.
+  const labels = [...new Set(libraryFiles.map((rel) => reasons!.get(rel)!))];
+  const plainShown = plain.slice(0, MAX_BUNDLE_EXAMPLES - labels.length);
+  const slots = MAX_BUNDLE_EXAMPLES - plainShown.length;
+  const firsts = labels.map((label) => libraryFiles.find((rel) => reasons!.get(rel) === label)!);
+  const rest = libraryFiles.filter((rel) => !firsts.includes(rel)).slice(0, Math.max(0, slots - firsts.length));
+  const libraryShown = libraryFiles.filter((rel) => firsts.includes(rel) || rest.includes(rel));
+  const ordered = [...plainShown, ...libraryShown];
+  // Identified library files say on what evidence they left the pass; name and minified files stay bare paths (4.0).
+  const label = (rel: string): string => {
+    const reason = reasons?.get(rel);
+    return reason === "js-library" ? `${rel} (identified by name and banner)`
+      : reason === "composer-package" ? `${rel} (identified by Composer installed.json)`
+        : rel;
+  };
   return {
     id: "third-party-bundles",
     files: skipped.length,
-    examples: skipped.filter(isDisplayablePath).slice(0, MAX_BUNDLE_EXAMPLES),
+    examples: ordered.map(label),
   };
+}
+
+/**
+ * The coverage note naming the identified libraries among the skipped files (`skipped`: the files the pack
+ * pass was confirmed to skip), one item per library location (a Composer package root, or a JS file), sorted;
+ * ten are named and the rest counted, and a location that cannot be displayed is only counted. Undefined
+ * when no skipped file belongs to a library.
+ */
+export function packLibrariesNote(skipped: readonly string[], libraries: ReadonlyMap<string, PackLibrary>): string | undefined {
+  const byLocation = new Map<string, { library: PackLibrary; files: number }>();
+  let files = 0;
+  for (const rel of skipped) {
+    const library = libraries.get(rel);
+    if (!library) continue;
+    files++;
+    const location = library.ecosystem === "composer" ? `${library.location}/` : library.location;
+    const entry = byLocation.get(location);
+    if (entry) entry.files++;
+    else byLocation.set(location, { library, files: 1 });
+  }
+  if (byLocation.size === 0) return undefined;
+  const locations = [...byLocation.keys()].sort();
+  const shown = locations.filter(isDisplayablePath).slice(0, MAX_NOTE_LIBRARIES).map((location) => {
+    const { library, files: count } = byLocation.get(location)!;
+    return `${library.name}${library.version !== undefined ? ` ${library.version}` : ""} (${location}${count > 1 ? `, ${count} files` : ""})`;
+  });
+  const rest = locations.length - shown.length;
+  const items = shown.length
+    ? `${shown.join(", ")}${rest > 0 ? `, and ${rest} more` : ""}`
+    : `${rest} not shown (their paths cannot be displayed)`;
+  const k = byLocation.size;
+  return `Bundle routing identified ${k} third-party ${k === 1 ? "library" : "libraries"} by name and version; the bundle-skipping Opengrep pass ` +
+    `(${OPENGREP_BUNDLE_SKIPPING_RULES_LABEL}) skipped their ${files} file(s), part of third-party-bundles (the other baseline rules still scanned them): ${items}.`;
+}
+
+/** The coverage note for identified library files the skip-list cap left in the pack pass; undefined when none. */
+export function packLibraryOverflowNote(count: number): string | undefined {
+  if (count <= 0) return undefined;
+  return `Bundle routing identified ${count} more third-party library file(s) than the bundle-skipping Opengrep pass can skip ` +
+    `(at most ${MAX_EXCLUDED} files); those files stayed in that pass.`;
 }

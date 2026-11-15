@@ -56,7 +56,17 @@ expectations in the test file are the public spec).
   sensitive response fields, unvalidated whole-request database writes, and sensitive logging.
   18 TP + 12 safe near misses covering public-error mapping, Zod/Joi validation, explicit field
   projection, redacted/ordinary logging, comments, and minified vendor code. Locked by
-  `src/ai-checks/api-boundary.test.ts`.
+  `src/ai-checks/api-boundary.test.ts`. Since the 4.1 fresh-set gate the sensitive-response and sensitive-log
+  rules are experimental: the unit tests still require their TP fixtures from the analyzer, while a full scan
+  (E19, E151) reports none of them.
+- `security-baseline-experimental/` — TP/FP fixtures of the two Python baseline Opengrep rules that failed the 4.1
+  fresh-set gate (`ci-baseline-eval-python`, `ci-baseline-weak-hash-python`), moved from
+  `coverage-honesty-corpus/opengrep-rules/` with the rules
+  (`experimental/opengrep-rules/security-baseline-experimental/`). Not shipped; E152 checks that the rules stay
+  unloaded.
+- `api-boundary-public-errors/` — project error classes whose message is always a literal, each case scanned as
+  its own repository (a message write anywhere in a repository makes every class non-public). Locked by
+  `src/ai-checks/api-boundary.test.ts` and eval E19.
 - `cors-corpus/` — corrected wildcard-plus-credentials behavior and credentialed arbitrary-origin
   reflection. 3 invalid wildcard configurations + 6 true exposure patterns + 7 safe near misses.
   Locked by eval E18 against the real Opengrep binary.

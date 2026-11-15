@@ -15,7 +15,7 @@ import { Composer, isAlias, isMap, isScalar, isSeq, LineCounter, Parser, type Do
 import type { Declaration, ReaderOptions, ReaderResult } from "../types.js";
 
 import { yamlText } from "./runtime.js";
-import { readCandidate, walkCandidates, type WalkMatcher } from "./walk.js";
+import { readCandidate, reportedPath, reportedSkips, walkCandidates, type WalkMatcher } from "./walk.js";
 
 /** What a `uses:` value names, as written. */
 export interface ActionReference {
@@ -229,15 +229,17 @@ export async function readActionReferences(target: string, options: ReaderOption
     declarations: [],
     parsed: [],
     // GitHub reads only the top level of .github/workflows/; deeper files are not workflows.
-    skipped: walked.skipped.filter((entry) => entry.reason !== "symlink" || isWorkflow(entry.file) || /(?:^|\/)action\.ya?ml$/.test(entry.file)),
+    skipped: reportedSkips(walked.skipped.filter((entry) => entry.reason !== "symlink" || isWorkflow(entry.file) || /(?:^|\/)action\.ya?ml$/.test(entry.file)), options),
     notes: [],
     references: [],
   };
   let consumed = 0;
   let declarationsFull = false;
-  for (const file of walked.files) {
-    const workflow = isWorkflow(file);
-    if (!workflow && !/(?:^|\/)action\.ya?ml$/.test(file)) continue;
+  for (const walkedFile of walked.files) {
+    const workflow = isWorkflow(walkedFile);
+    if (!workflow && !/(?:^|\/)action\.ya?ml$/.test(walkedFile)) continue;
+    // Dispatch reads the walked path; everything reported names the file as the scan shows it (onlyAs).
+    const file = reportedPath(walkedFile, options);
     if (options.signal?.aborted) {
       result.skipped.push({ file, reason: "deadline" });
       continue;
@@ -246,7 +248,7 @@ export async function readActionReferences(target: string, options: ReaderOption
       result.skipped.push({ file, reason: "budget" });
       continue;
     }
-    const text = await readCandidate(target, file);
+    const text = await readCandidate(target, walkedFile);
     if (text === undefined) {
       result.skipped.push({ file, reason: "unreadable" });
       continue;

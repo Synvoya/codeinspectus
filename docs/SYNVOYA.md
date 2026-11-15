@@ -51,14 +51,20 @@ already produce.
 | Reader | Files | Declares |
 |---|---|---|
 | Runtime pins | `.nvmrc`, `.node-version`, `.tool-versions`, `mise.toml`, `package.json`, `composer.json`, `composer.lock`, `.python-version`, `runtime.txt`, `.ruby-version`, `Gemfile`, `Gemfile.lock`, `global.json`, `*.csproj`, `.java-version`, `.sdkmanrc`, `pom.xml`, `go.mod`, GitHub Actions workflows (setup steps and matrices) | Node.js, PHP, Python, Ruby, Go, .NET, Java versions |
-| Image tags | `Dockerfile`, `Dockerfile.*`, `*.Dockerfile`, Compose, Kubernetes and Helm YAML, GitHub Actions `container` and `services` | runtime images (`node:22.1.0-alpine`), tracked end-of-life images, and images that run a known package or product |
+| Image tags | `Dockerfile`, `Dockerfile.*`, `*.Dockerfile`, Compose, Kubernetes and Helm YAML, GitHub Actions `container` and `services` | runtime images (`node:22.1.0-alpine`), tracked end-of-life images, and images that run a known package or product (including MinIO, `minio/minio` and `quay.io/minio/minio`, by its `RELEASE.<timestamp>Z` tag) |
 | Products | `composer.lock` (Adobe Commerce, Magento Open Source, WordPress core packages), `wp-includes/version.php` | product versions |
 | Libraries | `.js`/`.mjs` banner comments in the first 4 KiB and versioned file names (`jquery-1.12.4.min.js`); versioned CDN URLs (cdnjs, jsDelivr, unpkg, code.jquery.com, Google, StackPath Bootstrap) in scripts, markup and templates. `vendor/` and `vendors/` folders are read only below a web asset root (`public/`, `static/`, `assets/`, `web/`, `wp-content/`) or as Rails `vendor/assets/` | npm packages from the reviewed table in `libraries.json`; never a name guessed from free text |
 | GitHub Actions | `uses:` in workflow jobs and steps (`.github/workflows/*.yml`/`.yaml`, top level only) and composite action steps (`action.yml`/`action.yaml`); local `./` actions are skipped, `docker://` steps are seen but not declared | third-party actions (`owner/repo[/path]@ref`), judged by the Actions matcher below |
 | Package inventory | the package lists osv-scanner (`--all-packages`) and Trivy (`--list-all-pkgs`) already produced in the same scan | locked package versions |
 
 A single-file scan target is read on its own when a reader reads that kind of file (a workflow
-is read under its `.github/workflows/` path, `wp-includes/version.php` under its WordPress root).
+is read as a workflow when it sits under `.github/workflows/`, `wp-includes/version.php` as the
+WordPress core version file). Since 4.1 every Synvoya path of a single-file scan names the file by its
+bare name, as the other engines report a file target: findings (`ci.yml`, not `.github/workflows/ci.yml`),
+titles and messages ("declared in ci.yml"), coverage notes, `actions-unchecked` examples and SBOM
+locations. Directory scans are unchanged. Because the file name is part of a Synvoya fingerprint, the
+Synvoya findings of a single workflow or `wp-includes/version.php` scan stored by 4.0 read
+`not_rechecked` against a 4.1 rescan once, and the same issues show as introduced.
 Any other file target gets the note "Synvoya reads runtime, image, product and library declarations
 from directories; <name> was not checked", and is never recorded as checked.
 
@@ -211,7 +217,12 @@ files such as `.env.example`, `.env.testing` and `.env.ci` are not matched.
 
 - **Their own pass.** Opengrep runs twice: the baseline rules over every file, then the packs and the
   taint-mode baseline rule (`ci-baseline-sql-injection-string-build`) with a 30-second per-rule timeout
-  over every file except minified files and files under a `vendors/` folder, where taint rules timed out. The skipped files are the declared, acceptable gap
+  over every file except minified files and files under a `vendors/` folder, where taint rules timed out,
+  and (4.1) identified third-party libraries: packages of a Composer vendor tree in a subfolder under another
+  name, from Composer's `installed.json` (never the scanned folder itself), and readable copies of front-end
+  libraries whose file name and licence banner name the same library-table entry and whose SHA-256 equals a
+  recorded release. Minified files are skipped whatever they contain (the identity only labels a minified
+  library copy). A coverage note names each library. The skipped files are the declared, acceptable gap
   `third-party-bundles` (up to 20 examples; see [CI-POLICY.md](CI-POLICY.md#declared-coverage-gaps)).
   A file named with `*`, `?`, `[`, `]` or `\` is never skipped, and a single-file target is always
   scanned. The scan checks Opengrep's report: a file skipped that routing did not choose is a coverage
@@ -232,7 +243,10 @@ files such as `.env.example`, `.env.testing` and `.env.ci` are not matched.
   `syn-php-xxe-entity-expansion` (0/1), as well as `syn-php-xss-echo` and four Node.js rules that failed
   earlier. `syn-php-tls-verification-disabled` (2 of 4) and `syn-php-insecure-random-token` (1 of 2) are
   kept for the real issues they found; the per-rule table is in
-  [RULE-PROVENANCE.md](RULE-PROVENANCE.md#holdout-precision-gate-40-final-field-run). Limits: taint rules read one file; sanitizers are matched by
+  [RULE-PROVENANCE.md](RULE-PROVENANCE.md#holdout-precision-gate-40-final-field-run). The seven held-back
+  rules were reworked and measured again for 4.1 on 20 fresh repositories with blind triage by two reviewers;
+  none passed (too few hits, or too few true), so all seven stay experimental
+  ([4.1 fresh-set gate](RULE-PROVENANCE.md#fresh-set-gate-41)). Limits: taint rules read one file; sanitizers are matched by
   exact name per sink; a value read through a helper the rule cannot see is not tracked. Twig templates
   stay the `php-sast` gap.
 - **Baseline overlap.** `ci-baseline-*` rules keep the shapes they report; `syn-node-*` rules fire on
@@ -258,6 +272,34 @@ Anything a version scheme cannot compare is a note, never a finding: unknown is 
 affected. Fixes are structured data (`fixed` versions) plus reviewed prose, never a command an
 agent runs.
 
+**MinIO (4.1).** MinIO server images are tagged `RELEASE.<UTC timestamp>Z`, and the advisories name the
+fixed release the same way (`RELEASE.2023-03-20T20-16-18Z` for SYN-2026-268 and SYN-2026-276). Only a bare
+tag of exactly that shape that is a real UTC instant compares, in time order: an earlier tag is an exact
+declaration and a high-confidence finding, the fix tag itself is clean. `latest`, `edge`, a missing tag, a
+digest-only reference, a lower-case `release.` and any suffixed tag (`-cpuv1`, `.fips`, a hotfix suffix)
+are notes, never findings, and leave the file unconfirmed for a rescan. `bitnami/minio` (date tags with no
+time of day) is reported as a private-registry lookalike note. SYN-2026-276 keeps a lower bound of 0: tags
+older than NVD's lower bound (`RELEASE.2019-12-17T23-16-33Z`) are also reported, because the vendor has not
+confirmed a lower bound. Docker Hub's `minio/minio` no longer serves
+images; Synvoya judges what a repository declares, not what can still be pulled.
+
+**End-of-life ranges across release lines (4.1).** A range or floating declaration is cut into the release
+lines the end-of-life table lists. Where the table cannot know a line, the remainder is never end-of-life.
+For products whose table is a complete release list (PHP, .NET, Python, Ruby and PostgreSQL, the
+`postgres` and `postgresql` images), every line between the oldest and the newest listed cycle is listed,
+so the gaps between listed lines hold no release and are dropped: `.NET >=6.0 <8.1` is the 6.0, 7.0 and
+8.0 lines, `php:7` is 7.0 to 7.4, `postgres:9` is 9.0 to 9.6. Such a declaration is end-of-life when
+every one of those lines is (`SYN-EOL-postgres-9.6` "postgres 9.0/.../9.6 is end-of-life"). Where the
+dataset has its own end-of-life advisory for the product, it takes the place of `SYN-EOL-*` as before:
+`composer.json` `"php": ">=7.4 <8.1"` gives SYN-2026-015 (with SYN-2026-008 and SYN-2026-014), now at high
+confidence (every line end-of-life) where 4.0 gave medium. The part below the oldest listed cycle (`python:2`: 2.0 to 2.5 are not
+listed) and anything above the newest are kept as unchecked lines, so no `SYN-EOL-*` finding comes from
+them and a line released after the dataset shipped is never called end-of-life. Advisory ranges still
+apply to those parts: `python:2` still gets SYN-2026-016, SYN-2026-017 and SYN-2026-018 at medium
+confidence, as in 4.0. Each flagged table is checked when the dataset is built and in the tests: consecutive
+cycles must be the next minor or the next major (`7.4` to `8.0`, `9.6` to `10`), apart from the two
+documented skips, PHP 5.6 to 7.0 (PHP 6 was never released) and .NET 3.1 to 5.0.
+
 ## Enrichment, not merging
 
 When Trivy or osv-scanner already reports the advisory a Synvoya package finding reports, there
@@ -281,7 +323,9 @@ while the covering engine's local database is older than the entry's `covered_si
   recorded as evidence in the engine note and in `coverage_notes` (component `engine:synvoya`).
   Runtime and image inputs do not lower coverage. A reached reader deadline is different: the scan
   carries the warning `Synvoya coverage partial: the readers reached their 30 s deadline; N file(s)
-  or folder(s) were not read ...`, so aggregate coverage is `partial`.
+  or folder(s) were not read ... Readers that did not finish: library (N not read), ...`, so aggregate
+  coverage is `partial`. Since 4.1 a scan runs the readers before it starts the other engines and the
+  native checks, so their CPU use cannot push the readers past the deadline.
 - Rescan confirms a Synvoya finding fixed only when **every producer** of that finding checked
   its file again. A finding records its producers as `synvoya:runtime`, `synvoya:images`,
   `synvoya:products`, `synvoya:vendored`, `synvoya:inventory:osv-scanner`,
@@ -289,6 +333,19 @@ while the covering engine's local database is older than the entry's `covered_si
   `synvoya:sbom:osv-scanner`. Each scan
   records, per producer, the files it fully checked (`synvoya_checked`): a file counts only when
   the producer parsed all of it and every declaration in it could be judged.
+- Image files are re-checked per subject (4.1). A file the image reader read whole counts for a
+  prior image finding when everything Synvoya could not judge in it belongs to other software: a
+  multi-stage Dockerfile with a private-mirror stage (`FROM registry.internal/php:8.1`) still confirms a
+  fix in its `node` stage. The subject is the software, whatever image names it: `postgres`,
+  `bitnami/postgresql` and a private `…/postgresql` are one subject, as are `mongo` and `bitnami/mongodb`,
+  `openjdk` and `eclipse-temurin`, `jenkins/jenkins` and `bitnami/jenkins`. A private mirror of the same
+  software, a tag that cannot be read, or a stage whose repository is behind a variable keeps the finding
+  unconfirmed (a repository behind a variable blocks the whole file, because it could be any image). A
+  stage that was removed is a fix. Each scan stores this evidence with its checked files; the scan output
+  does not show it. A prior scan without it (stored by 4.0), a finding merged into another, a reader
+  deadline or a reader failure falls back to the whole-file rule. Other producers keep the whole-file rule.
+  Replacing a stage with an unknown private image that has no lookalike name (`registry.internal/pg:12`)
+  still resolves that stage's findings: Synvoya ignores such an image, the same known gap as before 4.1.
 - Otherwise the prior finding is `not_rechecked` (and the rescan `partial`), never `resolved`:
   the file was skipped, read only in part, holds something Synvoya could not judge, was removed
   or moved, the reader failed, the 30-second reader deadline was reached, or the dataset was
@@ -314,7 +371,10 @@ The advisory text is authored by CodeInspectus from cited sources and licensed A
 end-of-life table comes from [endoflife.date](https://endoflife.date) (MIT). See
 `detection-db/synvoya/LICENSE-PROVENANCE.md`. The dataset shipped with this release has 330
 advisories (40 provisional; 3 that wait for a reader that does not exist yet and are not evaluated) and 335 end-of-life
-cycles for 17 products in dataset version `2026.11.05.2`. `codeinspectus_list_rules` reports the dataset
+cycles for 17 products, 6 of them marked as complete release lists (`complete` in `eol.json`), in dataset
+version `2026.11.13.1`. 4.1 changed only the image table (the two MinIO images) and the `complete` list; the
+advisories and end-of-life dates are unchanged. Because the dataset digest changed, a rescan after the
+update reports older Synvoya findings as not re-checked once. `codeinspectus_list_rules` reports the dataset
 version and rule count.
 
 ## Limits and caps
@@ -327,7 +387,7 @@ version and rule count.
 | Dockerfile `ARG` | substituted values and image references are bounded to 512 characters; longer ones become unresolved |
 | GitHub Actions | 256 references per file, 2,000 per scan, 16 YAML documents per file, 64 MiB read per scan; the database archive as above |
 | Libraries | banners only in the first 4 KiB; 1 MiB read per file (a larger file keeps what it declares but is never a checked file); 128 MiB per scan; asset-folder `vendor/` trees share one 20,000-entry budget; the SBOM holds at most 20,000 components |
-| Reader deadline | 30 seconds for all readers together; no new file is started past it |
+| Reader deadline | 30 seconds for all readers together; no new file is started past it. A reader still running 5 seconds later (the hard cap) is abandoned and named as not finished |
 | Notes | at most 50 Synvoya coverage notes; priority notes (reader failure, caps) are never dropped |
 | Checked-file sets | a set larger than 10,000 entries is not recorded, so a rescan confirms nothing from it |
 
@@ -344,10 +404,27 @@ Not part of 4.0:
 - WordPress plugin and theme versions: they stay the declared gap `wordpress-plugins`. Whether to add
   plugin advisories is undecided.
 - Maven qualifiers that cannot be ordered are treated as unknown, so never affected.
-- Dev-only dependency severity, fingerprint-derived display ids and package-line locations in lockfiles
-  are planned after 4.0.
 - The Synvoya dataset manifest is not separately signed; the npm package is the trust root.
 - Anything the deployed system does that a declaration does not show.
+
+Not part of 4.1:
+
+- `SYN-2026-080` (Joomla extension bundle) is approved but not shipped: no vendor-confirmed affected or
+  fixed version exists for these extensions (the 2026-11-03 verification found secondary sources only,
+  with conflicting SP Page Builder versions), and no reader reads Joomla extension manifests. It ships
+  when a vendor-confirmed fixed version exists for at least one extension and a reader for extension
+  manifests is built.
+- `SYN-2026-325` (`reviewdog/action-setup`) is approved but not shipped: the exposure was a 109-minute
+  window on 2025-03-11 on a re-pointed tag, which repository files cannot show, and the malicious commit
+  is known only by a short SHA. With the OSV GitHub Actions database installed, the Actions matcher
+  already reports the affected `v1` tag from the OSV record.
+- MinIO variant tags (`-cpuv1`, `.fips`, hotfix suffixes) and `bitnami/minio` are notes, never findings.
+- End-of-life ranges across release lines are judged only for products with a complete release list
+  (above). For Java, MySQL, MariaDB, Redis, MongoDB, Elasticsearch, RabbitMQ, nginx and httpd, a range
+  across lines gets no `SYN-EOL-*` finding, and neither does the part of any range below a table's oldest
+  cycle (`python:2`); advisories are still judged against those ranges.
+- Per-subject rescan checks cover image files only; runtime pins, products, libraries and the package
+  inventory are re-checked per file.
 
 Also in 4.0 but bounded: the PHP and Node.js packs are precision-gated rather than complete (above),
 vendored library checks cover exact versions only, and Actions findings count as checked only with the

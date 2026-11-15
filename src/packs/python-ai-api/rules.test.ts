@@ -117,8 +117,8 @@ app.add_middleware(SessionMiddleware, secret_key="session-secret")
     expect([...django, ...flask, ...starlette]).toHaveLength(3);
     for (const finding of [...django, ...flask, ...starlette]) {
       expect(finding).toMatchObject({
-        severity: "high",
-        confidence: "high",
+        severity: "low", // 4.1 M9 fresh-set gate (Ruling 3)
+        confidence: "low",
         is_secret: true,
         cwe: ["CWE-798", "CWE-321"],
       });
@@ -190,7 +190,7 @@ def download(name: str):
     return FileResponse(selected)
 `);
     expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({ severity: "high", cwe: ["CWE-22", "CWE-73"] });
+    expect(result[0]).toMatchObject({ severity: "low", confidence: "low", cwe: ["CWE-22", "CWE-73"] }); // 4.1 M9 fresh-set gate
   });
 
   test("accepts fixed send_from_directory roots, sanitizers, and dominating containment guards", async () => {

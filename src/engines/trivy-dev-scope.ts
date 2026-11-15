@@ -5,35 +5,19 @@
  * `--include-dev-deps` is passed; with it, every one of those ecosystems is analysed (verified per
  * ecosystem on the real binary). Its SARIF carries no scope, but its JSON report lists each package
  * with `Dev: true` (`--list-all-pkgs`), so the wrapper writes JSON, converts it to SARIF with
- * `trivy convert`, and marks the SARIF results of development-only packages here. Export schema 3.0.0
- * has no free field on a finding, so the scope reaches the finding as text (see normalize.ts).
+ * `trivy convert`, and marks the SARIF results of development-only packages here. The mark labels licence
+ * results (normalize.ts) and lets `foldDevDuplicates` keep the production copy of a CVE; vulnerability
+ * findings get their scope after dedup from every engine's evidence (src/dependency-scope.ts, 4.1).
  */
 
-import type { Finding } from "../types.js";
 import type { SarifLog, SarifResult } from "../sarif/types.js";
 
 /** SARIF result property the normalizer reads. */
 export const DEPENDENCY_SCOPE_PROPERTY = "codeinspectus/dependency-scope";
 
-/** The line the normalizer appends to a development-only Trivy finding's message. */
+/** The line appended to a development-only finding's message (normalize.ts for licences, dependency-scope.ts). */
 export const DEV_SCOPE_NOTE = "Dependency scope: development only (devDependencies or packages-dev). Front-end builds " +
   "such as Nuxt, Vite, Next and SvelteKit can still bundle development dependencies into what ships.";
-
-/**
- * The title and message `keep` needs when dedup merges a development-only Trivy finding (`other`) into it.
- * Only Trivy knows the scope (osv-scanner does not report it), and the scope lives in text only, so
- * without this a merge kept by another engine silently dropped it. Undefined when nothing changes:
- * `other` is not a dev-marked Trivy finding, `keep` is itself from Trivy (it carries its own scope),
- * or the two name different versions of the package.
- */
-export function devScopeCarriedInto(keep: Finding, other: Finding): Pick<Finding, "title" | "message"> | undefined {
-  if (other.engine !== "trivy" || !other.message.endsWith(`\n${DEV_SCOPE_NOTE}`)) return undefined;
-  if (keep.engine === "trivy" || keep.message.endsWith(`\n${DEV_SCOPE_NOTE}`)) return undefined;
-  if (keep.package && other.package && keep.package.version !== other.package.version) return undefined;
-  const tag = keep.package ? ` (${keep.package.name}@${keep.package.version})` : undefined;
-  const title = tag && keep.title.endsWith(tag) ? `${keep.title.slice(0, -1)}, dev dependency)` : `${keep.title} (dev dependency)`;
-  return { title, message: `${keep.message}\n${DEV_SCOPE_NOTE}` };
-}
 
 export interface DevScope {
   /** `target\0name\0version` where every package entry with that name and version is dev-only. */

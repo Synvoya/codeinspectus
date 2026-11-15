@@ -4,6 +4,434 @@ All notable changes to CodeInspectus are documented here. Versioning follows
 [Semantic Versioning](https://semver.org). AI-code detections and compliance mappings are
 AI-drafted and practitioner-reviewed — see the honesty notes in the [README](README.md).
 
+## [4.1.0] — 2026-11-15
+
+### Added
+
+- `npx codeinspectus init`: one command that registers CodeInspectus in the AI assistants it finds
+  (Claude Code through `claude mcp add-json --scope user`, VS Code through `code --add-mcp` or its user
+  `mcp.json`, Codex by appending the `[mcp_servers.codeinspectus]` block with `tool_timeout_sec = 600`,
+  Cursor, Windsurf and Cline by merging their JSON config), then installs the four engines and the OSV
+  databases the current project needs. One screen shows every change with sizes and licences; nothing
+  happens before a yes (`--yes` without a terminal). A config file that does not parse is never
+  rewritten (the manual step is printed), a different existing entry is left alone, the first change
+  keeps `<file>.codeinspectus-backup`, and writes are atomic and keep the file mode and line endings.
+  Nothing read from a config file is printed. A single download over 100 MB (on a first install the
+  Cosign verifier, about 140–200 MB depending on platform, and the Trivy DB, about 140 MB; the OSV npm
+  database, about 220 MB) is marked on
+  the screen and gets a second terminal question, as with `update` (in `init` a no installs everything else; in `update` it downloads nothing), and
+  `--yes` needs `--large`. Options: `--path`, `--clients`,
+  `--skip-engines`, `--large`, `--dry-run`, `--json`.
+- `npx codeinspectus init --update`: new engine pins and missing binaries for the enabled engines, then
+  the `update` database refresh, behind one confirmation (`--large` for any download over 100 MB,
+  including a database the engine repair fetches); a database refreshed by the repair is not downloaded
+  twice.
+- A bare `npx codeinspectus` on a terminal still opens guided setup; its first line now points to `init`.
+
+- A 24-hour database update prompt. When a managed database (the Trivy DB or an OSV database) was last
+  downloaded more than 24 hours ago, `codeinspectus_scan`, `codeinspectus_rescan` and
+  `codeinspectus_list_rules` results carry an optional `database_update` question for the agent to relay,
+  with three answers: yes, not now (24 hours) or not for a week (7 days). Computing it is offline;
+  showing it never answers it. A prompt comes no sooner than 24 hours after the newest database download
+  (never on a fresh install, nor right after setup refreshed a database), and there is none when no managed database is installed. The state lives in
+  `~/.codeinspectus/update-prompt.json`; an invalid file is ignored, and a due `database_update` then
+  carries a `warning` saying so.
+- `codeinspectus_setup` gains `action: "update"` (without `confirm_downloads` it returns the offline
+  `update_plan`; with it, it downloads updates and returns `update`) and `action: "snooze"` with
+  `snooze: "not_now" | "not_for_a_week"`, plus `confirm_large_downloads` for databases over 100 MB
+  (the Trivy DB, about 140 MB, and the OSV npm export, about 220 MB). Those need a second confirmation:
+  the prompt's question names them, its yes call never includes `confirm_large_downloads`, and an update
+  without it returns the offline plan with a `next_step` telling the agent to ask the user separately
+  (nothing is downloaded). When the user declines them, `skip_large_downloads: true` refreshes only the
+  smaller databases, and the question comes back as after a partial update. The output's `outcome` gains `updated`, `update_partial`, `update_failed`
+  (also an error result) and `snoozed`. The existing `setup` install (`action: "install"`, `codeinspectus
+  setup --all`) still takes one confirmation: setup shows sizes in its plan and takes one confirmation;
+  update and init ask separately for downloads over 100 MB.
+- `codeinspectus update [--yes] [--large] [--json]`: the same update from a terminal. It asks first;
+  without a terminal it needs `--yes`, databases over 100 MB also need `--large`, and `--json` needs
+  `--yes`.
+- An update counts the OSV records changed since each database's download, re-downloads the full OSV
+  exports and the Trivy DB through the existing repair path (a failed download keeps the old database
+  and the prompt comes back in about an hour; it refreshes databases only and skips an engine that needs setup), and reports a newer CodeInspectus on npm (it carries newer Synvoya
+  advisories and Opengrep and Gitleaks rules) without installing it. No project data is sent. The prompt
+  is a structured notice the agent relays; MCP elicitation is not used in 4.1.
+- **MinIO image tags.** `minio/minio` and `quay.io/minio/minio` images are compared by their
+  `RELEASE.<timestamp>Z` tag, so SYN-2026-268 and SYN-2026-276 now fire for a tag before
+  `RELEASE.2023-03-20T20-16-18Z`. Only a bare tag that is a real UTC instant compares; `latest`, `edge`,
+  digests, suffixed tags (`-cpuv1`, `.fips`, hotfix) and `bitnami/minio` are notes, never findings.
+- **End-of-life ranges across release lines.** For PHP, .NET, Python, Ruby and PostgreSQL, whose
+  end-of-life tables list every release line between their oldest and newest cycle, a range or floating
+  tag that crosses lines (`php:7`, `postgres:9`, `"php": ">=7.4 <8.1"`) is reported end-of-life when every
+  line it can resolve to is. The part above the newest listed line (a line released later) and below the
+  oldest (`python:2`) gives no `SYN-EOL-*` finding; advisory ranges still apply there (`python:2` still gets
+  SYN-2026-016/017/018 at medium, as in 4.0). For other products only `SYN-EOL-*` stays off across lines;
+  advisories are still judged. The dataset build and the tests check that each of these tables has no
+  missing line.
+- **Upgrade summary (4.1 M9).** Scan results carry `upgrade_actions`: dependency findings grouped per locked
+  package version, with the target version (`upgrade_to`: the highest of each advisory's lowest fix above the
+  current version, preferring the current major line, then raised to the highest fix any advisory needs on
+  that line), how many findings that upgrade resolves (an advisory
+  counts only when the target is at least its fix on the target's own release line), how many it does not
+  (with the release lines where their fix is listed, `unresolved_fix_lines`), the highest severity and whether
+  the package is development-only. GitHub Actions refs compare as versions without `v` (`v45` = `45.0.0`); an Action pinned by
+  commit SHA reads "pinned by commit SHA; compare the pin against fixed version X manually".
+  Dependency findings carry the fixed versions the engine reported (`fixed_versions`; Trivy, osv-scanner,
+  Synvoya packages and GitHub Actions); when engines merge, each release line keeps the highest engine minimum.
+  Not part of the fingerprint and not in the 3.0.0 export. It is computed over every finding of the scan, so a
+  report of 138 dependency findings reads as about a dozen upgrades. The text report (MCP and CLI) lists the
+  first ten right after the severity headline. Additive: ids and fingerprints are unchanged.
+
+### Security
+
+- Upgraded `zod` from 3.25 to 4.6.7, which fixes GHSA-mrhx-c7xc-m3w5 (high: memory exhaustion while
+  validating oversized constrained collections), the known issue shipped in 3.3.2 and 4.0.0. A lockfile
+  refresh (`hono` 4.13.18, `@hono/node-server` 2.1.8) also clears eight moderate advisories in the MCP
+  SDK's HTTP server, which CodeInspectus does not use (stdio only).
+  `npm audit` now reports 0 vulnerabilities.
+
+### Changed
+
+- The tool list agents read stays as compact and strict as 4.0.0: every tool input still advertises
+  `additionalProperties: false` (unknown arguments are still ignored), and the shared finding and
+  repository-trust definitions are referenced instead of repeated (`tools/list` 78 KB in 4.0.0, 85 KB
+  after the zod 4 upgrade and 93 KB with the new 4.1 fields; a straight zod 4 upgrade made it 129 KB). The remaining differences: integer fields state the
+  safe-integer bounds zod 4 enforces, date fields carry their pattern, and `pack_coverage[].scanner_kind`
+  is listed as required (the server always sends it). `synvoya_dataset` and `advisory_databases.items`
+  use `oneOf` instead of `anyOf` (their variants are exclusive by a constant, so nothing that validated
+  before is rejected), `component_signatures` carries `propertyNames`, a few small shared enums are
+  inlined where they are used, and some properties are listed in a different order.
+- The full `tools/list` output is pinned by a snapshot test, so a dependency bump can no longer change
+  the agent-facing contract without review.
+- **Native and AI pack precision, measured (4.1 M9 fresh-set gate).** The 75 native and Python baseline rules
+  were measured once on 30 fresh repositories with blind two-reviewer triage
+  ([method and table](docs/RULE-PROVENANCE.md#native-and-ai-pack-precision-41)). Detection database 2.1.0:
+  122 custom detections (70 native).
+  - **Experimental: not reported, not counted, disclosed.** `ci-ai-sensitive-api-response` (0 of 5 triaged hits
+    true) and `ci-ai-sensitive-log` (6 of 17). Their analyzers
+    stay, the registry drops them from the inventory and drops their findings, and the JavaScript/TypeScript
+    pack's limitations name each one in `pack_coverage` and `list_rules` (`EXPERIMENTAL_NATIVE_RULE_IDS` in
+    `src/packs/registry.ts`). The Python Opengrep rules `ci-baseline-eval-python` (0 of 5) and
+    `ci-baseline-weak-hash-python` (4 of 14) moved to `experimental/opengrep-rules/security-baseline-experimental/`
+    and are not loaded.
+  - **Owner override.** `ci-ai-client-hardcoded-secret` also came out experimental (0 of 7 true: a test-mock key
+    and UI placeholders) and is shipped by maintainer decision (2026-11-15) for detection coverage; FP classes (test mocks, placeholders) to be fixed and re-measured in 4.2. It reports as in 4.0 apart from the 4.1 PEM-marker fix below (header/footer markers without a key body are no longer reported).
+  - **Low severity, low confidence.** `ci-ai-client-error-leak` (high before; 12 of 18 true, `P_cap` 0.67),
+    `ci-ai-llm-output-dangerous-html`, `ci-ai-public-env-secret`, `ci-ai-security-header-disabled`,
+    `ci-python-hardcoded-signing-secret`, `ci-python-untrusted-file-response` and
+    `ci-flutter-tls-verification-disabled` (1-3 field hits each, at most one true). The Opengrep rules
+    `ci-baseline-command-injection-python`, `ci-baseline-insecure-deserialization-python` and
+    `ci-baseline-sql-injection-python` are `INFO` with `LOW` confidence (no true hit).
+  - **Kept, insufficient evidence** (1-2 hits, all true): `ci-android-cleartext-traffic`,
+    `ci-android-user-ca-trust`, `ci-ios-ats-global-arbitrary-loads`, `ci-flutter-sensitive-shared-preferences`.
+- **Display ids.** A finding's id is now `CI-` plus 10 hex characters derived from its fingerprint (and
+  package), so an id no longer changes when other findings appear or disappear. It still changes when the
+  fingerprint does (a SAST finding whose line moves). Scans stored by 4.0 keep their `CI-0001` ids; look an
+  id up in the scan it came from (`explain_finding` and `issue export` say so when the formats differ). CSV
+  finding rows are ordered by severity, file and line (they were ordered by id).
+- **Locations.** Trivy findings in `pnpm-lock.yaml`, `go.mod` and `uv.lock` point at the package's entry
+  instead of line 1 (without the line-1 snippet); fingerprints are unchanged, so baselines, triage and SARIF
+  alerts follow them.
+- **Dev-only dependencies.** Dependency findings carry `dependency_scope: "dev" | "prod"` (npm, Yarn, pnpm,
+  Bun and Composer lockfiles, from Trivy's `Dev` flag and osv-scanner's dependency groups, where only exactly
+  `["dev"]` counts (npm `devOptional` reads production); a package version is dev only when every entry says
+  so). One advisory on two locked versions of a package is now two findings, each with its own location,
+  remediation and scope, so a development-only copy never lowers the production one, and a finding merged
+  across engines is dev only if every version it absorbed is. Development-only vulnerabilities are one severity level lower (critical to high,
+  high to medium, medium to low; never below low); malware, known-exploited (the Synvoya list) and Synvoya
+  findings keep theirs. The message keeps the original severity and the reason. Every engine's findings are
+  labelled now, including a dev package only osv-scanner flags. Exports carry the scope as text (export 3.0.0
+  is unchanged); SARIF levels follow the lowered severity.
+- **Native JavaScript/TypeScript parser.** It stays `@babel/parser` 7.25.0, with no runtime dependencies of its
+  own. When the legacy-decorator reading rejects a TypeScript file, the parser reads it once more with standard
+  decorators. The decorator fallback leaves every file that parsed before with the same tokens and findings; a
+  test pins this for every fixture file. The comment-masking change is described separately under Fixed.
+- **Faster scans of repositories with copied libraries.** The Synvoya PHP/Node pack pass no longer reads
+  Composer packages kept in a subfolder not named `vendor/` (identified from Composer's `installed.json`; the
+  scanned folder itself is never treated as one) or readable copies of front-end libraries whose file name and
+  licence banner name the same library and whose SHA-256 equals a recorded release (three releases recorded
+  in 4.1: Bootstrap 3.3.7, Moment 2.29.4, Select2 4.0.5). Minified files are skipped by the 4.0 minified rule
+  whatever they contain, as before; for a minified library copy the identification only changes its label.
+  They are listed in `third-party-bundles`, labelled with the evidence, with a note naming each library and
+  version; the other baseline Opengrep rules, Gitleaks and the native checks still scan them. When the skip
+  list's 5,000-file cap would cut identified library files, they stay in the pass and a note says how many.
+
+- **Synvoya image fixes are confirmed per subject.** In a multi-stage Dockerfile (or any image file), a stage
+  Synvoya cannot judge, such as a private-registry mirror `FROM registry.internal/php:8.1`, no longer stops
+  a rescan from confirming a fix in another stage. One product under two image names (`postgres` and
+  `bitnami/postgresql`, `mongo` and `bitnami/mongodb`) counts as one subject, so a fix never resolves while
+  the same software is still declared through something unjudged; a repository behind a variable still
+  blocks the whole file. The evidence is stored with the scan and not shown. A scan stored by 4.0, a merged
+  finding, a reader deadline or a reader failure uses the earlier whole-file rule.
+- **Single-file scans name Synvoya paths by the file's own name**, as the other engines do: a scan of
+  `.github/workflows/ci.yml` reports `ci.yml` in Synvoya findings, titles, messages, notes, gap examples and
+  checked files (it was `.github/workflows/ci.yml`; likewise `version.php` for `wp-includes/version.php`).
+  Directory scans are unchanged. This changes those findings' fingerprints once (see Upgrade notes).
+- **Synvoya dataset `2026.11.13.1`** (was `2026.11.05.2`): the two MinIO images and the list of complete
+  end-of-life tables; advisories and end-of-life dates are unchanged. The gap matcher and image reader
+  revisions changed with them, so the first rescan after upgrading reports older Synvoya findings as not
+  re-checked once, never resolved.
+- **Held-back Synvoya rules stay experimental (4.1 M7 gate: no promotion).** The seven rules held back at 4.0
+  were reworked (exit guards count only in the strict shape: the failing branch is one return / throw / exit /
+  continue on a local variable, not inside a try block, not followed by a reassignment; allow-lists only as
+  literal lists) and measured on 20 fresh repositories they were never tuned on, with blind triage by two
+  independent reviewers. None passed, so they stay experimental (not loaded, not shipped) and the shipped rule
+  count is unchanged by M7 (it changes only through the 4.1 M9 decisions below). `syn-node-sql-injection` had 0 hits, and `syn-php-path-traversal` (2), XXE (1), unguarded
+  Eloquent models (0) and `preg_replace` `/e` (0) also had too few hits to measure (the gate needs 5).
+  `syn-php-open-redirect` failed: 9 of 24 hits true (most at reduced impact) for one reviewer, 0 of 24 for the
+  other, the framework's redirect allow-list and fixed local prefixes accounting for the rest.
+  `syn-node-path-traversal` failed on 0 of 5 and on cost (about 7 GB of Opengrep memory on one repository).
+
+### Fixed
+
+- **False-positive classes the 4.1 fresh-set gate found (4.1 M9).** Instead of rule changes after the results (none
+  is allowed before 4.2), the noisiest rules are demoted or experimental (Changed). The classes, for 4.2: deliberate
+  user-facing error text; test, mock and documented example keys and UI placeholders in client code; the
+  caller's own freshly issued credential in a response; logged values that are not credentials (cancellation
+  tokens, UI counters, cache busters, cookie names); sanitising helpers, path containment, HMAC-verified pickles and
+  a CSP `frame-ancestors` replacing `X-Frame-Options`; a TLS callback scoped to `127.0.0.1`; MD5/SHA-1 as ids and
+  cache keys; `eval` of `float()`-coerced values.
+- **More test files are test context (4.1 M9).** Generic code findings and generic secrets in Cypress,
+  Playwright and end-to-end suites and in language test files are reported at `low` with the
+  "Test/example context" label, like other test files: `cypress/`, `e2e/`, `playwright/`, `testdata/` and
+  `integration_test/` folders anywhere (exact, case-sensitive: `e2e-encryption/` is not one), and
+  `*.cy.{js,ts,jsx,tsx,mjs,cjs}`, `test_*.py`, `*_test.py`, `conftest.py`, `*_test.go`, `*_test.dart`,
+  `*_spec.rb` and `*_test.rb` files. The native API-boundary checks skip `cypress/` and Cypress spec files as
+  they already skip test folders; findings under `e2e/` and `playwright/` are reported at `low`. Named-provider secrets keep their severity everywhere.
+- **API-boundary precision (4.1 M9).** `ci-ai-client-error-leak` and `ci-ai-sensitive-api-response` count a
+  response call only when it answers an HTTP request: a Web/Next `Response`, a `.status(…)`/`.code(…)`
+  chain, or a bare `res`/`reply`/`response` (or Hono `c.json`) in a server-handler file (a route path, a
+  server framework import including `next`, or a handler signature: `(req, res)`, `(_req, res)`, `(err, res)`,
+  a parameter typed `NextApiResponse`, `FastifyReply`, `Reply` or `Response`, generic request types allowed). `.send(...)` on a socket, channel, XHR or message port
+  is never a response (CKEditor's `postMessage.send`, a websocket SDK's `ws.send`).
+  `ci-ai-sensitive-api-response` skips a token, API key or secret the handler itself just generated for
+  its caller (`jwt.sign`, `sign*`, `randomBytes`, `randomUUID`, `nanoid`, `generate*Token`, `create*Token`,
+  `generateKey`) when that assignment is the last one before the response, in the same function and block,
+  the name appears in the response only as a top-level field of the response object (`{ token }`,
+  `{ token: token }`, `...(token ? { token } : {})`) with no top-level spread or computed key after it
+  (`{ token, ...user }` and `{ token, ["token"]: user.token }` return `user.token`), and nothing rewrites or shadows it in between (a
+  destructuring write, `??=`/`||=`/`&&=`, a parameter, loop variable or catch binding of the same name, a bare
+  `for (token of …)`); a token minted once at module scope still reports; password
+  material, private keys, client secrets, service-role keys, authorization headers and cookies always
+  count. `ci-ai-sensitive-log` counts only logged values: not `typeof token`, not a metadata member read
+  (`.length`, `.expiresAt`, `.exp`, `.type`, `.id`, `.size`, `.count`; `token.value` or `password.slice(0)`
+  still count), not one named non-sensitive header (`req.headers["content-type"]`; a header named like a
+  credential, such as `x-api-key` or `x-auth-token`, counts) and, in auth/payment
+  routes, not one body field (`req.body.amount`); a template substitution (`` `${token}` ``) now counts.
+  Removed findings read not re-checked on the first rescan (detector revisions 4).
+- **API-boundary parsing (4.1 M9, mailflare).** `ci-ai-client-error-leak` accepts the brace-less
+  `if (err instanceof XError) return …` branch with the same checks as the braced one (`.code` with
+  `.message`, or an explicitly public class; never `.stack`, a raw error or a branch that does not return).
+  `ci-ai-sensitive-api-response` reads only the response's own fields: not keys of a `{ token, ...rest }`
+  destructuring whose rest is what is spread, and not a credential passed into a nested call that is itself the
+  value of an id- or receipt-shaped property (`id`, `count`, `status`, or a key ending in `Id`, `ID`, `_id`,
+  `Count` or `Status`, such as `grantId: await grant({ sessionToken })`); under any other key
+  (`data: serialize({ … })`, `profile: toDTO({ … })`, `resetUrl: buildUrl({ … })`) the call's fields count, and so does a wrapper call that is the whole
+  response, an array element or a spread (`res.json(ok({ token }))`) keeps its fields, as do `Object.assign`,
+  `JSON.stringify` and callbacks. The issued-credential rule also covers
+  session and id creators (`createSession`, `create*Session`, `newId`, `new*Id`) and
+  `cond ? <generator>(…) : null`.
+- **Project error classes with fixed messages (4.1 M9).** `ci-ai-client-error-leak` treats the `.message` of an
+  error class declared in the scanned repository (`class XError extends Error` or `globalThis.Error`, declared
+  once; a library base such as `lib.Error` does not count) as public when
+  the message is always a literal: the class passes a literal to `super(...)`, or every `new XError(...)` in
+  the repository passes a string literal at the message position. A class whose message comes from other
+  text (`new XError(\`AWS: ${err.message}\`)`), that overrides `message` (including a TypeScript parameter
+  property such as `constructor(public readonly message: string)`), that a repository class extends with a
+  message that is not always a literal (also through a namespace import, `extends errors.XError`), or a name
+  imported from a package still reports. Any file in the repository that writes an error's message after
+  construction makes every class non-public, whether or not it names one (a helper such as
+  `withContext(e, ctx)`): a plain or compound assignment (`err.message = …`, `err.message += …`, `??=`,
+  `err["message"] = …`), on any receiver but a `this` inside a class body (a `this.message` write in a prototype
+  method, free function or object method counts), `Object.assign(…)` or `Object.defineProperties(…)` mentioning
+  `message`, `Object.defineProperty(…, "message", …)`, `Reflect.set(…, "message", …)`, or a destructuring target
+  (`({ message: e.message } = body)`). A class whose own body writes `this.message` or `this["message"]` with any
+  assignment operator is non-public. Not detected: a computed key held in a variable (`err[key] = …`), a
+  `.message` target inside a nested or array destructuring pattern (`[e.message] = …`), a `this` write inside a
+  non-arrow function nested in a class body (for example a prototype patch in a static method or static block, or
+  `fn.call(err)`), and writes in files the native pass does not collect (for example `.vue` single-file components).
+- **Public SDK keys and PEM markers (4.1 M9).** `ci-ai-public-env-secret` no longer reports a key that the
+  provider documents for browser use behind a public prefix. The allow-list is a closed table: Firebase web
+  API keys (as before), Google Maps/Places browser keys, reCAPTCHA/hCaptcha/Turnstile site keys, Stripe
+  publishable keys, the Mixpanel project token, the PostHog project key, the Amplitude API key, Algolia
+  search-only keys, Mapbox public tokens and RevenueCat public SDK keys (these two only when the name says
+  `PUBLIC` or a client platform such as `IOS`, `ANDROID` or `WEB`). A name that also says `SECRET`, `PRIVATE`,
+  `SERVICE_ROLE`, `ADMIN`, `AUTH_TOKEN`, `MANAGEMENT`, `WRITE`, `SERVER`, `MASTER` or `PERSONAL` is never
+  allow-listed (so Segment's write key is not on it). A PM2 `ecosystem.config.*` file (server process env) is not reported
+  when it sits at the scan root or beside a `package.json`, outside build output, and has PM2's shape
+  (`module.exports = { … apps: [ … ] }`); assignments in a Nuxt config's `runtimeConfig` outside its
+  client-exposed direct children (`public` and `app`, quoted or not) are server-only and no longer reported
+  (configs up to 256 KiB; a larger or unbalanced config is scanned as before).
+  `ci-ai-client-hardcoded-secret` and `ci-ai-secret-in-bundle` report a PEM private-key block only when at
+  least 64 base64 characters of key body sit between its last header and its footer, across string
+  concatenation, an array of lines or escaped JSON (`\\n`, `\/`, at any escaping depth): header and footer markers in `replace()` calls or a PEM builder are not
+  a key, and a header-only decoy before a real key does not hide it. Removed findings read not re-checked on
+  the first rescan (detector revision 6).
+- **Actions event text used only as a condition (4.1 M9).** `ci-github-actions-untrusted-expression-command`
+  no longer reports a `${{ … }}` expression in which the untrusted context appears only as an operand of
+  `contains`, `startsWith`, `endsWith`, `==`, `!=`, `!` or a `fromJSON` membership test and every possible
+  result is a literal or a boolean (`contains(github.event.pull_request.title, 'Release') && 'TRUE' ||
+  'FALSE'`). `format()`, `toJSON()`, `join()`, a branch that can return the text itself, and an expression the
+  parser cannot read still report. Removed findings read not re-checked on the first rescan (detector
+  revision 2).
+- **Flutter logs: values, not words (4.1 M9).** `ci-flutter-sensitive-log` takes sensitivity only from what is
+  logged (identifiers, `['key']` selectors and interpolated expressions such as `$accessToken` or
+  `${session.refreshToken}`), never from words in a string's literal text: `'Error validating access token:
+  $e'` logs the exception, not a token. Removed findings read not re-checked on the first rescan (detector
+  revision 2).
+- **Python SQL and weak-hash baseline (4.1 M9).** `ci-baseline-sql-injection-python` reports a query built with
+  `%`, `+` or an f-string only when some interpolated operand is not a constant. A constant is a literal, or
+  an UPPER_SNAKE name assigned exactly a string or number literal at module level (`TABLE = "users"`) and never
+  written in the function that runs the query (no assignment, `+=`, loop target or `global TABLE` there, and,
+  for a query in a nested function or any lambda, assigned or passed to a call, no later UPPER_SNAKE
+  assignment in the enclosing function); a
+  name assigned from a request, an env read, a call or an f-string, a parameter or import with an UPPER_SNAKE
+  name, a call and any lower-case name are reported. Files under `migrations/` and `alembic/versions/` are not scanned
+  by this rule. `ci-baseline-weak-hash-python` skips `hashlib.md5(…, usedforsecurity=False)` and the `sha1`
+  twin (the rule is experimental after the fresh-set gate; see Changed).
+- **Gitleaks: identifier maps written one entry per line (4.1 M9).** Gitleaks' generic rule read the tail of
+  one entry's label (`"<uuid>": "YubiKey",`) as a keyword and the UUID key on the next line as its secret, so a
+  WebAuthn AAGUID-to-name table reported most entries as `high` generic API keys. Exactly that shape is
+  allowlisted: both UUIDs are object keys of the map and the previous label is a display name (a label with a
+  space, or a capitalised word that does not start like Key, Token, Secret, Password, Passwd, Private, Auth,
+  Credential or Bearer). A UUID after `"api_key",`, after `token:` or after a credential-word label, a
+  named-provider UUID key, an identifier keyword followed by a UUID on the next line and a same-line
+  `["secret_token", "<uuid>"]` pair still report (eval E170).
+- **A single workflow file lists its unchecked actions.** Scanning `.github/workflows/ci.yml` alone, without
+  the OSV GitHub Actions database, now shows the `actions-unchecked` gap for its third-party actions
+  (`tj-actions/changed-files@v45 (ci.yml)`); the file target was not recognised as a workflow before.
+- **Rescan proof (4.1).** A finding in a file an engine could not fully analyze in the rescan (an Opengrep
+  per-file timeout, memory limit, engine or parse error, or its size limit; a native parse, size or token-budget
+  gap) now reads not re-checked, never resolved. A native pack that ran only partially (a bound, an incomplete
+  Supabase migration load) gates its own findings, and a lockfile osv-scanner found but listed no packages from
+  gates its findings ("osv-scanner listed no packages from this lockfile"). A lockfile that lists no dependency
+  (a root-only `package-lock.json`, an empty `composer.lock`, `yarn.lock` or `pnpm-lock.yaml`) is a real fix and
+  resolves. Each 4.1 scan stores those files per pass (baseline Opengrep, pack pass, native checks, osv-scanner)
+  for this proof; the scan output does not show them. Scan history uses the same rule; comparisons between scans
+  stored before 4.1 keep their earlier behaviour.
+- **Synvoya reader deadline.** A scan now runs the Synvoya readers first, alone, before its probes, the other
+  engines and the native checks (1.7 s measured inside a full cap-collectif scan, the largest field repository). Under load they ran past their
+  30 s deadline inside the scan (cap-collectif lost 3-7 vendored-library findings per run, declared as partial
+  coverage). The deadline stays 30 s; a reader still running 5 s after it (an asynchronous hang) is abandoned,
+  and the partial warning names every reader that did not finish.
+- **One finding per secret.** A private key reported by Gitleaks (the whole block), Trivy (its inner lines) and
+  a native check on one of its lines is one finding, with every engine listed; the survivor keeps the highest
+  severity. Two different known secret values are never merged by the new containment rule. Against a scan
+  stored before 4.1 (rescan, baseline, history, bundle compare), a single-engine private-key finding that a
+  4.1 scan absorbed reads remaining, never resolved, when the 4.1 survivor carries its engine and one
+  finding's lines contain the other's (the survivor inside an old key block only when it is a native secret
+  with a known value). Two 4.0 scans, or a comparison against a scan stored by 4.1, never use this match,
+  so a new secret inside a key block's lines reads New.
+- **RubyGems duplicates.** A Trivy `Gemfile.lock` / `gems.locked` CVE from the Ruby advisory database whose
+  references name exactly one GHSA carries that GHSA as an alias (`vulnerability_aliases`), so it merges with
+  osv-scanner's finding for that GHSA on the same gem. A CVE that references several GHSAs (related
+  advisories, not aliases) gains none, and a GHSA that two CVEs of the same gem version would share is given
+  to neither.
+- **`requirements.txt` lower bounds.** A vulnerability reported for a `requirements*.txt` requirement written
+  with `>=` or `~=` (and no `==`) reads "declared minimum" in its title and message, with `confidence: "low"`:
+  the version is the lowest the file allows, not necessarily the one installed. Severity is unchanged.
+- **A decorator before a computed class key.** TypeScript such as `@ApiProperty()` followed on the next line
+  by `[UploadFieldName.PROFILE_DATA]!: string` now parses; the native packs used to skip it as
+  `native-parse-errors`. The 4.0 notes blamed the definite assignment `[K]!: T`. The real cause was the
+  decorator, which the legacy reading continued into the key as `@ApiProperty()[…]`. `@babel/parser`
+  7.29.13 reads it the same way.
+- **Comments in the regex analyzers.** The LLM tool-call and model-output execution checks, the API boundary
+  checks and the security-control checks now take comments from the parser. Before, a `/*` or `//` inside a
+  regex literal (such as `/\/*/`) or inside JSX text started a "comment", which could hide every sink after
+  it in the file. A file the parser cannot read keeps the previous masking. Masking no longer shifts later
+  offsets after a character outside the Basic Multilingual Plane (such as an emoji) in a comment.
+- **Synvoya PHP TLS and token rules.** `syn-php-tls-verification-disabled` no longer reports a disable set only
+  inside an `if` on a configuration value (`if ($this->config->allowUnsafeSsl)`); unconditional disables, constant
+  conditions (`if (true)`), conditions that read request input (`if ($_GET['insecure'])`) and disables in an `if`
+  that has an `else` are still reported.
+  `syn-php-insecure-random-token` no longer reports a token expression that also draws from `random_bytes`,
+  `random_int` or `openssl_random_pseudo_bytes`.
+- **`ci-baseline-weak-hash` fires only in a credential context.** MD5/SHA-1 is reported when the hash's own
+  chained `update()` gets a credential (a name such as `password`, `apiKey`, `secret`, `token`, `signature`, `salt`,
+  matched as a word, or a template literal / `+` concatenation holding one), or when the whole
+  `createHash(...)` chain is assigned to, initialises or is the value of a property named that way. Cache keys,
+  ETags and checksums are no longer reported. The native rule and the Opengrep fallback match the same contexts
+  (eval E150; E34 parity stays exact); severity stays low/low. Known gaps: a hash object updated in a later
+  statement, a member expression interpolated in a template, and a neutrally named input inside a password
+  check (for example `createHash("md5").update(incoming)` in a `verifyPassword` helper); widening the context to the
+  enclosing function is planned for 4.2 with a re-measure.
+
+### Upgrade notes (4.1)
+
+- **Severity gates and the fresh-set gate.** `--fail-on-severity high` (or `medium`) no longer fails on
+  `ci-ai-client-error-leak`, which is now `low`, and `ci-ai-sensitive-log` and `ci-ai-sensitive-api-response` are
+  no longer reported at all; the other demoted rules are listed under Changed.
+  Their detector revisions bumped (and the Opengrep baseline ruleset signature is content-hashed), so on the
+  first rescan a removed or demoted finding reads not re-checked, never resolved. The Opengrep ruleset and Gitleaks
+  configuration signatures are content hashes and both changed in 4.1, so every Opengrep and Gitleaks finding reads
+  not re-checked once on the first rescan after upgrading. The `ai:client-secrets` revision
+  also bumped, so prior `ci-ai-client-hardcoded-secret` findings (shipped unchanged by maintainer decision) read not
+  re-checked once on the first rescan.
+- **Weak-hash findings outside a credential context disappear.** The `sast:javascript-weak-hash` detector
+  revision is now 2, so on the first rescan they read not re-checked, never resolved.
+- **CI gates and dev-only dependencies.** There is no opt-out in 4.1. A `--fail-on-severity high` (or
+  `critical`) gate, and `--fail-on-new-severity high`, **no longer fail on a development-only dependency
+  finding that was lowered below the threshold** (a dev-only `high` is now `medium`, a dev-only `critical`
+  is now `high`). To see the scope, read `dependency_scope` on each finding in the scan JSON (MCP results,
+  `scan --format json`, stored scans); exports (export 3.0.0, SARIF 3.0.0, CSV) carry it as the
+  `(…, dev dependency)` title tag and the `Severity lowered from … to …: development-only dependency.`
+  message line. Front-end builds can bundle development dependencies; lower the threshold one level if
+  that applies to you. SARIF `level` follows the lowered severity (dev-only `high` is `warning`, not
+  `error`). See [CI policy](docs/CI-POLICY.md#development-only-dependencies-and-declared-minimums-41).
+- **Ids.** Look an id up in the scan it came from: 4.0 scans answer `CI-0007`, 4.1 scans `CI-4b53368c3f`.
+  Baselines, history, triage, rescan and git-scoped scans match on fingerprints and identities, never ids,
+  and fingerprints are unchanged, so the id change alone needs nothing re-recorded.
+- **Merged duplicates.** Against a scan stored before 4.1, an absorbed duplicate reads remaining, never
+  resolved: a RubyGems GHSA or CVE finding through the alias, and a single-engine private-key finding whose
+  lines contain, or lie inside, the lines of the 4.1 survivor that carries its engine. A
+  triage annotation on a finding that absorbed a duplicate can resurface (its producer set grew), never
+  hide.
+- Re-record baselines with 4.1: against a 4.0 baseline the private-key containment match stays on for
+  findings merged by 4.1.
+- **CSV.** Finding rows are ordered by severity, file and line (they were ordered by id).
+- **Versions apart.** Where 4.0 merged one advisory on two locked versions of a package into one finding, 4.1
+  reports two. Cross-scan matching ignores the version, so against a 4.0 scan both read remaining or
+  Existing, never New.
+- **Synvoya single-file fingerprints.** Synvoya findings from a scan of a single workflow file or
+  `wp-includes/version.php` stored by 4.0 read not re-checked against a 4.1 rescan, and the same issues
+  show as introduced, once; re-record a baseline taken on such a file. Directory scans keep their
+  fingerprints.
+- **Pack-pass signature.** The pack-pass signature changes once: the first rescan or baseline comparison after
+  upgrading reads earlier `syn-php-*`, `syn-node-*` and `ci-baseline-sql-injection-string-build` findings as not
+  re-checked, never resolved. An accepted `third-party-bundles` gap now also covers these library files.
+
+### Known limits (4.1)
+
+- **Rules not field-measured in 4.1.** 56 of the 75 measured native and Python baseline rules had no hit on the
+  fresh set, so their precision on real code is unknown (their fixtures pass); four more had 1-2 hits
+  (insufficient evidence). See [docs/RULE-PROVENANCE.md](docs/RULE-PROVENANCE.md#native-and-ai-pack-precision-41).
+- **Custom auth guards on Next.js admin routes.** `ci-ai-nextjs-admin-route-no-authz` still reports a handler
+  whose only check is an imported project guard (`const { auth, error } = await parseRequest(req); if (error)
+  return error();`, `if (!(await canUpdateTeam(auth))) return unauthorized()`), as in 4.0: the analyzer cannot
+  verify a guard defined in another file. A 4.1 attempt to turn these into a declared gap was removed because
+  static shape matching let real missing-authorization cases through. Review such findings against the guard's
+  code.
+- Trivy's report names no file it failed to read, so a Trivy finding in a lockfile Trivy could not parse in a
+  rescan can still read resolved. Opengrep, the native checks and osv-scanner record such files (4.1 M6).
+- `syn-php-insecure-random-token` reports a token expression in which `mt_rand()` / `rand()` only picks the
+  length while the characters come from a CSPRNG helper it does not recognise (Laravel `Str::random`, a
+  function wrapping `random_bytes`). All 3 hits on the 4.1 fresh set were this shape.
+- The experimental PHP rules' allow-list checks (`in_array` on a literal list, ternary defaults) accept bare
+  constants (`FOO`, `self::FOO`) as literals; a constant defined from request input (`define('FOO', $_GET[...])`)
+  would defeat the check. The rules are not shipped; this is fixed and re-measured in 4.2.
+- Trivy reports no lines for `pnpm-lock.yaml`, so its findings keep a fingerprint computed from line 1. Two
+  versions of one package with the same advisory therefore share a fingerprint: they are two findings with
+  their own lines and ids (the second id has a `-2` suffix), but rescan, triage and SARIF alert matching,
+  which key on the fingerprint, treat them as one.
+- When a lockfile holds a production and a development copy of a package with the same advisory, the
+  Trivy wrapper drops Trivy's development copy (so the production finding keeps its fingerprint). That
+  copy is reported only when osv-scanner also reports it.
+- Cross-scan matching ignores the package version, so a new production copy of a package whose
+  advisory a baseline already holds (for another version) reads Existing, not New.
+- The native JavaScript/TypeScript parser needs one decorator style per file. A decorator before a computed
+  class key reads only with standard decorators, which reject parameter decorators
+  (`constructor(@Inject() x)`) and legacy decorator expressions such as `@a.b().c`. A file that has both is
+  `native-parse-errors`. This replaces the 4.0 limit about `[K]!: T`.
+
 ## [4.0.0] — 2026-11-05
 
 CodeInspectus 4.0 adds Google's osv-scanner as a fourth engine, Synvoya (an offline gap-advisory layer

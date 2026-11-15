@@ -18,6 +18,7 @@ import { fingerprint as fp } from "../util/hash.js";
 import { externalFindingComponents } from "../provenance.js";
 import { osvEcosystemForFile } from "../osv/ecosystems.js";
 import { DEPENDENCY_SCOPE_PROPERTY, DEV_SCOPE_NOTE } from "../engines/trivy-dev-scope.js";
+import { canonicalGhsa, TRIVY_ALIASES_PROPERTY } from "../engines/trivy-aliases.js";
 import { compareVersions } from "../synvoya/versions.js";
 
 const CWE_RE = /CWE[-_ ]?(\d{1,5})/gi;
@@ -186,6 +187,15 @@ function trivyPackage(message: string, file: string): FindingPackage | undefined
     name,
     version: /^Installed Version: (\S+)/m.exec(message)?.[1] ?? "",
   };
+}
+
+/** The GHSA aliases the Trivy wrapper attached (trivy-aliases.ts): GHSA-shaped strings only, sorted, unique, never the rule id. */
+function trivyAliases(value: unknown, ruleId: string): string[] {
+  if (!Array.isArray(value)) return [];
+  const ids = value.filter((item): item is string => typeof item === "string" && /^GHSA(?:-[0-9a-z]{4}){3}$/i.test(item))
+    .map(canonicalGhsa)
+    .filter((item) => item.toUpperCase() !== ruleId.toUpperCase());
+  return [...new Set(ids)].sort();
 }
 
 /** Trivy's SARIF vulnerability message: `Package: …`, `Installed Version: …`, `Fixed Version: a, b`. */
@@ -358,11 +368,12 @@ function normalizeResult(
   // Trivy's vulnerability message carries the package, installed and fixed versions. They feed the
   // title and remediation only; the fingerprint inputs and the location are unchanged.
   const dependency = engine === "trivy" && findingKind === "vulnerability" ? trivyDependency(messageText) : undefined;
-  // Development-only packages (marked by the Trivy wrapper) are named as such in the text: export 3.0.0
-  // has no field for it, and title and message are not fingerprint inputs.
-  const devScope = engine === "trivy" && result.properties?.[DEPENDENCY_SCOPE_PROPERTY] === "dev";
+  // Development-only licence results (marked by the Trivy wrapper) are named as such in the text: export 3.0.0
+  // has no field for it, and title and message are not fingerprint inputs. Vulnerability findings get their
+  // scope after dedup, from every engine's evidence (src/dependency-scope.ts).
+  const devScope = engine === "trivy" && findingKind !== "vulnerability" && result.properties?.[DEPENDENCY_SCOPE_PROPERTY] === "dev";
   const title = dependency
-    ? `${baseTitle} (${dependency.name}@${dependency.installed}${devScope ? ", dev dependency" : ""})`
+    ? `${baseTitle} (${dependency.name}@${dependency.installed})`
     : devScope ? `${baseTitle} (dev dependency)` : baseTitle;
   if (devScope) {
     message = `${message}\n${DEV_SCOPE_NOTE}`;
@@ -377,7 +388,7 @@ function normalizeResult(
   const owaspApi = OWASP_API_BY_RULE[ruleId] ?? [];
 
   const finding: Finding = {
-    id: fingerprint, // reassigned to CI-#### after dedup
+    id: fingerprint, // replaced by the display id (src/display-id.ts) after dedup
     fingerprint,
     title,
     severity,
@@ -405,6 +416,9 @@ function normalizeResult(
   if (engine === "trivy" && findingKind === "vulnerability") {
     const pkg = trivyPackage(message, file);
     if (pkg) finding.package = pkg;
+    if (dependency?.fixed.length) finding.fixed_versions = [...dependency.fixed];
+    const aliases = trivyAliases(result.properties?.[TRIVY_ALIASES_PROPERTY], ruleId);
+    if (aliases.length) finding.vulnerability_aliases = aliases;
   }
   return finding;
 }

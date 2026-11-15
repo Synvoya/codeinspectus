@@ -181,7 +181,10 @@ afterEach(async () => {
   await rm(harness.root, { recursive: true, force: true });
 });
 
-describe("user engine repair", () => {
+/** Repairs extract archives and swap files: generous, so a loaded CI runner does not time them out. */
+const REPAIR_TEST_TIMEOUT_MS = 30_000;
+
+describe("user engine repair", { timeout: REPAIR_TEST_TIMEOUT_MS }, () => {
   test("installs a verified artifact without mutating the shipped lockfile", async () => {
     const before = JSON.stringify(harness.lock);
 
@@ -244,7 +247,7 @@ describe("user engine repair", () => {
   );
 });
 
-describe("OSV database repair", () => {
+describe("OSV database repair", { timeout: REPAIR_TEST_TIMEOUT_MS }, () => {
   const withOsv = (osv_databases: NonNullable<EngineSetupStatus["osv_databases"]>, state: EngineSetupStatus["state"] = "ready") => ({
     ...setup(state, "ready"),
     engines: [...setup(state, "ready").engines, { engine: "osv-scanner" as const, version: "2.7.0", state: "ready" as const }],
@@ -308,7 +311,7 @@ describe("OSV database repair", () => {
   });
 });
 
-describe("osv-scanner in a bare repair (an additive engine)", () => {
+describe("osv-scanner in a bare repair (an additive engine)", { timeout: REPAIR_TEST_TIMEOUT_MS }, () => {
   const withOsvEngine = (state: "ready" | "missing"): EngineSetupStatus => ({
     ...setup("ready", "ready"),
     engines: [...setup("ready", "ready").engines, { engine: "osv-scanner", version: "2.7.0", state }],

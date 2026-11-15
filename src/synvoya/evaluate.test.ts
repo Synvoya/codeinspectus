@@ -1,8 +1,13 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { synvoyaFindingComponents } from "../provenance.js";
 import { fingerprint } from "../util/hash.js";
-import { cycleOf, evaluateSynvoya, judgeDeclaredVersion, spansAffect, type PackageInventory } from "./evaluate.js";
+import { checkKey, cycleOf, evaluateSynvoya, judgeDeclaredVersion, spansAffect, type PackageInventory } from "./evaluate.js";
+import { loadSynvoyaDataset } from "./dataset.js";
+import { readImageTags, RUNTIME_IMAGES } from "./readers/images.js";
 import type { Declaration, EolEntry, SynvoyaAdvisory, SynvoyaDataset } from "./types.js";
 import { isAffected, type VersionScheme } from "./versions.js";
 
@@ -34,7 +39,7 @@ function eol(product: string, cycle: string, date: string, latest?: string): Eol
   return { product, cycle, eol: date, ...(latest ? { latest } : {}), source: `https://endoflife.date/${product}` };
 }
 
-function dataset(advisories: SynvoyaAdvisory[], eolEntries: EolEntry[] = []): SynvoyaDataset {
+function dataset(advisories: SynvoyaAdvisory[], eolEntries: EolEntry[] = [], eolComplete: string[] = []): SynvoyaDataset {
   return {
     version: "2026.11.03",
     date: "2026-11-03",
@@ -43,6 +48,7 @@ function dataset(advisories: SynvoyaAdvisory[], eolEntries: EolEntry[] = []): Sy
     imageAliases: {},
     productImages: {},
     eol: eolEntries,
+    eolComplete,
     libraries: { libraries: [] },
   };
 }
@@ -574,6 +580,99 @@ describe("open-ended and partly listed ranges", () => {
   });
 });
 
+describe("complete release lists: interior gaps are not resolvable lines (4.1 M8)", () => {
+  const AFTER_PHP81 = new Date("2026-11-14T00:00:00Z");
+  const phpTable = [
+    eol("php", "7.0", "2019-01-10", "7.0.33"),
+    eol("php", "7.1", "2019-12-01", "7.1.33"),
+    eol("php", "7.2", "2020-11-30", "7.2.34"),
+    eol("php", "7.3", "2021-12-06", "7.3.33"),
+    eol("php", "7.4", "2022-11-28", "7.4.33"),
+    eol("php", "8.0", "2023-11-26", "8.0.30"),
+    eol("php", "8.1", "2025-12-31", "8.1.34"),
+    eol("php", "8.2", "2026-12-31", "8.2.30"),
+    eol("php", "8.3", "2027-12-31", "8.3.28"),
+    eol("php", "8.4", "2028-12-31", "8.4.15"),
+    eol("php", "8.5", "2029-12-31", "8.5.0"),
+  ];
+  const php = (spec: string, precision: Declaration["precision"] = "range"): Declaration =>
+    decl({ subject: { type: "runtime", runtime: "php" }, spec, precision, resolved: undefined, file: "composer.json", source: "composer.json require.php" });
+  const complete = (advisories: SynvoyaAdvisory[] = [], table = phpTable) => dataset(advisories, table, ["php"]);
+  const titles = (result: ReturnType<typeof run>) => result.findings.map((f) => [f.rule_id, f.title]);
+
+  test(".NET >=6.0 <8.1 across complete lines is end-of-life; without the flag it stays unchecked", () => {
+    const cycles = [eol("dotnet", "6.0", "2024-11-12", "6.0.36"), eol("dotnet", "7.0", "2024-05-14", "7.0.20"), eol("dotnet", "8.0", "2026-11-10", "8.0.22")];
+    const declaration = decl({ subject: { type: "runtime", runtime: "dotnet" }, spec: ">=6.0 <8.1", precision: "range", resolved: undefined, file: "global.json" });
+    expect(titles(run(dataset([], cycles, ["dotnet"]), [declaration], NO_INVENTORY, AFTER_PHP81))).toEqual([
+      ["SYN-EOL-dotnet-8.0", ".NET 6.0/7.0/8.0 is end-of-life (declared in global.json)"],
+    ]);
+    expect(run(dataset([], cycles), [declaration], NO_INVENTORY, AFTER_PHP81).findings).toEqual([]);
+  });
+
+  test("PHP >=7.4 <8.1 is 7.4/8.0; a range reaching a supported line is not end-of-life", () => {
+    expect(titles(run(complete(), [php(">=7.4 <8.1")], NO_INVENTORY, AFTER_PHP81))).toEqual([
+      ["SYN-EOL-php-8.0", "PHP 7.4/8.0 is end-of-life (declared in composer.json)"],
+    ]);
+    expect(run(complete(), [php(">=7.4 <8.3")], NO_INVENTORY, AFTER_PHP81).findings).toEqual([]);
+  });
+
+  test("the tail above the newest listed line is never dropped (a line released after the table shipped)", () => {
+    const farFuture = new Date("2031-01-01T00:00:00Z");
+    expect(run(complete(), [php(">=8.4")], NO_INVENTORY, farFuture).findings).toEqual([]);
+    const without85 = phpTable.filter((entry) => entry.cycle !== "8.5");
+    expect(run(complete([], without85), [php(">=8.4 <9")], NO_INVENTORY, farFuture).findings).toEqual([]);
+  });
+
+  test("a floating major (image php:7) is every listed 7.x line", () => {
+    const floating = decl({ subject: { type: "runtime", runtime: "php" }, spec: "7", precision: "floating", resolved: undefined, file: "Dockerfile", source: "Dockerfile FROM" });
+    expect(titles(run(complete(), [floating], NO_INVENTORY, AFTER_PHP81))).toEqual([
+      ["SYN-EOL-php-7.4", "PHP 7.0/7.1/7.2/7.3/7.4 is end-of-life (declared in Dockerfile)"],
+    ]);
+    expect(run(dataset([], phpTable), [floating], NO_INVENTORY, AFTER_PHP81).findings).toEqual([]);
+  });
+
+  test("the part below the oldest listed line stays unchecked (python:2 with 2.6 the oldest cycle)", () => {
+    const python = [eol("python", "2.6", "2013-10-29", "2.6.9"), eol("python", "2.7", "2020-01-01", "2.7.18"), eol("python", "3.0", "2009-06-27", "3.0.1")];
+    const floating = decl({ subject: { type: "runtime", runtime: "python" }, spec: "2", precision: "floating", resolved: undefined, file: "Dockerfile", source: "Dockerfile FROM" });
+    expect(run(dataset([], python, ["python"]), [floating], NO_INVENTORY, AFTER_PHP81).findings).toEqual([]);
+  });
+
+  test("a range that meets no listed line keeps today's handling (no finding, no new note)", () => {
+    const result = run(complete(), [php(">=7.5 <8.0")], NO_INVENTORY, AFTER_PHP81);
+    expect(result.findings).toEqual([]);
+    expect(result.notes).toEqual([]);
+    expect(result.unjudged).toEqual([]);
+  });
+
+  test("an unflagged product keeps every gap (Java 8/11/17, >=8 <12)", () => {
+    const java = [eol("java", "8", "2026-12-31", "8u472"), eol("java", "11", "2024-10-31", "11.0.25"), eol("java", "17", "2027-10-31", "17.0.13")];
+    const declaration = decl({ subject: { type: "runtime", runtime: "java" }, spec: ">=8 <12", precision: "range", resolved: undefined, file: "pom.xml" });
+    expect(run(dataset([], java, ["php"]), [declaration], NO_INVENTORY, new Date("2027-06-01T00:00:00Z")).findings).toEqual([]);
+  });
+
+  test("an advisory unfixed on 7.4 and 8.0 covers every remaining line: a medium-confidence finding; fixed on 8.0, the existing note", () => {
+    const before80 = new Date("2023-06-01T00:00:00Z");
+    const unfixed = adv({
+      id: "SYN-2026-140",
+      title: "PHP 7.4 and 8.0 test flaw",
+      target: { type: "runtime", runtime: "php" },
+      affected: [{ line: "7.4", events: [{ introduced: "7.4.0" }] }, { line: "8.0", events: [{ introduced: "8.0.0" }] }],
+      fixed: [],
+      no_fix_available: true,
+    });
+    const hit = run(complete([unfixed]), [php(">=7.4 <8.1")], NO_INVENTORY, before80);
+    expect(hit.findings.map((f) => [f.rule_id, f.confidence])).toEqual([["SYN-2026-140", "medium"]]);
+    // Without the flag the [7.5, 8.0) gap is unchecked, so the same declaration is only a note.
+    expect(run(dataset([unfixed], phpTable), [php(">=7.4 <8.1")], NO_INVENTORY, before80).findings).toEqual([]);
+    const fixedOn80 = { ...unfixed, affected: [unfixed.affected[0]!, { line: "8.0", events: [{ introduced: "8.0.0" }, { fixed: "8.0.30" }] }], fixed: ["8.0.30"], no_fix_available: undefined };
+    const note = run(complete([fixedOn80]), [php(">=7.4 <8.1")], NO_INVENTORY, before80);
+    expect(note.findings).toEqual([]);
+    expect(note.notes).toEqual([
+      "composer.json:1: composer.json require.php declares PHP >=7.4 <8.1, which can still resolve to a release affected by SYN-2026-140; pin PHP to ≥ 8.0.30.",
+    ]);
+  });
+});
+
 describe("exact versions the scheme cannot parse", () => {
   test("an unparseable exact version never gets an EOL finding", () => {
     const { findings, notes } = run(dataset([], [eol("node", "16", "2023-09-11")]), [decl({ spec: "16foo", resolved: "16foo" })]);
@@ -680,13 +779,109 @@ describe("evaluateSynvoya: unjudged declarations (rescan proof)", () => {
       {},
     );
     expect(result.unjudged).toEqual([
-      { file: ".nvmrc", producer: "runtime" },
-      { file: "Dockerfile", producer: "images" },
-      { file: "package.json", producer: "runtime" },
-      { file: "package-lock.json", producer: "inventory:osv-scanner" },
+      { file: ".nvmrc", producer: "runtime", subject: "runtime:node" },
+      { file: "Dockerfile", producer: "images", subject: "runtime:node" },
+      { file: "package.json", producer: "runtime", subject: "runtime:node" },
+      { file: "package-lock.json", producer: "inventory:osv-scanner", subject: "package:npm:lodash" },
     ]);
     // A judged declaration is not listed.
     expect(result.unjudged.some((entry) => entry.file === ".node-version")).toBe(false);
+  });
+
+  test("lists each (file, producer, check key) once, and every finding's check key by fingerprint (4.1 M8)", () => {
+    const data = dataset([adv()], [eol("node", "16", "2023-09-11", "16.20.2")]);
+    const result = evaluateSynvoya(
+      data,
+      [
+        decl({ spec: "22", precision: "unresolved", resolved: undefined, file: "Dockerfile", line: 1, source: "Dockerfile FROM", producer: "images", noted: true }),
+        decl({ subject: { type: "runtime", runtime: "php" }, spec: "8", precision: "unresolved", resolved: undefined, file: "Dockerfile", line: 2, source: "Dockerfile FROM", producer: "images", noted: true }),
+        decl({ spec: "latest", precision: "unresolved", resolved: undefined, file: "Dockerfile", line: 3, source: "Dockerfile FROM", producer: "images" }),
+        decl({ spec: "22.1.0", resolved: "22.1.0", file: "Dockerfile", line: 4, source: "Dockerfile FROM", producer: "images" }),
+      ],
+      NO_INVENTORY,
+      NOW,
+      {},
+    );
+    expect(result.unjudged).toEqual([
+      { file: "Dockerfile", producer: "images", subject: "runtime:node" },
+      { file: "Dockerfile", producer: "images", subject: "runtime:php" },
+    ]);
+    expect(result.findings).toHaveLength(1);
+    expect([...result.subjectByFingerprint]).toEqual([[result.findings[0]!.fingerprint, "runtime:node"]]);
+  });
+});
+
+describe("checkKey on the shipped image tables (4.1 M8 Ruling 3 property)", () => {
+  test("every image-table name, its bitnami/ form and its private-registry lookalike fold to one key per last path component", async () => {
+    const loaded = await loadSynvoyaDataset();
+    if (!loaded.ok) throw new Error(loaded.reason);
+    const shipped = loaded.dataset;
+    const names = [...new Set([
+      ...RUNTIME_IMAGES.keys(), ...Object.keys(shipped.imageAliases), ...Object.keys(shipped.productImages), ...shipped.eol.map((entry) => entry.product),
+    ])].sort();
+    const work = await mkdtemp(join(tmpdir(), "ci-synvoya-checkkey-"));
+    try {
+      const forms = names.map((name) => {
+        const last = name.slice(name.lastIndexOf("/") + 1);
+        return { name, last, refs: [name, ...(name.startsWith("bitnami/") ? [] : [`bitnami/${name}`]), `registry.example/${last}`] };
+      });
+      for (const [index, form] of forms.entries()) {
+        await writeFile(join(work, `k${index}.Dockerfile`), form.refs.map((ref) => `FROM ${ref}:1.2.3\n`).join(""));
+      }
+      const result = await readImageTags(work, shipped);
+      const byLast = new Map<string, Set<string>>();
+      for (const [index, form] of forms.entries()) {
+        const declared = result.declarations.filter((d) => d.file === `k${index}.Dockerfile`);
+        // Every form names something: the table name, its bitnami/ form and its lookalike.
+        expect(declared.map((d) => d.line), form.name).toEqual(form.refs.map((_, i) => i + 1));
+        const keys = new Set(declared.map((d) => checkKey(d.subject, shipped)));
+        expect([...keys], form.name).toHaveLength(1);
+        byLast.set(form.last, new Set([...(byLast.get(form.last) ?? []), ...keys]));
+      }
+      for (const [last, keys] of byLast) expect([...keys], last).toHaveLength(1);
+      // The pairs a per-subject check would otherwise false-resolve.
+      const keyOf = (ref: string) => {
+        const index = forms.findIndex((form) => form.refs.includes(ref));
+        const line = forms[index]!.refs.indexOf(ref) + 1;
+        return checkKey(result.declarations.find((d) => d.file === `k${index}.Dockerfile` && d.line === line)!.subject, shipped);
+      };
+      expect(new Set(["mongo", "bitnami/mongodb", "registry.example/mongo", "registry.example/mongodb"].map(keyOf))).toEqual(new Set(["product:mongodb"]));
+      expect(new Set(["postgres", "postgresql", "bitnami/postgresql", "registry.example/postgres", "registry.example/postgresql"].map(keyOf))).toEqual(new Set(["product:postgresql"]));
+      expect(new Set(["openjdk", "eclipse-temurin", "amazoncorretto", "registry.example/openjdk", "java"].map(keyOf))).toEqual(new Set(["runtime:java"]));
+      expect(new Set(["jenkins/jenkins", "bitnami/jenkins", "registry.example/jenkins"].map(keyOf))).toEqual(new Set(["package:maven:org.jenkins-ci.main:jenkins-core"]));
+    } finally {
+      await rm(work, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("checkKey: one key per piece of software, whatever image names it (4.1 M8 Ruling 3)", () => {
+  const table = [
+    { product: "postgres", cycle: "12", eol: "2024-11-14", latest: "12.22", source: "https://endoflife.date/postgresql" },
+    { product: "postgresql", cycle: "12", eol: "2024-11-14", latest: "12.22", source: "https://endoflife.date/postgresql" },
+    { product: "mongodb", cycle: "4.4", eol: "2024-02-29", latest: "4.4.29", source: "https://endoflife.date/mongodb" },
+    { product: "httpd", cycle: "2.2", eol: "2017-07-01", latest: "2.2.34", source: "https://endoflife.date/apache-http-server" },
+    { product: "node", cycle: "16", eol: "2023-09-11", latest: "16.20.2", source: "https://nodejs.org/en/about/previous-releases" },
+  ];
+  const ds = { ...dataset([], table), aliases: { "Maven:org.example:old": "Maven:org.example:new" } };
+
+  test("product and end-of-life-only subjects fold to the endoflife.date family", () => {
+    expect(checkKey({ type: "image-eol", product: "postgres" }, ds)).toBe("product:postgresql");
+    expect(checkKey({ type: "image-eol", product: "postgresql" }, ds)).toBe("product:postgresql");
+    expect(checkKey({ type: "product", product: "mongodb" }, ds)).toBe("product:mongodb");
+    expect(checkKey({ type: "image-eol", product: "mongodb" }, ds)).toBe("product:mongodb");
+    expect(checkKey({ type: "product", product: "httpd" }, ds)).toBe("product:apache-http-server");
+    // No end-of-life entry, or a source that is not an endoflife.date page: the product name.
+    expect(checkKey({ type: "product", product: "grafana" }, ds)).toBe("product:grafana");
+    // An end-of-life-only image named for a runtime (`java:8`, `go:1.20`) is that runtime.
+    expect(checkKey({ type: "image-eol", product: "node" }, ds)).toBe("runtime:node");
+    expect(checkKey({ type: "image-eol", product: "java" }, ds)).toBe("runtime:java");
+  });
+
+  test("runtimes and packages keep their subject keys (aliases applied, names normalised)", () => {
+    expect(checkKey({ type: "runtime", runtime: "java" }, ds)).toBe("runtime:java");
+    expect(checkKey({ type: "package", ecosystem: "Maven", name: "org.example:old" }, ds)).toBe("package:maven:org.example:new");
+    expect(checkKey({ type: "package", ecosystem: "npm", name: "Lodash" }, ds)).toBe("package:npm:lodash");
   });
 });
 

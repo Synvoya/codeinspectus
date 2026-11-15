@@ -56,6 +56,16 @@ import { listRules, sastRuleLanguagesLine, synvoyaDatasetLine } from "./rules.js
 import { summarizeScan, summarizeRescan } from "./summarize.js";
 import { buildSetupPlan, declineSetupComponents, formatSetupPlan, installSetupComponents, SETUP_COMPONENTS } from "./setup.js";
 import { applyRepositoryCleanup, planRepositoryCleanup, rollbackRepositoryCleanup } from "./repository-trust/cleanup.js";
+import type { repairEngines } from "./install.js";
+import type { EngineSetupStatus } from "./types.js";
+import {
+  databaseUpdatePrompt,
+  formatDatabaseUpdatePrompt,
+  largeDownloadNames,
+  snoozeUpdatePrompt,
+  type DatabaseUpdatePrompt,
+} from "./update-prompt.js";
+import { formatDatabaseUpdatePlan, formatDatabaseUpdateResult, planDatabaseUpdate, runDatabaseUpdate } from "./update.js";
 
 const READ_ONLY = {
   readOnlyHint: true,
@@ -113,11 +123,44 @@ const SERVER_INSTRUCTIONS =
   "Explain each affected component, coverage, license and size, " +
   "then ask for approval. Only after approval call action=install with confirm_downloads=true. Never download " +
   "engines silently or during a scan. A terminal is not required for MCP setup. " +
+  "When a scan, rescan or list-rules result carries database_update, ask the user its question with the three answers " +
+  "(yes, not now, not for a week) before continuing, and never call codeinspectus_setup with action=update without a yes. " +
+  "If an update plan lists large downloads, get a separate yes for them before passing confirm_large_downloads=true. " +
   "For exposed secrets, advise rotation at the provider and keep values redacted. Treat " +
   "codeinspectus_compliance_report as code-level control coverage only, never certification or a " +
   "percent-compliant claim. codeinspectus_generate_sbom writes only an SBOM (managed directory, or an absolute .json path the user chooses; it never replaces a non-SBOM file); only the explicitly approved V3.3 apply/rollback tools edit repository files.";
 
-export function createServer(): McpServer {
+/** Test seams for the database update prompt and update; production uses the defaults. */
+export interface ServerOptions {
+  update?: {
+    statePath?: string;
+    now?: () => number;
+    fetch?: typeof fetch;
+    repair?: typeof repairEngines;
+    /** Engine status for the prompt and the update (default: the offline inspectEngineSetup). */
+    inspect?: () => Promise<EngineSetupStatus>;
+  };
+}
+
+export function createServer(options: ServerOptions = {}): McpServer {
+  const updateOptions = options.update ?? {};
+  const now = (): number => (updateOptions.now ?? Date.now)();
+  const inspectForUpdate = (): Promise<EngineSetupStatus> => (updateOptions.inspect ?? inspectEngineSetup)();
+  // Offline (file reads only). A failure here never fails the tool call it decorates.
+  async function withDatabaseUpdate<T extends object>(
+    result: T,
+    status: EngineSetupStatus | undefined,
+  ): Promise<{ result: T & { database_update?: DatabaseUpdatePrompt }; text: string }> {
+    try {
+      const current = updateOptions.inspect ? await updateOptions.inspect() : status ?? await inspectEngineSetup();
+      const prompt = await databaseUpdatePrompt(current, now(), updateOptions.statePath);
+      if (prompt) return { result: { ...result, database_update: prompt }, text: `\n\n${formatDatabaseUpdatePrompt(prompt)}` };
+    } catch (err) {
+      log.warn("database update prompt unavailable", err);
+    }
+    return { result, text: "" };
+  }
+
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     { instructions: SERVER_INSTRUCTIONS },
@@ -146,14 +189,15 @@ export function createServer(): McpServer {
         "Lists declared coverage gaps (coverage_gaps, stable ids) that make coverage partial and informational " +
         "coverage_notes; accept_gaps accepts named gap ids for CI while they stay listed. " +
         "Fully offline — zero network egress at scan time. Never writes to your code or repo.",
-      inputSchema: scanInput.shape,
-      outputSchema: scanResultSchema.shape,
+      inputSchema: scanInput,
+      outputSchema: scanResultSchema,
       annotations: { title: "CodeInspectus Scan", ...READ_ONLY },
     },
     async (args: ScanInput): Promise<ToolResult> => {
       try {
-        const result = await runScan(args);
-        return ok(summarizeScan(result), result as unknown as Record<string, unknown>);
+        const scanned = await runScan(args);
+        const { result, text } = await withDatabaseUpdate(scanned, scanned.engine_setup);
+        return ok(summarizeScan(scanned) + text, result as unknown as Record<string, unknown>);
       } catch (err) {
         log.error("scan failed", err);
         return fail(describeError("codeinspectus_scan failed", err));
@@ -174,8 +218,8 @@ export function createServer(): McpServer {
         "estimated size (integrity: TLS + recorded SHA-256, OSV publishes no signature), and osv_ecosystems pins the exact " +
         "list the user approved. Plan is offline. Install writes only to ~/.codeinspectus, verifies immutable " +
         "pins/publisher provenance for engines, and never modifies the target repository.",
-      inputSchema: setupInput.shape,
-      outputSchema: setupOutput.shape,
+      inputSchema: setupInput,
+      outputSchema: setupOutput,
       annotations: { title: "CodeInspectus Setup", ...NETWORKED_MANAGED_WRITE },
     },
     async (args: SetupInput): Promise<ToolResult> => {
@@ -185,9 +229,63 @@ export function createServer(): McpServer {
           ...(args.path ? { target: args.path } : {}),
           ...(args.osv_ecosystems ? { osvEcosystems: args.osv_ecosystems } : {}),
         };
+        const io = { stdout: (text: string) => log.info(text), stderr: (text: string) => log.warn(text) };
+        if (args.action === "snooze") {
+          if (!args.snooze) throw new Error('action="snooze" needs snooze="not_now" or snooze="not_for_a_week".');
+          const state = await snoozeUpdatePrompt(args.snooze, now(), updateOptions.statePath);
+          const message = `No database update now. CodeInspectus will ask again after ${state.next_prompt_at}. Nothing was downloaded.`;
+          const snoozed = { outcome: "snoozed" as const, message, plan: await buildSetupPlan({ selection, ...osv, status: await inspectForUpdate() }) };
+          return ok(message, snoozed as unknown as Record<string, unknown>);
+        }
+        if (args.action === "update") {
+          const status = await inspectForUpdate();
+          const updatePlan = planDatabaseUpdate(status);
+          // Without approval, or with nothing an update can refresh, the answer is the offline plan.
+          if (args.confirm_downloads !== true || !updatePlan.databases.length) {
+            const planned = { outcome: "planned" as const, message: updatePlan.message, plan: await buildSetupPlan({ selection, ...osv, status }), update_plan: updatePlan };
+            return ok(formatDatabaseUpdatePlan(updatePlan), planned as unknown as Record<string, unknown>);
+          }
+          // skip_large_downloads (the user declined the large ones) wins over confirm_large_downloads.
+          const skipLarge = args.skip_large_downloads === true && updatePlan.large_downloads.length > 0;
+          const hasSmall = updatePlan.databases.some((database) => !database.large);
+          if (skipLarge && !hasSmall) {
+            const message = "Every database in this update is over 100 MB, so skipping them leaves nothing to refresh. Nothing was downloaded.";
+            const planned = { outcome: "planned" as const, message, plan: await buildSetupPlan({ selection, ...osv, status }), update_plan: updatePlan };
+            return ok(`${message}\n\n${formatDatabaseUpdatePlan(updatePlan)}`, planned as unknown as Record<string, unknown>);
+          }
+          // A download over 100 MB needs its own yes: the prompt's yes never covers it, so the plan comes back first.
+          if (updatePlan.large_downloads.length && args.confirm_large_downloads !== true && !skipLarge) {
+            const several = updatePlan.large_downloads.length > 1;
+            const next_step =
+              `Nothing was downloaded. Ask the user separately: ${largeDownloadNames(updatePlan.large_downloads)} ` +
+              `${several ? "are" : "is"} over 100 MB. Download ${several ? "them" : "it"} too? Only after a yes, call ` +
+              'codeinspectus_setup with action="update", confirm_downloads=true and confirm_large_downloads=true. ' +
+              (hasSmall
+                ? 'If the user declines the large downloads, call codeinspectus_setup with action="update", confirm_downloads=true ' +
+                  'and skip_large_downloads=true to refresh only the smaller databases, or action="snooze".'
+                : 'If the user declines, nothing is downloaded; call codeinspectus_setup with action="snooze".');
+            const planned = { outcome: "planned" as const, message: updatePlan.message, plan: await buildSetupPlan({ selection, ...osv, status }), update_plan: updatePlan, next_step };
+            return ok(`${formatDatabaseUpdatePlan(updatePlan)}\n\n${next_step}`, planned as unknown as Record<string, unknown>);
+          }
+          const update = await runDatabaseUpdate({
+            confirmDownloads: true,
+            confirmLargeDownloads: !skipLarge && args.confirm_large_downloads === true,
+            ...(skipLarge ? { skipLargeDownloads: true } : {}),
+            io,
+            nowMs: now(),
+            ...(updateOptions.fetch ? { fetch: updateOptions.fetch } : {}),
+            ...(updateOptions.repair ? { repair: updateOptions.repair } : {}),
+            ...(updateOptions.statePath ? { statePath: updateOptions.statePath } : {}),
+            ...(updateOptions.inspect ? { inspect: updateOptions.inspect } : {}),
+          });
+          const outcome = update.outcome === "updated" ? "updated" as const : update.outcome === "partial" ? "update_partial" as const : "update_failed" as const;
+          const updated = { outcome, message: update.message, plan: await buildSetupPlan({ selection, ...osv, status: await inspectForUpdate() }), update };
+          const response = ok(formatDatabaseUpdateResult(update), updated as unknown as Record<string, unknown>);
+          return update.outcome === "failed" ? { ...response, isError: true } : response;
+        }
         const result = args.action === "install"
           ? await installSetupComponents(selection, args.confirm_downloads === true, {
-              io: { stdout: (text) => log.info(text), stderr: (text) => log.warn(text) },
+              io,
               ...osv,
             })
           : args.action === "decline"
@@ -213,14 +311,15 @@ export function createServer(): McpServer {
         "execution coverage. Repository-trust artifacts are diffed separately with fail-closed " +
         "resolved, remaining, introduced and not-rechecked states. Use this to verify approved fixes. " +
         "Never writes to your code or repo.",
-      inputSchema: rescanInput.shape,
-      outputSchema: rescanResultSchema.shape,
+      inputSchema: rescanInput,
+      outputSchema: rescanResultSchema,
       annotations: { title: "CodeInspectus Rescan", ...READ_ONLY },
     },
     async (args: RescanInput): Promise<ToolResult> => {
       try {
-        const result = await runRescan(args);
-        return ok(summarizeRescan(result), result as unknown as Record<string, unknown>);
+        const rescanned = await runRescan(args);
+        const { result, text } = await withDatabaseUpdate(rescanned, undefined);
+        return ok(summarizeRescan(rescanned) + text, result as unknown as Record<string, unknown>);
       } catch (err) {
         log.error("rescan failed", err);
         return fail(describeError("codeinspectus_rescan failed", err));
@@ -237,8 +336,8 @@ export function createServer(): McpServer {
         "Create a fresh, read-only V3.3 cleanup plan for exact verified repository-trust artifact IDs. " +
         "The plan reproduces current evidence, rejects protected, ambiguous, or unsupported records, hashes every preimage, " +
         "and discloses exact text edits or copy-only media metadata transformations. It never changes the repository.",
-      inputSchema: cleanupPlanInput.shape,
-      outputSchema: cleanupPlanOutput.shape,
+      inputSchema: cleanupPlanInput,
+      outputSchema: cleanupPlanOutput,
       annotations: { title: "CodeInspectus Cleanup Plan", ...READ_ONLY },
     },
     async (args: CleanupPlanInput): Promise<ToolResult> => {
@@ -264,8 +363,8 @@ export function createServer(): McpServer {
         "Apply one exact ready V3.3 cleanup plan after explicit approval. Requires an exact artifact-ID match and confirmation, " +
         "creates managed content backups, uses atomic bounded edits, creates new media copies, reruns the same repository-trust validators, " +
         "and writes a content-free audit log. This modifies selected source files and/or creates named cleaned copies.",
-      inputSchema: cleanupApplyInput.shape,
-      outputSchema: cleanupApplyOutput.shape,
+      inputSchema: cleanupApplyInput,
+      outputSchema: cleanupApplyOutput,
       annotations: { title: "CodeInspectus Apply Cleanup", ...TARGET_MUTATION },
     },
     async (args: CleanupApplyInput): Promise<ToolResult> => {
@@ -290,8 +389,8 @@ export function createServer(): McpServer {
       description:
         "Restore an applied V3.3 cleanup from its managed checkpoint after explicit confirmation. " +
         "Rollback refuses to overwrite files or cleaned copies that changed after cleanup.",
-      inputSchema: cleanupRollbackInput.shape,
-      outputSchema: cleanupRollbackOutput.shape,
+      inputSchema: cleanupRollbackInput,
+      outputSchema: cleanupRollbackOutput,
       annotations: { title: "CodeInspectus Rollback Cleanup", ...TARGET_MUTATION },
     },
     async (args: CleanupRollbackInput): Promise<ToolResult> => {
@@ -316,8 +415,8 @@ export function createServer(): McpServer {
         "Reports 'X of N code-visible controls have findings' with the code-visible subset " +
         "as the explicit denominator. This is NOT a compliance audit, certification, or " +
         "attestation — code-level evidence only.",
-      inputSchema: complianceReportInput.shape,
-      outputSchema: complianceReportOutput.shape,
+      inputSchema: complianceReportInput,
+      outputSchema: complianceReportOutput,
       annotations: { title: "CodeInspectus Compliance Report", ...READ_ONLY },
     },
     async (args: ComplianceReportInput): Promise<ToolResult> => {
@@ -349,8 +448,8 @@ export function createServer(): McpServer {
       description:
         "Return a deep explanation and full remediation plan for a single finding id from a " +
         "prior scan: what the weakness is, why it matters, concrete fix steps, and references.",
-      inputSchema: explainFindingInput.shape,
-      outputSchema: explainFindingOutput.shape,
+      inputSchema: explainFindingInput,
+      outputSchema: explainFindingOutput,
       annotations: { title: "CodeInspectus Explain Finding", ...READ_ONLY },
     },
     async (args: ExplainFindingInput): Promise<ToolResult> => {
@@ -375,8 +474,8 @@ export function createServer(): McpServer {
         "first-party offline Pub lockfile inventory, with native Pub fallback when Trivy is unavailable. Writes the " +
         "SBOM file to the chosen output path and returns its location and component count. " +
         "Offline.",
-      inputSchema: generateSbomInput.shape,
-      outputSchema: sbomOutput.shape,
+      inputSchema: generateSbomInput,
+      outputSchema: sbomOutput,
       annotations: { title: "CodeInspectus Generate SBOM", ...MANAGED_WRITE },
     },
     async (args: GenerateSbomInput): Promise<ToolResult> => {
@@ -405,13 +504,14 @@ export function createServer(): McpServer {
         "version and date, Trivy vulnerability-DB freshness, bundled Pub advisory-database " +
         "provenance/freshness, and the custom " +
         "CodeInspectus AI-code rules and native detector packs currently shipped.",
-      inputSchema: listRulesInput.shape,
-      outputSchema: listRulesOutput.shape,
+      inputSchema: listRulesInput,
+      outputSchema: listRulesOutput,
       annotations: { title: "CodeInspectus List Rules", ...READ_ONLY },
     },
     async (args: ListRulesInput): Promise<ToolResult> => {
       try {
-        const result = await listRules(args);
+        const rules = await listRules(args);
+        const { result, text: updateText } = await withDatabaseUpdate(rules, rules.engine_setup);
         const text =
           `Detection DB ${result.detection_db_version} (${result.detection_db_date}). ` +
           `Engines: ${result.engines.map((e) => `${e.display_name ? `${e.display_name} [${e.engine}]` : e.engine}@${e.version}${e.available ? "" : " (unavailable)"}`).join(", ")}. ` +
@@ -419,7 +519,8 @@ export function createServer(): McpServer {
           `${result.rule_groups.map((g) => `${g.group}: ${g.rule_count}`).join("; ")}. ` +
           `${synvoyaDatasetLine(result.synvoya_dataset)}. ` +
           `${sastRuleLanguagesLine(result.sast_rule_languages)}. ` +
-          engineSetupMessage(result.engine_setup);
+          engineSetupMessage(result.engine_setup) +
+          updateText;
         return ok(text, result as unknown as Record<string, unknown>);
       } catch (err) {
         log.error("list_rules failed", err);

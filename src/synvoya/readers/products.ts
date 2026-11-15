@@ -9,7 +9,7 @@
 
 import type { Declaration, ReaderOptions, ReaderResult } from "../types.js";
 
-import { readCandidate, walkCandidates, type WalkMatcher } from "./walk.js";
+import { readCandidate, reportedPath, reportedSkips, walkCandidates, type WalkMatcher } from "./walk.js";
 
 type Product = "adobe-commerce" | "magento-open-source" | "wordpress";
 
@@ -269,8 +269,8 @@ export async function readProducts(target: string, options: ReaderOptions = {}):
   try {
     const locks = await walkCandidates(target, LOCK_MATCHERS, { maxFileBytes: LOCK_MAX_BYTES }, { signal: options.signal, only: options.only });
     const php = await walkCandidates(target, PHP_MATCHERS, { maxFileBytes: PHP_MAX_BYTES }, { vendor: VENDOR_WALK, signal: options.signal, only: options.only });
-    for (const entry of locks.skipped) result.skipped.push(entry);
-    for (const entry of php.skipped) result.skipped.push(entry);
+    for (const entry of reportedSkips(locks.skipped, options)) result.skipped.push(entry);
+    for (const entry of reportedSkips(php.skipped, options)) result.skipped.push(entry);
 
     const queue: Array<{ file: string; lock: boolean }> = [];
     for (const file of locks.files) queue.push({ file, lock: true });
@@ -279,7 +279,9 @@ export async function readProducts(target: string, options: ReaderOptions = {}):
     }
 
     let consumed = 0;
-    for (const { file, lock } of queue) {
+    for (const { file: walkedFile, lock } of queue) {
+      // Dispatch reads the walked path; everything reported names the file as the scan shows it (onlyAs).
+      const file = reportedPath(walkedFile, options);
       if (options.signal?.aborted) {
         result.skipped.push({ file, reason: "deadline" });
         continue;
@@ -291,7 +293,7 @@ export async function readProducts(target: string, options: ReaderOptions = {}):
         result.skipped.push({ file, reason: "budget" });
         continue;
       }
-      const text = await readCandidate(target, file, lock ? LOCK_MAX_BYTES : PHP_MAX_BYTES);
+      const text = await readCandidate(target, walkedFile, lock ? LOCK_MAX_BYTES : PHP_MAX_BYTES);
       if (text === undefined) {
         result.skipped.push({ file, reason: "unreadable" });
         continue;

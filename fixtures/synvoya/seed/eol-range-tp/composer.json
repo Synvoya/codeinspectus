@@ -1,0 +1,6 @@
+{
+  "name": "acme/legacy-app",
+  "require": {
+    "php": ">=7.4 <8.1"
+  }
+}

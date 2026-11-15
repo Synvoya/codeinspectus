@@ -353,3 +353,36 @@ describe("summarizeScan - Synvoya (CodeInspectus) family wording", () => {
     expect(summarizeScan(mkResult({ engines_run: ["opengrep@1", "trivy@2"] }))).toContain("Engines: opengrep@1, trivy@2 |");
   });
 });
+
+// 4.1 M9 (A5): dependency findings read as upgrade tasks, ahead of the finding list.
+describe("summarizeScan — upgrade actions", () => {
+  test("leads with the upgrade list, after the headline", () => {
+    const out = summarizeScan(mkResult({
+      upgrade_actions: [
+        { ecosystem: "npm", name: "next", version: "16.3.3", upgrade_to: "16.4.1", resolves: 11, unresolved: 0, highest_severity: "critical", dev_only: false },
+        { ecosystem: "npm", name: "undici", version: "7.25.0", upgrade_to: "8.0.1", resolves: 10, unresolved: 2, unresolved_fix_lines: ["7.x"], highest_severity: "high", dev_only: false },
+        { ecosystem: "npm", name: "left-pad", version: "1.0.0", resolves: 0, unresolved: 1, highest_severity: "low", dev_only: true },
+        { ecosystem: "GitHub Actions", name: "a/b", version: "8e5e7e5ab8b370d6c329ec480221332ada57f0ab", upgrade_to: "46.0.1", resolves: 0, unresolved: 1, highest_severity: "low", dev_only: false },
+      ],
+    }));
+    expect(out).toContain(
+      "Upgrades: 4 package version(s) carry 25 dependency finding(s); upgrading them resolves 21:\n" +
+      "  - next 16.3.3 → 16.4.1: resolves 11 finding(s) (highest critical)\n" +
+      "  - undici 7.25.0 → 8.0.1: resolves 10 finding(s), 2 not confirmed fixed by that version (fix listed only on 7.x) (highest high)\n" +
+      "  - left-pad 1.0.0: no listed fix for 1 finding(s); remove, replace or assess (highest low, dev only)\n" +
+      "  - a/b 8e5e7e5ab8b370d6c329ec480221332ada57f0ab: pinned by commit SHA; compare the pin against fixed version 46.0.1 manually (1 finding(s); highest low)",
+    );
+    expect(out.indexOf("Upgrades:")).toBeLessThan(out.indexOf("No findings."));
+  });
+
+  test("lists ten and points at the rest; says nothing without dependency findings", () => {
+    const many = Array.from({ length: 12 }, (_, index) => ({
+      ecosystem: "npm", name: `pkg${index}`, version: "1.0.0", upgrade_to: "1.0.1", resolves: 1, unresolved: 0,
+      highest_severity: "medium" as const, dev_only: false,
+    }));
+    const out = summarizeScan(mkResult({ upgrade_actions: many }));
+    expect(out).toContain("… and 2 more in upgrade_actions.");
+    expect(out).not.toContain("pkg10 ");
+    expect(summarizeScan(mkResult())).not.toContain("Upgrades:");
+  });
+});

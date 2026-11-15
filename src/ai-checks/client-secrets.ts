@@ -11,7 +11,8 @@
  */
 
 import type { Finding, Severity } from "../types.js";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
 import { BUILD_DIRS } from "../config.js";
 import { collectFiles, collectOversizedBuildFiles, lineOf, lineText } from "./walk.js";
 import {
@@ -58,11 +59,160 @@ const PUBLIC_ENV_SECRET_RE =
 // MUST be redactable by redactSnippet's SECRET_PATTERNS (detector ⊆ redactor).
 export const JWT_RE = /eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
 
-// Known PUBLIC-by-design keys: a client-exposed prefix on these is correct, not a
-// leak. Firebase web API keys are explicitly public (Google docs: not a secret;
-// access is gated by Firebase Security Rules, not key secrecy). Skip them so the
-// public-env-secret check doesn't false-fire (CG-05 dogfooding fix).
-const KNOWN_PUBLIC_KEY_RE = /FIREBASE[_]?API[_]?KEY/i;
+// Known PUBLIC-by-design keys: a client-exposed prefix on these is correct, not a leak.
+// 4.1 M9 (Ruling 8): a closed table. Each entry names a provider whose own documentation says the key is
+// meant for client use; the pattern is matched against the env name without its public prefix, anchored at
+// the end. Any doubt → left out (Segment's write key is left out: its name says WRITE).
+const PUBLIC_SDK_KEYS: ReadonlyArray<{ provider: string; reason: string; re: RegExp }> = [
+  { provider: "Firebase", reason: "web API keys identify the project; access is gated by Security Rules (CG-05)", re: /FIREBASE_?API_?KEY/i },
+  { provider: "Google Maps Platform", reason: "Maps JavaScript/Places browser keys are used in the page and restricted by HTTP referrer", re: /(?:^|_)(?:GOOGLE_?MAPS?|GOOGLE_?PLACES|GMAPS?)(?:_(?:JS|JAVASCRIPT|BROWSER|WEB|EMBED))?_?API_?KEY$/i },
+  { provider: "reCAPTCHA / hCaptcha / Turnstile", reason: "site keys are embedded in the page; the secret key is separate", re: /(?:^|_)(?:RECAPTCHA|HCAPTCHA|TURNSTILE|CAPTCHA)_?SITE_?(?:API_?)?KEY$/i },
+  { provider: "Stripe", reason: "publishable keys (pk_) are for Stripe.js in the browser", re: /(?:^|_)STRIPE_?(?:PUBLISHABLE|PUBLIC)_?(?:API_?)?KEY$/i },
+  { provider: "Mixpanel", reason: "the project token is sent by the browser SDK with every event", re: /(?:^|_)MIXPANEL_?(?:PROJECT_?)?TOKEN$/i },
+  { provider: "PostHog", reason: "the project API key (phc_) is for the browser SDK; personal API keys are not matched", re: /(?:^|_)POSTHOG_?(?:PROJECT_?)?(?:API_?)?KEY$/i },
+  { provider: "Amplitude", reason: "the project API key is used by the browser SDK; the secret key is separate", re: /(?:^|_)AMPLITUDE_?API_?KEY$/i },
+  { provider: "Algolia", reason: "search-only API keys are meant for front-end search", re: /(?:^|_)ALGOLIA_?SEARCH(?:_?ONLY)?_?(?:API_?)?KEY$/i },
+  { provider: "Mapbox", reason: "public access tokens (pk.) are for map clients; the name must say PUBLIC or a client platform (a bare MAPBOX_ACCESS_TOKEN may hold a secret sk. token)", re: /(?:^|_)MAPBOX_?(?:PUBLIC|WEB|IOS|ANDROID|GL|JS)_?(?:ACCESS_?)?TOKEN$/i },
+  { provider: "RevenueCat", reason: "public app-specific SDK keys are for the mobile and web SDKs; the name must say PUBLIC or a platform (a bare REVENUECAT_API_KEY may be the secret key)", re: /(?:^|_)REVENUE_?CAT_?(?:IOS|APPLE|ANDROID|GOOGLE|AMAZON|WEB|STRIPE|PUBLIC)_?(?:SDK_?)?API_?KEY$/i },
+];
+/** A name that also says any of these is never treated as a public key (Ruling 8). */
+const NEVER_PUBLIC_RE = /SECRET|PRIVATE|SERVICE_?ROLE|ADMIN|AUTH_?TOKEN|MANAGEMENT|WRITE|SERVER|MASTER|PERSONAL/i;
+const PUBLIC_ENV_PREFIX_RE = /^(?:NEXT_PUBLIC_|VITE_|REACT_APP_|EXPO_PUBLIC_|GATSBY_|NUXT_PUBLIC_|PUBLIC_)/;
+
+export function isPublicSdkKeyName(envName: string): boolean {
+  if (NEVER_PUBLIC_RE.test(envName)) return false;
+  const name = envName.replace(PUBLIC_ENV_PREFIX_RE, "");
+  return PUBLIC_SDK_KEYS.some((entry) => entry.re.test(name));
+}
+
+/**
+ * 4.1 M9: PM2 `ecosystem.config.*` holds server process env; it never ships to a browser. Exempt only a file
+ * outside build output, at the scan root or a package root (a `package.json` beside it), with PM2's shape
+ * (`module.exports = { … apps: [ … ] }`, `export default { … apps: [ … ] }`); any other file is scanned.
+ */
+const SERVER_ONLY_CONFIG_RE = /(?:^|\/)ecosystem\.config\.(?:js|cjs|mjs|ts|json)$/;
+const PM2_EXPORT_RE = /(?:\bmodule\.exports\s*=|\bexport\s+default)\s*\{/;
+const PM2_APPS_RE = /(?:^|[{,\s])["']?apps["']?\s*:\s*\[/m;
+
+async function isPm2EcosystemFile(target: string, rel: string, content: string, built: boolean): Promise<boolean> {
+  if (built || !SERVER_ONLY_CONFIG_RE.test(rel)) return false;
+  if (!PM2_EXPORT_RE.test(content) || !PM2_APPS_RE.test(content)) return false;
+  const dir = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : "";
+  if (dir === "") return true;
+  try {
+    return (await stat(join(target, ...dir.split("/"), "package.json"))).isFile();
+  } catch {
+    return false;
+  }
+}
+
+const NUXT_CONFIG_RE = /(?:^|\/)nuxt\.config\.(?:js|cjs|mjs|ts|mts)$/;
+/** The Nuxt runtimeConfig analysis runs only on configs up to this size; a larger file is scanned normally. */
+const NUXT_ANALYSIS_MAX_BYTES = 256 * 1024;
+/** Direct children of `runtimeConfig` that Nuxt exposes to the client. */
+const NUXT_CLIENT_KEYS = new Set(["public", "app"]);
+
+/**
+ * One linear pass: blank comments and string contents (offsets preserved). A quoted object key
+ * (`'public':`, `"app":`) keeps its identifier text so key lookup sees it. Returns undefined for an
+ * unterminated string or comment.
+ */
+function maskCodeText(content: string): string | undefined {
+  const out = content.split("");
+  let i = 0;
+  const n = content.length;
+  while (i < n) {
+    const ch = content[i]!;
+    const next = content[i + 1];
+    if (ch === "/" && next === "/") {
+      while (i < n && content[i] !== "\n") out[i++] = " ";
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      const close = content.indexOf("*/", i + 2);
+      if (close < 0) return undefined;
+      for (let j = i; j < close + 2; j++) if (content[j] !== "\n") out[j] = " ";
+      i = close + 2;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`") {
+      const open = i;
+      let j = i + 1;
+      while (j < n && content[j] !== ch) {
+        if (content[j] === "\\") j++;
+        else if (ch !== "`" && content[j] === "\n") return undefined;
+        j++;
+      }
+      if (j >= n) return undefined;
+      const inner = content.slice(open + 1, j);
+      let after = j + 1;
+      while (after < n && (content[after] === " " || content[after] === "\t")) after++;
+      const quotedKey = ch !== "`" && /^[A-Za-z_$][\w$]*$/.test(inner) && content[after] === ":";
+      for (let k = open; k <= j; k++) {
+        if (quotedKey && k > open && k < j) continue;
+        if (content[k] !== "\n") out[k] = " ";
+      }
+      i = j + 1;
+      continue;
+    }
+    i++;
+  }
+  return out.join("");
+}
+
+interface ObjectSpan { key: string; open: number; close: number; parent?: ObjectSpan }
+
+/** The object literal key before `{` at `open` (`key: {`), read backwards over a bounded window. */
+function keyBefore(masked: string, open: number, floor: number): string {
+  let i = open - 1;
+  while (i > floor && /\s/.test(masked[i]!)) i--;
+  if (masked[i] !== ":") return "";
+  i--;
+  while (i > floor && /\s/.test(masked[i]!)) i--;
+  const end = i + 1;
+  while (i >= floor && /[\w$]/.test(masked[i]!)) i--;
+  return masked.slice(i + 1, end);
+}
+
+/** All `{…}` spans in one linear pass with a stack; undefined at the first unbalanced brace. */
+function objectSpans(masked: string): ObjectSpan[] | undefined {
+  const spans: ObjectSpan[] = [];
+  const stack: ObjectSpan[] = [];
+  let lastBrace = 0;
+  for (let i = 0; i < masked.length; i++) {
+    const ch = masked[i];
+    if (ch === "{") {
+      const span: ObjectSpan = { key: keyBefore(masked, i, lastBrace), open: i, close: -1, ...(stack.length ? { parent: stack.at(-1)! } : {}) };
+      stack.push(span);
+      lastBrace = i;
+    } else if (ch === "}") {
+      const span = stack.pop();
+      if (!span) return undefined;
+      span.close = i;
+      spans.push(span);
+      lastBrace = i;
+    }
+  }
+  return stack.length ? undefined : spans;
+}
+
+/**
+ * 4.1 M9: in a Nuxt config, a value assigned inside `runtimeConfig` but outside its client-exposed direct
+ * children (`public`, `app`, quoted or not) is server-only, whatever the env name says. Large, malformed or
+ * unbalanced configs get no exemption.
+ */
+function nuxtPrivateRuntimeConfigOffsets(content: string): (index: number) => boolean {
+  if (content.length > NUXT_ANALYSIS_MAX_BYTES) return () => false;
+  const masked = maskCodeText(content);
+  const spans = masked === undefined ? undefined : objectSpans(masked);
+  if (!spans) return () => false;
+  const runtime = spans.filter((span) => span.key === "runtimeConfig");
+  if (!runtime.length) return () => false;
+  const exposed = spans.filter((span) => span.parent?.key === "runtimeConfig" && runtime.includes(span.parent) &&
+    NUXT_CLIENT_KEYS.has(span.key));
+  const inside = (index: number, span: ObjectSpan) => index > span.open && index < span.close;
+  return (index) => runtime.some((span) => inside(index, span)) && !exposed.some((span) => inside(index, span));
+}
 
 // CG-25b B-11: `dangerouslyAllowBrowser: true` is the OpenAI/Anthropic-compatible SDK flag
 // whose ONLY purpose is to permit running the client in the browser — which ships the
@@ -132,17 +282,21 @@ export async function runClientSecretsAnalysis(target: string): Promise<ClientSe
     }
 
     // 2. Secret behind a client-exposed env prefix (deliberately browser-shipped).
-    for (const m of f.content.matchAll(PUBLIC_ENV_SECRET_RE)) {
+    // 4.1 M9: PM2 process env and Nuxt private runtimeConfig are server-only.
+    const serverOnlyConfig = await isPm2EcosystemFile(target, f.rel, f.content, built);
+    const nuxtPrivate = NUXT_CONFIG_RE.test(f.rel) ? nuxtPrivateRuntimeConfigOffsets(f.content) : () => false;
+    for (const m of serverOnlyConfig ? [] : f.content.matchAll(PUBLIC_ENV_SECRET_RE)) {
       const envName = m[1] ?? m[0];
-      // Public-by-design keys (e.g. Firebase web API key) behind a public prefix
+      // Public-by-design keys (the closed table above) behind a public prefix
       // are correct, not a leak — don't flag them.
-      if (KNOWN_PUBLIC_KEY_RE.test(envName)) continue;
+      if (isPublicSdkKeyName(envName)) continue;
+      if (nuxtPrivate(m.index ?? 0)) continue;
       const line = lineOf(f.content, m.index ?? 0);
       findings.push(
         makeAiFinding({
           ruleId: "ci-ai-public-env-secret",
           title: "Secret exposed via client-visible env prefix",
-          severity: "high",
+          severity: "low", // 4.1 M9 fresh-set gate: 3 hits, 0 true (Ruling 3)
           cwe: ["CWE-798", "CWE-312"],
           owasp_web: ["A07:2021"],
           owasp_llm: ["LLM02:2025"],
@@ -159,7 +313,7 @@ export async function runClientSecretsAnalysis(target: string): Promise<ClientSe
             ],
             references: ["CWE-798", "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"],
           },
-          confidence: "medium",
+          confidence: "low",
         }),
       );
     }
@@ -500,12 +654,22 @@ function SECRET_SCAN(content: string): { hits: SecretHit[]; truncated: boolean }
     pattern.re.lastIndex = 0;
     const lineAt = lineLookup(content);
     for (const match of content.matchAll(pattern.re)) {
-      const index = match.index ?? 0;
-      const value = match[0];
+      let index = match.index ?? 0;
+      let value = match[0];
+      // 4.1 M9: the lazy PEM match starts at the FIRST header; a header-only decoy before a real key must not
+      // hide it, so the block is re-read from the last header inside the span.
+      if (pattern.name === "Generic private key block") {
+        const last = value.lastIndexOf("-----BEGIN ");
+        if (last > 0) {
+          index += last;
+          value = value.slice(last);
+        }
+      }
       const line = lineAt(index);
       if (isSupabaseDemoJwt(value)) continue;
       if (pattern.name === "JSON Web Token" && isPublicRoleJwt(value)) continue;
       if (pattern.name === "JSON Web Token" && isServiceRoleJwt(value)) continue;
+      if (pattern.name === "Generic private key block" && !hasPemKeyBody(value)) continue;
       const key = `${line}:${value}`;
       if (seen.has(key)) continue;
       if (hits.length >= MAX_SECRET_LOCATIONS_PER_FILE) {
@@ -524,6 +688,26 @@ function SECRET_SCAN(content: string): { hits: SecretHit[]; truncated: boolean }
     if (truncated) break;
   }
   return { hits, truncated };
+}
+
+/**
+ * 4.1 M9: a PEM block is a key only when at least 64 base64 characters of key body sit between its
+ * header and footer in the same literal or template (whitespace and `\n` escapes allowed). Markers in
+ * `replace()` calls, a regex or a builder array carry no key material.
+ */
+const PEM_MIN_BODY_CHARS = 64;
+function hasPemKeyBody(block: string): boolean {
+  const body = block
+    .replace(/^-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/, "")
+    .replace(/-----END [A-Z0-9 ]*PRIVATE KEY-----$/, "")
+    // Fix round 1: escaped line breaks at any escaping depth (`\\n`, `\\\\n`) and escaped slashes (`\\/`) in JSON.
+    .replace(/\\+[nr]/g, "\n")
+    .replace(/\\+\//g, "/")
+    // RFC 1421 header lines of an encrypted key (Proc-Type, DEK-Info).
+    .replace(/^[\s"'`+,[]*[A-Za-z][A-Za-z-]*:[^\n]*$/gm, "")
+    // String concatenation and array syntax around a key split across literals.
+    .replace(/["'`+,[\]\s]+/g, "");
+  return /^[A-Za-z0-9+/]+={0,2}$/.test(body) && body.replace(/=+$/, "").length >= PEM_MIN_BODY_CHARS;
 }
 
 /** The public Supabase local-dev demo key (payload iss: supabase-demo) is published and

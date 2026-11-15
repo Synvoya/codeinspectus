@@ -130,6 +130,34 @@ function severityHeadline(r: ScanResult): string {
     "Lower severities are hidden by the display filter and kept in the stored scan.";
 }
 
+const UPGRADES_SHOWN = 10;
+
+/** 4.1 M9 (A5): the dependency findings as upgrade tasks, before the finding list. */
+function upgradeSummary(r: ScanResult): string {
+  const actions = r.upgrade_actions ?? [];
+  if (!actions.length) return "";
+  const findings = actions.reduce((total, action) => total + action.resolves + action.unresolved, 0);
+  const resolvable = actions.reduce((total, action) => total + action.resolves, 0);
+  const lines = actions.slice(0, UPGRADES_SHOWN).map((action) => {
+    const label = `${inlineField(action.name)} ${inlineField(action.version)}`;
+    const scope = action.dev_only ? ", dev only" : "";
+    const shaPinned = action.ecosystem === "GitHub Actions" && /^[0-9a-f]{7,40}$/i.test(action.version) && action.resolves === 0;
+    const fixed = shaPinned && action.upgrade_to
+      ? `${label}: pinned by commit SHA; compare the pin against fixed version ${inlineField(action.upgrade_to)} manually (${action.unresolved} finding(s); highest ${action.highest_severity}${scope})`
+      : action.upgrade_to
+      ? `${label} → ${inlineField(action.upgrade_to)}: resolves ${action.resolves} finding(s)` +
+        (action.unresolved
+          ? `, ${action.unresolved} not confirmed fixed by that version` +
+            (action.unresolved_fix_lines?.length ? ` (fix listed only on ${action.unresolved_fix_lines.map(inlineField).join(", ")})` : "")
+          : "")
+      : `${label}: no listed fix for ${action.unresolved} finding(s); remove, replace or assess`;
+    return shaPinned && action.upgrade_to ? `  - ${fixed}` : `  - ${fixed} (highest ${action.highest_severity}${scope})`;
+  });
+  const more = actions.length > UPGRADES_SHOWN ? `\n  … and ${actions.length - UPGRADES_SHOWN} more in upgrade_actions.` : "";
+  return `\n\nUpgrades: ${actions.length} package version(s) carry ${findings} dependency finding(s); ` +
+    `upgrading them resolves ${resolvable}:\n${lines.join("\n")}${more}`;
+}
+
 export function summarizeScan(r: ScanResult): string {
   const head =
     `CodeInspectus scan of ${inlineField(r.target)}\n` +
@@ -209,7 +237,7 @@ export function summarizeScan(r: ScanResult): string {
       ` | ${r.git_scope.entries.length} change record(s) | ${r.git_scope.primary_finding_count} changed-path finding(s) | ${r.git_scope.supporting_context_finding_count} supporting-context finding(s) | ${r.git_scope.completeness}`
     : "";
 
-  return `${head}${gitScope}${nativeCoverage}${repositoryTrust}${dependencyCoverage}${synvoyaSummary(r)}${body}${trunc}${controlEvidence}${dbProvenance}${engineSetup}${beforeFix}${eng}${gaps}${notes}${warn}\n\n${r.disclaimer}`;
+  return `${head}${upgradeSummary(r)}${gitScope}${nativeCoverage}${repositoryTrust}${dependencyCoverage}${synvoyaSummary(r)}${body}${trunc}${controlEvidence}${dbProvenance}${engineSetup}${beforeFix}${eng}${gaps}${notes}${warn}\n\n${r.disclaimer}`;
 }
 
 export function summarizeRescan(r: RescanResult): string {

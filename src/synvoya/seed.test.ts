@@ -13,8 +13,40 @@ import { compareVersions, schemeFor } from "./versions.js";
 /** Verdict `drop` in the approved 2026-11-03 seed list: never shipped. */
 const DROPPED = ["SYN-2026-102", "SYN-2026-132", "SYN-2026-262", "SYN-2026-286", "SYN-2026-316"];
 
-/** MinIO publishes RELEASE.<timestamp> tags only: the vendor fix is not a comparable version (no image maps to it). */
-const NOT_COMPARABLE = new Set(["SYN-2026-268", "SYN-2026-276"]);
+/**
+ * The documented skips in otherwise contiguous release numbering (4.1 M8 Ruling 2): PHP 6 was never released;
+ * .NET skipped 4 so as not to collide with .NET Framework 4.x.
+ */
+const EOL_SKIPS: Record<string, Array<[string, string]>> = { php: [["5.6", "7.0"]], dotnet: [["3.1", "5.0"]] };
+
+/**
+ * Every consecutive pair of a complete product's cycles (numeric order) is the next minor (7.3 -> 7.4), the next
+ * major with every other part zero or absent (7.4 -> 8.0, 9.6 -> 10, 17 -> 18), or a documented skip. Written
+ * here independently of the builder's own check, so each cross-checks the other on the shipped table.
+ */
+function numberingProblems(entries: ReadonlyArray<{ product: string; cycle: string }>, complete: readonly string[]): string[] {
+  const problems: string[] = [];
+  for (const product of complete) {
+    const cycles = entries.filter((entry) => entry.product === product).map((entry) => entry.cycle.split(".").map(Number));
+    cycles.sort((a, b) => {
+      for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) - (b[i] ?? 0);
+      return 0;
+    });
+    for (let k = 1; k < cycles.length; k++) {
+      const a = cycles[k - 1]!;
+      const b = cycles[k]!;
+      const width = Math.max(a.length, b.length);
+      const next = Array.from({ length: width }, (_, i) => i).some((i) =>
+        Array.from({ length: width }, (_, j) => j).every((j) => (j < i ? (b[j] ?? 0) === (a[j] ?? 0) : j === i ? (b[j] ?? 0) === (a[j] ?? 0) + 1 : (b[j] ?? 0) === 0)) &&
+        (i === 0 || i === width - 1),
+      );
+      const pair: [string, string] = [a.join("."), b.join(".")];
+      const skipped = (EOL_SKIPS[product] ?? []).some(([from, to]) => from === pair[0] && to === pair[1]);
+      if (!next && !skipped) problems.push(`${product} ${pair[0]} -> ${pair[1]}`);
+    }
+  }
+  return problems;
+}
 
 let dataset: SynvoyaDataset;
 
@@ -112,7 +144,6 @@ describe("shipped Synvoya seed dataset", () => {
   it("every range event and line is comparable in its target's version scheme", () => {
     const bad: string[] = [];
     for (const a of dataset.advisories) {
-      if (NOT_COMPARABLE.has(a.id)) continue;
       const scheme = schemeFor(a.target);
       for (const element of a.affected) {
         if (element.line !== undefined && !/^\d+(?:\.\d+)*$/.test(element.line)) bad.push(`${a.id} line ${element.line}`);
@@ -124,6 +155,20 @@ describe("shipped Synvoya seed dataset", () => {
       }
     }
     expect(bad).toEqual([]);
+  });
+
+  it("the MinIO entries compare under the minio-release scheme (4.1 M8; SYN-2026-268, SYN-2026-276)", () => {
+    const minio = dataset.advisories.filter((a) => a.target.type === "product" && a.target.product === "minio");
+    expect(minio.map((a) => a.id).sort()).toEqual(["SYN-2026-268", "SYN-2026-276"]);
+    for (const a of minio) {
+      expect(schemeFor(a.target), a.id).toBe("minio-release");
+      const events = a.affected.flatMap((element) => element.events.map((event) => Object.values(event)[0] as string)).filter((v) => v !== "0");
+      expect(events.length, a.id).toBeGreaterThan(0);
+      for (const value of events) expect(compareVersions("minio-release", value, value), `${a.id} ${value}`).toBe(0);
+    }
+    // No other product uses the MinIO scheme.
+    const others = dataset.advisories.filter((a) => a.target.type === "product" && a.target.product !== "minio");
+    for (const a of others) expect(schemeFor(a.target), a.id).not.toBe("minio-release");
   });
 
   it("only the mutable-tag config entry still waits for M2: the Go stdlib and GitHub Actions advisories have their readers", () => {
@@ -180,6 +225,25 @@ describe("shipped Synvoya seed dataset", () => {
     for (const product of ["node", "php", "python", "ruby", "go", "dotnet", "java", "postgres", "postgresql", "mysql", "redis", "mongodb"]) {
       expect(dataset.eol.some((entry) => entry.product === product), product).toBe(true);
     }
+  });
+
+  it("every complete end-of-life product lists every release line between its oldest and newest cycle (4.1 M8)", () => {
+    expect(dataset.eolComplete).toEqual(["dotnet", "php", "postgres", "postgresql", "python", "ruby"]);
+    expect(numberingProblems(dataset.eol, dataset.eolComplete)).toEqual([]);
+    for (const product of dataset.eolComplete) expect(dataset.eol.filter((entry) => entry.product === product).length, product).toBeGreaterThan(1);
+    // The check itself: a table missing an interior line fails it; an unflagged product is never checked.
+    const withoutPhp72 = dataset.eol.filter((entry) => !(entry.product === "php" && entry.cycle === "7.2"));
+    expect(numberingProblems(withoutPhp72, dataset.eolComplete)).toEqual(["php 7.1 -> 7.3"]);
+    const withoutDotnet7 = dataset.eol.filter((entry) => !(entry.product === "dotnet" && entry.cycle === "7.0"));
+    expect(numberingProblems(withoutDotnet7, ["dotnet"])).toEqual(["dotnet 6.0 -> 8.0"]);
+    // Java's Temurin list skips 9, 10 and 12-15: it could never be flagged complete.
+    expect(numberingProblems(dataset.eol, ["java"]).length).toBeGreaterThan(0);
+  });
+
+  it("the MinIO images map to the minio product (4.1 M8)", () => {
+    expect(dataset.productImages["minio/minio"]).toBe("minio");
+    expect(dataset.productImages["quay.io/minio/minio"]).toBe("minio");
+    expect(Object.hasOwn(dataset.productImages, "bitnami/minio")).toBe(false);
   });
 
   it("every image table entry leads somewhere: an advisory or an end-of-life product", () => {

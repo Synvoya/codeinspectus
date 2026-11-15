@@ -19,6 +19,7 @@ import type { EngineOutput } from "./types.js";
 import type { SarifLog } from "../sarif/types.js";
 import { invocationSignature, readTrivyDbContentDigest, signature, TRIVY_LICENSE_TOGGLED_INVOCATION } from "../provenance.js";
 import { devScopeFromReport, foldDevDuplicates, markDevScope } from "./trivy-dev-scope.js";
+import { markAliases, rubyAdvisoryAliases } from "./trivy-aliases.js";
 import { osvEcosystemForFile } from "../osv/ecosystems.js";
 
 const OFFLINE_FLAGS = [
@@ -39,6 +40,8 @@ export interface TrivyReportPackage {
   /** Target-relative lockfile, as Trivy names it. */
   file: string;
   line: number;
+  /** Trivy's `Dev: true` (a development-only package); absent otherwise. */
+  dev?: true;
 }
 
 /**
@@ -61,7 +64,7 @@ export function trivyReportPackages(report: unknown): TrivyReportPackage[] {
       if (typeof pkg.Name !== "string" || typeof pkg.Version !== "string" || !pkg.Name || !pkg.Version) continue;
       const start = records(pkg.Locations)[0]?.StartLine;
       const line = typeof start === "number" && Number.isInteger(start) && start > 0 ? start : 0;
-      out.push({ ecosystem, name: pkg.Name, version: pkg.Version, file, line });
+      out.push({ ecosystem, name: pkg.Name, version: pkg.Version, file, line, ...(pkg.Dev === true ? { dev: true as const } : {}) });
     }
   }
   return out;
@@ -152,6 +155,8 @@ export async function runTrivy(
     const report = await readFile(reportPath, "utf8").then((text) => JSON.parse(text) as unknown, () => undefined);
     markDevScope(sarif, devScopeFromReport(report));
     foldDevDuplicates(sarif);
+    // RubyGems CVEs that name exactly one GHSA carry it as an alias, so dedup joins osv-scanner's GHSA finding.
+    markAliases(sarif, rubyAdvisoryAliases(report));
     const packages = scanners.includes("vuln") ? trivyReportPackages(report) : [];
 
     return {

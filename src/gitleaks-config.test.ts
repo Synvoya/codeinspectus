@@ -63,6 +63,32 @@ describe("CodeInspectus Gitleaks extension", () => {
     ).toBe(false);
   });
 
+  // 4.1 M9 (A2): a UUID-keyed identifier map written one entry per line makes the generic rule read the previous
+  // label's tail as the keyword and the next UUID key as the secret. Only that shape, after a display-name label,
+  // is allowlisted (the Gitleaks "line" target holds both lines of the cross-line match).
+  test("allowlists only a UUID object key after a display-name entry of a UUID-keyed map", async () => {
+    const config = parseToml(await readFile("detection-db/gitleaks/codeinspectus.toml", "utf8")) as {
+      allowlists?: Array<GitleaksAllowlist & { targetRules?: string[] }>;
+    };
+    const entry = (config.allowlists ?? []).find((allowlist) => allowlist.description?.includes("UUID-keyed map"));
+    expect(entry).toMatchObject({ targetRules: ["generic-api-key"], regexTarget: "line" });
+    const expression = new RegExp(entry!.regexes![0]!);
+    const a = ["fbfc3007-154e-4ecc-", "8c0b-6e020557d7bd"].join("");
+    const b = ["cb69481e-8ff7-4039-", "93ec-0a2729a154a8"].join("");
+    for (const label of ["iCloud Keychain", "Google Password Manager", "YubiKey", "Windows Hello", "1Password"]) {
+      expect(expression.test(`\t"${a}": "${label}",\n\t"${b}": "Next",`), label).toBe(true);
+    }
+    // Still reported: a credential word or identifier as the previous label, a list element, a keyword line.
+    for (const label of ["api_key", "token", "apiKey", "Token", "Secret", "Password", "Private", "Key", "Auth", "Bearer", "Credentials", "Passwd"]) {
+      expect(expression.test(`\t"${a}": "${label}",\n\t"${b}": "Next",`), label).toBe(false);
+    }
+    expect(expression.test(`\t"api_key",\n\t"${b}",`)).toBe(false);
+    expect(expression.test(`\ttoken: \n\t\t"${b}",`)).toBe(false);
+    expect(expression.test(`\t"${a}": "YubiKey",\n\t"${b}",`)).toBe(false);
+    expect(expression.test(`apiKey:\n  "${b}"`)).toBe(false);
+    expect(expression.test(`secret_token", "${b}"`)).toBe(false);
+  });
+
   // Synvoya PHP pack (design 4.5): a committed Laravel APP_KEY is a secret, so Gitleaks (which redacts
   // it) reports it, and only in deployable env files -- never .env.example or test env files.
   test("reports a Laravel APP_KEY only in deployable .env files", async () => {

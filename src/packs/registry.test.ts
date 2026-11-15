@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  EXPERIMENTAL_NATIVE_RULE_IDS,
   listNativePacks,
   nativePackInventory,
   nativePackNotRunCoverage,
@@ -11,6 +12,9 @@ import {
 } from "./registry.js";
 import { aiFindingComponents, aiSignaturesForComponents } from "../provenance.js";
 import { runAiChecks } from "../ai-checks/index.js";
+import { runApiBoundaryChecks } from "../ai-checks/api-boundary.js";
+import { runClientSecretsAnalysis } from "../ai-checks/client-secrets.js";
+import { listRules } from "../rules.js";
 import { makeAiFinding } from "../ai-checks/finding.js";
 import { log } from "../logger.js";
 import type { DetectedTechnology } from "../types.js";
@@ -276,7 +280,7 @@ describe("native detector pack registry", () => {
       "javascript:bounded-structural-parser",
     ]));
     expect(new Set(ruleIds).size).toBe(ruleIds.length);
-    expect(ruleIds).toHaveLength(72);
+    expect(ruleIds).toHaveLength(70); // 72 minus 2 experimental (4.1 M9 Ruling 4)
 
     const javascriptAnalyzers = analyzers.filter((analyzer) => analyzer.packId === "javascript-typescript");
     expect(javascriptAnalyzers).toHaveLength(12);
@@ -394,7 +398,7 @@ describe("native detector pack registry", () => {
       expect.objectContaining({
         pack_id: "javascript-typescript",
         analyzers: { registered: 12 },
-        rules: { registered: 29 },
+        rules: { registered: 27 },
       }),
       expect.objectContaining({
         pack_id: "flutter",
@@ -501,7 +505,7 @@ describe("native detector pack registry", () => {
         pack_id: "javascript-typescript",
         state: "not_run",
         analyzers: { registered: 12, ran: 0 },
-        rules: { registered: 29, ran: 0 },
+        rules: { registered: 27, ran: 0 },
       }),
       expect.objectContaining({
         pack_id: "flutter",
@@ -913,4 +917,68 @@ describe("native detector pack execution accounting", () => {
       "codeinspectus-ai:invocation",
     ]);
   });
+});
+
+// 4.1 M9 Ruling 4: a native rule that failed the fresh-set precision gate is not reported, not counted, disclosed.
+describe("experimental native rules (4.1 M9 Ruling 4)", () => {
+  const EXPERIMENTAL = ["ci-ai-sensitive-api-response", "ci-ai-sensitive-log"];
+  const javascriptPack = () => listNativePacks().find((pack) => pack.id === "javascript-typescript")!;
+
+  test("the experimental set is the gate failures minus the owner override", () => {
+    expect([...EXPERIMENTAL_NATIVE_RULE_IDS].sort()).toEqual(EXPERIMENTAL);
+  });
+
+  test("experimental rules are absent from every analyzer, the inventory counts and list_rules", async () => {
+    const ruleIds = registeredNativeAnalyzers("").flatMap((analyzer) => analyzer.ruleIds);
+    const packRuleIds = listNativePacks().flatMap((pack) => pack.createAnalyzers("").flatMap((analyzer) => analyzer.ruleIds));
+    const rules = await listRules({});
+    for (const rule of EXPERIMENTAL) {
+      expect(ruleIds).not.toContain(rule);
+      expect(packRuleIds).not.toContain(rule);
+      expect(rules.custom_rules.map((entry) => entry.id)).not.toContain(rule);
+    }
+    expect(nativePackInventory().find((pack) => pack.pack_id === "javascript-typescript")?.rules.registered).toBe(27);
+    expect(rules.native_packs.find((pack) => pack.id === "javascript-typescript")?.rule_count).toBe(27);
+    // Owner override (Hibi, 2026-11-15): ci-ai-client-hardcoded-secret failed the gate but ships as in 4.0.
+    expect(ruleIds).toContain("ci-ai-client-hardcoded-secret");
+    expect(rules.custom_rules.map((entry) => entry.id)).toContain("ci-ai-client-hardcoded-secret");
+  });
+
+  test("each experimental rule is disclosed once in its pack's limitations, which reach list_rules and coverage", async () => {
+    const lines = javascriptPack().limitations.filter((line) => line.includes("is experimental in 4.1 and not reported"));
+    expect(lines).toEqual([
+      "ci-ai-sensitive-api-response is experimental in 4.1 and not reported (fresh-set precision 0/5 triaged hits).",
+      "ci-ai-sensitive-log is experimental in 4.1 and not reported (fresh-set precision 6/17 triaged hits).",
+    ]);
+    const rules = await listRules({});
+    expect(rules.native_packs.find((pack) => pack.id === "javascript-typescript")?.limitations).toEqual(expect.arrayContaining(lines));
+    expect(nativePackNotRunCoverage().find((pack) => pack.pack_id === "javascript-typescript")?.limitations).toEqual(expect.arrayContaining(lines));
+    // No other pack owns one, so no other pack gains a line.
+    for (const pack of listNativePacks().filter((candidate) => candidate.id !== "javascript-typescript")) {
+      expect(pack.limitations.some((line) => line.includes("is experimental in 4.1"))).toBe(false);
+    }
+  });
+
+  test("a scan of the tp fixtures reports none of them, while the analyzers (and their unit tests) still find them", async () => {
+    const corpus = join(process.cwd(), "fixtures", "api-boundary-corpus");
+    const app = join(process.cwd(), "fixtures", "vulnerable-app");
+    const direct = [
+      ...(await runApiBoundaryChecks(corpus)),
+      ...(await runClientSecretsAnalysis(app)).findings,
+    ].map((finding) => finding.rule_id);
+    for (const rule of EXPERIMENTAL) expect(direct).toContain(rule);
+
+    const scanned = [
+      ...(await runAiChecks(corpus)).findings,
+      ...(await runAiChecks(app)).findings,
+    ].map((finding) => finding.rule_id);
+    for (const rule of EXPERIMENTAL) expect(scanned).not.toContain(rule);
+    // The rest of the analyzers keep reporting.
+    expect(scanned).toContain("ci-ai-client-error-leak");
+    expect(scanned).toContain("ci-ai-unvalidated-request-write");
+    expect(scanned).toContain("ci-ai-public-env-secret");
+    // Owner override: the hard-coded secret in vulnerable-app/src/config.ts is reported, critical, as in 4.0.
+    const secret = (await runAiChecks(app)).findings.filter((finding) => finding.rule_id === "ci-ai-client-hardcoded-secret");
+    expect(secret.map((finding) => [finding.location.file, finding.severity])).toEqual([["src/config.ts", "critical"]]);
+  }, 60_000);
 });

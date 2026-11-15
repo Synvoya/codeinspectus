@@ -51,7 +51,7 @@ function manifestVersionSchema<Version extends string, Uri extends string, Engin
       integrity_state: z.enum(["verified", "unavailable", "not_recorded"]),
       verified_sha256: sha256Schema.optional(),
     })).length(engines.length),
-    component_signatures: z.record(z.string()),
+    component_signatures: z.record(z.string(), z.string()),
     target: z.object({
       path: z.string(),
       repository_root: z.string().optional(),

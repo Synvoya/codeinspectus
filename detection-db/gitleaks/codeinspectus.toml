@@ -52,6 +52,19 @@ targetRules = ["generic-api-key"]
 regexTarget = "match"
 regexes = ['''(?i)(?:client|tenant)[_-]?id['"]?\s*(?:=>|[:=])\s*['"]?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}''']
 
+# 4.1 M9 (mailflare): in a UUID-keyed identifier map written one entry per line (WebAuthn authenticator
+# AAGUIDs: `"<uuid>": "<label>",`), the generic rule takes the tail of the previous entry's label as the keyword,
+# the comma as the assignment and the next line's UUID key as the secret. Exempt only that shape: both UUIDs are
+# object keys, and the previous label is a display name, never a bare credential word or identifier (a
+# lower-case first letter is an identifier; a capitalised single word must not start like Key/Token/Secret/
+# Password/Passwd/Private/Auth/Credential/Bearer; a label with a space is a display name). A UUID list element
+# after `"api_key",` or after `token:` is still reported.
+[[allowlists]]
+description = "UUID object key on the line after a display-name entry of a UUID-keyed map (cross-line generic match, e.g. WebAuthn AAGUIDs) — an identifier, not a credential."
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = ['''["'][0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}["']\s*:\s*["'](?:[0-9][^"'\n]*|[DEFGHIJLMNOQRUVWXYZ][^"'\n]*|K[^e"'\n][^"'\n]*|T[^o"'\n][^"'\n]*|S[^e"'\n][^"'\n]*|P[^ar"'\n][^"'\n]*|A[^u"'\n][^"'\n]*|C[^r"'\n][^"'\n]*|B[^e"'\n][^"'\n]*|[^"'\n]*[ \t][^"'\n]*)["']\s*,\s*\r?\n\s*["'][0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}["']\s*:''']
+
 # reCAPTCHA site keys are embedded in public pages by design; the secret key is not named "site key".
 [[allowlists]]
 description = "reCAPTCHA site key (named site/website key) — public by design."

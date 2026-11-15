@@ -34,7 +34,7 @@ export const SETUP_COMPONENTS = ["opengrep", "gitleaks", "trivy", "osv-scanner"]
 export type SetupComponentId = (typeof SETUP_COMPONENTS)[number];
 export type SetupAction = "none" | "download" | "redownload" | "refresh_database" | "blocked";
 
-const TRIVY_DB_ESTIMATED_DISK_BYTES = 1_181_116_006;
+export const TRIVY_DB_ESTIMATED_DISK_BYTES = 1_181_116_006;
 
 const PREFERENCE_SCHEMA_VERSION = 1;
 /**
@@ -593,6 +593,9 @@ export async function runSetupCli(
     if (args.includes("--help") || args.includes("-h")) {
       io.stdout(setupHelp());
       return 0;
+    }
+    if (options.automatic) {
+      io.stdout("One command does it all: `npx codeinspectus init` registers CodeInspectus in your AI assistants and sets up every engine.\n\n");
     }
     const status = args.includes("--status");
     const all = args.includes("--all");

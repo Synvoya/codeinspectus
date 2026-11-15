@@ -86,6 +86,23 @@ describe("packaged V3 schemas", () => {
     }
   });
 
+  // 4.1 M5 Ruling 11: `dependency_scope` stays in stored scans and scan output; exports carry the scope as text.
+  test("a dev-scoped finding exports in the unchanged 3.0.0 shape, without dependency_scope", async () => {
+    const own = { ...scan.findings[0]!, title: "CVE-1 (handlebars@4.7.9, dev dependency)" };
+    const scoped: StoredScanResult = { ...scan, findings: [{ ...own, dependency_scope: "dev" }] };
+    const document = createJsonExport(scoped);
+    expect(JSON.stringify(document)).not.toContain("dependency_scope");
+    expect(document.findings[0]!.title).toBe("CVE-1 (handlebars@4.7.9, dev dependency)");
+    expect(document).toEqual(createJsonExport({ ...scan, findings: [own] }));
+    for (const [path, value] of [
+      ["schemas/codeinspectus-export-3.0.0.schema.json", document],
+      ["schemas/codeinspectus-sarif-3.0.0.schema.json", createSarifExport(document)],
+    ] as const) {
+      const validate = await compilePackagedSchema(path);
+      expect(validate(value), JSON.stringify(validate.errors)).toBe(true);
+    }
+  });
+
   // Task 5: export schema 3.0.0 is immutable, so declared and accepted gaps travel only as
   // ordinary coverage evidence (`gap:<id>` components) that the packaged schema already allows.
   test("a gap-bearing export validates against the packaged 3.0.0 schema", async () => {

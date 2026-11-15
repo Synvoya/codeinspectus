@@ -31,9 +31,10 @@ export const aggregateCoverageEnvelopeSchema = z.object({
   evidence: z.array(coverageEvidenceSchema),
 });
 
-// Export 3.0.0 predates the structured `package` and the `engine_family` display field (both kept in stored
-// scans and scan output only), so neither is part of this contract.
-export const exportFindingSchema = findingSchema.omit({ package: true, engine_family: true }).extend({
+// Export 3.0.0 predates the structured `package`, the `engine_family` display field and `dependency_scope` (all
+// kept in stored scans and scan output only; the scope reaches exports as title and message text), so none is
+// part of this contract.
+export const exportFindingSchema = findingSchema.omit({ package: true, engine_family: true, dependency_scope: true }).extend({
   producer_components: z.array(z.string()).min(1),
   coverage_context: z.object({
     aggregate: aggregateCoverageSchema,
@@ -124,10 +125,10 @@ export const sarifExportSchema = z.object({
         name: z.string(),
         shortDescription: sarifMessageSchema,
         help: sarifMessageSchema,
-        properties: z.record(z.unknown()),
+        properties: z.record(z.string(), z.unknown()),
       })),
     }) }),
-    invocations: z.array(z.object({ executionSuccessful: z.boolean(), properties: z.record(z.unknown()) })),
+    invocations: z.array(z.object({ executionSuccessful: z.boolean(), properties: z.record(z.string(), z.unknown()) })),
     results: z.array(z.object({
       ruleId: z.string(),
       baselineState: z.enum(["new", "unchanged"]).optional(),
@@ -137,10 +138,10 @@ export const sarifExportSchema = z.object({
         artifactLocation: z.object({ uri: z.string() }),
         region: sarifRegionSchema,
       }) })),
-      fingerprints: z.record(z.string()),
-      properties: z.record(z.unknown()),
+      fingerprints: z.record(z.string(), z.string()),
+      properties: z.record(z.string(), z.unknown()),
     })),
-    properties: z.record(z.unknown()),
+    properties: z.record(z.string(), z.unknown()),
   })).length(1),
 });
 

@@ -4,8 +4,9 @@
  *
  * The fixture is a real Trivy 0.76.1 SARIF and the scan CodeInspectus 3.3.2 stored from that same
  * run (only the scratch target path is replaced). Replaying the SARIF through today's pipeline must
- * keep every finding's id, fingerprint, rule, severity, CWE and location, so baselines, triage notes
- * and rescans made with 3.3.x still match. Only the title and remediation may change.
+ * keep every finding's fingerprint, rule, severity, CWE and location, so baselines, triage notes
+ * and rescans made with 3.3.x still match. Only the title and remediation may change, and the display
+ * id, which 4.1 derives from the fingerprint (it is never matched across scans).
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -51,6 +52,7 @@ afterAll(() => {
 });
 
 const { executeScan } = await import("./scan.js");
+const { assignDisplayIds, DISPLAY_ID_PATTERN } = await import("./display-id.js");
 const { safeParseScanJson } = await import("./store.js");
 
 async function storedScan() {
@@ -60,7 +62,7 @@ async function storedScan() {
 }
 
 describe("Trivy dependency findings against a stored 3.3.2 scan", () => {
-  test("ids, fingerprints, rules, severities, CWEs and locations are unchanged", async () => {
+  test("fingerprints, rules, severities, CWEs and locations are unchanged; ids are the fingerprint-derived ones", async () => {
     const stored = await storedScan();
     const { canonical } = await executeScan(
       { path: resolve(FIXTURE, "project"), scanners: ["vuln", "license"] },
@@ -68,7 +70,6 @@ describe("Trivy dependency findings against a stored 3.3.2 scan", () => {
     );
 
     const identity = (finding: (typeof canonical.findings)[number]) => ({
-      id: finding.id,
       fingerprint: finding.fingerprint,
       rule_id: finding.rule_id,
       severity: finding.severity,
@@ -81,6 +82,14 @@ describe("Trivy dependency findings against a stored 3.3.2 scan", () => {
     });
     expect(stored.findings).toHaveLength(13);
     expect(canonical.findings.map(identity)).toEqual(stored.findings.map(identity));
+    // 4.1: the positional ids of 3.3.2 (CI-0001...) became fingerprint-derived ones.
+    expect(stored.findings.map((finding) => finding.id)).toEqual(stored.findings.map((_, index) => `CI-${String(index + 1).padStart(4, "0")}`));
+    // Stored 3.3.2 findings predate `package`; the id basis is the fingerprint plus the package Trivy names.
+    const renumbered = stored.findings.map((finding, index) => ({ ...finding, package: canonical.findings[index]!.package }));
+    expect(renumbered.every((finding) => finding.package?.name)).toBe(true);
+    assignDisplayIds(renumbered);
+    expect(canonical.findings.map((finding) => finding.id)).toEqual(renumbered.map((finding) => finding.id));
+    for (const finding of canonical.findings) expect(finding.id).toMatch(DISPLAY_ID_PATTERN);
   });
 
   test("titles name the package and remediation names the installed and fixed versions", async () => {

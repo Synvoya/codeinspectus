@@ -1,10 +1,11 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { parse } from "yaml";
 import { describe, expect, test } from "vitest";
 import { SERVER_VERSION } from "./config.js";
 import { SDK_API_VERSION, SDK_COMPATIBILITY } from "./sdk/index.js";
 
-const RELEASE_VERSION = "4.0.0";
+const RELEASE_VERSION = "4.1.0";
 
 describe("V3 release source synchronization", () => {
   test("package, lockfile, server, CLI, and SDK versions agree", async () => {
@@ -50,10 +51,31 @@ describe("V3 release source synchronization", () => {
       custom_rules: Array<{ engine: string; pack_id?: string }>;
     };
     const native = manifest.custom_rules.filter((rule) => rule.engine === "codeinspectus-ai");
-    expect(manifest.version).toBe("2.0.0");
-    expect(manifest.custom_rules).toHaveLength(126); // 94 + 19 syn-php-* + 12 syn-node-* Opengrep + 1 Gitleaks (7 holdout failures held in experimental)
-    expect(native).toHaveLength(72);
+    expect(manifest.version).toBe("2.1.0");
+    // 4.0: 94 + 19 syn-php-* + 12 syn-node-* Opengrep + 1 Gitleaks (7 holdout failures held in experimental);
+    // 4.1 M9: 2 native rules (Ruling 4) and 2 Python baseline Opengrep rules experimental; ci-ai-client-hardcoded-secret
+    // ships by owner override (Hibi, 2026-11-15).
+    expect(manifest.custom_rules).toHaveLength(122);
+    expect(native).toHaveLength(70);
     expect(new Set(native.map((rule) => rule.pack_id)).size).toBe(16);
+  });
+
+  // 4.1 M9 fresh-set gate: experimental/ is dev-only and never seeded into the public repo (a seed can leave the
+  // folders empty on disk), so this runs only where the rule file exists.
+  const experimentalBaseline = "experimental/opengrep-rules/security-baseline-experimental";
+  test.skipIf(!existsSync(`${experimentalBaseline}/rules.yaml`))("experimental Python baseline rules stay outside the loaded rules and the manifest, with their fixtures", async () => {
+    const rules = (parse(await readFile(`${experimentalBaseline}/rules.yaml`, "utf8")) as { rules: Array<{ id: string }> }).rules.map((rule) => rule.id);
+    expect(rules).toEqual(["ci-baseline-eval-python", "ci-baseline-weak-hash-python"]);
+    expect(readdirSync("fixtures/security-baseline-experimental").sort()).toEqual(rules);
+    const manifest = await readFile("detection-db/manifest.json", "utf8");
+    const bundled = await Promise.all(readdirSync("detection-db/opengrep-rules/security-baseline")
+      .filter((file) => file.endsWith(".yaml"))
+      .map((file) => readFile(`detection-db/opengrep-rules/security-baseline/${file}`, "utf8")));
+    for (const rule of rules) {
+      expect(manifest.includes(`"${rule}"`)).toBe(false);
+      expect(bundled.some((text) => text.includes(`id: ${rule}\n`))).toBe(false);
+      expect(existsSync(`fixtures/coverage-honesty-corpus/opengrep-rules/${rule}`)).toBe(false);
+    }
   });
 
   test("Glama ownership metadata identifies the public maintainer", async () => {
