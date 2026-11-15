@@ -939,7 +939,7 @@ describe("experimental native rules (4.1 M9 Ruling 4)", () => {
     }
     expect(nativePackInventory().find((pack) => pack.pack_id === "javascript-typescript")?.rules.registered).toBe(27);
     expect(rules.native_packs.find((pack) => pack.id === "javascript-typescript")?.rule_count).toBe(27);
-    // Owner override (Hibi, 2026-11-15): ci-ai-client-hardcoded-secret failed the gate but ships as in 4.0.
+    // Maintainer decision (2026-11-15): ci-ai-client-hardcoded-secret failed the gate but ships as in 4.0.
     expect(ruleIds).toContain("ci-ai-client-hardcoded-secret");
     expect(rules.custom_rules.map((entry) => entry.id)).toContain("ci-ai-client-hardcoded-secret");
   });

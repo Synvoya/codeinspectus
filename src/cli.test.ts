@@ -246,7 +246,7 @@ describe("CLI stdout/stderr and execution", () => {
     expect(capture.stderr.join("")).toContain(`CodeInspectus notice: ${note}`);
   });
 
-  // Task 5 (Hibi, 2026-10-31): a declared gap fails CI with exit 2 by default; naming it in
+  // Task 5 (maintainer, 2026-10-31): a declared gap fails CI with exit 2 by default; naming it in
   // --accept-gaps passes coverage while the report still reads partial and lists the gap.
   test("a declared gap exits 2 unless --accept-gaps names it", async () => {
     const gaps = [{ id: "php-sast" as const, files: 3, examples: ["a.php", "b.php", "c.php"] }];

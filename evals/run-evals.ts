@@ -4605,7 +4605,7 @@ async function main() {
       },
     },
     {
-      // Task 5 (Hibi, 2026-10-31): declared gaps are partial coverage with stable ids; accept_gaps is
+      // Task 5 (maintainer, 2026-10-31): declared gaps are partial coverage with stable ids; accept_gaps is
       // an explicit opt-in that keeps them listed, and an unknown id is an input error.
       id: "E73 declared coverage gaps are listed by stable id and can only be accepted by name",
       fn: async () => {
@@ -6393,7 +6393,7 @@ async function main() {
           const lr = (await client.callTool("codeinspectus_list_rules", {})).structuredContent;
           const limitations: string[] = lr.native_packs.find((pack: any) => pack.id === "javascript-typescript")?.limitations ?? [];
           const coverage = experimentalScan.pack_coverage.find((pack: any) => pack.pack_id === "javascript-typescript");
-          // Owner override (Hibi, 2026-11-15): ci-ai-client-hardcoded-secret failed the gate but ships as in 4.0.
+          // Maintainer decision (2026-11-15): ci-ai-client-hardcoded-secret failed the gate but ships as in 4.0.
           const secret = experimentalScan.findings.filter((finding: any) => finding.rule_id === "ci-ai-client-hardcoded-secret");
           assert(secret.length === 1 && secret[0].location.file === "src/config.ts" && secret[0].severity === "critical",
             "ci-ai-client-hardcoded-secret must be reported at critical on experimental/src/config.ts (owner override)");

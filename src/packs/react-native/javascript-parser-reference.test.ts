@@ -39,7 +39,7 @@
  * - Task 10 (fresh-set gate, experimental rules, Ruling 4): removed findings, each from a rule the registry no longer
  *   reports: `ci-ai-sensitive-api-response` (58 entries) and `ci-ai-sensitive-log` (24) in `api-boundary-corpus`
  *   roots, `ci-ai-client-hardcoded-secret` (1, `vulnerable-app/src/config.ts`). Nothing else changed.
- * - Owner override (Hibi, 2026-11-15): `ci-ai-client-hardcoded-secret` ships as in 4.0, so its one entry
+ * - Maintainer decision (2026-11-15): `ci-ai-client-hardcoded-secret` ships as in 4.0, so its one entry
  *   (`vulnerable-app/src/config.ts`) is back, byte-identical to b839a67.
  */
 import { createHash } from "node:crypto";

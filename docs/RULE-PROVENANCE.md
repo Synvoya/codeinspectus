@@ -519,8 +519,8 @@ coverage; its false-positive classes (test mocks, placeholders) are to be fixed 
 | `ci-ai-sensitive-log` | `javascript-typescript` | `api-boundary` | `ci-ai-sensitive-log is experimental in 4.1 and not reported (fresh-set precision 6/17 triaged hits).` |
 
 The two experimental Python Opengrep rules moved unchanged to
-`experimental/opengrep-rules/security-baseline-experimental/` (table above). The triage records are private
-(`codeinspectus-private/docs/research/2026-11-15-v4.1-m9-triage.md`).
+`experimental/opengrep-rules/security-baseline-experimental/` (table above). The triage records are kept privately
+because they quote third-party code.
 
 ## Inventory — Gitleaks custom secret rules (5)
 

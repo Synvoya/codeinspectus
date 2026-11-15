@@ -30,8 +30,8 @@ import type {
  * `ruleIds` (so from every inventory and rule count), drops its findings, and adds one line to the owning pack's
  * `limitations` (`pack_coverage`, `list_rules`). The analyzer code and its unit tests stay. No opt-in in 4.1.
  */
-// `ci-ai-client-hardcoded-secret` failed the gate too (0/7) but ships as in 4.0 by owner override (Hibi,
-// 2026-11-15) for detection coverage; its false-positive classes are fixed and re-measured in 4.2.
+// `ci-ai-client-hardcoded-secret` failed the gate too (0/7) but ships as in 4.0 by maintainer decision
+// (2026-11-15) for detection coverage; its false-positive classes are fixed and re-measured in 4.2.
 const EXPERIMENTAL_NATIVE_RULES: Readonly<Record<string, string>> = {
   "ci-ai-sensitive-api-response": "0/5",
   "ci-ai-sensitive-log": "6/17",

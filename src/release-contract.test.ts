@@ -54,7 +54,7 @@ describe("V3 release source synchronization", () => {
     expect(manifest.version).toBe("2.1.0");
     // 4.0: 94 + 19 syn-php-* + 12 syn-node-* Opengrep + 1 Gitleaks (7 holdout failures held in experimental);
     // 4.1 M9: 2 native rules (Ruling 4) and 2 Python baseline Opengrep rules experimental; ci-ai-client-hardcoded-secret
-    // ships by owner override (Hibi, 2026-11-15).
+    // ships by maintainer decision (2026-11-15).
     expect(manifest.custom_rules).toHaveLength(122);
     expect(native).toHaveLength(70);
     expect(new Set(native.map((rule) => rule.pack_id)).size).toBe(16);
