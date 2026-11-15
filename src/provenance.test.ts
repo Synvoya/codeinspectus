@@ -81,7 +81,7 @@ const FLUTTER_RULES = [
     id: "ci-flutter-tls-verification-disabled",
     component: "ai:flutter-tls-verification",
     cwe: ["CWE-295"],
-    severity: "high",
+    severity: "low", // 4.1 M9 fresh-set gate (Ruling 3)
   },
   {
     id: "ci-flutter-sensitive-shared-preferences",
@@ -306,9 +306,14 @@ describe("component signatures", () => {
       return [ruleId, components, aiSignaturesForComponents(components)];
     });
 
-    // Intentional: javascript:bounded-structural-parser revision 2 (JSX retry, Yarn tooling skip).
+    // Intentional: javascript:bounded-structural-parser revision 2 (JSX retry, Yarn tooling skip);
+    // 4.1 M9: ai:unvalidated-request-write revision 3 (e2e suites skipped); ai:client-error-leak,
+    // ai:sensitive-api-response and ai:sensitive-log revision 3 (server handler, issued credential, logged values);
+    // ai:client-secrets revision 5 (public SDK key table, PEM key body); 4.1 M9 fresh-set gate: ai:client-error-leak 4,
+    // ai:client-secrets 6, ai:llm-dangerous-html 2, ai:security-header-config 3 (low severity and confidence);
+    // ai:sensitive-api-response and ai:sensitive-log 4 (experimental, not reported; Ruling 4).
     expect(signature(JSON.stringify(compatibilityProjection))).toBe(
-      "sha256:363e23c1f369bded71eba1734129db21ff6cbb52754a6c4fe51fc34b98155f9b",
+      "sha256:ffad09b86d276783b5ae70cc15f167392f7f3dfc9ab1b81f4fa5337c6b5b3bb6",
     );
     expect(compatibilityProjection.every(([ruleId, components]) =>
       ruleId === "ci-ai-edge-fn-no-auth"
@@ -467,9 +472,9 @@ describe("Flutter detection manifest", () => {
     };
     const flutterRules = manifest.custom_rules.filter((rule) => rule.pack_id === "flutter");
 
-    expect(manifest.version).toBe("2.0.0");
-    expect(manifest.date).toBe("2026-11-05");
-    expect(manifest.custom_rules).toHaveLength(126);
+    expect(manifest.version).toBe("2.1.0");
+    expect(manifest.date).toBe("2026-11-15");
+    expect(manifest.custom_rules).toHaveLength(122);
     expect(flutterRules).toHaveLength(6);
     expect(flutterRules.map((rule) => ({
       id: rule.id,

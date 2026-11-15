@@ -4,8 +4,11 @@ rules:
   - id: ci-baseline-weak-hash
     languages: [javascript, typescript]
     # Precision pass (design 10.6): 0 of 13 field hits hashed a credential (cache keys, checksums,
-    # ids), so this is a low/low hygiene finding. Kept in parity with the native javascript-baseline
-    # rule (E34); requiring a credential context belongs with the native parser rewrite.
+    # ids), so this is a low/low hygiene finding, kept in exact parity with the native
+    # javascript-baseline rule (E34). 4.1 M7 (Ruling 10): MD5/SHA-1 is reported only in a credential
+    # context, the same contexts and the same credential-word regexes as the native rule
+    # (src/packs/javascript-baseline/rules.ts; a unit test compares the regex sources). Known gap, in both
+    # implementations: a hash object updated in a later statement (const h = createHash('md5'); h.update(pw)).
     severity: INFO
     message: >
       Weak hashing algorithm (MD5/SHA1) used. Use SHA-256+ or a password KDF
@@ -19,6 +22,57 @@ rules:
       - pattern-either:
           - pattern: $C.createHash("md5")
           - pattern: $C.createHash("sha1")
+      - pattern-either:
+          # (a) the hash's own chained update() gets a credential: a name whose last part holds a credential
+          #     word, or a template literal interpolating / a + concatenation with such a name as an operand.
+          - patterns:
+              - pattern-inside: $C.createHash($ALG).update($X, ...)
+              - metavariable-regex:
+                  metavariable: $X
+                  regex: '^\s*(?:[A-Za-z_$][\w$]*\.)*[\w$]*?(?:^|(?<=[^A-Za-z])|(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z]))(?:(?:api|Api|API)[_-]?(?:key(?![a-z])|Key(?![a-z])|KEY(?:(?![A-Za-z])|(?=[A-Z][a-z])))|password(?![a-z])|Password(?![a-z])|PASSWORD(?:(?![A-Za-z])|(?=[A-Z][a-z]))|passwd(?![a-z])|Passwd(?![a-z])|PASSWD(?:(?![A-Za-z])|(?=[A-Z][a-z]))|passphrase(?![a-z])|Passphrase(?![a-z])|PASSPHRASE(?:(?![A-Za-z])|(?=[A-Z][a-z]))|pwd(?![a-z])|Pwd(?![a-z])|PWD(?:(?![A-Za-z])|(?=[A-Z][a-z]))|pass(?![a-z])|Pass(?![a-z])|PASS(?:(?![A-Za-z])|(?=[A-Z][a-z]))|secret(?![a-z])|Secret(?![a-z])|SECRET(?:(?![A-Za-z])|(?=[A-Z][a-z]))|token(?![a-z])|Token(?![a-z])|TOKEN(?:(?![A-Za-z])|(?=[A-Z][a-z]))|apikey(?![a-z])|Apikey(?![a-z])|APIKEY(?:(?![A-Za-z])|(?=[A-Z][a-z]))|credential(?![a-z])|Credential(?![a-z])|CREDENTIAL(?:(?![A-Za-z])|(?=[A-Z][a-z]))|credentials(?![a-z])|Credentials(?![a-z])|CREDENTIALS(?:(?![A-Za-z])|(?=[A-Z][a-z]))|signature(?![a-z])|Signature(?![a-z])|SIGNATURE(?:(?![A-Za-z])|(?=[A-Z][a-z]))|sig(?![a-z])|Sig(?![a-z])|SIG(?:(?![A-Za-z])|(?=[A-Z][a-z]))|hmac(?![a-z])|Hmac(?![a-z])|HMAC(?:(?![A-Za-z])|(?=[A-Z][a-z]))|salt(?![a-z])|Salt(?![a-z])|SALT(?:(?![A-Za-z])|(?=[A-Z][a-z])))[\w$]*\s*$'
+          - patterns:
+              - pattern-inside: $C.createHash($ALG).update($X, ...)
+              - metavariable-pattern:
+                  metavariable: $X
+                  patterns:
+                    - pattern: '`...${$Y}...`'
+                    - metavariable-regex:
+                        metavariable: $Y
+                        regex: '^\s*(?:[A-Za-z_$][\w$]*\.)*[\w$]*?(?:^|(?<=[^A-Za-z])|(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z]))(?:(?:api|Api|API)[_-]?(?:key(?![a-z])|Key(?![a-z])|KEY(?:(?![A-Za-z])|(?=[A-Z][a-z])))|password(?![a-z])|Password(?![a-z])|PASSWORD(?:(?![A-Za-z])|(?=[A-Z][a-z]))|passwd(?![a-z])|Passwd(?![a-z])|PASSWD(?:(?![A-Za-z])|(?=[A-Z][a-z]))|passphrase(?![a-z])|Passphrase(?![a-z])|PASSPHRASE(?:(?![A-Za-z])|(?=[A-Z][a-z]))|pwd(?![a-z])|Pwd(?![a-z])|PWD(?:(?![A-Za-z])|(?=[A-Z][a-z]))|pass(?![a-z])|Pass(?![a-z])|PASS(?:(?![A-Za-z])|(?=[A-Z][a-z]))|secret(?![a-z])|Secret(?![a-z])|SECRET(?:(?![A-Za-z])|(?=[A-Z][a-z]))|token(?![a-z])|Token(?![a-z])|TOKEN(?:(?![A-Za-z])|(?=[A-Z][a-z]))|apikey(?![a-z])|Apikey(?![a-z])|APIKEY(?:(?![A-Za-z])|(?=[A-Z][a-z]))|credential(?![a-z])|Credential(?![a-z])|CREDENTIAL(?:(?![A-Za-z])|(?=[A-Z][a-z]))|credentials(?![a-z])|Credentials(?![a-z])|CREDENTIALS(?:(?![A-Za-z])|(?=[A-Z][a-z]))|signature(?![a-z])|Signature(?![a-z])|SIGNATURE(?:(?![A-Za-z])|(?=[A-Z][a-z]))|sig(?![a-z])|Sig(?![a-z])|SIG(?:(?![A-Za-z])|(?=[A-Z][a-z]))|hmac(?![a-z])|Hmac(?![a-z])|HMAC(?:(?![A-Za-z])|(?=[A-Z][a-z]))|salt(?![a-z])|Salt(?![a-z])|SALT(?:(?![A-Za-z])|(?=[A-Z][a-z])))[\w$]*\s*$'
+          - patterns:
+              - pattern-inside: $C.createHash($ALG).update($X, ...)
+              - metavariable-pattern:
+                  metavariable: $X
+                  patterns:
+                    - pattern-either:
+                        - pattern: $Y + $R
+                        - pattern: $L + $Y
+                    - metavariable-regex:
+                        metavariable: $Y
+                        regex: '^\s*(?:[A-Za-z_$][\w$]*\.)*[\w$]*?(?:^|(?<=[^A-Za-z])|(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z]))(?:(?:api|Api|API)[_-]?(?:key(?![a-z])|Key(?![a-z])|KEY(?:(?![A-Za-z])|(?=[A-Z][a-z])))|password(?![a-z])|Password(?![a-z])|PASSWORD(?:(?![A-Za-z])|(?=[A-Z][a-z]))|passwd(?![a-z])|Passwd(?![a-z])|PASSWD(?:(?![A-Za-z])|(?=[A-Z][a-z]))|passphrase(?![a-z])|Passphrase(?![a-z])|PASSPHRASE(?:(?![A-Za-z])|(?=[A-Z][a-z]))|pwd(?![a-z])|Pwd(?![a-z])|PWD(?:(?![A-Za-z])|(?=[A-Z][a-z]))|pass(?![a-z])|Pass(?![a-z])|PASS(?:(?![A-Za-z])|(?=[A-Z][a-z]))|secret(?![a-z])|Secret(?![a-z])|SECRET(?:(?![A-Za-z])|(?=[A-Z][a-z]))|token(?![a-z])|Token(?![a-z])|TOKEN(?:(?![A-Za-z])|(?=[A-Z][a-z]))|apikey(?![a-z])|Apikey(?![a-z])|APIKEY(?:(?![A-Za-z])|(?=[A-Z][a-z]))|credential(?![a-z])|Credential(?![a-z])|CREDENTIAL(?:(?![A-Za-z])|(?=[A-Z][a-z]))|credentials(?![a-z])|Credentials(?![a-z])|CREDENTIALS(?:(?![A-Za-z])|(?=[A-Z][a-z]))|signature(?![a-z])|Signature(?![a-z])|SIGNATURE(?:(?![A-Za-z])|(?=[A-Z][a-z]))|sig(?![a-z])|Sig(?![a-z])|SIG(?:(?![A-Za-z])|(?=[A-Z][a-z]))|hmac(?![a-z])|Hmac(?![a-z])|HMAC(?:(?![A-Za-z])|(?=[A-Z][a-z]))|salt(?![a-z])|Salt(?![a-z])|SALT(?:(?![A-Za-z])|(?=[A-Z][a-z])))[\w$]*\s*$'
+          # (b) the whole createHash(...) chain (up to four chained calls) is assigned to, initialises, or is the
+          #     value of a property key named with a credential word (const passwordMd5 = ..., user.passwordHash
+          #     = ..., { signature: ... }).
+          - patterns:
+              - pattern-either:
+                  - pattern-inside: $T = $C.createHash($ALG)
+                  - pattern-inside: $T = $C.createHash($ALG).$M1(...)
+                  - pattern-inside: $T = $C.createHash($ALG).$M1(...).$M2(...)
+                  - pattern-inside: $T = $C.createHash($ALG).$M1(...).$M2(...).$M3(...)
+                  - pattern-inside: $T = $C.createHash($ALG).$M1(...).$M2(...).$M3(...).$M4(...)
+              - metavariable-regex:
+                  metavariable: $T
+                  regex: '^["'']?(?:[A-Za-z_$][\w$]*\.)*[\w$]*?(?:^|(?<=[^A-Za-z])|(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z]))(?:(?:api|Api|API)[_-]?(?:key(?![a-z])|Key(?![a-z])|KEY(?:(?![A-Za-z])|(?=[A-Z][a-z])))|password(?![a-z])|Password(?![a-z])|PASSWORD(?:(?![A-Za-z])|(?=[A-Z][a-z]))|passwd(?![a-z])|Passwd(?![a-z])|PASSWD(?:(?![A-Za-z])|(?=[A-Z][a-z]))|passphrase(?![a-z])|Passphrase(?![a-z])|PASSPHRASE(?:(?![A-Za-z])|(?=[A-Z][a-z]))|pwd(?![a-z])|Pwd(?![a-z])|PWD(?:(?![A-Za-z])|(?=[A-Z][a-z]))|pass(?![a-z])|Pass(?![a-z])|PASS(?:(?![A-Za-z])|(?=[A-Z][a-z]))|secret(?![a-z])|Secret(?![a-z])|SECRET(?:(?![A-Za-z])|(?=[A-Z][a-z]))|token(?![a-z])|Token(?![a-z])|TOKEN(?:(?![A-Za-z])|(?=[A-Z][a-z]))|apikey(?![a-z])|Apikey(?![a-z])|APIKEY(?:(?![A-Za-z])|(?=[A-Z][a-z]))|credential(?![a-z])|Credential(?![a-z])|CREDENTIAL(?:(?![A-Za-z])|(?=[A-Z][a-z]))|credentials(?![a-z])|Credentials(?![a-z])|CREDENTIALS(?:(?![A-Za-z])|(?=[A-Z][a-z]))|signature(?![a-z])|Signature(?![a-z])|SIGNATURE(?:(?![A-Za-z])|(?=[A-Z][a-z]))|sig(?![a-z])|Sig(?![a-z])|SIG(?:(?![A-Za-z])|(?=[A-Z][a-z]))|hmac(?![a-z])|Hmac(?![a-z])|HMAC(?:(?![A-Za-z])|(?=[A-Z][a-z]))|salt(?![a-z])|Salt(?![a-z])|SALT(?:(?![A-Za-z])|(?=[A-Z][a-z])))[\w$]*["'']?$'
+          - patterns:
+              - pattern-either:
+                  - pattern-inside: '{..., $K: $C.createHash($ALG), ...}'
+                  - pattern-inside: '{..., $K: $C.createHash($ALG).$M1(...), ...}'
+                  - pattern-inside: '{..., $K: $C.createHash($ALG).$M1(...).$M2(...), ...}'
+                  - pattern-inside: '{..., $K: $C.createHash($ALG).$M1(...).$M2(...).$M3(...), ...}'
+                  - pattern-inside: '{..., $K: $C.createHash($ALG).$M1(...).$M2(...).$M3(...).$M4(...), ...}'
+              - metavariable-regex:
+                  metavariable: $K
+                  regex: '^["'']?(?:[A-Za-z_$][\w$]*\.)*[\w$]*?(?:^|(?<=[^A-Za-z])|(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z]))(?:(?:api|Api|API)[_-]?(?:key(?![a-z])|Key(?![a-z])|KEY(?:(?![A-Za-z])|(?=[A-Z][a-z])))|password(?![a-z])|Password(?![a-z])|PASSWORD(?:(?![A-Za-z])|(?=[A-Z][a-z]))|passwd(?![a-z])|Passwd(?![a-z])|PASSWD(?:(?![A-Za-z])|(?=[A-Z][a-z]))|passphrase(?![a-z])|Passphrase(?![a-z])|PASSPHRASE(?:(?![A-Za-z])|(?=[A-Z][a-z]))|pwd(?![a-z])|Pwd(?![a-z])|PWD(?:(?![A-Za-z])|(?=[A-Z][a-z]))|pass(?![a-z])|Pass(?![a-z])|PASS(?:(?![A-Za-z])|(?=[A-Z][a-z]))|secret(?![a-z])|Secret(?![a-z])|SECRET(?:(?![A-Za-z])|(?=[A-Z][a-z]))|token(?![a-z])|Token(?![a-z])|TOKEN(?:(?![A-Za-z])|(?=[A-Z][a-z]))|apikey(?![a-z])|Apikey(?![a-z])|APIKEY(?:(?![A-Za-z])|(?=[A-Z][a-z]))|credential(?![a-z])|Credential(?![a-z])|CREDENTIAL(?:(?![A-Za-z])|(?=[A-Z][a-z]))|credentials(?![a-z])|Credentials(?![a-z])|CREDENTIALS(?:(?![A-Za-z])|(?=[A-Z][a-z]))|signature(?![a-z])|Signature(?![a-z])|SIGNATURE(?:(?![A-Za-z])|(?=[A-Z][a-z]))|sig(?![a-z])|Sig(?![a-z])|SIG(?:(?![A-Za-z])|(?=[A-Z][a-z]))|hmac(?![a-z])|Hmac(?![a-z])|HMAC(?:(?![A-Za-z])|(?=[A-Z][a-z]))|salt(?![a-z])|Salt(?![a-z])|SALT(?:(?![A-Za-z])|(?=[A-Z][a-z])))[\w$]*["'']?$'
 
   - id: ci-baseline-weak-cipher
     languages: [javascript, typescript]
@@ -56,18 +110,3 @@ rules:
           metavariable: $V
           patterns:
             - pattern-regex: "(?i)(token|secret|key|otp|nonce|salt|password|session|csrf)"
-
-  - id: ci-baseline-weak-hash-python
-    languages: [python]
-    severity: WARNING
-    message: >
-      Weak hashing algorithm (MD5/SHA1) used. Use SHA-256+ or a password KDF.
-    metadata:
-      cwe: "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
-      owasp: "A02:2021 - Cryptographic Failures"
-      category: security
-      confidence: MEDIUM
-    patterns:
-      - pattern-either:
-          - pattern: hashlib.md5(...)
-          - pattern: hashlib.sha1(...)

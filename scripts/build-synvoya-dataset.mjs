@@ -6,7 +6,7 @@
  *   node scripts/build-synvoya-dataset.mjs \
  *     --candidates <synvoya-candidates.json> --candidates <kev-sweep-candidates.json> \
  *     --verification <seed-verification-runtime.json> --verification <seed-verification-products.json> \
- *     --approved <seed-list.md> [--eol-cache <dir>] [--out <dir>]
+ *     --approved <seed-list.md> [--eol-cache <dir> | --eol-from <eol.json>] [--out <dir>]
  *   node scripts/synvoya-manifest.mjs      # then refresh the digests
  *
  * Rules (design §3, §10.3, §10.4, §10.10 and the approved seed list):
@@ -20,6 +20,10 @@
  *   marks a hotfix-only fix, a range with no bound is a line with no patch.
  * - EOL cycles come from endoflife.date (MIT, see LICENSE-PROVENANCE.md), fetched here at build time with
  *   a generic User-Agent; only cycles with an end-of-life date and a latest release are kept.
+ *   `--eol-from <eol.json>` reuses an existing table's entries verbatim, with no fetch (an offline rebuild).
+ * - `complete` (COMPLETE_EOL_PRODUCTS) marks products whose table lists every release line between its oldest
+ *   and newest cycle; the build fails when a marked product's numbering has an undocumented gap, or when
+ *   endoflife.date returned a cycle of one that was dropped below its newest kept cycle.
  *
  * Exit 0 after writing; 1 with the reasons when any validation fails (nothing is written then).
  */
@@ -36,7 +40,7 @@ const USER_AGENT = "Mozilla/5.0";
 // ---- arguments ----
 
 function parseArgs(argv) {
-  const out = { candidates: [], verification: [], approved: undefined, eolCache: undefined, out: DEFAULT_OUT };
+  const out = { candidates: [], verification: [], approved: undefined, eolCache: undefined, eolFrom: undefined, out: DEFAULT_OUT };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
     const value = argv[i + 1];
@@ -45,13 +49,15 @@ function parseArgs(argv) {
     else if (flag === "--verification") out.verification.push(value);
     else if (flag === "--approved") out.approved = value;
     else if (flag === "--eol-cache") out.eolCache = value;
+    else if (flag === "--eol-from") out.eolFrom = value;
     else if (flag === "--out") out.out = resolve(value);
     else throw new Error(`unknown argument ${flag}`);
     i++;
   }
   if (out.candidates.length === 0 || out.verification.length === 0 || !out.approved) {
-    throw new Error("usage: --candidates <file>... --verification <file>... --approved <seed-list.md> [--eol-cache <dir>] [--out <dir>]");
+    throw new Error("usage: --candidates <file>... --verification <file>... --approved <seed-list.md> [--eol-cache <dir> | --eol-from <eol.json>] [--out <dir>]");
   }
+  if (out.eolCache !== undefined && out.eolFrom !== undefined) throw new Error("--eol-cache and --eol-from cannot be combined");
   return out;
 }
 
@@ -179,12 +185,12 @@ const PRODUCT_IMAGES = {
   "kestra/kestra": "kestra",
   wordpress: "wordpress",
   erlang: "erlang",
-};
-
-/** Candidate image names with no image-table key: the product is still named, nothing maps an image to it. */
-const UNMAPPED_PRODUCT_IMAGES = {
-  // minio/minio is gone from Docker Hub (404 on 2026-11-03) and MinIO tags (RELEASE.<timestamp>) are not versions.
+  // 4.1 M8: MinIO tags are RELEASE.<timestamp> strings, compared by the `minio-release` scheme. Docker Hub's
+  // minio/minio answered 404 on 2026-11-03 (MinIO stopped publishing community images in Oct 2025), but
+  // repositories still declare it, and Synvoya judges declarations. bitnami/minio (date tags with no time of day)
+  // stays unmapped: the image reader reports it as a lookalike note.
   "minio/minio": "minio",
+  "quay.io/minio/minio": "minio",
 };
 
 /** endoflife.date product → our EOL product key(s); runtimes use the runtime id. */
@@ -211,6 +217,75 @@ const EOL_PRODUCTS = [
 ];
 
 /**
+ * EOL products whose table lists every release line between its oldest and newest cycle (4.1 M8 Ruling 2): each
+ * numbers its lines monotonically, so an interior gap never fills later. Java (Temurin skips 9, 10, 12-15), MySQL,
+ * MariaDB, Redis, MongoDB, Elasticsearch, RabbitMQ, nginx and httpd are not marked.
+ */
+export const COMPLETE_EOL_PRODUCTS = ["dotnet", "php", "postgres", "postgresql", "python", "ruby"];
+
+/** Documented skips in an otherwise contiguous numbering: [from, to, why]. */
+export const EOL_SKIPS = {
+  php: [["5.6", "7.0", "PHP 6 was never released"]],
+  dotnet: [["3.1", "5.0", ".NET skipped 4 (.NET Framework 4.x)"]],
+};
+
+const cycleParts = (cycle) => String(cycle).split(".").map(Number);
+
+function compareCycles(a, b) {
+  const x = cycleParts(a);
+  const y = cycleParts(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0);
+  return 0;
+}
+
+/** `b` is the next minor of `a` (7.3 -> 7.4) or the next major with every other part zero or absent (7.4 -> 8.0, 9.6 -> 10). */
+function nextLine(a, b) {
+  const x = cycleParts(a);
+  const y = cycleParts(b);
+  const width = Math.max(x.length, y.length);
+  const at = (parts, i) => parts[i] ?? 0;
+  for (const i of [0, width - 1]) {
+    let ok = true;
+    for (let j = 0; j < width && ok; j++) {
+      if (j < i) ok = at(y, j) === at(x, j);
+      else if (j === i) ok = at(y, j) === at(x, j) + 1;
+      else ok = at(y, j) === 0;
+    }
+    if (ok) return true;
+  }
+  return false;
+}
+
+/** Ruling 2's numbering check: every consecutive pair of a complete product's cycles is the next line or a documented skip. */
+export function eolNumberingProblems(entries, complete = COMPLETE_EOL_PRODUCTS, skips = EOL_SKIPS) {
+  const problems = [];
+  for (const product of complete) {
+    const cycles = entries.filter((e) => e.product === product).map((e) => e.cycle).sort(compareCycles);
+    if (cycles.length < 2) problems.push(`complete product ${product} has ${cycles.length} cycle(s)`);
+    for (let k = 1; k < cycles.length; k++) {
+      const [a, b] = [cycles[k - 1], cycles[k]];
+      if (nextLine(a, b) || (skips[product] ?? []).some(([from, to]) => from === a && to === b)) continue;
+      problems.push(`complete product ${product}: no release line between ${a} and ${b} is listed or documented as skipped`);
+    }
+  }
+  return problems;
+}
+
+/** A cycle endoflife.date returned for a complete product but the build dropped, below its newest kept cycle. */
+export function droppedCycleProblems(entries, dropped, complete = COMPLETE_EOL_PRODUCTS) {
+  const problems = [];
+  for (const { product, cycle } of dropped) {
+    if (!complete.includes(product)) continue;
+    const kept = entries.filter((e) => e.product === product).map((e) => e.cycle).sort(compareCycles);
+    const newest = kept[kept.length - 1];
+    if (newest !== undefined && compareCycles(cycle, newest) < 0) {
+      problems.push(`complete product ${product}: cycle ${cycle} was dropped (no end-of-life date or no latest release) below ${newest}`);
+    }
+  }
+  return problems;
+}
+
+/**
  * Entries still waiting for a reader. M2 activated the Go stdlib entries (runtime reader + the go.mod SBOM route)
  * and the GitHub Actions advisories (Actions matcher); SYN-2026-070 is a hygiene class ("mutable action tag") with
  * no version to compare, which M2 reports as one info note and not as a finding.
@@ -230,6 +305,9 @@ const REQUIRES_PLATFORM = new Set(["SYN-2026-150", "SYN-2026-219"]);
  * Approved but not representable without inventing data: no version, range or tag in any source.
  * SYN-2026-080 (Joomla extension bundle): no fixed or affected version verified, and no reader for
  * Joomla extensions. SYN-2026-325 (reviewdog/action-setup): the exposure is a time window on a moved tag.
+ * Re-checked 2026-11-14 (4.1 M8): still no vendor-confirmed Joomla extension version offline (secondary sources
+ * only, SP Page Builder 6.6.2 vs 6.6.12 conflict); the reviewdog malicious commit is known only as a short SHA,
+ * and the OSV GitHub Actions record's `versions: ["1"]` is already matched when that database is installed.
  */
 const UNREPRESENTABLE = {
   "SYN-2026-080": "no affected or fixed version in any source; no Joomla extension reader",
@@ -404,7 +482,6 @@ function exploitedOf(candidate, primary) {
 
 function productOfImage(image) {
   if (Object.hasOwn(PRODUCT_IMAGES, image)) return PRODUCT_IMAGES[image];
-  if (Object.hasOwn(UNMAPPED_PRODUCT_IMAGES, image)) return UNMAPPED_PRODUCT_IMAGES[image];
   return undefined;
 }
 
@@ -723,6 +800,7 @@ function runtimeCycle(cycle, parts) {
 async function buildEol(cacheDir) {
   const entries = [];
   const skipped = [];
+  const dropped = [];
   for (const { slug, keys, runtimeParts } of EOL_PRODUCTS) {
     const { cycles } = await eolProduct(slug, cacheDir);
     for (const c of cycles) {
@@ -730,6 +808,8 @@ async function buildEol(cacheDir) {
       let latest = typeof c.latest === "string" && c.latest !== "" ? c.latest : undefined;
       if (!eol || !latest) {
         skipped.push(`${slug} ${c.cycle} (eol ${JSON.stringify(c.eol)}, latest ${JSON.stringify(c.latest)})`);
+        const cycle = runtimeParts ? runtimeCycle(c.cycle, runtimeParts) : String(c.cycle);
+        for (const product of keys) dropped.push({ product, cycle });
         continue;
       }
       // Temurin 8 lists "8u504-b01": the `-bNN` build suffix is not part of the release version.
@@ -738,7 +818,14 @@ async function buildEol(cacheDir) {
       for (const product of keys) entries.push({ product, cycle, eol, latest, source: `https://endoflife.date/${slug}` });
     }
   }
-  return { entries, skipped };
+  return { entries, skipped, dropped };
+}
+
+/** `--eol-from`: an existing eol.json's entries verbatim; there is no raw endoflife.date data to check for drops. */
+async function readEol(path) {
+  const file = await readJson(path);
+  if (!Array.isArray(file?.entries) || file.entries.length === 0) throw new Error(`${path}: no eol entries`);
+  return { entries: file.entries, skipped: [], dropped: undefined };
 }
 
 // ---- validation ----
@@ -772,11 +859,13 @@ function validate(advisories, verdicts, eol) {
     if (!ids.has(id)) problems.push(`approved ${id} missing`);
   }
   const cycles = new Set();
-  for (const e of eol) {
+  for (const e of eol.entries) {
     const key = `${e.product}\0${e.cycle}`;
     if (cycles.has(key)) problems.push(`duplicate eol cycle ${e.product} ${e.cycle}`);
     cycles.add(key);
   }
+  problems.push(...eolNumberingProblems(eol.entries));
+  if (eol.dropped) problems.push(...droppedCycleProblems(eol.entries, eol.dropped));
   return problems;
 }
 
@@ -806,15 +895,17 @@ async function main() {
   }
   advisories.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
-  const eol = await buildEol(args.eolCache);
-  const issues = validate(advisories, verdicts, eol.entries);
+  const eol = args.eolFrom ? await readEol(args.eolFrom) : await buildEol(args.eolCache);
+  if (!eol.dropped) console.error("[build-synvoya-dataset] --eol-from: entries reused verbatim; the dropped-cycle check was skipped (no raw endoflife.date data)");
+  const issues = validate(advisories, verdicts, eol);
   if (issues.length > 0) throw new Error(issues.join("\n"));
 
   const aliases = { packages: PACKAGE_ALIASES, imageAliases: IMAGE_ALIASES, productImages: PRODUCT_IMAGES };
   await mkdir(args.out, { recursive: true });
   await writeFile(join(args.out, "advisories.json"), `${JSON.stringify({ advisories }, null, 2)}\n`);
   await writeFile(join(args.out, "aliases.json"), `${JSON.stringify(aliases, null, 2)}\n`);
-  await writeFile(join(args.out, "eol.json"), `${JSON.stringify({ entries: eol.entries }, null, 2)}\n`);
+  const complete = [...new Set(COMPLETE_EOL_PRODUCTS)].sort();
+  await writeFile(join(args.out, "eol.json"), `${JSON.stringify({ entries: eol.entries, complete }, null, 2)}\n`);
 
   const count = (pred) => advisories.filter(pred).length;
   const kinds = {};
@@ -834,12 +925,15 @@ async function main() {
     productImages: Object.keys(PRODUCT_IMAGES).length,
     eolCycles: eol.entries.length,
     eolPerProduct,
+    eolComplete: complete,
     eolSkipped: eol.skipped,
   }, null, 2));
   console.error("[build-synvoya-dataset] wrote advisories.json, aliases.json, eol.json; run scripts/synvoya-manifest.mjs next");
 }
 
-main().catch((error) => {
-  console.error(`[build-synvoya-dataset] ${error instanceof Error ? error.message : String(error)}`);
-  process.exit(1);
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(`[build-synvoya-dataset] ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  });
+}

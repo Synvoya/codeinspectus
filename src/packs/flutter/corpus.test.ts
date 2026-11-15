@@ -19,7 +19,8 @@ const EXPECTED = [
   {
     file: "lib/01_tls_verification.dart",
     ruleId: "ci-flutter-tls-verification-disabled",
-    severity: "high",
+    severity: "low", // 4.1 M9 fresh-set gate (Ruling 3)
+    confidence: "low",
     cwe: ["CWE-295"],
     component: "ai:flutter-tls-verification",
   },
@@ -62,6 +63,7 @@ const EXPECTED = [
   file: string;
   ruleId: string;
   severity: Severity;
+  confidence?: "low";
   cwe: readonly string[];
   component: string;
 }[];
@@ -155,7 +157,7 @@ describe("Flutter frozen corpus", () => {
         engines: ["codeinspectus-ai"],
         finding_kind: "ai",
         severity: expected.severity,
-        confidence: "high",
+        confidence: "confidence" in expected ? expected.confidence : "high",
       });
       expect(finding.cwe).toEqual([...expected.cwe]);
       expect(finding.producer_components).toEqual(producerComponents);

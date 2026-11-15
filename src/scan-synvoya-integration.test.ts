@@ -15,6 +15,11 @@ const fault = vi.hoisted(() => ({
   reason: undefined as string | undefined,
   dir: undefined as string | undefined,
   deadlineMs: 30_000,
+  graceMs: 5_000,
+  /** The library reader ignores the deadline signal and does not return within the test. */
+  slowLibraries: false,
+  /** Order of reader completion and engine starts (M6 addendum). */
+  trace: [] as string[],
   rejectReader: "" as "" | "images" | "runtime" | "libraries" | "actions",
   trivyPackages: [] as unknown[],
   trivyResults: [] as unknown[],
@@ -23,7 +28,7 @@ const fault = vi.hoisted(() => ({
 }));
 
 vi.mock("./engines/trivy.js", () => ({
-  runTrivy: vi.fn(async () => ({
+  runTrivy: vi.fn(async () => (fault.trace.push("trivy:start"), {
     engine: "trivy",
     version: "0.76.1",
     available: true,
@@ -44,6 +49,9 @@ vi.mock("./synvoya/constants.js", async (importOriginal) => ({
   get SYNVOYA_READER_DEADLINE_MS() {
     return fault.deadlineMs;
   },
+  get SYNVOYA_READER_GRACE_MS() {
+    return fault.graceMs;
+  },
 }));
 vi.mock("./synvoya/actions-matcher.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./synvoya/actions-matcher.js")>();
@@ -56,6 +64,18 @@ vi.mock("./synvoya/actions-matcher.js", async (importOriginal) => {
   };
 });
 vi.mock("./store.js", () => ({ saveScan: vi.fn(async () => undefined), getScan: vi.fn(async () => undefined) }));
+// Fix round 1, ruling 4: the probes start only after the readers finish.
+for (const [module, name, event] of [
+  ["./git-safety.js", "detectGitSafety", "git-safety:start"],
+  ["./technology-detection.js", "detectTechnologies", "technologies:start"],
+  ["./repository-trust/index.js", "scanRepositoryTrust", "repository-trust:start"],
+  ["./coverage-gaps.js", "discoverCoverageGaps", "coverage-gaps:start"],
+] as const) {
+  vi.doMock(module, async (importOriginal) => {
+    const actual = await importOriginal<Record<string, (...args: unknown[]) => unknown>>();
+    return { ...actual, [name]: (...args: unknown[]) => (fault.trace.push(event), actual[name]!(...args)) };
+  });
+}
 vi.mock("./synvoya/readers/images.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./synvoya/readers/images.js")>();
   return {
@@ -77,7 +97,9 @@ vi.mock("./synvoya/readers/libraries.js", async (importOriginal) => {
   return {
     ...actual,
     readLibraries: (...args: Parameters<typeof actual.readLibraries>) =>
-      fault.rejectReader === "libraries" ? Promise.reject(new Error("injected")) : actual.readLibraries(...args),
+      fault.rejectReader === "libraries" ? Promise.reject(new Error("injected"))
+        : fault.slowLibraries ? new Promise<never>(() => undefined)
+          : actual.readLibraries(...args).then((result) => (fault.trace.push("library-reader:done"), result)),
   };
 });
 vi.mock("./synvoya/readers/actions.js", async (importOriginal) => {
@@ -110,6 +132,7 @@ const { diffRescan } = await import("./rescan.js");
 const { summarizeScan } = await import("./summarize.js");
 const { sha256Hex } = await import("./util/hash.js");
 const { getScan } = await import("./store.js");
+const { SYNVOYA_DATASET_DIR } = await import("./synvoya/constants.js");
 const { buildComplianceReport } = await import("./compliance/report.js");
 
 /** Fixture-grade dataset (node 20 < 20.18.1, PHP 8.0 EOL, ...) kept apart from the shipped seed. */
@@ -237,6 +260,9 @@ beforeEach(() => {
   fault.reason = undefined;
   fault.dir = undefined;
   fault.deadlineMs = 30_000;
+  fault.graceMs = 5_000;
+  fault.slowLibraries = false;
+  fault.trace = [];
   fault.rejectReader = "";
   fault.trivyPackages = [];
   fault.trivyResults = [];
@@ -437,6 +463,33 @@ describe("scan orchestrator Synvoya gap layer", () => {
     expect(synvoya(diff.resolved)).toEqual([]);
     expect(synvoya(diff.not_rechecked)).toEqual(["SYN-2026-001"]);
     expect(diff.not_rechecked_note).toContain("the Synvoya gap layer did not fully re-check this finding's file in the rescan");
+  });
+
+  // 4.1 M6 addendum: a reader past the deadline is always declared; the scan never waits on a hung one.
+  it("a reader that never returns is cut at the hard cap: the scan reads partial and names it", async () => {
+    const target = await project({ ".nvmrc": "20.1.0\n" });
+    fault.slowLibraries = true;
+    fault.deadlineMs = 50;
+    fault.graceMs = 50;
+    const result = await scan(target);
+    expect(synvoyaRow(result)).toMatchObject({ ran: true });
+    // The finished readers keep their findings; nothing is recorded as checked by a reader.
+    expect(result.findings.some((finding) => finding.engine === "synvoya" && finding.location.file === ".nvmrc")).toBe(true);
+    expect(result.synvoya_checked).toEqual({ "inventory:osv-scanner": [], "inventory:trivy": [] });
+    expect(synvoyaEvidence(result)).toContainEqual({ component: "scan-pipeline", state: "partial" });
+    const warning = result.warnings.find((text) => text.startsWith("Synvoya coverage partial"));
+    expect(warning).toMatch(/Readers that did not finish: library \(still running at the hard cap\)\.$/);
+  });
+
+  it("the readers finish before the scan starts the probes and the other engines", async () => {
+    vi.mocked(runOsvScanner).mockImplementation(async () => (fault.trace.push("osv:start"), osvResult()));
+    await scan(await project({ ".nvmrc": "20.1.0\n", "public/js/jquery-3.1.1.js": "/*! jQuery v3.1.1 */\n" }));
+    expect(fault.trace.indexOf("library-reader:done")).toBeGreaterThanOrEqual(0);
+    expect(fault.trace.indexOf("library-reader:done")).toBeLessThan(fault.trace.indexOf("osv:start"));
+    expect(fault.trace.indexOf("library-reader:done")).toBeLessThan(fault.trace.indexOf("trivy:start"));
+    for (const probe of ["git-safety:start", "technologies:start", "repository-trust:start", "coverage-gaps:start"]) {
+      expect(fault.trace.indexOf(probe), probe).toBeGreaterThan(fault.trace.indexOf("library-reader:done"));
+    }
   });
 
   it("a fixed declaration in a file Synvoya read is resolved", async () => {
@@ -671,6 +724,91 @@ describe("scan orchestrator Synvoya gap layer", () => {
       await writeFile(join(target, "Dockerfile"), "FROM jenkins/jenkins:2.440.1\n", "utf8");
       const diff = diffRescan(prior, await scan(target));
       expect(tagged(diff.resolved)).toEqual(["SYN-2026-901@Dockerfile"]);
+    });
+
+    describe("per-subject image checks (4.1 M8): a private-mirror stage blocks only itself", () => {
+      const PRIOR = "FROM registry.internal/php:8.1 AS php\nFROM node:20.1.0\n";
+      it.each([
+        ["the node stage fixed, the private php stage unchanged", "FROM registry.internal/php:8.1 AS php\nFROM node:22.23.4\n", "resolved"],
+        ["the node stage moved to a private mirror", "FROM registry.internal/php:8.1 AS php\nFROM registry.internal/node:22\n", "not_rechecked"],
+        ["a repository behind a variable added (no subject)", "ARG BASE\nFROM registry.internal/php:8.1 AS php\nFROM node:22.23.4\nFROM ${BASE}\n", "not_rechecked"],
+        ["the node stage removed", "FROM registry.internal/php:8.1 AS php\n", "resolved"],
+      ])("%s: %s", async (_name, after, outcome) => {
+        const target = await project({ "Dockerfile": PRIOR });
+        const prior = await scan(target);
+        expect(tagged(prior.findings)).toEqual(["SYN-2026-001@Dockerfile"]);
+        expect(prior.synvoya_checked?.images).toEqual([]);
+        expect(prior.synvoya_subjects).toEqual({
+          images: { blocked: { Dockerfile: ["runtime:php"] }, findings: { [prior.findings.find((f) => f.engine === "synvoya")!.fingerprint]: "runtime:node" } },
+        });
+        await writeFile(join(target, "Dockerfile"), after, "utf8");
+        const diff = diffRescan(prior, await scan(target));
+        expect(tagged(outcome === "resolved" ? diff.resolved : diff.not_rechecked)).toEqual(["SYN-2026-001@Dockerfile"]);
+        expect(tagged(outcome === "resolved" ? diff.not_rechecked : diff.resolved)).toEqual([]);
+      });
+
+      it("falls back to the file rule: a prior without subject evidence (4.0), or a finding it does not list, never resolves through the blocked map", async () => {
+        const target = await project({ "Dockerfile": PRIOR });
+        const prior = await scan(target);
+        await writeFile(join(target, "Dockerfile"), "FROM registry.internal/php:8.1 AS php\nFROM node:22.23.4\n", "utf8");
+        const fresh = await scan(target);
+        const { synvoya_subjects: _subjects, ...legacy } = prior;
+        expect(tagged(diffRescan(legacy, fresh).not_rechecked)).toEqual(["SYN-2026-001@Dockerfile"]);
+        const unlisted = { ...prior, synvoya_subjects: { images: { blocked: prior.synvoya_subjects!.images!.blocked!, findings: {} } } };
+        expect(tagged(diffRescan(unlisted, fresh).not_rechecked)).toEqual(["SYN-2026-001@Dockerfile"]);
+        // A fresh scan without the blocked map (a 4.0 rescan, or a map over the cap) proves nothing either.
+        const { synvoya_subjects: _fresh, ...freshLegacy } = fresh;
+        expect(tagged(diffRescan(prior, freshLegacy).not_rechecked)).toEqual(["SYN-2026-001@Dockerfile"]);
+        // The checked-file rule still resolves a file with nothing unjudged.
+        await writeFile(join(target, "Dockerfile"), "FROM node:22.23.4\n", "utf8");
+        expect(tagged(diffRescan(legacy, await scan(target)).resolved)).toEqual(["SYN-2026-001@Dockerfile"]);
+      });
+
+      it("a deadline skip leaves no subject evidence, so nothing resolves through it", async () => {
+        const target = await project({ "Dockerfile": PRIOR });
+        const prior = await scan(target);
+        await writeFile(join(target, "Dockerfile"), "FROM registry.internal/php:8.1 AS php\nFROM node:22.23.4\n", "utf8");
+        fault.deadlineMs = 0;
+        const fresh = await scan(target);
+        expect(fresh.synvoya_subjects).toBeUndefined();
+        expect(tagged(diffRescan(prior, fresh).not_rechecked)).toEqual(["SYN-2026-001@Dockerfile"]);
+      });
+
+      it.each([
+        ["mongo:4.4.0", "bitnami/mongodb:${TAG}"],
+        ["mongo:4.4.0", "registry.example/mongodb:4.4"],
+        ["postgres:12.0", "bitnami/postgresql:${TAG}"],
+      ])("one product under two image names folds into one key: %s replaced by %s is not_rechecked", async (before, after) => {
+        fault.dir = SYNVOYA_DATASET_DIR;
+        const target = await project({ "Dockerfile": `FROM registry.internal/php:8.1 AS php\nFROM ${before}\n` });
+        const prior = await scan(target);
+        const findings = tagged(prior.findings);
+        expect(findings.length).toBeGreaterThan(0);
+        await writeFile(join(target, "Dockerfile"), `FROM registry.internal/php:8.1 AS php\nFROM ${after}\n`, "utf8");
+        const diff = diffRescan(prior, await scan(target));
+        expect(tagged(diff.resolved)).toEqual([]);
+        expect(tagged(diff.not_rechecked).sort()).toEqual([...findings].sort());
+      });
+
+      it("the subject evidence is stored, never displayed", async () => {
+        const execution = await executeScan({ path: await project({ "Dockerfile": PRIOR }), scanners: ["vuln"] }, { persist: false });
+        expect(execution.canonical.synvoya_subjects?.images?.blocked).toEqual({ Dockerfile: ["runtime:php"] });
+        expect(execution.display).not.toHaveProperty("synvoya_subjects");
+        expect(scanResultSchema.safeParse(execution.display).success).toBe(true);
+      });
+    });
+
+    it("a single workflow file target shows Synvoya paths by its file name, and a fix in it resolves (4.1 M8)", async () => {
+      const workflow = (version: string) => workflowWith("").replace("      - run: echo\n", `      - uses: actions/setup-node@v4\n        with:\n          node-version: ${version}\n`);
+      const root = await project({ ".github/workflows/ci.yml": workflow("20.1.0") });
+      const file = join(root, ".github", "workflows", "ci.yml");
+      const prior = await scan(file);
+      expect(tagged(prior.findings)).toEqual(["SYN-2026-001@ci.yml"]);
+      expect(prior.synvoya_checked?.runtime).toEqual(["ci.yml"]);
+      const synvoyaText = [...(prior.coverage_notes ?? []).filter((n) => n.component === "engine:synvoya").map((n) => n.detail), ...prior.findings.flatMap((f) => [f.title, f.message])];
+      for (const text of synvoyaText) expect(text).not.toContain(".github/workflows/");
+      await writeFile(file, workflow("20.18.1"), "utf8");
+      expect(tagged(diffRescan(prior, await scan(file)).resolved)).toEqual(["SYN-2026-001@ci.yml"]);
     });
 
     it("a deadline skip anywhere omits every reader set, while the inventory sets stay", async () => {

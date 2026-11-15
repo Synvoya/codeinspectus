@@ -60,3 +60,75 @@ describe("native lexer limitations closed by the parser (review C-1; design §10
     expect(parsedAndVisible("a.js", "eval(payload)\n")).toBe(true);
   });
 });
+
+/**
+ * Under `decorators-legacy`, a decorator followed by a computed class key on the next line
+ * (`@ApiProperty({...})` then `[UploadFieldName.PROFILE_DATA]!: string`, one immich DTO) reads as the member
+ * access `@ApiProperty({...})[UploadFieldName.PROFILE_DATA]`, so the file was `native-parse-errors` on every
+ * 7.x release (7.29.13 too). TypeScript reads it as a decorator and a computed key. A TypeScript file the
+ * legacy reading rejects is read once more with standard decorators (4.1 M4). A file both readings reject
+ * stays unparsed, never clean.
+ */
+describe("standard-decorators fallback: a decorator before a computed class key (4.1 M4)", () => {
+  const immich = [
+    "enum UploadFieldName { PROFILE_DATA = 'file' }",
+    "export class CreateProfileImageDto {",
+    "  @ApiProperty({ type: 'string', format: 'binary' })",
+    "  [UploadFieldName.PROFILE_DATA]!: string;",
+    "}",
+    "eval(payload);",
+    "",
+  ].join("\n");
+
+  test.each(["a.ts", "a.tsx", "a.mts"])("the immich pattern parses in %s", (path) => {
+    expect(parsedAndVisible(path, immich)).toBe(true);
+  });
+
+  // A `.cts` file is a script, where `export` is a parse error under any reading (unchanged by M4).
+  test("the immich pattern without `export` parses in a.cts", () => {
+    expect(parsedAndVisible("a.cts", immich.replace("export class", "class"))).toBe(true);
+  });
+
+  test("the fallback reads the decorator and the computed key token for token", () => {
+    const document = parseJavaScriptSource("a.ts", immich);
+    expect(document.tokens.filter((token) => token.line === 3 || token.line === 4).map((token) => token.value)).toEqual([
+      "@", "ApiProperty", "(", "{", "type", ":", "'string'", ",", "format", ":", "'binary'", "}", ")",
+      "[", "UploadFieldName", ".", "PROFILE_DATA", "]", "!", ":", "string", ";",
+    ]);
+  });
+
+  test.each([
+    // A syntax error no decorator reading fixes.
+    ["syntax error", "a.ts", "export class A {\n  [K]!: string = \n}\neval(payload);\n"],
+    // The legacy reading rejects the computed key; standard decorators reject the parameter decorator.
+    ["computed key and parameter decorator", "a.ts",
+      "class A {\n  @Dec()\n  [K]!: string;\n  constructor(@Inject(X) x: X) {}\n}\neval(payload);\n"],
+    // The legacy reading rejects the computed key; standard decorators reject a call before a member access.
+    ["computed key and legacy decorator expression", "a.tsx",
+      "class A {\n  @Dec()\n  [K]!: string;\n  @a.b().c m() {}\n}\neval(payload);\n"],
+  ])("a file both readings reject stays unparsed: %s", (_name, path, source) => {
+    const document = parseJavaScriptSource(path, source);
+    expect(document.balanced).toBe(false);
+    expect(document.tokens).toEqual([]);
+    expect(document.lexicalIssues.join("\n")).toMatch(/parse error/);
+  });
+
+  // Review nit (M4 cleanup 4): when both readings fail, the error further into the file is the useful one.
+  test("both readings fail: the standard reading's error is reported when it is further into the file", () => {
+    const source = "class A {\n  @Dec()\n  [K]!: string;\n  m() { const = 1; }\n}\n";
+    const document = parseJavaScriptSource("a.ts", source);
+    expect(document.balanced).toBe(false);
+    expect(document.lexicalIssues.join("\n")).toMatch(/\(4:\d+\)/);
+  });
+
+  test("both readings fail: the legacy reading's error is reported when it is further into the file", () => {
+    const source = "class A {\n  constructor(@Inject(X) x: X) {}\n}\nconst = 1;\n";
+    const document = parseJavaScriptSource("a.ts", source);
+    expect(document.balanced).toBe(false);
+    expect(document.lexicalIssues.join("\n")).toMatch(/\(4:\d+\)/);
+  });
+
+  test("JavaScript gets no decorator fallback", () => {
+    expect(parseJavaScriptSource("a.js", "class A {\n  @dec\n  [k] = 1;\n}\n").balanced).toBe(false);
+  });
+});

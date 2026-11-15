@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ParsedSynvoyaAdvisory, SynvoyaAdvisory, SynvoyaDataset } from "./dataset.js";
 
-import { SYNVOYA_DATASET_DIR, loadSynvoyaDataset } from "./dataset.js";
+import { SYNVOYA_DATASET_DIR, exploitedIdentities, loadSynvoyaDataset } from "./dataset.js";
 import { sha256Hex } from "../util/hash.js";
 
 const run = promisify(execFile);
@@ -71,6 +71,18 @@ describe("Synvoya dataset loader", () => {
       "Packagist:magento/magento2-base": "Packagist:magento/community-edition",
       "Packagist:magento/product-community-edition": "Packagist:magento/community-edition",
     });
+  });
+
+  it("exploitedIdentities lists the upper-cased ids and aliases of every exploited advisory", async () => {
+    const loaded = await loadSynvoyaDataset();
+    if (!loaded.ok) throw new Error(loaded.reason);
+    const exploited = exploitedIdentities(loaded.dataset);
+    const expected = new Set(loaded.dataset.advisories.filter((advisory) => advisory.exploited)
+      .flatMap((advisory) => [advisory.id, ...advisory.aliases]).map((identity) => identity.toUpperCase()));
+    expect(exploited).toEqual(expected);
+    expect(exploited.size).toBeGreaterThan(0);
+    for (const advisory of loaded.dataset.advisories.filter((entry) => !entry.exploited)) expect(exploited.has(advisory.id)).toBe(false);
+    expect(exploited.has("MAL-2026-2144")).toBe(true);
   });
 
   it("returns the manifest digest, which changes whenever any dataset file changes", async () => {
@@ -275,6 +287,47 @@ describe("Synvoya dataset loader", () => {
       const loaded = await loadSynvoyaDataset(work);
       expect(loaded.ok).toBe(false);
       if (!loaded.ok) expect(loaded.reason).toContain("eol.json");
+    });
+
+    describe("eol.json complete release lists (4.1 M8)", () => {
+      async function withComplete(complete: unknown): Promise<Awaited<ReturnType<typeof loadSynvoyaDataset>>> {
+        const file = JSON.parse(await readFile(join(work, "eol.json"), "utf8")) as Record<string, unknown>;
+        await replaceFile("eol.json", `${JSON.stringify({ ...file, complete }, null, 2)}\n`);
+        return loadSynvoyaDataset(work);
+      }
+
+      it("the shipped table marks the complete products, sorted and unique", async () => {
+        const loaded = await loadSynvoyaDataset();
+        expect(loaded.ok).toBe(true);
+        if (loaded.ok) expect(loaded.dataset.eolComplete).toEqual(["dotnet", "php", "postgres", "postgresql", "python", "ruby"]);
+      });
+
+      it("an eol.json without `complete` loads with an empty list", async () => {
+        const file = JSON.parse(await readFile(join(work, "eol.json"), "utf8")) as Record<string, unknown>;
+        delete file.complete;
+        await replaceFile("eol.json", `${JSON.stringify(file, null, 2)}\n`);
+        const loaded = await loadSynvoyaDataset(work);
+        expect(loaded.ok).toBe(true);
+        if (loaded.ok) expect(loaded.dataset.eolComplete).toEqual([]);
+      });
+
+      it.each([
+        ["an unknown product", ["php", "zz-unknown"]],
+        ["a duplicate", ["php", "php"]],
+        ["unsorted names", ["ruby", "php"]],
+        ["a product with one cycle", ["php", "single"]],
+        ["an empty name", [""]],
+        ["a non-array", "php"],
+      ])("rejects `complete` with %s", async (_name, complete) => {
+        if (JSON.stringify(complete).includes("single")) {
+          const file = JSON.parse(await readFile(join(work, "eol.json"), "utf8")) as { entries: Array<Record<string, unknown>> };
+          file.entries.push({ product: "single", cycle: "1", eol: "2020-01-01", latest: "1.0.0", source: "https://endoflife.date/single" });
+          await replaceFile("eol.json", `${JSON.stringify(file, null, 2)}\n`);
+        }
+        const loaded = await withComplete(complete);
+        expect(loaded.ok).toBe(false);
+        if (!loaded.ok) expect(loaded.reason).toContain("eol.json");
+      });
     });
 
     describe("libraries.json", () => {

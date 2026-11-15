@@ -118,6 +118,36 @@ describe("seed dataset on the real scanner", () => {
     expect(await scan("eol-image-fp")).toEqual([]);
   });
 
+  it("eol range across complete lines (4.1 M8): every PHP >=7.4 <8.1 and postgres:9 line is end-of-life; ^7.4 || ^8.3 and postgres:17 are not", async () => {
+    const tp = await scanFull("eol-range-tp");
+    // PHP has the dataset's own end-of-life entry (SYN-2026-015, which replaces SYN-EOL-php-*); before M8 the
+    // [7.5, 8.0) gap was an unchecked line, so these were medium-confidence line findings; now every line is
+    // end-of-life (high, eol-floor).
+    expect(tp.findings.map((finding) => [finding.rule_id, finding.confidence, finding.location.file])).toEqual([
+      ["SYN-EOL-postgres-9.6", "high", "Dockerfile"],
+      ["SYN-2026-008", "high", "composer.json"],
+      ["SYN-2026-014", "high", "composer.json"],
+      ["SYN-2026-015", "high", "composer.json"],
+    ]);
+    expect(tp.findings[0]!.title).toBe("postgres 9.0/9.1/9.2/9.3/9.4/9.5/9.6 is end-of-life (declared in Dockerfile)");
+    expect(tp.findings[3]!.message).toContain("Every release line it can resolve to is end-of-life");
+    const fp = await scanFull("eol-range-fp");
+    expect(fp.findings).toEqual([]);
+  });
+
+  it("product (MinIO, 4.1 M8): a RELEASE tag before the fix is SYN-2026-268 and SYN-2026-276; the fix tag is clean and checked", async () => {
+    const tp = await scanFull("product-minio-tp");
+    expect(tp.findings.map((finding) => [finding.rule_id, finding.confidence, finding.location.file, finding.location.start_line])).toEqual([
+      ["SYN-2026-268", "high", "compose.yaml", 3],
+      ["SYN-2026-276", "high", "compose.yaml", 3],
+    ]);
+    expect(tp.findings[0]!.title).toBe("minio: Security Feature Bypass Vulnerability (KEV 2023-09-19) (MinIO RELEASE.2023-03-13T19-46-17Z declared in compose.yaml)");
+    expect(tp.findings[0]!.remediation.summary).toBe("Upgrade the declared MinIO to RELEASE.2023-03-20T20-16-18Z or later, then rebuild and redeploy.");
+    const fp = await scanFull("product-minio-fp");
+    expect(fp.findings).toEqual([]);
+    expect(fp.evidence.checked.images).toEqual(["compose.yaml"]);
+  });
+
   it("vulnerability: node-forge 1.3.1 is affected; 1.4.1 is fixed", async () => {
     const tp = await scan("vulnerability-tp", pkg("npm", "node-forge", "1.3.1", "package-lock.json"));
     expect(ids(tp)).toEqual(["SYN-2026-057"]);

@@ -68,7 +68,10 @@ describe("Synvoya display family membership", () => {
   });
 });
 
-describe("engine_family is not part of finding identity", () => {
+/** Two full fixture scans: generous, so a loaded CI runner does not time them out. */
+const SCAN_TEST_TIMEOUT_MS = 30_000;
+
+describe("engine_family is not part of finding identity", { timeout: SCAN_TEST_TIMEOUT_MS }, () => {
   test("a fixture scan has identical ids, fingerprints, engines and rule ids with and without the family step", async () => {
     const { executeScan } = await import("../scan.js");
     const dir = await mkdtemp(join(tmpdir(), "ci-synvoya-family-"));

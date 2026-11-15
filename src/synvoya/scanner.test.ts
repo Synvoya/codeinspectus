@@ -7,15 +7,15 @@ import { SYNVOYA_DATASET_COMPONENT, synvoyaFindingComponents } from "../provenan
 import { findingSchema } from "../schemas.js";
 import type { DependencyCoverage } from "../types.js";
 import { dedupFindings } from "../dedup.js";
-import { sha256Hex } from "../util/hash.js";
+import { fingerprint, sha256Hex } from "../util/hash.js";
 import { INTERNAL_SYNVOYA_DEADLINE_ENV, SYNVOYA_MAX_CHECKED_FILES, synvoyaReaderDeadlineMs } from "./constants.js";
-import { loadSynvoyaDataset } from "./dataset.js";
+import { exploitedIdentities, loadSynvoyaDataset } from "./dataset.js";
 import type { PackageInventory } from "./evaluate.js";
 import { capSynvoyaNotes, runSynvoyaScan, synvoyaUpstreamInputs } from "./scanner.js";
 import { runOsvScannerOnSbom } from "../engines/osv-scanner.js";
 import { writeActionsFixtureDb, zipEntries } from "./actions-osv-fixture.js";
 
-const readerFault = vi.hoisted(() => ({ images: false, libraries: false, actions: false }));
+const readerFault = vi.hoisted(() => ({ images: false, libraries: false, actions: false, slowLibraries: false }));
 vi.mock("./readers/actions.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./readers/actions.js")>();
   return {
@@ -29,7 +29,10 @@ vi.mock("./readers/libraries.js", async (importOriginal) => {
   return {
     ...actual,
     readLibraries: vi.fn((...args: Parameters<typeof actual.readLibraries>) =>
-      readerFault.libraries ? Promise.reject(new Error("injected reader failure")) : actual.readLibraries(...args)),
+      readerFault.libraries ? Promise.reject(new Error("injected reader failure"))
+        // A reader that ignores the deadline signal (a hung read): it settles long after any test ends.
+        : readerFault.slowLibraries ? new Promise((resolve) => { setTimeout(() => resolve({ declarations: [], parsed: [], skipped: [], notes: [] }), 120_000).unref(); })
+          : actual.readLibraries(...args)),
   };
 });
 vi.mock("./readers/images.js", async (importOriginal) => {
@@ -217,6 +220,8 @@ describe("runSynvoyaScan", () => {
     });
     expect(result.warnings).toEqual([]);
     expectNoLineZero(result);
+    // The known-exploited list (4.1 dev-scope rule): ids and aliases of every `exploited: true` advisory.
+    expect(result.exploitedIdentities).toEqual(exploitedIdentities(loaded.dataset));
   });
 
   it("a tampered dataset makes the engine unavailable with a warning, never a silent zero", async () => {
@@ -231,6 +236,7 @@ describe("runSynvoyaScan", () => {
     expect(result.info.note).toMatch(/^Synvoya gap advisories unavailable: eol\.json does not match the SHA-256 digest/);
     expect(result.warnings).toEqual([result.info.note]);
     expect(result.componentSignatures).toEqual({});
+    expect(result.exploitedIdentities).toBeUndefined();
   });
 
   it("does not leave a rejected inventory unhandled when the dataset is unavailable", async () => {
@@ -373,6 +379,35 @@ describe("runSynvoyaScan", () => {
       expect(result.info.note).toMatch(/input\(s\) skipped \(\d+ deadline\)/);
     });
 
+    it("names every reader that did not finish before the deadline", async () => {
+      const result = await runSynvoyaScan(target, NONE, {}, { datasetDir: TEST_DATASET, now: NOW, deadlineMs: 0 });
+      const deadline = result.warnings.find((warning) => warning.startsWith("Synvoya coverage partial"));
+      expect(deadline).toMatch(/ Readers that did not finish: runtime \(\d+ not read\), image \(\d+ not read\), product \(\d+ not read\), library \(\d+ not read\), GitHub Actions \(\d+ not read\)\.$/);
+    });
+
+    // 4.1 M6 addendum: a reader past the deadline is always declared, even one that never returns.
+    it("a reader that ignores the deadline is cut at the hard cap, named, and the run reads partial", async () => {
+      readerFault.slowLibraries = true;
+      try {
+        const started = Date.now();
+        const result = await runSynvoyaScan(target, NONE, {}, { datasetDir: TEST_DATASET, now: NOW, deadlineMs: 50, graceMs: 50 });
+        expect(Date.now() - started).toBeLessThan(10_000);
+        expect(result.info).toMatchObject({ available: true, ran: true });
+        // The readers that finished keep their findings; nothing is recorded as checked.
+        expect(result.findings).toHaveLength(2);
+        expect(result.evidence.checked).not.toHaveProperty("runtime");
+        expect(result.evidence.checked).not.toHaveProperty("vendored");
+        expect(result.evidence.checked).not.toHaveProperty("sbom:osv-scanner");
+        expect(result.evidence.skipped).toContainEqual({ file: ".", reason: "deadline" });
+        const deadline = result.warnings.filter((warning) => warning.startsWith("Synvoya coverage partial"));
+        expect(deadline).toHaveLength(1);
+        expect(deadline[0]).toMatch(/^Synvoya coverage partial: the readers reached their 0 s deadline; 1 file\(s\) or folder\(s\) were not read/);
+        expect(deadline[0]).toMatch(/ Readers that did not finish: library \(still running at the hard cap\)\.$/);
+      } finally {
+        readerFault.slowLibraries = false;
+      }
+    });
+
     it("a generous deadline changes nothing", async () => {
       const result = await runSynvoyaScan(target, NONE, {}, { datasetDir: TEST_DATASET, now: NOW, deadlineMs: 60_000 });
       expect(result.findings).toHaveLength(2);
@@ -380,6 +415,43 @@ describe("runSynvoyaScan", () => {
       expect(result.notes.some((note) => note.includes("deadline"))).toBe(false);
       expect(result.warnings.some((warning) => warning.includes("deadline"))).toBe(false);
     });
+  });
+});
+
+describe("per-subject image checks (4.1 M8 Ruling 3)", () => {
+  it("a file whose only unjudged images carry a subject is blocked for those subjects; a subject-less problem or a skip blocks the whole file", async () => {
+    const target = await repo({
+      "Dockerfile": "FROM registry.internal/php:8.1 AS php\nFROM node:20.1.0\n",
+      "compose.yaml": "services:\n  web:\n    image: node:22.23.4\n",
+      "api/Dockerfile": "ARG BASE\nFROM ${BASE}\nFROM registry.internal/php:8.1\n",
+      "big/Dockerfile": Array.from({ length: 65 }, () => "FROM registry.internal/php:8.1\n").join(""),
+    });
+    const result = await runSynvoyaScan(target, Promise.resolve(NONE), {}, { datasetDir: TEST_DATASET, now: NOW });
+    expect(result.findings.map((finding) => [finding.rule_id, finding.location.file])).toEqual([["SYN-2026-001", "Dockerfile"]]);
+    expect(result.evidence.checked.images).toEqual(["compose.yaml"]);
+    expect(result.evidence.subjects).toEqual({
+      images: {
+        blocked: { Dockerfile: ["runtime:php"] },
+        findings: { [result.findings[0]!.fingerprint]: "runtime:node" },
+      },
+    });
+  });
+
+  it("a lookalike and an unresolved tag of the same runtime fold into one key, sorted with the others", async () => {
+    const target = await repo({ "Dockerfile": "FROM registry.internal/node:22 AS a\nFROM python\nFROM node:${TAG}\n" });
+    const result = await runSynvoyaScan(target, Promise.resolve(NONE), {}, { datasetDir: TEST_DATASET, now: NOW });
+    expect(result.evidence.subjects?.images.blocked).toEqual({ Dockerfile: ["runtime:node", "runtime:python"] });
+  });
+
+  it("no subject evidence without the image set: a deadline skip or a failed image reader", async () => {
+    const target = await repo({ "Dockerfile": "FROM registry.internal/php:8.1 AS php\nFROM node:20.1.0\n" });
+    const cut = await runSynvoyaScan(target, Promise.resolve(NONE), {}, { datasetDir: TEST_DATASET, now: NOW, deadlineMs: 0 });
+    expect(cut.evidence.checked.images).toBeUndefined();
+    expect(cut.evidence.subjects).toBeUndefined();
+    readerFault.images = true;
+    const failed = await runSynvoyaScan(target, Promise.resolve(NONE), {}, { datasetDir: TEST_DATASET, now: NOW });
+    expect(failed.evidence.checked.images).toBeUndefined();
+    expect(failed.evidence.subjects).toBeUndefined();
   });
 });
 
@@ -405,19 +477,44 @@ describe("single-file targets", () => {
     expect(result.evidence.checked).toMatchObject({ runtime: [], images: ["Dockerfile"], products: [] });
   });
 
-  it("reads a workflow target as a workflow, under its .github/workflows path", async () => {
-    const workflow = "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 20.1.0\n";
-    const result = await scanFile({ ".github/workflows/ci.yml": workflow }, ".github/workflows/ci.yml");
+  it("reads a workflow target as a workflow and shows it by its file name, as the other engines do (4.1 M8)", async () => {
+    const workflow = "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    container: php:8.0.30-fpm\n    steps:\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 20.1.0\n";
+    const root = await repo({ ".github/workflows/ci.yml": workflow });
+    const result = await runSynvoyaScan(join(root, ".github", "workflows", "ci.yml"), Promise.resolve(NONE), {}, { datasetDir: TEST_DATASET, now: NOW });
     expect(result.findings.map((finding) => [finding.rule_id, finding.location.file, finding.location.start_line])).toEqual([
-      ["SYN-2026-001", ".github/workflows/ci.yml", 8],
+      ["SYN-EOL-php-8.0", "ci.yml", 5],
+      ["SYN-2026-001", "ci.yml", 9],
     ]);
-    expect(result.evidence.checked.runtime).toEqual([".github/workflows/ci.yml"]);
+    expect(result.evidence.parsed).toEqual(["ci.yml"]);
+    expect(result.evidence.checked.runtime).toEqual(["ci.yml"]);
+    expect(result.evidence.checked.images).toEqual(["ci.yml"]);
+    for (const text of [...result.findings.flatMap((f) => [f.title, f.message]), ...result.notes]) {
+      expect(text).not.toContain(".github/workflows/");
+    }
+    expect(result.findings[0]!.title).toBe("PHP 8.0 is end-of-life (declared in ci.yml)");
+    expect(result.notes).not.toContain(notChecked("ci.yml"));
+    // The same file in a directory scan keeps its full path, and its fingerprints.
+    const dir = await runSynvoyaScan(root, Promise.resolve(NONE), {}, { datasetDir: TEST_DATASET, now: NOW });
+    expect(dir.findings.map((finding) => finding.location.file)).toEqual([".github/workflows/ci.yml", ".github/workflows/ci.yml"]);
+    expect(dir.evidence.checked.runtime).toEqual([".github/workflows/ci.yml"]);
+    // A directory-scan fingerprint is the same as before 4.1 M8 (only single-file Synvoya fingerprints changed).
+    expect(dir.findings[1]!.fingerprint).toBe(fingerprint(["synvoya", "SYN-2026-001", ".github/workflows/ci.yml", "runtime:node"]));
+    expect(result.findings[1]!.fingerprint).toBe(fingerprint(["synvoya", "SYN-2026-001", "ci.yml", "runtime:node"]));
   });
 
-  it("reads a wp-includes/version.php target", async () => {
+  it("an unresolvable image in a single workflow file is noted under its file name", async () => {
+    const workflow = "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    container: ${{ vars.IMG }}\n    steps:\n      - run: echo\n";
+    const result = await scanFile({ ".github/workflows/ci.yml": workflow }, ".github/workflows/ci.yml");
+    expect(result.notes.some((note) => note.startsWith("ci.yml:5: GitHub Actions container.image"))).toBe(true);
+    for (const note of result.notes) expect(note).not.toContain(".github/workflows/");
+    expect(result.evidence.checked.images).toEqual([]);
+  });
+
+  it("reads a wp-includes/version.php target and shows it as version.php", async () => {
     const result = await scanFile({ "wp-includes/version.php": "<?php\n$wp_version = '6.4.1';\n" }, "wp-includes/version.php");
-    expect(result.evidence.parsed).toEqual(["wp-includes/version.php"]);
-    expect(result.evidence.checked.products).toEqual(["wp-includes/version.php"]);
+    expect(result.evidence.parsed).toEqual(["version.php"]);
+    expect(result.evidence.checked.products).toEqual(["version.php"]);
+    for (const text of [...result.findings.flatMap((f) => [f.title, f.message, f.location.file]), ...result.notes]) expect(text).not.toContain("wp-includes/");
   });
 
   it("a file target no reader knows is a plain note, never a checked file", async () => {
@@ -988,10 +1085,13 @@ describe("third-party GitHub Actions", () => {
     expect(result.actionsCoverage!.evaluated).toEqual(new Set());
   });
 
-  it("a single workflow file target is read alone and checked", async () => {
+  it("a single workflow file target is read alone and checked, under its file name", async () => {
     const target = await repo({ ".github/workflows/ci.yml": CI });
     const result = await runSynvoyaScan(join(target, ".github", "workflows", "ci.yml"), NONE, {}, { datasetDir: TEST_DATASET, now: NOW, actionsDb: await signedDb() });
     expect(result.findings.map((f) => f.rule_id)).toContain("GHSA-mrrh-fwg8-r2c3");
-    expect(result.evidence.checked.actions).toEqual([".github/workflows/ci.yml"]);
+    expect(result.findings.map((f) => f.location.file)).toEqual(result.findings.map(() => "ci.yml"));
+    expect(result.evidence.checked.actions).toEqual(["ci.yml"]);
+    expect(result.actionsCoverage!.references.every((reference) => reference.file === "ci.yml")).toBe(true);
+    expect([...result.actionsCoverage!.evaluated].every((key) => key.startsWith("ci.yml\0"))).toBe(true);
   });
 });

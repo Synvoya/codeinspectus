@@ -1,6 +1,6 @@
 {
   "name": "codeinspectus",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "mcpName": "io.github.Synvoya/codeinspectus",
   "description": "CodeInspectus, by Synvoya — a local-first security MCP server and CLI with CI policy, versioned exports, evidence bundles, history, baselines, and approval-gated agent workflows. Zero network egress at scan time.",
   "license": "Apache-2.0",
@@ -88,7 +88,7 @@
     "exifreader": "4.44.0",
     "smol-toml": "1.9.1",
     "yaml": "2.9.0",
-    "zod": "^3.25.1"
+    "zod": "^4.6.7"
   },
   "peerDependencies": {
     "@contentauth/c2pa-node": "0.9.3"

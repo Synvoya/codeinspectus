@@ -21,7 +21,7 @@ npm run eval         # drives the built server over MCP stdio
 Expected: all non-skipped evals PASS. Engine-dependent evals (E16 Opengrep SQLi,
 E17 Trivy SCA, E18 Opengrep CORS precision, and E34-E36 Opengrep/native parity)
 auto-SKIP when the binary/DB cannot run — that is acceptable, a FAIL is not. The
-suite currently has 110 evals (E01-E92 plus E100-E103, E110-E112, E120-E121, E130-E137). Measured
+suite currently has 126 evals (E01-E92 and E08b, plus E100-E103, E110-E112, E120-E121, E130-E152, E170). Measured
 on 2026-11-05 after the 4.0 final-review fixes: with all four engines and their databases installed
 (OSV npm, PyPI, Packagist, Go and GitHub Actions), 110 passed, 0 failed, 0 skipped.
 The no-engine count for 110 evals was not re-measured for 4.0; at 87 evals (2026-11-03) it was 63 passed,
@@ -32,8 +32,23 @@ artefact, per the M4 ledger, not a product failure). Evals added for 4.0: E87-E9
 libraries, GitHub Actions, Go toolchain), E100-E103 and E110-E112 (every PHP and Node.js pack rule on its
 TP and FP fixtures; no line carries both a baseline and a Node pack finding), E120-E121 (third-party
 routing, Gitleaks allowlists), E130-E132 (native parser), E133 (licence opt-in) and E134-E135 (pack pass
-skips bundles; a glob-named file never hides siblings). Partial installs fall between the two: E59/E60 skip without the
-PyPI OSV database, and E61 skips without osv-scanner or when the OSV crates.io database is installed. E17 and E64 skip only without the Trivy DB; E64 requires
+skips bundles; a glob-named file never hides siblings). Evals added for 4.1: E138 (the 24-hour database
+update prompt appears in scan and list-rules output with no network attempt, and a snooze silences it). It is
+an engine eval: an update refreshes databases only, so the prompt needs a ready engine, and E138 copies the
+verified Trivy binary into an isolated `HOME` (it never runs it) and skips when Trivy is not installed. E139
+(`init --dry-run --json` against an isolated `HOME` with fake assistants: every client, engine, OSV database
+and large download planned, no config content echoed, nothing changed; engine-free) brought 4.1 M3 to 112
+evals. With the default `HOME` on 2026-11-14, measured before E139 was added, the 111 evals gave 108 passed,
+0 failed, 3 skipped (E59, E60, E92: no OSV PyPI or Go database). Evals added for 4.1 M5 (output quality): E140 (fingerprint-derived display ids: a rescan keeps every
+(id, fingerprint) pair, a planted finding moves no other id, explain_finding resolves one; engine-free, must
+not skip), E141 (a generated PKCS#1 key Gitleaks and Trivy both report is one finding with both engines;
+skips without either), E142 (Trivy pnpm-lock.yaml findings at the package entry; trivy-vuln), E143
+(requirements.txt `>=`/`~=` read as declared minimum; skips without the OSV PyPI database); E78 now also
+checks `dependency_scope` and the one-level dev lowering. With the default `HOME` on 2026-11-14 after M5 the
+116 evals gave 112 passed, 0 failed, 4 skipped (E59, E60, E92, E143: no OSV PyPI or Go database); unit
+suite 211 files, 3216 tests, all passing. With 4.1 M4 (2026-11-14) the same 116 evals gave the same result at
+fd0ad24 (112/0/4, same skips); after the M4 cleanup the unit suite was 216 files, 3290 tests, all passing. Eval added for 4.1 M6 (scan speed): E144 (a renamed Composer vendor tree's packages and a readable library copy whose name and banner agree leave the Synvoya pack pass, as `third-party-bundles` with a note naming each library; a Composer `path` package, first-party PHP, a banner-less `bootstrap.js` and a fake `jquery-1.7.1.js` over first-party code stay in it; the baseline Opengrep rules, the native checks and Gitleaks still read the library copy; opengrep). With the default `HOME` on 2026-11-14 after M6 (a38b4af, including the Synvoya reader-deadline fix) the 117 evals gave 113 passed, 0 failed, 4 skipped (E59, E60, E92, E143); unit suite 217 files, 3378 tests, all passing. After M6 fix round 1 (2026-11-14): 117 evals 113/0/4 (same skips); unit suite 218 files, 3396 tests, all passing (`src/synvoya/reader-hang-cli.test.ts` runs the real CLI in a child process, about 7 s). After M6 fix round 2 (2026-11-14, adds E145: the files Opengrep could not analyze, forced with `--max-memory=1`, are recorded under the same paths as their findings for names with a space and non-ASCII characters; opengrep): 118 evals 114/0/4 (same skips); unit suite 218 files, 3405 tests, all passing. Evals added for 4.1 M8 (Synvoya leftovers, all engine-free): E146 (MinIO `RELEASE.<timestamp>Z` tags: SYN-2026-268/276, the fix tag resolves both, `latest` is a note), E147 (a node fix in a multi-stage Dockerfile resolves beside a private-registry php stage; a private node mirror reads not_rechecked), E148 (end-of-life ranges across complete release lines: PHP `>=7.4 <8.1` and `postgres:9`; `^7.4 || ^8.3` and `postgres:17` are not), E149 (a single workflow file scan shows Synvoya paths as `ci.yml` and resolves a fix). With the default `HOME` on 2026-11-14 after M8 (b395fd7 plus the docs commit) the 122 evals gave 118 passed, 0 failed, 4 skipped (E59, E60, E92, E143); unit suite 220 files, 3524 tests, all passing (one earlier full run timed out `javascript-parse-cache.test.ts` at 5 s while a field run loaded the machine; it passed alone and in the next full run). Evals added for 4.1 M9 Task 10 (fresh-set gate): E151 (native AI precision classes: Task 3/4/6 FP fixtures silent through the full scan, real variants fire, e2e/ copy lowered and cypress/ skipped, each experimental native rule unreported and disclosed; engine-free, must not skip) and E152 (Python baseline precision through Opengrep: constant-only SQL silent, mixed f-string fires at low, the experimental eval and weak-hash rules unloaded; opengrep). With a `HOME` holding every engine and database on 2026-11-15 the 126 evals gave 126 passed, 0 failed, 0 skipped. Eval added for 4.1 M7 (rules): E150 (`ci-baseline-weak-hash` fires only in a credential context, natively and in Opengrep alike; E34's direct file moved to the credential-context fixture; opengrep). On the branch (a `HOME` holding every engine and database, 2026-11-15) its 118 evals gave 118/0/0. After the M7 merge into `agent/v4.1` (2026-11-15, a `HOME` holding every engine and database) the 124 evals gave 124 passed, 0 failed, 0 skipped; unit suite (`--testTimeout=60000`) 222 files, 3767 tests, all passing.
+Partial installs fall between the two: E59/E60 skip without the PyPI OSV database, and E61 skips without osv-scanner or when the OSV crates.io database is installed. E17 and E64 skip only without the Trivy DB; E64 requires
 every Trivy dependency finding to name its package and, when Trivy reports a fixed version, to
 name the upgrade in its remediation (a Trivy finding merged into an osv-scanner one is checked in
 osv-scanner's wording: package in the title, `Upgrade <name> ` remediation). E62 scans with
@@ -164,7 +179,8 @@ npx tsx scripts/dev-scan.ts "$(pwd)/fixtures/api-boundary-corpus" ai
 npx tsx scripts/dev-scan.ts "$(pwd)/fixtures/cors-corpus" sast
 npx tsx scripts/dev-scan.ts "$(pwd)/fixtures/security-controls-corpus/tp/captcha" ai
 ```
-Expected: 18 API-boundary findings, all under `tp/`; 9 CORS findings (3 invalid
+Expected: 38 API-boundary findings, all under `tp/` (32 `ci-ai-client-error-leak` at low, 6
+`ci-ai-unvalidated-request-write`); 9 CORS findings (3 invalid
 wildcard configurations + 6 arbitrary-origin exposures), with every `fp/` file silent;
 and 3 evidence-gated Supabase CAPTCHA integration findings with no raw token/secret values.
 
@@ -193,8 +209,8 @@ npx vitest run \
   src/provenance.test.ts \
   src/repository-trust/*.test.ts
 ```
-Expected: all focused tests pass; manifest `2.0.0` owns exactly 72 native rule IDs (29
-JavaScript/TypeScript, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, 2 Expo, 10 Python AI/API,
+Expected: all focused tests pass; manifest `2.1.0` owns exactly 70 native rule IDs (27
+JavaScript/TypeScript after two 4.1 experimental rules, 6 Flutter/Dart, 4 Android, 4 iOS, 4 React Native, 2 Expo, 10 Python AI/API,
 1 Go AI, 1 Java AI, 1 C# AI, 1 PHP AI, 1 Rust AI, 1 Ruby AI, 3 Firebase configuration,
 2 GitHub Actions workflow, and 2 JavaScript baseline SAST) across sixteen packs and 45 analyzers;
 the aggregate native engine is `5.20.0`. The JavaScript/TypeScript pack is `1.9.0`; the Flutter

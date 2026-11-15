@@ -1,0 +1,160 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": {
+    "Version": "0.76.1"
+  },
+  "ReportID": "01a1d582-af64-737a-90b2-e1cf44c3c5e5",
+  "CreatedAt": "2026-11-13T15:24:34Z",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "Gemfile.lock",
+      "Class": "lang-pkgs",
+      "Type": "bundler",
+      "Packages": [
+        {
+          "ID": "crass@1.0.7",
+          "Name": "crass",
+          "Identifier": {
+            "PURL": "pkg:gem/crass@1.0.7",
+            "UID": "f1b7716496b586d9"
+          },
+          "Version": "1.0.7",
+          "Relationship": "direct",
+          "Locations": [
+            {
+              "StartLine": 4,
+              "EndLine": 4
+            }
+          ],
+          "AnalyzedBy": "bundler"
+        },
+        {
+          "ID": "shopify_app@23.0.2",
+          "Name": "shopify_app",
+          "Identifier": {
+            "PURL": "pkg:gem/shopify_app@23.0.2",
+            "UID": "65c848d6e2aa54c"
+          },
+          "Version": "23.0.2",
+          "Relationship": "direct",
+          "Locations": [
+            {
+              "StartLine": 5,
+              "EndLine": 5
+            }
+          ],
+          "AnalyzedBy": "bundler"
+        }
+      ],
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2026-116695",
+          "PkgID": "crass@1.0.7",
+          "PkgName": "crass",
+          "PkgIdentifier": {
+            "PURL": "pkg:gem/crass@1.0.7",
+            "UID": "f1b7716496b586d9"
+          },
+          "InstalledVersion": "1.0.7",
+          "FixedVersion": ">= 1.0.8",
+          "Status": "fixed",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-116695",
+          "DataSource": {
+            "ID": "ruby-advisory-db",
+            "Name": "Ruby Advisory Database",
+            "URL": "https://github.com/rubysec/ruby-advisory-db"
+          },
+          "Fingerprint": "sha256:42568da91ac9672705862d70db86502886ffcddc938262d5fcf19f56d7669aec",
+          "Title": "crass: crass: CSS injection via malformed URL token parsing",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-436"
+          ],
+          "VendorSeverity": {
+            "ghsa": 2,
+            "redhat": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N",
+              "V40Score": 5.3
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+              "V3Score": 6.1
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2026-116695",
+            "https://advisories.gitlab.com/gem/crass/CVE-2026-116695",
+            "https://drafts.csswg.org/css-syntax-3/#consume-remnants-of-bad-url",
+            "https://github.com/advisories/GHSA-pq4g-8rxf-4g29",
+            "https://github.com/rgrove/crass",
+            "https://github.com/rgrove/crass/blob/v1.0.8/HISTORY.md#108-2026-10-21",
+            "https://github.com/rgrove/crass/commit/689fc45c632fdf3803b2f4e844ffc9cca3b08f34",
+            "https://github.com/rgrove/crass/compare/v1.0.7...v1.0.8",
+            "https://github.com/rgrove/crass/releases/tag/v1.0.8",
+            "https://github.com/rgrove/crass/security/advisories/GHSA-pq4g-8rxf-4g29",
+            "https://github.com/rubysec/ruby-advisory-db/blob/master/gems/crass/GHSA-pq4g-8rxf-4g29.yml",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-116695",
+            "https://osv.dev/vulnerability/GHSA-pq4g-8rxf-4g29",
+            "https://rubygems.org/gems/crass/versions/1.0.8",
+            "https://www.cve.org/CVERecord?id=CVE-2026-116695"
+          ],
+          "PublishedDate": "2026-10-27T21:18:05.473Z",
+          "LastModifiedDate": "2026-11-03T13:17:20.2Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-63414",
+          "PkgID": "shopify_app@23.0.2",
+          "PkgName": "shopify_app",
+          "PkgIdentifier": {
+            "PURL": "pkg:gem/shopify_app@23.0.2",
+            "UID": "65c848d6e2aa54c"
+          },
+          "InstalledVersion": "23.0.2",
+          "FixedVersion": ">= 23.0.3",
+          "Status": "fixed",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-63414",
+          "DataSource": {
+            "ID": "ruby-advisory-db",
+            "Name": "Ruby Advisory Database",
+            "URL": "https://github.com/rubysec/ruby-advisory-db"
+          },
+          "Fingerprint": "sha256:8bb20aabc5c901ee9551e7cc302b79a0253b14fc25acc2041cdd95bd1630dc1c",
+          "Title": "Token exchange shop context confusion may allow cross-shop authorization bypass in affected apps",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-863"
+          ],
+          "VendorSeverity": {
+            "ghsa": 3
+          },
+          "CVSS": {
+            "ghsa": {
+              "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:L/UI:N/VC:H/VI:H/VA:N/SC:N/SI:N/SA:N",
+              "V40Score": 7.6
+            }
+          },
+          "References": [
+            "https://advisories.gitlab.com/gem/shopify_app/CVE-2026-63414",
+            "https://github.com/Shopify/shopify_app",
+            "https://github.com/Shopify/shopify_app/blob/v23.0.3/CHANGELOG.md#2303-june-24-2026",
+            "https://github.com/Shopify/shopify_app/commit/a09ccc04b9556cbb31c6d56ed81aeb6b9b6c0756",
+            "https://github.com/Shopify/shopify_app/pull/2081",
+            "https://github.com/Shopify/shopify_app/releases/tag/v23.0.3",
+            "https://github.com/Shopify/shopify_app/security/advisories/GHSA-6j52-38f8-qhxr",
+            "https://github.com/advisories/GHSA-6j52-38f8-qhxr",
+            "https://rubygems.org/gems/shopify_app/versions/23.0.3",
+            "https://www.cve.org/CVERecord?id=CVE-2026-63414"
+          ],
+          "PublishedDate": "2026-10-30T23:17:15.707Z",
+          "LastModifiedDate": "2026-11-05T04:17:12.92Z"
+        }
+      ]
+    }
+  ],
+  "ArtifactName": "output-quality-fixture",
+  "Metadata": {}
+}

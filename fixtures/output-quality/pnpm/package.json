@@ -1,0 +1,11 @@
+{
+  "name": "output-quality-pnpm",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "lodash": "4.17.20"
+  },
+  "devDependencies": {
+    "handlebars": "4.7.9"
+  }
+}

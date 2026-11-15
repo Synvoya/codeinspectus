@@ -10,7 +10,7 @@
 > versions. Where this document and any other doc disagree on a count or a version, the
 > two files above win and this document is the one to correct.
 
-_Last refreshed: the 4.0 documentation pass (2026-11-05) added the Synvoya PHP inventory and the experimental-rule locations; before that, robust Supabase RLS/Edge authentication, Next.js/Express admin authorization,
+_Last refreshed: the 4.1 M7 pass (2026-11-15) added the [fresh-set gate](#fresh-set-gate-41) table (no promotion); the 4.0 documentation pass (2026-11-05) added the Synvoya PHP inventory and the experimental-rule locations; before that, robust Supabase RLS/Edge authentication, Next.js/Express admin authorization,
 Referrer-Policy/Permissions-Policy, and modern Supabase opaque-key coverage (2026-08-12), plus JavaScript/TypeScript model-output execution, GitHub Actions, Firebase, Ruby, Rust, PHP, C#, Java, Go, JavaScript/TypeScript unsafe tool execution, and Python AI/API native packs
 (2026-07-28) — recorded the original bounded GitHub Actions workflow rules, Firebase configuration rules, Ruby, Rust, PHP, C#, Java, Go, JavaScript, and Python model-tool-argument-to-shell rules and ten original Python structural rules
 and their first-party pack ownership, including the exact LangChain FAISS dangerous-deserialization
@@ -29,13 +29,14 @@ and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api,go,java,csha
 
 ---
 
-## Reconciled detection count — **126 active CodeInspectus detections**
+## Reconciled detection count — **122 active CodeInspectus detections**
 
-`detection-db/manifest.json` `custom_rules` has **126** entries:
+`detection-db/manifest.json` `custom_rules` has **122** entries (detection database 2.1.0; 4.1 moved four rules
+that failed the fresh-set precision gate to experimental, see [Native and AI pack precision (4.1)](#native-and-ai-pack-precision-41)):
 
 | Group | Count | Engine | Kind | Where |
 |---|---:|---|---|---|
-| JavaScript/TypeScript native rules | **29** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
+| JavaScript/TypeScript native rules | **27** | `codeinspectus-ai` | `ai` | `src/ai-checks/*.ts` |
 | Flutter/Dart native rules | **6** | `codeinspectus-ai` | `ai` | `src/packs/flutter/*.ts` |
 | Android configuration native rules | **4** | `codeinspectus-ai` | `ai` | `src/packs/android/*.ts` |
 | iOS configuration native rules | **4** | `codeinspectus-ai` | `ai` | `src/packs/ios/*.ts` |
@@ -51,23 +52,23 @@ and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api,go,java,csha
 | Firebase configuration native rules | **3** | `codeinspectus-ai` | `ai` | `src/packs/firebase/*.ts` |
 | GitHub Actions workflow native rules | **2** | `codeinspectus-ai` | `ai` | `src/packs/github-actions/*.ts` |
 | JavaScript baseline native rules | **2** | `codeinspectus-ai` | `sast` | `src/packs/javascript-baseline/*.ts` |
-| Opengrep-owned SAST rules | **18** | `opengrep` | `sast` | `detection-db/opengrep-rules/security-baseline/` |
+| Opengrep-owned SAST rules | **16** | `opengrep` | `sast` | `detection-db/opengrep-rules/security-baseline/` |
 | Synvoya PHP pack (Opengrep) | **19** | `opengrep` | `sast` | `detection-db/opengrep-rules/synvoya-php/` |
 | Synvoya Node.js Opengrep rules (`syn-node-*`) | **12** | `opengrep` | `sast` | `detection-db/opengrep-rules/synvoya-node/` |
 | Gitleaks secret rules | **5** | `gitleaks` | `secret` | `detection-db/gitleaks/codeinspectus.toml` |
-| **Total** | **126** | — | — | — |
+| **Total** | **122** | — | — | — |
 
-Verified physical counts: 20 `security-baseline` (`ci-baseline-*`), 19 `synvoya-php` (`syn-php-*`) and
+Verified physical counts: 18 `security-baseline` (`ci-baseline-*`), 19 `synvoya-php` (`syn-php-*`) and
 12 `synvoya-node` (`syn-node-*`) Opengrep YAML rule ids and 5 Gitleaks rule ids are greppable on disk.
 The Synvoya PHP pack's provenance is in `detection-db/opengrep-rules/synvoya-php/LICENSE-PROVENANCE.md`
 and the Synvoya Node.js pack's in `detection-db/opengrep-rules/synvoya-node/LICENSE-PROVENANCE.md`
 (both written from first principles, no registry rule opened).
-The catalog assigns 72 rule IDs to sixteen native packs and 49 to Opengrep (18 baseline, 19 Synvoya PHP,
+The catalog assigns 70 rule IDs to sixteen native packs and 47 to Opengrep (16 baseline, 19 Synvoya PHP,
 12 Synvoya Node.js); the two promoted native SAST IDs retain physically active Opengrep fallbacks and are
 not double-counted.
 
-The authoritative current figure is **126**, decomposing as **72 first-party native rules +
-18 Opengrep-owned SAST + 19 Synvoya PHP pack + 12 Synvoya Node.js Opengrep (`syn-node-*`) + 5 Gitleaks**
+The authoritative current figure is **122**, decomposing as **70 first-party native rules +
+16 Opengrep-owned SAST + 19 Synvoya PHP pack + 12 Synvoya Node.js Opengrep (`syn-node-*`) + 5 Gitleaks**
 (single source of truth: `detection-db/manifest.json`).
 The modern Supabase addition consists of the independently authored native
 `ci-ai-supabase-secret-key-client` rule plus the exact
@@ -209,7 +210,7 @@ are confirmed exploitable vulnerabilities.
 
 ## Provenance summary (the headline for counsel)
 
-- **All 126 custom detections are CodeInspectus-original work, licensed Apache-2.0 from
+- **All 122 custom detections are CodeInspectus-original work, licensed Apache-2.0 from
   CodeInspectus 2.5.0.** In
   `manifest.json` every `custom_rules` entry carries `"source": "codeinspectus-custom"`,
   and the Opengrep ruleset carries `"source": "codeinspectus-apache-2.0"` /
@@ -277,7 +278,7 @@ data sources, not from CodeInspectus's corpus.
 
 ---
 
-## Inventory — Opengrep SAST rules (20)
+## Inventory — Opengrep SAST rules (18)
 
 Path: `detection-db/opengrep-rules/security-baseline/`. **Origin: independently authored,
 Apache-2.0.** Convergent functional idioms; the public registry was referenced during authoring,
@@ -289,14 +290,16 @@ Detection database 2.0.0 (CodeInspectus 4.0) removed four pattern arms that coul
 and the template-literal `fetch`/`axios.get` arms in `ssrf.yaml`): each matched without binding the
 metavariable the rule's `metavariable-pattern` then checks, so Opengrep reported an internal matching
 error instead. Nothing was added; rule ids, languages, CWEs and messages are unchanged. Every rule
-has true-positive cases in `fixtures/coverage-honesty-corpus/opengrep-rules/` (eval E75).
+has true-positive cases in `fixtures/coverage-honesty-corpus/opengrep-rules/` (eval E75). Detection database
+2.1.0 (CodeInspectus 4.1) moved `ci-baseline-eval-python` and `ci-baseline-weak-hash-python` to experimental and
+reports `ci-baseline-sql-injection-python`, `ci-baseline-command-injection-python` and
+`ci-baseline-insecure-deserialization-python` at `INFO`/`LOW` (fresh-set gate, below).
 
 | Rule id | File | Langs | CWE | What it flags |
 |---|---|---|---|---|
 | `ci-baseline-weak-hash` | `crypto.yaml` | js,ts | CWE-327 | Weak hashing algorithm (MD5/SHA1) |
 | `ci-baseline-weak-cipher` | `crypto.yaml` | js,ts | CWE-327 | Weak/broken cipher (DES/RC4/3DES) |
 | `ci-baseline-insecure-random-security` | `crypto.yaml` | js,ts | CWE-338 | `Math.random()` for a security-sensitive value |
-| `ci-baseline-weak-hash-python` | `crypto.yaml` | python | CWE-327 | Weak hashing algorithm (MD5/SHA1) |
 | `ci-baseline-insecure-deserialization-node` | `deserialization.yaml` | js,ts | CWE-502 | node-serialize `unserialize()` on untrusted data |
 | `ci-baseline-insecure-deserialization-python` | `deserialization.yaml` | python | CWE-502 | Insecure deserialization via an untrusted loader |
 | `ci-baseline-sql-injection-string-build` | `injection-taint.yaml` | js,ts | CWE-89 | HTTP request input reaching a string-built SQL query in the same file (taint; cross-file flow is a known gap) |
@@ -304,7 +307,6 @@ has true-positive cases in `fixtures/coverage-honesty-corpus/opengrep-rules/` (e
 | `ci-baseline-command-injection` | `injection.yaml` | js,ts | CWE-77 | Untrusted data to a shell-exec sink |
 | `ci-baseline-command-injection-python` | `injection.yaml` | python | CWE-77 | Shell command from non-literal data |
 | `ci-baseline-dangerous-eval` | `injection.yaml` | js,ts | CWE-94 | Dynamic eval of a non-literal |
-| `ci-baseline-eval-python` | `injection.yaml` | python | CWE-94 | Dynamic eval/exec of non-literal input |
 | `ci-baseline-nosql-injection` | `injection.yaml` | js,ts | CWE-943 | Request body/query value in a MongoDB-style filter (Mongoose model, driver collection, or mongoose/mongodb import) |
 | `ci-baseline-path-traversal` | `injection.yaml` | js,ts | CWE-22 | Filesystem path from request input |
 | `ci-baseline-ssrf-request-from-input` | `ssrf.yaml` | js,ts | CWE-918 | Outbound request URL from request input |
@@ -375,12 +377,13 @@ first principles; no third-party rule corpus opened (CG-63).** See that folder's
 Rules that failed the Synvoya precision gate (field hits triaged, then triaged again by an
 independent pass) are kept in the repository but
 outside `detection-db/`. Opengrep never loads them, `package.json` `files` does not include them, and
-the public seed allow-list does not publish them. They are **not** counted in the 126. The two packs
-use two different locations:
+the public seed allow-list does not publish them. They are **not** counted in the 122. The packs
+use these locations:
 
 | Pack | Rule folder | Fixtures | Rules |
 |---|---|---|---|
 | Synvoya PHP | `experimental/opengrep-rules/synvoya-php-experimental/` (`rules.yaml`, `README.md`) | `fixtures/synvoya-php-experimental/<rule-id>/{tp,fp}/` | `syn-php-xss-echo`, `syn-php-path-traversal`, `syn-php-preg-replace-eval-modifier`, `syn-php-laravel-mass-assignment-unguarded`, `syn-php-open-redirect`, `syn-php-xxe-entity-expansion` |
+| Security baseline (Python, 4.1) | `experimental/opengrep-rules/security-baseline-experimental/` (`rules.yaml`, `README.md`) | `fixtures/security-baseline-experimental/<rule-id>/{tp,fp}/` | `ci-baseline-eval-python`, `ci-baseline-weak-hash-python` |
 | Synvoya Node.js | `opengrep-rules-experimental/synvoya-node-experimental/` (one YAML per rule) | `opengrep-rules-experimental/synvoya-node-experimental/fixtures/<rule-id>/` (none for `syn-node-prototype-pollution-library-merge`) | `syn-node-default-credentials`, `syn-node-open-redirect`, `syn-node-path-traversal`, `syn-node-prototype-pollution-library-merge`, `syn-node-session-secret-literal`, `syn-node-sql-injection` |
 
 Both locations are as built at 4.0; they are not unified. A rule is promoted only after a fix, a field
@@ -420,6 +423,105 @@ issues (lobbywatch posts its reCAPTCHA secret with TLS verification off, and bui
 tokens from `sha1(uniqid(mt_rand()))`); their false positives are an opt-in mPDF flag (two lines of
 one call) and a token that also mixes in `random_bytes(32)`.
 
+### Fresh-set gate (4.1)
+
+For 4.1 the seven held-back rules were reworked and their texts frozen (commit plus SHA-256 per file) before 20
+fresh repositories (10 PHP, 10 Node.js, none in any earlier research list) were cloned and scanned. The gate:
+at least 5 hits, and at least 80% of hits true both overall and with no repository weighing more than 5 hits.
+Every hit was triaged blind (repository, file:line and message only, never the rule text) by reviewer A, and the
+rules whose state could change also by an independent reviewer B. A rule stays experimental if the outcome
+differs between reviewers. A second fresh set was kept sealed for one retry; no rule was changed after its
+results, so it was never used.
+
+| Rule | Fresh-set hits (repos) | True, A / B | Decision and reason |
+|---|---:|---|---|
+| `syn-node-sql-injection` | 0 | — | experimental: insufficient evidence (0 hits) |
+| `syn-node-path-traversal` | 5 (2) | 0 / — | experimental: every hit had root containment or a strict name pattern; the rule also used about 7 GB of Opengrep memory on one repository |
+| `syn-php-path-traversal` | 2 (1) | 0 / — | experimental: insufficient evidence |
+| `syn-php-xxe-entity-expansion` | 1 (1) | 0 / — | experimental: insufficient evidence |
+| `syn-php-laravel-mass-assignment-unguarded` | 0 | — | experimental: insufficient evidence |
+| `syn-php-preg-replace-eval-modifier` | 0 | — | experimental: insufficient evidence |
+| `syn-php-open-redirect` | 24 (4) | 9 (8 low) / 0 | experimental: fixed local URL prefixes, scheme allow-lists and a framework-level redirect allow-list (Symfony NelmioSecurityBundle) |
+| `syn-php-tls-verification-disabled` (kept) | 4 (2) | 3 / 2 | kept; below 5 hits, no change of state |
+| `syn-php-insecure-random-token` (kept) | 3 (2) | 0 / 0 | kept; below 5 hits; all 3 are `mt_rand()` picking only the length of a CSPRNG token (known limit) |
+
+Shipped from this milestone: the TLS and token false-positive fixes and the `ci-baseline-weak-hash` credential-context
+narrowing (0 credential-context hits on the fresh set, so its severity stays low). The NoSQL and DOM-XSS recall arms
+were withdrawn on cost (main-pass time above base × 1.10 + 5 s on two repositories, no fresh-set hit) and move to 4.2.
+Known limit of the experimental PHP rules: their literal allow-list checks accept bare constants (`FOO`,
+`self::FOO`).
+
+## Native and AI pack precision (4.1)
+
+4.1 measured the 75 native and Python baseline rules of the M9 precision plan once, on 30 fresh repositories
+none of these rules was tuned on: M7's set A (20, PHP/Node.js-led) and a new set N (10: Python, Flutter, Go,
+Rust, React Native/Expo). The rule and routing files were frozen (SHA-256 per file) before set N was cloned. Each
+scan used the frozen build with product defaults. Per rule and repository every hit was triaged when there were at
+most 5, else a seeded random 5 (seed and draw recorded). Triage was blind (repository, file:line, message and a code
+window; never the rule text): reviewer A on every sampled hit, an independent reviewer B on the sampled hits of the
+six rules with 5 or more hits. Verdicts TP, TP-low (counted true), FP and U (counted false); test, fixture,
+example and vendored code is false for rules about shipped behaviour.
+
+The decision rule (standing native gate, `docs/context/decisions.md`): with 5 or more hits a rule is kept if
+`P_hits` (hit-weighted, an estimate) and `P_cap` (each repository weighs at most 5 hits) are both at least 0.80,
+demoted to low severity and low confidence if `P_cap` is at least 0.50, otherwise experimental; with 1-4 hits it is
+demoted if false ≥ true, otherwise kept as "insufficient evidence"; with 0 hits it is kept and described as "not
+field-measured in 4.1", never "precise". The most conservative outcome of A, B and adjudication applies; A and B
+agreed on every outcome (one verdict differed, without effect). No rule was changed after its results; a change
+waits for 4.2 and a new fresh set.
+
+| Rule | Hits (repos) | Triaged | True (low impact) | False | `P_hits` est. | `P_cap` | Decision |
+|---|---:|---:|---|---:|---:|---:|---|
+| `ci-ai-client-hardcoded-secret` | 12 (2) | 7 | 0 | 7 | 0.00 | 0.00 | experimental (0/7 true, test-mock key and placeholder); **shipped by maintainer decision (2026-11-15) for detection coverage; FP classes (test mocks, placeholders) to be fixed and re-measured in 4.2** |
+| `ci-ai-sensitive-api-response` | 8 (1) | 5 | 0 | 5 | 0.00 | 0.00 | experimental |
+| `ci-ai-sensitive-log` | 17 (8) | 17 | 6 (5) | 11 | 0.35 | 0.35 | experimental |
+| `ci-baseline-eval-python` (Opengrep) | 8 (1) | 5 | 0 | 5 | 0.00 | 0.00 | experimental |
+| `ci-baseline-weak-hash-python` (Opengrep) | 22 (3) | 14 | 4 (4) | 10 | 0.40 | 0.29 | experimental |
+| `ci-ai-client-error-leak` | 20 (7) | 18 | 12 (8); B 13 (9) | 6; B 5 | 0.67; B 0.73 | 0.67; B 0.72 | low / low |
+| `ci-ai-llm-output-dangerous-html` | 1 | 1 | 0 | 1 | — | — | low / low |
+| `ci-ai-public-env-secret` | 3 (2) | 3 | 0 | 3 | — | — | low / low |
+| `ci-ai-security-header-disabled` | 1 | 1 | 0 | 1 | — | — | low / low |
+| `ci-python-hardcoded-signing-secret` | 2 (2) | 2 | 1 | 1 | — | — | low / low |
+| `ci-python-untrusted-file-response` | 1 | 1 | 0 | 1 | — | — | low / low |
+| `ci-flutter-tls-verification-disabled` | 1 | 1 | 0 | 1 | — | — | low / low |
+| `ci-baseline-command-injection-python` (Opengrep) | 4 (2) | 4 | 0 | 4 | — | — | `INFO` / `LOW` |
+| `ci-baseline-insecure-deserialization-python` (Opengrep) | 4 (3) | 4 | 0 | 4 | — | — | `INFO` / `LOW` |
+| `ci-baseline-sql-injection-python` (Opengrep) | 1 | 1 | 0 | 1 | — | — | `INFO` / `LOW` |
+| `ci-android-cleartext-traffic` | 2 (2) | 2 | 2 (1) | 0 | — | — | kept, insufficient evidence |
+| `ci-ios-ats-global-arbitrary-loads` | 2 (1) | 2 | 2 | 0 | — | — | kept, insufficient evidence |
+| `ci-flutter-sensitive-shared-preferences` | 1 | 1 | 1 (1) | 0 | — | — | kept, insufficient evidence |
+| `ci-android-user-ca-trust` | 1 | 1 | 1 | 0 | — | — | kept, insufficient evidence |
+
+The other 56 rules had no hit on the fresh set and are **not field-measured in 4.1**: the rest of the
+JavaScript/TypeScript pack (22), Python AI/API (8), Flutter (4), Android (2), iOS (3), React Native (4), Expo (2),
+Firebase (3), GitHub Actions (2) and the Go, Java, C#, PHP, Rust and Ruby AI rules (6, one each). The 1-4-hit
+decisions rest on very small samples: a rule demoted on one false hit means "known-noisy at medium or above is not
+allowed", not a measured precision.
+
+False-positive classes behind the decisions: deliberate user-facing error text (HTTP errors, validation and
+limit messages, i18n error keys); test and mock keys, documented example keys and UI placeholders; the caller's own
+freshly issued credential; logged values that are not credentials (cancellation tokens, UI counters, cache
+busters, cookie names) and dev-only paths; sanitising helpers, path containment, HMAC-verified pickles, CSP
+`frame-ancestors` replacing `X-Frame-Options`, a certificate callback scoped to `127.0.0.1`; MD5/SHA-1 as ids,
+file names and cache keys; `eval` of values coerced with `float()`.
+
+**Native experimental rules (Ruling 4).** One static set, `EXPERIMENTAL_NATIVE_RULE_IDS` in
+`src/packs/registry.ts`: the registry drops the rule from its analyzer's `ruleIds` (so from every inventory and rule
+count) and drops its findings; the manifest entry is removed; the owning pack's `limitations` gains one line, which
+reaches `pack_coverage` and `list_rules`. The analyzer code and its unit tests stay. There is no opt-in in 4.1.
+`ci-ai-client-hardcoded-secret` also came out experimental (0 of 7 true: a test-mock key and UI placeholders), but it
+ships as in 4.0 (same severity and confidence; only the 4.1 PEM-marker fix applies) by maintainer decision (2026-11-15) for detection
+coverage; its false-positive classes (test mocks, placeholders) are to be fixed and re-measured in 4.2.
+
+| Rule | Pack | Analyzer | Limitation line |
+|---|---|---|---|
+| `ci-ai-sensitive-api-response` | `javascript-typescript` | `api-boundary` | `ci-ai-sensitive-api-response is experimental in 4.1 and not reported (fresh-set precision 0/5 triaged hits).` |
+| `ci-ai-sensitive-log` | `javascript-typescript` | `api-boundary` | `ci-ai-sensitive-log is experimental in 4.1 and not reported (fresh-set precision 6/17 triaged hits).` |
+
+The two experimental Python Opengrep rules moved unchanged to
+`experimental/opengrep-rules/security-baseline-experimental/` (table above). The triage records are kept privately
+because they quote third-party code.
+
 ## Inventory — Gitleaks custom secret rules (5)
 
 Path: `detection-db/gitleaks/codeinspectus.toml`. **Origin: CodeInspectus-original ·
@@ -434,17 +536,17 @@ Gitleaks' own MIT default rules run alongside these five.)
 | `codeinspectus-anthropic-key` | CWE-798 | Anthropic API key |
 | `codeinspectus-laravel-app-key` | CWE-798 | Laravel APP_KEY in a deployable `.env` file (Synvoya PHP pack) |
 
-## Inventory — first-party native rules (72) — the moat
+## Inventory — first-party native rules (72 rule IDs, 70 reported in 4.1) — the moat
 
 Paths: `src/ai-checks/*.ts` and `src/packs/{flutter,android,ios,react-native,expo,python-ai-api,go,java,csharp,php,rust,ruby,firebase,github-actions,javascript-baseline}/*.ts`
 (TypeScript implementations).
 **Origin: CodeInspectus-original · License: Apache-2.0 · Derived-from: none.**
 
-### JavaScript/TypeScript pack (29)
+### JavaScript/TypeScript pack (29 rule IDs; 27 reported, 2 experimental in 4.1)
 
 | Rule id | File | CWE | What it flags |
 |---|---|---|---|
-| `ci-ai-client-hardcoded-secret` | `client-secrets.ts` | CWE-798 / 312 | Hard-coded secret in client-reachable code |
+| `ci-ai-client-hardcoded-secret` | `client-secrets.ts` | CWE-798 / 312 | Hard-coded secret in client-reachable code (fresh-set gate outcome experimental; shipped by owner override, 4.1) |
 | `ci-ai-secret-in-bundle` | `client-secrets.ts` | CWE-798 / 312 | Secret compiled into shipped bundle |
 | `ci-ai-public-env-secret` | `client-secrets.ts` | CWE-798 / 312 | Secret exposed via client-visible env prefix |
 | `ci-ai-supabase-service-role-client` | `client-secrets.ts` | CWE-798 / 285 | Supabase service_role key in client-reachable code |
@@ -464,9 +566,9 @@ Paths: `src/ai-checks/*.ts` and `src/packs/{flutter,android,ios,react-native,exp
 | `ci-ai-client-metadata-authz` | `metadata-authz.ts` | CWE-639 / 284 | Authorization decision trusts client-writable Supabase `user_metadata` |
 | `ci-ai-llm-output-dangerous-html` | `llm-dangerous-html.ts` | CWE-79 / 116 | Untrusted or model output rendered into a React raw-HTML `__html` sink |
 | `ci-ai-client-error-leak` | `api-boundary.ts` | CWE-209 | Raw/internal error detail returned to an API client |
-| `ci-ai-sensitive-api-response` | `api-boundary.ts` | CWE-201 | Explicit credential or password field returned in an API response |
+| `ci-ai-sensitive-api-response` | `api-boundary.ts` | CWE-201 | Explicit credential or password field returned in an API response (**experimental in 4.1, not reported**) |
 | `ci-ai-unvalidated-request-write` | `api-boundary.ts` | CWE-915 | Whole request object reaches a common database write without visible validation/allow-listing |
-| `ci-ai-sensitive-log` | `api-boundary.ts` | CWE-532 | Explicit credential/header/cookie or auth/payment request body reaches a log sink |
+| `ci-ai-sensitive-log` | `api-boundary.ts` | CWE-532 | Explicit credential/header/cookie or auth/payment request body reaches a log sink (**experimental in 4.1, not reported**) |
 | `ci-ai-security-header-disabled` | `security-controls.ts` | CWE-693 | A recognized response layer explicitly disables, removes, or neutralizes a security header |
 | `ci-ai-unsafe-production-csp` | `security-controls.ts` | CWE-693 | Enforced production script policy includes bare wildcard or `'unsafe-eval'` |
 | `ci-ai-insecure-session-cookie` | `security-controls.ts` | CWE-1004 / 614 | Auth/session cookie explicitly uses insecure attributes |

@@ -19,7 +19,8 @@ rules:
 
   - id: ci-baseline-insecure-deserialization-python
     languages: [python]
-    severity: ERROR
+    # 4.1 M9 fresh-set gate (Ruling 3): 4 hits, none true (HMAC verified before pickle.loads; a one-off migration); low severity, low confidence.
+    severity: INFO
     message: >
       Insecure deserialization of untrusted data can execute arbitrary code. Use
       safe loaders (json, yaml.safe_load) and validate the result.
@@ -27,7 +28,7 @@ rules:
       cwe: "CWE-502: Deserialization of Untrusted Data"
       owasp: "A08:2021 - Software and Data Integrity Failures"
       category: security
-      confidence: MEDIUM
+      confidence: LOW
     patterns:
       - pattern-either:
           - pattern: pickle.loads($X)

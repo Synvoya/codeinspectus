@@ -23,7 +23,8 @@ import {
   signature as signatureOf,
 } from "../provenance.js";
 import type { CoverageGap } from "../coverage-gaps.js";
-import { checkPackSkips, mergeOpengrepReports, opengrepFileCoverage } from "./opengrep-coverage.js";
+import { checkPackSkips, mergeOpengrepReports, opengrepFileCoverage, opengrepIncompleteFiles } from "./opengrep-coverage.js";
+import type { EngineUnchecked, EngineUncheckedSet } from "../types.js";
 import { isDisplayablePath } from "../display-path.js";
 import {
   BUNDLE_CLASSIFIER_REVISION,
@@ -33,8 +34,13 @@ import {
   PACK_RULE_FILE_PATTERN,
   PACK_TIMEOUT_SECONDS,
   packIgnoreList,
+  packLibrariesNote,
+  packLibraryOverflowNote,
   thirdPartyBundlesGap,
+  type PackBundles,
 } from "./opengrep-bundles.js";
+import { loadSynvoyaDataset } from "../synvoya/dataset.js";
+import type { LibraryTable } from "../synvoya/types.js";
 import { engineWorkingDirectory } from "./target.js";
 
 /**
@@ -46,6 +52,8 @@ import { engineWorkingDirectory } from "./target.js";
  * SEMGREP_R2C_INTERNAL_EXPLICIT_SEMGREPIGNORE variable; eval E71 fails if a release stops honouring it.
  */
 export const OPENGREP_IGNORE_FILE = join(DETECTION_DB_DIR, "opengrep-ignore", "default.semgrepignore");
+/** Beyond this many files a pass's unchecked set is recorded as "all" (as with the Synvoya checked sets). */
+const MAX_UNCHECKED_FILES = 10_000;
 /** The list Opengrep reads: the managed defaults plus BUILD_DIRS, written into the scan's temp dir. */
 export const OPENGREP_EFFECTIVE_IGNORE_NAME = "opengrep.semgrepignore";
 /** The Synvoya pack pass's list: the effective list plus the bundles it skips (opengrep-bundles.ts). */
@@ -160,12 +168,16 @@ export async function runOpengrep(target: string, tmpDir: string): Promise<Engin
     if (!rules.baseline.length) throw new Error("no bundled baseline Opengrep rules were found");
     const ignoreList = effectiveOpengrepIgnoreList(await readFile(OPENGREP_IGNORE_FILE, "utf8"));
     const cwd = await engineWorkingDirectory(target);
-    // Classification runs while the baseline pass does; it only reads the target.
+    // Classification runs while the baseline pass does; it only reads the target. The JS library rule needs
+    // the Synvoya library table: when the dataset does not load, that rule is off (its files stay in the pass).
+    const noBundles: PackBundles = { bundles: [], reasons: new Map(), libraries: new Map(), libraryOverflow: 0 };
     const bundlesTask = rules.pack.length
-      ? findPackBundles(target, ignoreList).catch((err: unknown) => {
-        log.warn("Synvoya pack routing could not classify bundles; the pack pass scans every file", err);
-        return { bundles: [] as string[] };
-      })
+      ? packLibraryTable()
+        .then((libraryTable) => findPackBundles(target, ignoreList, libraryTable ? { libraryTable } : {}))
+        .catch((err: unknown) => {
+          log.warn("Synvoya pack routing could not classify bundles; the pack pass scans every file", err);
+          return noBundles;
+        })
       : undefined;
 
     await mkdir(MANAGED_OPENGREP_CACHE, { recursive: true });
@@ -182,9 +194,17 @@ export async function runOpengrep(target: string, tmpDir: string): Promise<Engin
     const reports = [baseline.report];
     const runs = [...(baseline.sarif.runs ?? [])];
     const warnings: string[] = [];
+    // Rescan proof (M6 fix round 1): per pass, the files Opengrep could not fully analyze; "all" when unknown.
+    const recorded = (set: EngineUncheckedSet): EngineUncheckedSet =>
+      set === "all" || set.files.length + (set.rules?.length ?? 0) > MAX_UNCHECKED_FILES ? "all" : set;
+    const uncheckedFiles: EngineUnchecked = { "opengrep:baseline": recorded(opengrepIncompleteFiles(baseline.report, target)) };
     let bundles: string[] = [];
+    let classified = noBundles;
+    let librariesNote: string | undefined;
+    let overflowNote: string | undefined;
     if (bundlesTask) {
-      bundles = (await bundlesTask).bundles;
+      classified = await bundlesTask;
+      bundles = classified.bundles;
       const pack = await runPass(bin, target, tmpDir, cwd, {
         name: "pack",
         configs: rules.pack,
@@ -192,12 +212,18 @@ export async function runOpengrep(target: string, tmpDir: string): Promise<Engin
         timeoutSeconds: PACK_TIMEOUT_SECONDS,
         signatureExtras: [`bundle-classifier:${BUNDLE_CLASSIFIER_REVISION}`],
       });
+      uncheckedFiles["opengrep:pack"] = pack.sarif ? recorded(opengrepIncompleteFiles(pack.report, target)) : "all";
       if (pack.sarif) {
         reports.push(pack.report);
         runs.push(...(pack.sarif.runs ?? []));
         // Fail closed: the pack pass may skip only the chosen bundles, and only those it skipped are the gap.
         const check = checkPackSkips(pack.report, bundles, target, managedIgnorePredicate(ignoreList));
         if (check) bundles = check.skipped;
+        // Only files the pack pass was confirmed to skip are named.
+        if (check) {
+          librariesNote = packLibrariesNote(bundles, classified.libraries);
+          overflowNote = packLibraryOverflowNote(classified.libraryOverflow);
+        }
         const unexpected = check?.unexpected ?? [];
         if (unexpected.length) {
           const shown = unexpected.filter((rel) => !rel.startsWith("\u0000") && isDisplayablePath(rel));
@@ -214,8 +240,8 @@ export async function runOpengrep(target: string, tmpDir: string): Promise<Engin
 
     const fileCoverage = opengrepFileCoverage(mergeOpengrepReports(reports), target);
     if (fileCoverage.warning) warnings.push(fileCoverage.warning);
-    const notes = fileCoverage.note ? [fileCoverage.note] : [];
-    const gaps = [fileCoverage.parseErrors, thirdPartyBundlesGap(bundles)].filter((gap): gap is CoverageGap => gap !== undefined);
+    const notes = [fileCoverage.note, librariesNote, overflowNote].filter((note): note is string => note !== undefined);
+    const gaps = [fileCoverage.parseErrors, thirdPartyBundlesGap(bundles, classified.reasons)].filter((gap): gap is CoverageGap => gap !== undefined);
     return {
       engine: "opengrep",
       version,
@@ -227,6 +253,7 @@ export async function runOpengrep(target: string, tmpDir: string): Promise<Engin
       ...(gaps.length ? { coverageGaps: gaps } : {}),
       ...(notes.length ? { coverageNotes: notes } : {}),
       componentSignatures,
+      uncheckedFiles,
     };
   } catch (err) {
     if (err instanceof EngineUnavailableError) {
@@ -240,6 +267,14 @@ export async function runOpengrep(target: string, tmpDir: string): Promise<Engin
       err instanceof Error ? err.message : String(err),
     );
   }
+}
+
+/** The Synvoya library table for the JS library rule of bundle routing; undefined (rule off, one warning) when the dataset does not load. */
+async function packLibraryTable(): Promise<LibraryTable | undefined> {
+  const loaded = await loadSynvoyaDataset();
+  if (loaded.ok) return loaded.dataset.libraries;
+  log.warn(`Synvoya pack routing: the library table did not load (${loaded.reason}); copied front-end libraries stay in the pack pass.`);
+  return undefined;
 }
 
 export function buildOpengrepArgs(

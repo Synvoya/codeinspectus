@@ -10,6 +10,19 @@ function body(document: ReturnType<typeof createIssuePayload>): string {
 }
 
 describe("safe issue-payload generation", () => {
+  test("an id from a 4.1 scan asked of a stored 4.0 scan names the id format in the error", () => {
+    expect(() => createIssuePayload(issueTestScan(), "CI-4b53368c3f", "github", "private")).toThrow(
+      /does not exist in stored scan '[^']+'\. This scan was stored before CodeInspectus 4\.1 and uses positional ids such as CI-0001\.$/,
+    );
+  });
+
+  test("a 4.0 id asked of a 4.1 scan names the id format in the error", () => {
+    const scan = issueTestScan();
+    scan.findings[0]!.id = "CI-4b53368c3f";
+    expect(() => createIssuePayload(scan, "CI-0007", "github", "private")).toThrow(/Ids like CI-0007 come from scans stored before CodeInspectus 4\.1/);
+    expect(createIssuePayload(scan, "CI-4b53368c3f", "github", "private").source.finding_id).toBe("CI-4b53368c3f");
+  });
+
   test.each(["github", "jira", "linear"] as IssueAdapter[])("generates deterministic redacted %s JSON with no submission path", async (adapter) => {
     const first = createIssuePayload(issueTestScan(), "CI-0001", adapter, "public");
     const second = createIssuePayload(issueTestScan(), "CI-0001", adapter, "public");

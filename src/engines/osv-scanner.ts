@@ -31,6 +31,7 @@ import { MANAGED_OSV_CONFIG, MANAGED_OSV_DB } from "../config.js";
 import { log } from "../logger.js";
 import { osvDbZipPath, readOsvDbRecord, type OsvDbRecord } from "../osv/database.js";
 import { packageEntryLine, readLockfileLines as readLines, type LockfileLines } from "../osv/package-line.js";
+import { OSV_SCOPE_LOCKFILES } from "../dependency-scope.js";
 import {
   isOsvEcosystem,
   isOverlaySegment,
@@ -77,6 +78,11 @@ export interface OsvScanResult {
     file: string;
     /** The source was outside the target: `file` is only its name, so no line may be looked up from it. */
     outside?: true;
+    /**
+     * osv-scanner's `dependency_groups` is exactly `["dev"]`. Set (true or false) only for the lockfile formats it
+     * writes groups for (`OSV_SCOPE_LOCKFILES`); absent elsewhere, where it gives no evidence either way.
+     */
+    dev?: boolean;
   }>;
   componentSignatures: Record<string, string>;
   /** Everything the user should be told; the caller forwards these and need not warn from `info.note` as well. */
@@ -170,6 +176,8 @@ interface ParsedPackage {
   version: string;
   groups: ParsedGroup[];
   advisories: Map<string, ParsedAdvisory>;
+  /** `dependency_groups` as written (`["dev"]` on a development package); empty when absent. */
+  dependencyGroups: string[];
 }
 
 interface ParsedSource {
@@ -261,6 +269,7 @@ function parsePackage(raw: unknown): ParsedPackage | undefined {
     // Advisories without groups would otherwise vanish: report each on its own rather than lose it.
     groups: groups.length ? groups : ungrouped,
     advisories,
+    dependencyGroups: strings(raw.dependency_groups),
   };
 }
 
@@ -468,6 +477,7 @@ function findingFor(pkg: ParsedPackage, group: ParsedGroup, context: FindingCont
     producer_components: context.producerComponents,
     finding_kind: "vulnerability",
     package: { ecosystem: pkg.ecosystem, name, version: pkg.version },
+    ...(!malicious && fixed.length ? { fixed_versions: [...fixed] } : {}),
   };
 }
 
@@ -893,7 +903,14 @@ export async function runOsvScanner(target: string, tmpDir: string): Promise<Osv
       for (const pkg of source.packages) {
         const ecosystem = pkg.ecosystem || "unknown";
         if (pkg.ecosystem && pkg.version) {
-          packages.push({ ecosystem: pkg.ecosystem, name: pkg.name, version: pkg.version, file, ...(absolute ? {} : { outside: true as const }) });
+          const scoped = OSV_SCOPE_LOCKFILES.test(file.slice(file.lastIndexOf("/") + 1));
+          packages.push({
+            ecosystem: pkg.ecosystem, name: pkg.name, version: pkg.version, file,
+            ...(absolute ? {} : { outside: true as const }),
+            // Only exactly ["dev"] is development-only; npm `devOptional` (["dev","optional"]) also serves an
+            // optional production dependency, so it reads production.
+            ...(scoped ? { dev: pkg.dependencyGroups.length === 1 && pkg.dependencyGroups[0] === "dev" } : {}),
+          });
         }
         const tally = tallies.get(ecosystem) ?? { packages: 0, lockfiles: new Set<string>() };
         tally.packages += 1;

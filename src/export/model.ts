@@ -283,9 +283,10 @@ export function assessAggregateCoverage(scan: StoredScanResult): {
 
 /** Shared public-output projection for commands that expose stored findings. */
 export function redactFindingForOutput(finding: Finding, aggregate: AggregateCoverage): JsonExport["findings"][number] {
-  // Published export 3.0.0 is immutable and has neither `package` nor `engine_family`: both stay in the stored
-  // scan and in-process findings only. `engine` and `rule_id` keep the raw ids.
-  const { package: _package, engine_family: _engineFamily, ...exported } = finding;
+  // Published export 3.0.0 is immutable and has no `package`, `engine_family` or `dependency_scope`: they stay in
+  // the stored scan and in-process findings only (the scope is in the title and message). `engine` and `rule_id`
+  // keep the raw ids.
+  const { package: _package, engine_family: _engineFamily, dependency_scope: _dependencyScope, fixed_versions: _fixedVersions, ...exported } = finding;
   const producerComponents = finding.producer_components?.length
     ? [...finding.producer_components]
     : (finding.engines.length ? finding.engines : [finding.engine]).map((engine) => `engine:${engine}`);

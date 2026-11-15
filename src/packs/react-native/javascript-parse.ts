@@ -11,6 +11,7 @@
  * versus module) leave the file unparsed, which loaders record as the gap `native-parse-errors`.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash } from "node:crypto";
 
 import { parse as babelParse } from "@babel/parser";
 
@@ -41,7 +42,7 @@ interface BabelFile {
   program: JsAstNode;
   tokens?: BabelToken[];
   comments?: Array<{ type: string; start: number; end: number }>;
-  errors?: Array<{ reasonCode?: string; message?: string }>;
+  errors?: Array<{ reasonCode?: string; message?: string; pos?: number }>;
 }
 
 type SourceType = "module" | "script";
@@ -50,6 +51,8 @@ export interface ParsedJavaScript {
   tokens: JsToken[];
   /** Source ranges `[start, end)` of every unbraced if/else/for/while/with body, flattened. */
   conditionalBodies: number[];
+  /** Source ranges `[start, end)` of every comment the parser read, flattened (4.1 M4). */
+  comments: number[];
   issues: string[];
 }
 
@@ -60,13 +63,24 @@ const TYPESCRIPT_ONLY_PATH = /\.[cm]?ts$/i;
 const MODULE_PATH = /\.m[jt]s$/i;
 const SCRIPT_PATH = /\.c[jt]s$/i;
 
-/** Syntax every reading accepts: shipped ECMAScript plus TypeScript's legacy decorators. */
-const COMMON_PLUGINS = [
-  "decorators-legacy",
+/** Syntax every reading accepts besides decorators: shipped ECMAScript. */
+const ECMASCRIPT_PLUGINS = [
   "decoratorAutoAccessors",
   "explicitResourceManagement",
   ["importAttributes", { deprecatedAssertSyntax: true }],
 ] as const;
+
+/** The first reading of every file: TypeScript's legacy decorators (`experimentalDecorators`). */
+const COMMON_PLUGINS = ["decorators-legacy", ...ECMASCRIPT_PLUGINS] as const;
+
+/**
+ * The TypeScript fallback reading (4.1 M4): standard decorators. Under `decorators-legacy` a decorator
+ * followed by a computed class key on the next line (`@Field()` then `[Key]!: T`) reads as the member access
+ * `@Field()[Key]` and fails, while TypeScript reads a decorator and a computed key. Standard decorators end
+ * a decorator before `[`. They reject parameter decorators and legacy expressions such as `@a.b().c`, so a
+ * file needing both stays unparsed. Decorators never change how a file is tokenized.
+ */
+const STANDARD_DECORATOR_PLUGINS = [["decorators", {}], ...ECMASCRIPT_PLUGINS] as const;
 
 /** A TypeScript declaration file (`.d.ts`, `.d.mts`, `.d.cts`): ambient declarations only. */
 const DECLARATION_PATH = /\.d\.[cm]?ts$/i;
@@ -87,15 +101,27 @@ const TOKEN_NEUTRAL_ERRORS = new Set([
 ]);
 
 function pluginSets(path: string): unknown[][] {
-  if (DECLARATION_PATH.test(path)) return [[["typescript", { dts: true }], ...COMMON_PLUGINS]];
-  if (TYPESCRIPT_ONLY_PATH.test(path)) return [["typescript", ...COMMON_PLUGINS]];
-  if (TYPESCRIPT_PATH.test(path)) return [["typescript", "jsx", ...COMMON_PLUGINS]];
+  // TypeScript: the legacy-decorator reading, and standard decorators only when it fails.
+  const typescript = (base: unknown[]): unknown[][] => [[...base, ...COMMON_PLUGINS], [...base, ...STANDARD_DECORATOR_PLUGINS]];
+  if (DECLARATION_PATH.test(path)) return typescript([["typescript", { dts: true }]]);
+  if (TYPESCRIPT_ONLY_PATH.test(path)) return typescript(["typescript"]);
+  if (TYPESCRIPT_PATH.test(path)) return typescript(["typescript", "jsx"]);
   // JavaScript: JSX is accepted everywhere (React Native and Next.js ship it in `.js`), and Flow only
   // when the plain reading fails, as Metro's Babel preset strips it.
   return [["jsx", ...COMMON_PLUGINS], ["jsx", "flow", ...COMMON_PLUGINS]];
 }
 
-function attempt(content: string, sourceType: SourceType, plugins: unknown[]): BabelFile | string {
+/** A reading the parser rejected: the message and the offset it points at (`-1` when it names none). */
+interface ParseFailure {
+  message: string;
+  pos: number;
+}
+
+function failure(error: { message?: string; reasonCode?: string; pos?: number } | undefined, fallback: string): ParseFailure {
+  return { message: error?.message ?? error?.reasonCode ?? fallback, pos: typeof error?.pos === "number" ? error.pos : -1 };
+}
+
+function attempt(content: string, sourceType: SourceType, plugins: unknown[]): BabelFile | ParseFailure {
   try {
     const file = babelParse(content, {
       sourceType,
@@ -111,12 +137,12 @@ function attempt(content: string, sourceType: SourceType, plugins: unknown[]): B
       attachComment: false,
     }) as unknown as BabelFile;
     const blocking = file.errors?.find((error) => !TOKEN_NEUTRAL_ERRORS.has(error.reasonCode ?? ""));
-    if (blocking) return blocking.message ?? blocking.reasonCode ?? "syntax error";
+    if (blocking) return failure(blocking, "syntax error");
     return file;
   } catch (error) {
     // A stack overflow on pathological nesting is a parse failure like any other (fail closed).
-    if (error instanceof RangeError) return "nesting too deep for the parser";
-    return error instanceof Error ? error.message : String(error);
+    if (error instanceof RangeError) return { message: "nesting too deep for the parser", pos: -1 };
+    return error instanceof Error ? failure(error as Error & { pos?: number }, "syntax error") : { message: String(error), pos: -1 };
   }
 }
 
@@ -144,14 +170,18 @@ function parseFile(path: string, content: string): BabelFile | string {
   const goals: SourceType[] = MODULE_PATH.test(path) ? ["module"]
     : SCRIPT_PATH.test(path) ? ["script"]
     : ["script", "module"];
-  let firstFailure: string | undefined;
+  // The reported failure: each plugin set's first one, and a fallback reading's only when it points
+  // further into the file (where the file actually breaks, not where the first reading gave up).
+  let reported: ParseFailure | undefined;
   for (const plugins of pluginSets(path)) {
     const readings: Array<{ goal: SourceType; file: BabelFile }> = [];
+    let setFailure: ParseFailure | undefined;
     for (const goal of goals) {
       const file = attempt(content, goal, plugins);
-      if (typeof file === "string") firstFailure ??= file;
+      if ("message" in file) setFailure ??= file;
       else readings.push({ goal, file });
     }
+    if (setFailure && (!reported || setFailure.pos > reported.pos)) reported = setFailure;
     if (readings.length === 2 && !sameTokens(readings[0]!.file, readings[1]!.file)) {
       return "The file reads differently as a script and as a module.";
     }
@@ -162,7 +192,7 @@ function parseFile(path: string, content: string): BabelFile | string {
     }
     return reading.file;
   }
-  return firstFailure ?? "syntax error";
+  return reported?.message ?? "syntax error";
 }
 
 /**
@@ -387,12 +417,37 @@ function readingClass(path: string): string {
 export const PARSE_CACHE_MAX_TOKENS = 250_000;
 export const PARSE_CACHE_MAX_CHARS = 8 * 1024 * 1024;
 
+/**
+ * Comment ranges kept apart from the parse cache (4.1 M4): the regex analyzers need only these, and each
+ * sweeps every file once, so a parse evicted from the token-bounded cache would be parsed again by every
+ * analyzer. Keyed by reading class, token bound and a SHA-256 of the content (the content itself is not retained);
+ * bounded by stored range offsets, oldest first.
+ */
+export const COMMENT_CACHE_MAX_OFFSETS = 2_000_000;
+
 export class JavaScriptParseCache {
   private readonly entries = new Map<string, Map<string, ParsedJavaScript>>();
   private readonly order: Array<[string, string]> = [];
   private head = 0;
+  private readonly commentRanges = new Map<string, number[]>();
   tokens = 0;
   chars = 0;
+  commentOffsets = 0;
+
+  getComments(key: string): number[] | undefined {
+    return this.commentRanges.get(key);
+  }
+
+  setComments(key: string, comments: number[]): void {
+    if (this.commentRanges.has(key) || comments.length > COMMENT_CACHE_MAX_OFFSETS) return;
+    this.commentRanges.set(key, comments);
+    this.commentOffsets += comments.length + 1;
+    for (const [oldKey, oldComments] of this.commentRanges) {
+      if (this.commentOffsets <= COMMENT_CACHE_MAX_OFFSETS) break;
+      this.commentRanges.delete(oldKey);
+      this.commentOffsets -= oldComments.length + 1;
+    }
+  }
 
   get size(): number {
     return this.order.length - this.head;
@@ -427,6 +482,8 @@ export class JavaScriptParseCache {
 
   clear(): void {
     this.entries.clear();
+    this.commentRanges.clear();
+    this.commentOffsets = 0;
     this.order.length = 0;
     this.head = 0;
     this.tokens = 0;
@@ -457,23 +514,69 @@ export function parseJavaScriptTokens(path: string, content: string, maxTokens: 
   if (cached) return cached;
   const parsed = parseUncached(path, content, maxTokens);
   cache?.set(reading, content, parsed);
+  if (cache && !parsed.issues.length) cache.setComments(commentKey(path, content, maxTokens), parsed.comments);
   return parsed;
+}
+
+/**
+ * The comment-cache key: the reading class, the token bound (a parse under a larger bound must never serve a
+ * caller whose bound would refuse the file) and a SHA-256 of the content.
+ */
+function commentKey(path: string, content: string, maxTokens: number): string {
+  return `${readingClass(path)}:${maxTokens}:${createHash("sha256").update(content).digest("base64")}`;
 }
 
 function parseUncached(path: string, content: string, maxTokens: number): ParsedJavaScript {
   // Bounded work before the parser runs: the parser keeps every token and node it reads, so a file
   // that could hold far more tokens than the analyzers accept is refused unparsed (fail closed).
   if (tokenUpperBound(content) > 2 * maxTokens) {
-    return { tokens: [], conditionalBodies: [], issues: [`JavaScript/TypeScript token bound exceeded (${maxTokens}).`] };
+    return { tokens: [], conditionalBodies: [], comments: [], issues: [`JavaScript/TypeScript token bound exceeded (${maxTokens}).`] };
   }
   const file = parseFile(path, content);
   if (typeof file === "string") {
-    return { tokens: [], conditionalBodies: [], issues: [`JavaScript/TypeScript parse error: ${file}`] };
+    return { tokens: [], conditionalBodies: [], comments: [], issues: [`JavaScript/TypeScript parse error: ${file}`] };
   }
   // The parser's stream holds comments and the end-of-file marker too; the bound counts mapped tokens.
   const tokens = mapTokens(content, file.tokens ?? []);
   if (tokens.length > maxTokens) {
-    return { tokens: [], conditionalBodies: [], issues: [`JavaScript/TypeScript token bound exceeded (${maxTokens}).`] };
+    return { tokens: [], conditionalBodies: [], comments: [], issues: [`JavaScript/TypeScript token bound exceeded (${maxTokens}).`] };
   }
-  return { tokens, conditionalBodies: conditionalBodies(file.program), issues: [] };
+  const comments = (file.comments ?? []).flatMap((comment) => [comment.start, comment.end]);
+  return { tokens, conditionalBodies: conditionalBodies(file.program), comments, issues: [] };
+}
+
+/** The extensions the parser reads: `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`. */
+const JAVASCRIPT_PATH = /\.(?:[cm]?[jt]s|[jt]sx)$/i;
+
+/**
+ * The token bound the comment mask parses with. It equals `REACT_NATIVE_MAX_JS_TOKENS` (javascript.ts,
+ * which imports this module) so the regex analyzers and the native packs share one cached parse per file.
+ */
+const COMMENT_MASK_MAX_TOKENS = 200_000;
+
+/**
+ * The source with every comment the parser read replaced by spaces, code unit for code unit, line
+ * terminators kept, so offsets, lines and columns never move (4.1 M4). A regex literal holding `/*` or
+ * `//`, a string or template holding them, and JSX text are code and stay. `undefined` when the file is
+ * not JavaScript/TypeScript or the parser cannot read it; the caller then falls back to its own masking.
+ */
+export function maskCommentsFromParser(source: string, filename: string): string | undefined {
+  if (!JAVASCRIPT_PATH.test(filename)) return undefined;
+  const comments = scanCache.getStore()?.getComments(commentKey(filename, source, COMMENT_MASK_MAX_TOKENS)) ?? parsedComments(filename, source);
+  if (!comments) return undefined;
+  if (!comments.length) return source;
+  let masked = "";
+  let from = 0;
+  for (let index = 0; index + 1 < comments.length; index += 2) {
+    const start = comments[index]!;
+    const end = comments[index + 1]!;
+    masked += source.slice(from, start) + source.slice(start, end).replace(/[^\n\r\u2028\u2029]/g, " ");
+    from = end;
+  }
+  return masked + source.slice(from);
+}
+
+function parsedComments(filename: string, source: string): number[] | undefined {
+  const parsed = parseJavaScriptTokens(filename, source, COMMENT_MASK_MAX_TOKENS);
+  return parsed.issues.length ? undefined : parsed.comments;
 }

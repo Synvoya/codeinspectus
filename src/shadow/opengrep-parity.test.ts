@@ -8,7 +8,7 @@ async function oneCandidate() {
   const result = await runJavaScriptBaselineCandidates({
     target: "/fixture",
     root: "/fixture",
-    files: [parseJavaScriptSource("index.ts", `crypto.createHash("md5");\n`)],
+    files: [parseJavaScriptSource("index.ts", `crypto.createHash("md5").update(password);\n`)],
   });
   return result.findings[0]!;
 }

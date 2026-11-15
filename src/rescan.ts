@@ -13,13 +13,43 @@ import { dirname, join } from "node:path";
 import { executeScan, scanIncludedLicenses } from "./scan.js";
 import { requireSafeScanTarget } from "./path-safety.js";
 import { getScan, getLatestScanForTarget, isFullScan, normalizeStoredScanForRuntime } from "./store.js";
-import { findingsMatch, pairMovedFindings } from "./dedup.js";
+import { findingsMatch, pairMovedFindings, secretContainmentAgainst } from "./dedup.js";
 import { STANDING_DISCLAIMER } from "./config.js";
 import { SEVERITY_RANK } from "./types.js";
 import type { Finding, RescanResult, ScanResult, Severity } from "./types.js";
 import type { RescanInput } from "./schemas.js";
 import { diffRepositoryTrust } from "./repository-trust/diff.js";
-import { componentSignaturesMatch, SYNVOYA_PRODUCERS, synvoyaProducerOf, type SynvoyaProducer } from "./provenance.js";
+import { componentSignaturesMatch, DEDUP_COMPONENT, isOpengrepPackRule, OPENGREP_PACK_INVOCATION, SYNVOYA_PRODUCERS, synvoyaProducerOf, type SynvoyaProducer } from "./provenance.js";
+import type { EngineUncheckedPass } from "./types.js";
+import { listNativePacks } from "./packs/registry.js";
+
+let nativeRuleOwners: Map<string, string> | undefined;
+/** The native pack that owns each rule id (every analyzer lists its rule ids; no rule is in two packs). */
+function nativePackOf(ruleId: string): string | undefined {
+  nativeRuleOwners ??= new Map(listNativePacks().flatMap((pack) =>
+    pack.createAnalyzers("").flatMap((analyzer) => analyzer.ruleIds.map((rule) => [rule, pack.id] as const))));
+  return nativeRuleOwners.get(ruleId);
+}
+
+/**
+ * The analysis passes that produced a finding, for ScanResult.engine_unchecked: the Opengrep pack pass when
+ * its components (or, without them, its rule) say so, else the baseline pass; the native packs.
+ */
+function analysisPasses(f: Finding): EngineUncheckedPass[] {
+  const passes: EngineUncheckedPass[] = [];
+  const components = f.producer_components ?? [];
+  if (f.engines.includes("opengrep")) {
+    const pack = components.includes(OPENGREP_PACK_INVOCATION);
+    const baseline = components.includes("opengrep:invocation");
+    if (pack) passes.push("opengrep:pack");
+    if (baseline) passes.push("opengrep:baseline");
+    if (!pack && !baseline) passes.push(isOpengrepPackRule(f.rule_id) ? "opengrep:pack" : "opengrep:baseline");
+  }
+  if (f.engines.includes("codeinspectus-ai")) passes.push("native");
+  // osv-scanner's lockfile run; its findings over the Synvoya SBOM are proven by their Synvoya producer instead.
+  if (f.engines.includes("osv-scanner") && !components.some((component) => synvoyaProducerOf(component) !== undefined)) passes.push("osv-scanner");
+  return passes;
+}
 
 /**
  * Diff a prior scan against a fresh rescan by fingerprint, gating "resolved" on provability.
@@ -37,6 +67,9 @@ import { componentSignaturesMatch, SYNVOYA_PRODUCERS, synvoyaProducerOf, type Sy
  *   4. a Synvoya finding's file was fully checked in the rescan by every Synvoya producer it records
  *      (`synvoya:<producer>` producer components, looked up in `synvoya_checked`): a file a producer skipped
  *      (deadline, input limits), read in part, could not resolve, or that was removed or moved proves nothing.
+ *      For the image producer only (4.1 M8), a file read whole whose unjudged images all name another subject
+ *      also re-checks the finding: the prior scan recorded the finding's subject key and the fresh
+ *      `synvoya_subjects.images.blocked` lists the file without that key. A missing key or map is the file rule.
  * Otherwise the finding is `not_rechecked` — NOT resolved, NOT silently dropped.
  *
  * CG-76: there is NO severity_threshold gate here. runRescan runs the fresh scan WITHOUT a
@@ -54,8 +87,10 @@ export function diffRescan(prior: ScanResult, fresh: ScanResult, missingFiles: R
   // to the Gitleaks representative after — a different fingerprint for the SAME live issue. Matching
   // on dedup identity (not just fingerprint) keeps that from being read as resolved/introduced;
   // findingsMatch also refuses matches that a location key alone would make (see dedup.ts).
-  const exactlyPresent = (f: Finding): boolean => priorByFp.has(f.fingerprint) || prior.findings.some((p) => findingsMatch(p, f));
-  const exactlyStillThere = (f: Finding): boolean => freshByFp.has(f.fingerprint) || fresh.findings.some((p) => findingsMatch(f, p));
+  // The prior scan is the older side; a pre-4.1 prior may match a 4.1 key-block survivor by containment.
+  const matchOptions = secretContainmentAgainst(prior, fresh);
+  const exactlyPresent = (f: Finding): boolean => priorByFp.has(f.fingerprint) || prior.findings.some((p) => findingsMatch(p, f, matchOptions));
+  const exactlyStillThere = (f: Finding): boolean => freshByFp.has(f.fingerprint) || fresh.findings.some((p) => findingsMatch(f, p, matchOptions));
   // Unchanged code that only moved lines: paired only among findings the exact pass left over.
   const moved = pairMovedFindings(prior.findings.filter((f) => !exactlyStillThere(f)), fresh.findings.filter((f) => !exactlyPresent(f)));
   const movedPrior = new Set(moved.values());
@@ -69,7 +104,21 @@ export function diffRescan(prior: ScanResult, fresh: ScanResult, missingFiles: R
   // An omitted set (reader failed, deadline, too large to record, or no Synvoya run) confirms nothing.
   const synvoyaChecked = (producer: SynvoyaProducer): ReadonlySet<string> => new Set(fresh.synvoya_checked?.[producer] ?? []);
   const checkedByProducer = new Map(SYNVOYA_PRODUCERS.map((producer) => [producer, synvoyaChecked(producer)]));
+  const priorImageKeys = prior.synvoya_subjects?.images?.findings;
+  const freshBlocked = fresh.synvoya_subjects?.images?.blocked;
+  /** Whether a producer re-checked this finding: its file is in the producer's set, or (images) its subject was not blocked. */
+  const rechecked = (producer: SynvoyaProducer, f: Finding): boolean => {
+    if (checkedByProducer.get(producer)!.has(f.location.file)) return true;
+    if (producer !== "images" || !priorImageKeys || !freshBlocked) return false;
+    const key = Object.hasOwn(priorImageKeys, f.fingerprint) ? priorImageKeys[f.fingerprint] : undefined;
+    const blocked = Object.hasOwn(freshBlocked, f.location.file) ? freshBlocked[f.location.file] : undefined;
+    return key !== undefined && blocked !== undefined && !blocked.includes(key);
+  };
 
+  // A 4.1 scan records its per-pass unchecked files (engine_unchecked) and carries the dedup component marker.
+  const freshCarriesRecords = fresh.engine_unchecked !== undefined || fresh.component_signatures?.[DEDUP_COMPONENT] !== undefined;
+  const partialNativePacks = new Set((fresh.pack_coverage ?? [])
+    .filter((pack) => pack.state === "partial" || pack.state === "unavailable").map((pack) => pack.pack_id));
   const resolved: Finding[] = [];
   const not_rechecked: Finding[] = [];
   const reasons = new Set<string>();
@@ -96,6 +145,38 @@ export function diffRescan(prior: ScanResult, fresh: ScanResult, missingFiles: R
       reasons.add(`${missing.join(", ")} did not run in the rescan`);
       continue;
     }
+    // M6 fix round 1: an engine pass that could not fully analyze the file in the rescan (timeout, engine or
+    // parse error, size limit) proves nothing about the findings it had there.
+    // An engine that ran but left no record for the pass proves nothing, in a scan that should carry records
+    // (a 4.1 scan); scans stored before them keep the earlier rule.
+    const uncheckedReason = analysisPasses(f).map((pass): string | undefined => {
+      const unchecked = fresh.engine_unchecked?.[pass];
+      const generic = "the engine could not fully analyze this finding's file or rule in the rescan (a timeout, engine or parse error, a failed rule, or a size limit)";
+      if (unchecked === undefined) return freshCarriesRecords ? generic : undefined;
+      if (unchecked === "all" || (unchecked.rules ?? []).includes(f.rule_id)) return generic;
+      if (unchecked.files.includes(f.location.file)) {
+        return pass === "osv-scanner" ? "osv-scanner listed no packages from this lockfile (unreadable or unsupported layout)" : generic;
+      }
+      if (f.package !== undefined && (unchecked.ecosystems ?? []).includes(f.package.ecosystem)) {
+        return "osv-scanner checked this finding's ecosystem only partially in the rescan";
+      }
+      return undefined;
+    }).find((reason) => reason !== undefined);
+    if (uncheckedReason !== undefined) {
+      not_rechecked.push(f);
+      reasons.add(uncheckedReason);
+      continue;
+    }
+    // Fix round 2: a native pack that ran only partially (a bound or an incomplete load, noted in free text) or was
+    // unavailable proves nothing about its findings; a native finding no pack owns, nothing when any pack was.
+    if (f.engines.includes("codeinspectus-ai") && partialNativePacks.size > 0) {
+      const owner = nativePackOf(f.rule_id);
+      if (owner === undefined || partialNativePacks.has(owner)) {
+        not_rechecked.push(f);
+        reasons.add("the native pack that produced it ran only partially in the rescan (a bound was reached or an input was not fully read)");
+        continue;
+      }
+    }
     // Trivy runs in a scan that did not ask for licences, so its engine row cannot vouch for a licence finding.
     if (f.finding_kind === "license" && fresh.scan_config?.include_licenses === false) {
       not_rechecked.push(f);
@@ -105,7 +186,7 @@ export function diffRescan(prior: ScanResult, fresh: ScanResult, missingFiles: R
     // A Synvoya finding resolves only from its own producers; one with no recorded producer never does. So
     // does any finding that records a Synvoya producer (osv-scanner's findings from the vendored-library SBOM).
     const producers = (f.producer_components ?? []).flatMap((component) => synvoyaProducerOf(component) ?? []);
-    if ((f.engines.includes("synvoya") || producers.length > 0) && (producers.length === 0 || producers.some((producer) => !checkedByProducer.get(producer)!.has(f.location.file)))) {
+    if ((f.engines.includes("synvoya") || producers.length > 0) && (producers.length === 0 || producers.some((producer) => !rechecked(producer, f)))) {
       not_rechecked.push(f);
       reasons.add("the Synvoya gap layer did not fully re-check this finding's file in the rescan (skipped, read only in part, removed or moved)");
       continue;

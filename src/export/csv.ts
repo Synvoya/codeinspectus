@@ -1,4 +1,5 @@
 import { jsonExportSchema, type JsonExport } from "./schemas.js";
+import { SEVERITY_RANK } from "../types.js";
 
 export const CSV_SCHEMA_VERSION = "1.0.0" as const;
 
@@ -74,11 +75,16 @@ function compareText(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/**
+ * Severity first, then file and line (4.1): ids are derived from fingerprints, so ordering by id (as 4.0 did,
+ * when ids followed severity order) would scatter the rows. The id and fingerprint keep the order total.
+ */
 function findingOrder(a: JsonExport["findings"][number], b: JsonExport["findings"][number]): number {
-  return compareText(
-    [a.id, a.fingerprint, a.location.file, String(a.location.start_line)].join("\0"),
-    [b.id, b.fingerprint, b.location.file, String(b.location.start_line)].join("\0"),
-  );
+  return SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] ||
+    compareText(a.location.file, b.location.file) ||
+    a.location.start_line - b.location.start_line ||
+    compareText(a.id, b.id) ||
+    compareText(a.fingerprint, b.fingerprint);
 }
 
 /** A deterministic, spreadsheet-safe projection of the validated canonical V2 JSON export. */

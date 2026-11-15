@@ -2,6 +2,8 @@
  * CodeInspectus entry point.
  *
  * Default (no args): guided setup on an interactive terminal; MCP over piped stdio.
+ * `init`: register CodeInspectus in the user's AI assistants and set up every engine after one yes.
+ * `update`: check for and download database updates after an explicit yes (`--yes`).
  * `repair-engines`: explicitly fetch + verify only unhealthy engine/DB state.
  * `install-engines`: backward-compatible setup alias (explicit network step).
  * `pin-engines`: maintainer-only shipped lockfile generation.
@@ -53,6 +55,16 @@ async function main(): Promise<void> {
     case "install-engines": {
       const { installEngines } = await import("./install.js");
       await installEngines(argv.slice(1));
+      return;
+    }
+    case "init": {
+      const { runInitCli } = await import("./init/index.js");
+      process.exitCode = await runInitCli(argv.slice(1));
+      return;
+    }
+    case "update": {
+      const { runUpdateCli } = await import("./update.js");
+      process.exitCode = await runUpdateCli(argv.slice(1));
       return;
     }
     case "repair-engines": {

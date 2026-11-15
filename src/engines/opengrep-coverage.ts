@@ -237,3 +237,41 @@ export function opengrepFileCoverage(report: unknown, target: string): OpengrepF
       : {}),
   };
 }
+
+/**
+ * What one Opengrep pass did not fully analyze (M6 fix round 1, rescan proof), failing closed:
+ * - a file-scoped error (a timeout, memory limit, engine or parse error naming a file inside the target) and
+ *   a non-policy skip (size limit, unreadable, failed analysis) of a file inside the target: that file;
+ * - a rule-scoped error (a rule id and no file): that rule, in every file (ids as findings carry them, the
+ *   last dotted segment);
+ * - any other error (no path and no rule, or a path outside the target), a non-policy skip outside the target,
+ *   and a missing or malformed report: `"all"`.
+ */
+export function opengrepIncompleteFiles(report: unknown, target: string): "all" | { files: string[]; rules: string[] } {
+  const root = report !== null && typeof report === "object" ? report as Record<string, unknown> : {};
+  const paths = root.paths !== null && typeof root.paths === "object" ? root.paths as Record<string, unknown> : {};
+  const errors = records(root.errors);
+  const skipped = records(paths.skipped);
+  if (!errors || !skipped) return "all";
+  const files = new Set<string>();
+  const rules = new Set<string>();
+  for (const error of errors) {
+    if (error.path === undefined || error.path === null) {
+      const rule = typeof error.rule_id === "string" ? error.rule_id.split(".").pop() : undefined;
+      if (!rule) return "all";
+      rules.add(rule);
+      continue;
+    }
+    const rel = targetPath(error.path, target);
+    if (rel === undefined) return "all";
+    files.add(rel);
+  }
+  for (const entry of skipped) {
+    if (POLICY_SKIPS.has(typeof entry.reason === "string" ? entry.reason : "")) continue;
+    const rel = targetPath(entry.path, target);
+    if (rel === undefined) return "all";
+    files.add(rel);
+  }
+  const sorted = (set: Set<string>): string[] => [...set].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  return { files: sorted(files), rules: sorted(rules) };
+}

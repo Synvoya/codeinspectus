@@ -577,3 +577,66 @@ describe("readImageTags: hostile inputs", { timeout: 20_000 }, () => {
     expect(result.parsed).toHaveLength(65);
   });
 });
+
+describe("readImageTags: MinIO RELEASE.<timestamp> tags (4.1 M8)", () => {
+  const MINIO: Pick<SynvoyaDataset, "imageAliases" | "productImages" | "eol"> = {
+    ...DATASET,
+    productImages: { ...DATASET.productImages, "minio/minio": "minio", "quay.io/minio/minio": "minio" },
+  };
+  const TAG = "RELEASE.2023-03-13T19-46-17Z";
+  const minio: Subject = { type: "product", product: "minio" };
+  let work: string;
+  beforeEach(async () => {
+    work = await mkdtemp(join(tmpdir(), "ci-synvoya-img-minio-"));
+  });
+  afterEach(async () => {
+    await rm(work, { recursive: true, force: true });
+  });
+
+  async function compose(image: string) {
+    await writeFile(join(work, "docker-compose.yml"), `services:\n  s3:\n    image: ${image}\n`);
+    return readImageTags(work, MINIO);
+  }
+
+  it.each([`minio/minio:${TAG}`, `quay.io/minio/minio:${TAG}`, `docker.io/minio/minio:${TAG}`])("%s is an exact MinIO declaration", async (image) => {
+    const result = await compose(image);
+    expect(result.declarations).toEqual([decl(minio, TAG, "exact", "docker-compose.yml", 3, "compose image", TAG)]);
+    expect(result.notes).toEqual([]);
+    expect(result.unjudged ?? []).toEqual([]);
+  });
+
+  it("a Helm values image map with a RELEASE tag is exact", async () => {
+    await writeFile(join(work, "values.yaml"), `image:\n  repository: quay.io/minio/minio\n  tag: ${TAG}\n`);
+    const result = await readImageTags(work, MINIO);
+    expect(result.declarations).toEqual([decl(minio, TAG, "exact", "values.yaml", 2, "Helm values image", TAG)]);
+  });
+
+  it.each([
+    ["minio/minio:latest", "latest", "is tagged latest"],
+    ["minio/minio", "latest", "has no tag, so it floats on latest"],
+    [`minio/minio@sha256:${"a".repeat(64)}`, `@sha256:${"a".repeat(64)}`, "is pinned by digest only, which does not name a version"],
+    ["minio/minio:edge", "edge", 'has tag "edge", which is not a MinIO RELEASE.<timestamp> tag'],
+    [`minio/minio:${TAG}-cpuv1`, `${TAG}-cpuv1`, `has tag "${TAG}-cpuv1", which is not a MinIO RELEASE.<timestamp> tag`],
+    [`minio/minio:${TAG}.fips`, `${TAG}.fips`, `has tag "${TAG}.fips", which is not a MinIO RELEASE.<timestamp> tag`],
+    ["minio/minio:release.2023-03-13T19-46-17Z", "release.2023-03-13T19-46-17Z", 'has tag "release.2023-03-13T19-46-17Z", which is not a MinIO RELEASE.<timestamp> tag'],
+    ["minio/minio:RELEASE.2023-02-30T00-00-00Z", "RELEASE.2023-02-30T00-00-00Z", 'has tag "RELEASE.2023-02-30T00-00-00Z", which is not a MinIO RELEASE.<timestamp> tag'],
+  ])("%s is unresolved with a note, never exact", async (image, spec, problem) => {
+    const result = await compose(image);
+    expect(result.declarations).toEqual([decl(minio, spec, "unresolved", "docker-compose.yml", 3, "compose image")]);
+    expect(result.notes).toEqual([`docker-compose.yml:3: compose image "${image}" ${problem}; no finding is possible for it.`]);
+  });
+
+  it("bitnami/minio (date tags, no time of day) is a private-registry lookalike note, never exact", async () => {
+    const result = await compose("bitnami/minio:2023.3.13");
+    expect(result.declarations).toEqual([{ ...decl(minio, "2023.3.13", "unresolved", "docker-compose.yml", 3, "compose image"), noted: true }]);
+    expect(result.notes).toEqual([
+      'docker-compose.yml:3: compose image "bitnami/minio:2023.3.13" is an image on a private registry — cannot confirm it is the official minio/minio image; no finding is possible for it.',
+    ]);
+  });
+
+  it("without the MinIO mapping a MinIO image is ignored, as before", async () => {
+    await writeFile(join(work, "docker-compose.yml"), `services:\n  s3:\n    image: minio/minio:${TAG}\n`);
+    const result = await readImageTags(work, DATASET);
+    expect(result.declarations).toEqual([]);
+  });
+});

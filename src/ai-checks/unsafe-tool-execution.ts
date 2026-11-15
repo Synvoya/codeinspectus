@@ -13,6 +13,7 @@
  * Findings remain medium confidence because runtime sandboxing or approval may exist elsewhere.
  */
 
+import { maskCommentsFromParser } from "../packs/react-native/javascript-parse.js";
 import type { Finding } from "../types.js";
 import { makeAiFinding } from "./finding.js";
 import { collectFiles, lineOf, lineText } from "./walk.js";
@@ -555,7 +556,7 @@ export async function runUnsafeToolExecutionCheck(target: string): Promise<Findi
   const files = await collectFiles(target, { exts: CODE_EXTS, includeBuilt: false });
 
   for (const file of files) {
-    const source = maskComments(file.content);
+    const source = maskCommentsFromParser(file.content, file.rel) ?? maskComments(file.content);
     if (!hasLlmSdkCall(source) || !/(?:function_call|tool_calls|tool_use|functionCalls)/.test(source)) {
       continue;
     }

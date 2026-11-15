@@ -2345,5 +2345,13 @@
       "latest": "1.3.42",
       "source": "https://endoflife.date/apache-http-server"
     }
+  ],
+  "complete": [
+    "dotnet",
+    "php",
+    "postgres",
+    "postgresql",
+    "python",
+    "ruby"
   ]
 }

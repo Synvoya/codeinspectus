@@ -1,3 +1,5 @@
+# Fixtures are compared byte-for-byte (contract snapshot, parser reference); keep LF on every platform.
+fixtures/** text=auto eol=lf
 # Synvoya dataset digests are over raw bytes; never convert line endings.
 detection-db/synvoya/** -text
 fixtures/synvoya/dataset/** -text

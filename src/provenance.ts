@@ -12,6 +12,12 @@ import { MANAGED_PROVENANCE, MANAGED_TRIVY_DB, MANAGED_TRIVY_DB_PROVENANCE } fro
 import type { Engine, FindingKind } from "./types.js";
 
 export const PIPELINE_COMPONENT = "codeinspectus:pipeline";
+/**
+ * Marks a scan made with the 4.1 dedup (version-aware vulnerability keys, private-key containment). No finding
+ * names it as a producer, so it never affects re-checkability; an older scan without it predates 4.1 (or is
+ * of unknown version), which is when the cross-scan containment match may apply (src/dedup.ts).
+ */
+export const DEDUP_COMPONENT = "codeinspectus:dedup";
 export const AI_INVOCATION_COMPONENT = "codeinspectus-ai:invocation";
 export const FLUTTER_PACK_DISPATCH_COMPONENT = "pack:flutter:dispatch";
 export const FLUTTER_DART_PARSER_COMPONENT = "flutter:dart-structural-parser";
@@ -67,9 +73,12 @@ export function synvoyaProducerOf(component: string): SynvoyaProducer | undefine
 }
 
 const COMPONENT_REVISIONS: Record<string, string> = {
+  // 4.1 M9 fresh-set gate (Ruling 3): demoted or experimental rules bump their component, so a prior finding of
+  // theirs reads "not re-checked" on the first rescan, never "resolved".
   [PIPELINE_COMPONENT]: "3:normalize-alias-dedup-direct-target-routing-envelope",
+  [DEDUP_COMPONENT]: "1:version-aware-vulnerability-keys-private-key-containment",
   [AI_INVOCATION_COMPONENT]: "1:all-analyzers-no-target-flags",
-  "ai:client-secrets": "4:exact-supabase-secret-and-all-occurrence-bundle-state",
+  "ai:client-secrets": "6:fresh-set-public-env-secret-low",
   "ai:supabase-rls-policy-state": "3:bounded-role-command-policy-composition-state",
   "ai:supabase-edge-auth": "4:file-target-is-not-project-discovery-failure",
   "ai:prompt-injection": "2:prompt-sink-analysis-cwe-1427",
@@ -78,12 +87,12 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   "ai:nextjs-admin-route": "2:per-exported-handler-authn-authz-control-flow",
   "ai:express-admin-route": "2:import-proven-production-source-admin-route-boundary",
   "ai:client-metadata-authz": "1:client-metadata-authz",
-  "ai:llm-dangerous-html": "1:dangerous-html-flow",
-  "ai:client-error-leak": "2:production-path-client-response-error-detail",
-  "ai:sensitive-api-response": "2:production-path-explicit-sensitive-response-fields",
-  "ai:unvalidated-request-write": "2:production-path-request-object-write-flow",
-  "ai:sensitive-log": "2:production-path-sensitive-log-flow",
-  "ai:security-header-config": "2:import-and-provider-proven-effective-header-state",
+  "ai:llm-dangerous-html": "2:dangerous-html-flow-fresh-set-low",
+  "ai:client-error-leak": "4:server-handler-response-error-detail-fresh-set-low",
+  "ai:sensitive-api-response": "4:experimental-not-reported",
+  "ai:unvalidated-request-write": "3:production-path-request-object-write-flow-e2e-skip",
+  "ai:sensitive-log": "4:experimental-not-reported",
+  "ai:security-header-config": "3:import-and-provider-proven-effective-header-state-fresh-set-low",
   "ai:csp-config": "1:production-script-source-policy",
   "ai:referrer-policy-config": "1:effective-literal-referrer-policy",
   "ai:permissions-policy-config": "1:sensitive-feature-universal-delegation",
@@ -91,10 +100,10 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   "ai:supabase-captcha-integration": "1:enabled-config-auth-call-token",
   [FLUTTER_PACK_DISPATCH_COMPONENT]: "1:flutter-pack-dispatch",
   [FLUTTER_DART_PARSER_COMPONENT]: "1:dart-structural-parser",
-  "ai:flutter-tls-verification": "1:unconditional-bad-certificate-callback",
+  "ai:flutter-tls-verification": "2:unconditional-bad-certificate-callback-fresh-set-low",
   "ai:flutter-sensitive-preferences": "1:sensitive-value-shared-preferences-write",
   "ai:flutter-webview-untrusted-content": "1:untrusted-content-webview-flow",
-  "ai:flutter-sensitive-log": "1:sensitive-data-log-sink",
+  "ai:flutter-sensitive-log": "2:sensitive-logged-values",
   "ai:flutter-supabase-privileged-key": "2:exact-opaque-and-legacy-privileged-key-client-exposure",
   "ai:flutter-cleartext-network": "1:production-cleartext-network-use",
   [ANDROID_PACK_DISPATCH_COMPONENT]: "1:android-pack-dispatch",
@@ -128,11 +137,12 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   // a now-skipped or newly bounded-out file reads "not re-checked", never "resolved".
   [JAVASCRIPT_BASELINE_PARSER_COMPONENT]: "2:bounded-javascript-typescript-structural-parser-jsx-retry-yarn-skip",
   [NATIVE_SAST_RECONCILIATION_COMPONENT]: "1:exact-opengrep-pre-dedup-reconciliation",
-  "sast:javascript-weak-hash": "1:weak-hash-md5-sha1",
+  // 2 (4.1 M7): MD5/SHA-1 only in a credential context; a prior finding outside one reads "not re-checked".
+  "sast:javascript-weak-hash": "2:weak-hash-md5-sha1-credential-context",
   "sast:javascript-weak-cipher": "1:weak-cipher-and-deprecated-create-cipher",
-  "ai:python-hardcoded-signing-secret": "1:literal-framework-signing-secret",
+  "ai:python-hardcoded-signing-secret": "2:literal-framework-signing-secret-fresh-set-low",
   "ai:python-credentialed-cors": "1:credentialed-universal-origin-policy",
-  "ai:python-untrusted-file-response": "1:request-controlled-file-response-path",
+  "ai:python-untrusted-file-response": "2:request-controlled-file-response-path-fresh-set-low",
   "ai:python-untrusted-redirect": "1:request-controlled-complete-redirect-target",
   "ai:python-untrusted-template-source": "1:request-controlled-template-compilation",
   "ai:python-llm-output-dangerous-html": "1:proven-sdk-output-html-response-flow",
@@ -165,13 +175,15 @@ const COMPONENT_REVISIONS: Record<string, string> = {
   "ai:firebase-realtime-database-public-write": "1:literal-unconditional-rtdb-write-grant",
   [GITHUB_ACTIONS_PACK_DISPATCH_COMPONENT]: "1:github-actions-pack-dispatch",
   [GITHUB_ACTIONS_YAML_PARSER_COMPONENT]: "1:bounded-strict-yaml12-workflow-parser",
-  "ai:github-actions-expression-injection": "1:documented-untrusted-context-direct-run-interpolation",
+  "ai:github-actions-expression-injection": "2:boolean-only-operands-excluded",
   "ai:github-actions-pwn-request": "1:pre-v7-privileged-untrusted-checkout-and-workspace-execution",
   [PUB_LOCKFILE_PARSER_COMPONENT]: "1:bounded-pub-lockfile-parser",
   [PUB_MATCHER_COMPONENT]: "1:exact-enumerated-osv-version-membership",
-  [SYNVOYA_MATCHER_COMPONENT]: "1:declared-version-range-membership",
+  // 4.1 M8: MinIO RELEASE.<timestamp> tags compare, and end-of-life ranges cross the lines of complete release lists.
+  [SYNVOYA_MATCHER_COMPONENT]: "2:declared-version-range-membership-complete-lines-minio-release",
   "synvoya:runtime": "1:bounded-runtime-pin-reader",
-  "synvoya:images": "1:bounded-image-tag-reader",
+  // 4.1 M8: MinIO images (minio/minio, quay.io/minio/minio) and their RELEASE.<timestamp> tags.
+  "synvoya:images": "2:bounded-image-tag-reader-minio-release-tags",
   "synvoya:products": "1:bounded-product-version-reader",
   "synvoya:inventory:osv-scanner": "1:osv-scanner-all-packages-inventory",
   "synvoya:inventory:trivy": "1:trivy-list-all-pkgs-inventory",

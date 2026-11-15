@@ -225,6 +225,28 @@ describe("getScan — end-to-end against real managed store", () => {
     expect(Array.isArray(scan!.findings)).toBe(true);
   });
 
+  // M6 fix round 1: rescan proof survives the round trip through the store.
+  test("the per-pass unchecked files of a stored scan load back", async () => {
+    const source = JSON.parse(await (await import("node:fs/promises")).readFile(
+      resolve("fixtures/coverage-honesty-corpus/trivy-dependency/stored-scan-3.3.2.json"), "utf8")) as Record<string, unknown>;
+    const id = `scan-${randomUUID()}`;
+    const unchecked = { "opengrep:baseline": { files: ["lib/d3.js"], rules: ["ci-baseline-xss"] }, "opengrep:pack": "all", native: { files: [] } };
+    await mkdir(MANAGED_SCANS, { recursive: true });
+    await (await import("node:fs/promises")).writeFile(join(MANAGED_SCANS, `${id}.json`), JSON.stringify({ ...source, scan_id: id, engine_unchecked: unchecked }));
+    expect((await getScan(id))?.engine_unchecked).toEqual(unchecked);
+  });
+
+  // 4.1 M8: the per-subject image proof survives the round trip through the store.
+  test("the Synvoya per-subject image evidence of a stored scan loads back", async () => {
+    const source = JSON.parse(await (await import("node:fs/promises")).readFile(
+      resolve("fixtures/coverage-honesty-corpus/trivy-dependency/stored-scan-3.3.2.json"), "utf8")) as Record<string, unknown>;
+    const id = `scan-${randomUUID()}`;
+    const subjects = { images: { blocked: { Dockerfile: ["runtime:php"] }, findings: { "sha256:abc": "runtime:node" } } };
+    await mkdir(MANAGED_SCANS, { recursive: true });
+    await (await import("node:fs/promises")).writeFile(join(MANAGED_SCANS, `${id}.json`), JSON.stringify({ ...source, scan_id: id, synvoya_subjects: subjects }));
+    expect((await getScan(id))?.synvoya_subjects).toEqual(subjects);
+  });
+
   test("a well-formed but nonexistent id → undefined (not a throw)", async () => {
     const scan = await getScan(`scan-${randomUUID()}`);
     expect(scan).toBeUndefined();

@@ -118,7 +118,16 @@ function relativeSegments(rel: string): string[] | undefined {
 // ── Test, fixture, example and documentation context (design §4.6) ────────────────────────────────
 
 /** Test folders, matched exactly and case-sensitively on any target-relative path segment. */
-const TEST_DIRS: ReadonlySet<string> = new Set(["test", "tests", "__tests__", "__snapshots__", "spec", "fixtures"]);
+const TEST_DIRS: ReadonlySet<string> = new Set([
+  "test", "tests", "__tests__", "__snapshots__", "spec", "fixtures",
+  // 4.1 M9: end-to-end suites and Go/Dart test data folders.
+  "cypress", "e2e", "playwright", "testdata", "integration_test",
+]);
+/**
+ * 4.1 M9: language test-file conventions: Cypress `*.cy.{js,ts,jsx,tsx,mjs,cjs}`, pytest `test_*.py`, `*_test.py` and
+ * `conftest.py`, Go `*_test.go`, Dart `*_test.dart`, RSpec `*_spec.rb` and Minitest `*_test.rb`.
+ */
+const TEST_BASENAME = /\.cy\.(?:[cm]?[jt]s|[jt]sx)$|^test_[^/]+\.py$|^[^/]+_test\.(?:py|go|dart|rb)$|^conftest\.py$|^[^/]+_spec\.rb$/;
 /** Xcode-style test targets (`NostrootsNativeTests/`): a lowercase letter, then a capital-T `Tests`; never `Contests/`. */
 const TEST_TARGET_DIR = /^[A-Za-z0-9_]*[a-z]Tests$/;
 /** `<name>.example`, `<name>.example.<ext>`, `<name>.sample`, `<name>.sample.<ext>`; not `x.sampler.ts` or `x.examples.ts`. */
@@ -129,9 +138,11 @@ const README_BASENAME = /^README(?:\.[A-Za-z0-9]+)?$/;
 /**
  * Classify a finding's file as test, example or documentation context by its target-relative path
  * alone. Folders are exact, case-sensitive segments: `test/`, `tests/`, `__tests__/`, `__snapshots__/`,
- * `spec/`, `fixtures/` and Xcode-style `<Name>Tests/` anywhere; `docs/`, `examples/` and `example/` only as
- * the first segment (repository root), so an application route such as `app/docs/` keeps its severity.
- * Basenames: `*.test.*`, `*.spec.*`, `*.e2e-spec.*`, `*.e2e-test.*`, `*.snap`, `<name>.example[.<ext>]`,
+ * `spec/`, `fixtures/`, `cypress/`, `e2e/`, `playwright/`, `testdata/`, `integration_test/` and Xcode-style
+ * `<Name>Tests/` anywhere; `docs/`, `examples/` and `example/` only as the first segment (repository root),
+ * so an application route such as `app/docs/` keeps its severity. Basenames: `*.test.*`, `*.spec.*`,
+ * `*.e2e-spec.*`, `*.e2e-test.*`, `*.cy.<js/ts ext>`, `test_*.py`, `*_test.py`, `conftest.py`, `*_test.go`,
+ * `*_test.dart`, `*_spec.rb`, `*_test.rb`, `*.snap`, `<name>.example[.<ext>]`,
  * `<name>.sample[.<ext>]`, `.env.dist`, `README[.<ext>]` and `*.md`. A real env file such as
  * `.env.development` is never context. A parent folder outside the target is never seen: an absolute
  * or escaping path is not classified.
@@ -142,7 +153,7 @@ export function contextFor(rel: string): FileContext | undefined {
   const base = segs[segs.length - 1]!;
   const dirs = segs.slice(0, -1);
   if (dirs.some((dir) => TEST_DIRS.has(dir) || TEST_TARGET_DIR.test(dir))) return "test";
-  if (/\.(?:test|spec|e2e-spec|e2e-test)\./.test(base) || base.endsWith(".snap")) return "test";
+  if (/\.(?:test|spec|e2e-spec|e2e-test)\./.test(base) || base.endsWith(".snap") || TEST_BASENAME.test(base)) return "test";
   if (dirs[0] === "docs") return "docs";
   if (dirs[0] === "examples" || dirs[0] === "example") return "example";
   if (EXAMPLE_BASENAME.test(base) || base === ".env.dist") return "example";

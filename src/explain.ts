@@ -3,6 +3,7 @@
  * and expands the finding's remediation into a full explanation.
  */
 
+import { displayIdHint } from "./display-id.js";
 import { getScan } from "./store.js";
 import type { ExplainFindingInput } from "./schemas.js";
 import type { Finding, Remediation } from "./types.js";
@@ -47,7 +48,7 @@ export async function explainFinding(input: ExplainFindingInput): Promise<Explai
   const finding = scan.findings.find((f) => f.id === input.finding_id);
   if (!finding) {
     throw new Error(
-      `Finding '${input.finding_id}' not found in scan '${input.scan_id}'. Available ids: ${scan.findings
+      `Finding '${input.finding_id}' not found in scan '${input.scan_id}'. ${displayIdHint(input.finding_id, scan)}Available ids: ${scan.findings
         .slice(0, 20)
         .map((f) => f.id)
         .join(", ")}${scan.findings.length > 20 ? ", …" : ""}.`,

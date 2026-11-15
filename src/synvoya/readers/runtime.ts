@@ -12,7 +12,7 @@ import { isMap, isScalar, isSeq, LineCounter, parseDocument, type Node as YamlNo
 
 import type { Declaration, ReaderOptions, ReaderResult, RuntimeId } from "../types.js";
 
-import { readCandidate, walkCandidates, type WalkMatcher } from "./walk.js";
+import { readCandidate, reportedPath, reportedSkips, walkCandidates, type WalkMatcher } from "./walk.js";
 
 type Precision = Declaration["precision"];
 
@@ -513,13 +513,15 @@ function readOne(ctx: Ctx, name: string, text: string): void {
 
 export async function readRuntimePins(target: string, options: ReaderOptions = {}): Promise<ReaderResult> {
   const walked = await walkCandidates(target, MATCHERS, {}, { signal: options.signal, only: options.only });
-  const result: ReaderResult = { declarations: [], parsed: [], skipped: [...walked.skipped], notes: [] };
-  for (const file of walked.files) {
+  const result: ReaderResult = { declarations: [], parsed: [], skipped: reportedSkips(walked.skipped, options), notes: [] };
+  for (const walkedFile of walked.files) {
+    // Dispatch reads the walked path; everything reported names the file as the scan shows it (onlyAs).
+    const file = reportedPath(walkedFile, options);
     if (options.signal?.aborted) {
       result.skipped.push({ file, reason: "deadline" });
       continue;
     }
-    const text = await readCandidate(target, file);
+    const text = await readCandidate(target, walkedFile);
     if (text === undefined) {
       result.skipped.push({ file, reason: "unreadable" });
       continue;
@@ -527,7 +529,7 @@ export async function readRuntimePins(target: string, options: ReaderOptions = {
     const ctx: Ctx = { file, out: [], notes: [], full: false, expansions: 0 };
     let scanFull = false;
     try {
-      readOne(ctx, file.slice(file.lastIndexOf("/") + 1), text);
+      readOne(ctx, walkedFile.slice(walkedFile.lastIndexOf("/") + 1), text);
       // Appended in loops, never spread: the arrays are bounded, but a spread's argument limit is not ours to rely on.
       for (const declaration of ctx.out) {
         if (result.declarations.length >= MAX_DECLARATIONS_PER_SCAN) {

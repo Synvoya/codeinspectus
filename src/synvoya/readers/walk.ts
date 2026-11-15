@@ -49,6 +49,16 @@ export interface WalkOptions {
   only?: string;
 }
 
+/** The path a reader reports for a walked file: a single-file target's `onlyAs`, else the walked path itself. */
+export function reportedPath(file: string, options: { only?: string; onlyAs?: string }): string {
+  return options.onlyAs !== undefined && file === options.only ? options.onlyAs : file;
+}
+
+/** Walk skips as a reader reports them (reportedPath). */
+export function reportedSkips(skipped: WalkResult["skipped"], options: { only?: string; onlyAs?: string }): WalkResult["skipped"] {
+  return skipped.map((entry) => ({ ...entry, file: reportedPath(entry.file, options) }));
+}
+
 export interface WalkResult {
   /** Target-relative paths with forward slashes, sorted. */
   files: string[];

@@ -20,8 +20,8 @@
  *   xss()), is a constant/trusted literal, or is not in __html (a text node / other attribute).
  *   Ambiguity prefers silence.
  *
- * Honest framing: confidence is `medium` (verify the source is actually untrusted/model-derived);
- * severity stays `high` (XSS into the DOM is real client compromise) — the hedge is in the wording.
+ * Honest framing: 4.1 M9 fresh-set gate (Ruling 3): severity and confidence `low` (1 field hit, a false positive:
+ * the HTML was sanitised by a helper this intrafile check cannot see); verify the source before treating it as XSS.
  * Scope: intrafile only. Cross-file taint, arrow-component props, the object-var-then-spread sink
  * shape, and custom sanitizer wrappers are documented false-negatives.
  *
@@ -288,7 +288,7 @@ export async function runLlmDangerousHtmlCheck(target: string): Promise<Finding[
         makeAiFinding({
           ruleId: "ci-ai-llm-output-dangerous-html",
           title: "Untrusted or model output rendered as raw HTML via dangerouslySetInnerHTML",
-          severity: "high",
+          severity: "low", // 4.1 M9 fresh-set gate: 1 hit, 0 true (Ruling 3)
           cwe: ["CWE-79", "CWE-116"],
           owasp_web: ["A03:2021"],
           // Arm B (model output) is the LLM05 insecure-output-handling case; arm A is plain XSS.
@@ -318,7 +318,7 @@ export async function runLlmDangerousHtmlCheck(target: string): Promise<Finding[
               "https://github.com/cure53/DOMPurify",
             ],
           },
-          confidence: "medium",
+          confidence: "low",
         }),
       );
     }

@@ -8,6 +8,7 @@ import type { EngineName } from "./config.js";
 import type { OsvEcosystem } from "./osv/ecosystems.js";
 import type { RepositoryTrustChanges, RepositoryTrustDocument } from "./repository-trust/schemas.js";
 import type { CoverageGap, CoverageGapId, CoverageNote } from "./coverage-gaps.js";
+import type { DatabaseUpdatePrompt } from "./update-prompt.js";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -100,6 +101,16 @@ export interface Finding {
   scope_role?: "primary" | "supporting_context";
   /** The dependency a vulnerability finding is about, so dedup never merges different packages. */
   package?: FindingPackage;
+  /**
+   * Whether the package is a development-only dependency (`dev`) or not (`prod`), from the lockfile evidence of
+   * src/dependency-scope.ts (npm, Yarn, pnpm, Bun, Composer). Absent: unknown, treated as production.
+   */
+  dependency_scope?: "dev" | "prod";
+  /**
+   * 4.1 M9 (fix round 1): the fixed versions the engine reported for a dependency finding (Trivy, osv-scanner,
+   * Synvoya), used by `upgrade_actions`. Not part of the fingerprint; not in the 3.0.0 export.
+   */
+  fixed_versions?: string[];
 }
 
 /** A resolved dependency: ecosystem as OSV names it (e.g. "PyPI"), name as the lockfile reports it. */
@@ -343,6 +354,28 @@ export interface RepositoryHistoryRevision {
   limitations: string[];
 }
 
+/** 4.1 M9 (A5): one dependency upgrade and the findings it resolves (src/upgrade-actions.ts). */
+export interface UpgradeAction {
+  ecosystem: string;
+  name: string;
+  /** The locked (or declared) version the findings are about. */
+  version: string;
+  /**
+   * The target: on its release line, the highest fix any advisory needs there; absent when no advisory lists a
+   * usable fix. For a GitHub Action pinned by commit SHA (not comparable), the highest listed fix, to compare by hand.
+   */
+  upgrade_to?: string;
+  /** Findings this upgrade resolves. */
+  resolves: number;
+  /** Findings on this package that `upgrade_to` does not resolve (no listed fix, or a fix only on another release line). */
+  unresolved: number;
+  /** Release lines (`7.x`) where the unresolved findings list a fix that `upgrade_to` does not include. */
+  unresolved_fix_lines?: string[];
+  highest_severity: Severity;
+  /** True when every finding on the package is a development-only dependency. */
+  dev_only: boolean;
+}
+
 export interface ScanResult {
   scan_id: string;
   target: string;
@@ -360,6 +393,11 @@ export interface ScanResult {
   dependency_coverage?: DependencyCoverage[];
   trivy_db_date?: string;
   summary: SeveritySummary;
+  /**
+   * 4.1 M9 (A5): dependency findings grouped per locked package into upgrades, over every finding of the scan
+   * (not only the displayed ones). Additive and derived; absent when the scan has no dependency finding.
+   */
+  upgrade_actions?: UpgradeAction[];
   findings: Finding[];
   /** True when findings were truncated by max_findings/severity_threshold. */
   truncated: boolean;
@@ -389,12 +427,33 @@ export interface ScanResult {
    * or the export.
    */
   synvoya_checked?: Partial<Record<"runtime" | "images" | "products" | "inventory:osv-scanner" | "inventory:trivy" | "vendored" | "sbom:osv-scanner" | "actions", string[]>>;
+  /**
+   * Per-subject rescan proof for the Synvoya image producer (4.1 M8). `images.blocked`: image files read whole
+   * whose only unjudged declarations name a subject, with those subjects' check keys (a private-mirror stage
+   * blocks only its own subject); `images.findings`: each final image-producer finding's fingerprint → its check
+   * key. A prior image finding is re-checked when its file is in `synvoya_checked.images`, or when the prior scan
+   * recorded its key and the fresh `blocked` names its file without that key. Either map is omitted when too large
+   * or unsafe to record, and the whole field when the image set is. Stored scan only: not in the scan tool's
+   * output schema, the display projection or the export.
+   */
+  synvoya_subjects?: { images?: { blocked?: Record<string, string[]>; findings?: Record<string, string> } };
+  /**
+   * Per analysis pass, the target-relative files the engine could not fully analyze in this scan: Opengrep's
+   * baseline and pack passes (a per-file timeout, memory limit, engine or parse error, or a non-policy skip such
+   * as the size limit) and the native packs (their parse, size and token-budget gaps), plus the rules that failed
+   * outright. `"all"` when the set is unknown (a malformed report, an error scoped to no file or rule, a path
+   * outside the target) or too large to record. Rescan proof only: a prior finding of that pass in such a file,
+   * or of such a rule, is not re-checked, never resolved. Kept in the canonical (stored) scan; not displayed.
+   */
+  engine_unchecked?: EngineUnchecked;
   /** Code-visible runtime-control evidence. Metadata only; never affects posture scores. */
   security_control_evidence?: SecurityControlEvidence[];
   /** Actionable advisory when a completed Trivy vuln scan lacks install-time DB provenance. */
   trivy_db_provenance?: TrivyDbProvenance;
   /** Offline machine-level engine/DB health. Advisory metadata, never a finding. */
   engine_setup?: EngineSetupStatus;
+  /** 4.1: the 24-hour database update prompt, attached by the MCP server only when due (never persisted). */
+  database_update?: DatabaseUpdatePrompt;
   /** CG-41 read-only git-safety advisory for the scan target (never a finding). */
   git_safety: GitSafety;
   /**
@@ -456,5 +515,21 @@ export interface RescanResult {
   partial: boolean;
   /** Human-readable reason(s) the not_rechecked findings could not be confirmed; present iff partial. */
   not_rechecked_note?: string;
+  /** 4.1: the 24-hour database update prompt, attached by the MCP server only when due. */
+  database_update?: DatabaseUpdatePrompt;
   disclaimer: string;
 }
+
+/** Analysis passes whose per-file failures are recorded for rescan proof (ScanResult.engine_unchecked). */
+export type EngineUncheckedPass = "opengrep:baseline" | "opengrep:pack" | "native" | "osv-scanner";
+/**
+ * One pass's unchecked set: `"all"` (nothing it found is re-checked), or the files it could not fully analyze
+ * plus the rules that failed outright (no file: their findings are unchecked in every file).
+ */
+export type EngineUncheckedSet = "all" | {
+  files: string[];
+  rules?: string[];
+  /** osv-scanner: ecosystems it checked only partially without naming the files (all their findings unchecked). */
+  ecosystems?: string[];
+};
+export type EngineUnchecked = Partial<Record<EngineUncheckedPass, EngineUncheckedSet>>;

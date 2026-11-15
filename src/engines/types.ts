@@ -1,5 +1,5 @@
 import type { CoverageGap } from "../coverage-gaps.js";
-import type { Engine, SecretSuppressionMetadata } from "../types.js";
+import type { Engine, EngineUnchecked, SecretSuppressionMetadata } from "../types.js";
 import type { SarifLog } from "../sarif/types.js";
 
 export interface EngineOutput {
@@ -21,4 +21,6 @@ export interface EngineOutput {
   coverageNotes?: string[];
   /** Detector-component signatures captured before execution for rescan equivalence proof. */
   componentSignatures?: Record<string, string>;
+  /** Per pass, files the engine could not fully analyze (ScanResult.engine_unchecked); rescan proof only. */
+  uncheckedFiles?: EngineUnchecked;
 }

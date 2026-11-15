@@ -15,6 +15,7 @@ import type {
   SecurityControlEvidence,
   SecurityControlEvidenceLocation,
 } from "../types.js";
+import { maskCommentsFromParser } from "../packs/react-native/javascript-parse.js";
 import { makeAiFinding } from "./finding.js";
 import { collectFiles, lineOf } from "./walk.js";
 
@@ -62,6 +63,11 @@ interface Observation {
 export interface SecurityControlAnalysis {
   findings: Finding[];
   evidence: SecurityControlEvidence[];
+}
+
+/** Comments masked from the parser's ranges for JavaScript/TypeScript it reads, else by maskComments. */
+function masked(file: { rel: string; content: string }): string {
+  return maskCommentsFromParser(file.content, file.rel) ?? maskComments(file.content);
 }
 
 function maskComments(value: string): string {
@@ -411,7 +417,7 @@ function addLiteralHeaderObservations(
   const provider = providerFor(file.rel);
   // `_headers` begins wildcard routes with `/*`; treating that as a JS block comment
   // would erase the entire Cloudflare configuration.
-  const content = provider === "cloudflare-pages" ? file.content : maskComments(file.content);
+  const content = provider === "cloudflare-pages" ? file.content : masked(file);
 
   // Next.js/Vercel key-value header objects.
   const objectHeader = new RegExp(
@@ -605,7 +611,7 @@ function addHelmetObservations(
   file: { rel: string; content: string },
 ): void {
   if (!CODE_EXTS.some((ext) => file.rel.toLowerCase().endsWith(`.${ext}`))) return;
-  const content = maskComments(file.content);
+  const content = masked(file);
   const bindings = importProvenHelmetBindings(content);
   if (!bindings.length) return;
   const callStart = new RegExp(
@@ -744,7 +750,7 @@ function addCookieObservations(
   file: { rel: string; content: string },
 ): void {
   if (!CODE_EXTS.some((ext) => file.rel.toLowerCase().endsWith(`.${ext}`))) return;
-  const content = maskComments(file.content);
+  const content = masked(file);
   const cookieCall =
     /\b(?:[A-Za-z_$][\w$]*\.cookie|[A-Za-z_$][\w$]*\.cookies\.set|cookies\s*\(\s*\)\.set|setCookie|serialize)\s*\(/g;
 
@@ -853,7 +859,7 @@ function addCaptchaObservations(
     for (const file of files) {
       if (!file.rel.startsWith(config.prefix)) continue;
       if (!CODE_EXTS.some((ext) => file.rel.toLowerCase().endsWith(`.${ext}`))) continue;
-      const content = maskComments(file.content);
+      const content = masked(file);
       for (const match of content.matchAll(authCall)) {
         const index = match.index ?? 0;
         const open = index + (match[0]?.lastIndexOf("(") ?? 0);
@@ -954,7 +960,7 @@ function headerFinding(observation: Observation): Finding {
   return makeAiFinding({
     ruleId: "ci-ai-security-header-disabled",
     title: "Security response header explicitly disabled or ineffective",
-    severity: "medium",
+    severity: "low", // 4.1 M9 fresh-set gate: 1 hit, 0 true (Ruling 3)
     cwe: ["CWE-693"],
     owasp_web: ["A05:2021"],
     owasp_api: ["API8:2023"],
@@ -975,7 +981,7 @@ function headerFinding(observation: Observation): Finding {
         "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/",
       ],
     },
-    confidence: "high",
+    confidence: "low",
   });
 }
 

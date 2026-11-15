@@ -156,6 +156,17 @@ describe("engine-reported coverage gaps", () => {
     expect(partial.map((item) => item.component).sort()).toEqual(["gap:native-parse-errors", "gap:symlinked-paths"]);
   });
 
+  // M6 fix round 1: the files each pass could not fully analyze are stored for rescan proof, never displayed.
+  test("the stored scan records the native and Opengrep unchecked files; the display does not", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ci-native-gaps-scan-"));
+    await writeFile(join(dir, "package.json"), "{}\n", "utf8");
+    await writeFile(join(dir, "broken.ts"), "function broken( {\n  return eval(x;\n", "utf8");
+    opengrep = { uncheckedFiles: { "opengrep:baseline": { files: ["lib/d3.js"] }, "opengrep:pack": { files: [] } } };
+    const { canonical, display } = await executeScan({ path: dir, scanners: ["ai", "sast"] }, { persist: false });
+    expect(canonical.engine_unchecked).toEqual({ native: { files: ["broken.ts"] }, "opengrep:baseline": { files: ["lib/d3.js"] }, "opengrep:pack": { files: [] } });
+    expect(display).not.toHaveProperty("engine_unchecked");
+  });
+
   // Ruling 30 (review I-3): a link is the acceptable gap symlinked-paths only when its real target is
   // inside the root and visited. A link into node_modules/ or outside the root stays non-acceptable.
   test.each([

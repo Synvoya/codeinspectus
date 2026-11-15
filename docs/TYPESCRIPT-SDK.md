@@ -95,6 +95,13 @@ and fingerprints are never changed by it. The SDK reads the CLI's JSON output, w
 `3.0.0`: that schema is immutable and has no such field, so SDK results never carry `engine_family`;
 `engine` there is an open string and carries the raw id.
 
+Since 4.1 MCP scan and rescan results and stored scans may also carry `dependency_scope: "dev" | "prod"` on
+dependency findings (npm, Yarn, pnpm, Bun and Composer lockfiles; absent means unknown). Export schema
+`3.0.0` has no such field, so SDK results never carry it: the scope reaches them as the `, dev dependency`
+title tag and the `Dependency scope: development only` message line, and a lowered severity is stated in
+the message (`Severity lowered from high to medium: development-only dependency.`). Finding ids are
+`CI-` plus 10 hex characters derived from the fingerprint since 4.1; treat them as opaque strings.
+
 The set of `Finding.engine` values is open: this release emits `opengrep`, `gitleaks`, `trivy`,
 `osv-scanner`, `codeinspectus-ai`, `codeinspectus-pub` and `synvoya`, and a later release may add
 more. Treat an unknown value as an engine you have not seen, not an error. Where `engine_family`

@@ -416,7 +416,9 @@ export async function discoverCoverageGaps(target: string): Promise<CoverageGapD
   if (root?.isDirectory()) await walk(target);
 
   const base = root?.isFile() ? dirname(target) : target;
-  const classified = await gapsFromFiles(files, (rel, maxBytes) => boundedText(join(base, rel), maxBytes));
+  // 4.1 M8: a single file target under `.github/workflows/` is a workflow, still listed by its bare name.
+  const workflowTarget = root?.isFile() && basename(dirname(target)) === "workflows" && basename(dirname(dirname(target))) === ".github";
+  const classified = await gapsFromFiles(files, (rel, maxBytes) => boundedText(join(base, rel), maxBytes), workflowTarget ? { workflows: new Set([basename(target)]) } : {});
   return { ...classified, ...(limitation ? { limitation } : {}) };
 }
 
@@ -427,6 +429,8 @@ export async function discoverCoverageGaps(target: string): Promise<CoverageGapD
 export async function gapsFromFiles(
   files: readonly string[],
   readText: (rel: string, maxBytes?: number) => Promise<string | undefined>,
+  /** `workflows`: paths that are GitHub Actions workflows though not listed under `.github/workflows/` (a file target). */
+  options: { workflows?: ReadonlySet<string> } = {},
 ): Promise<Omit<CoverageGapDiscovery, "limitation">> {
   // O(1) per call: a count plus the first displayable examples (security review: no list copying).
   const found = new Map<CoverageGapId, { count: number; examples: string[] }>();
@@ -487,7 +491,7 @@ export async function gapsFromFiles(
     }
     // Recheck item 8: third-party GitHub Actions. The Synvoya Actions matcher, when its database is installed,
     // narrows this to the references it could not evaluate (actionsUncheckedGap).
-    if (/^\.github\/workflows\/[^/]+\.ya?ml$/i.test(rel)) {
+    if (/^\.github\/workflows\/[^/]+\.ya?ml$/i.test(rel) || (options.workflows?.has(rel) === true && /\.ya?ml$/i.test(rel))) {
       let matches = 0;
       for (const match of (await readText(rel))?.matchAll(WORKFLOW_USES) ?? []) {
         if (++matches > MAX_MATCHES_PER_FILE || actionReferences.size >= MAX_MATCHES_PER_FILE) break;
@@ -551,9 +555,9 @@ export function describeCoverageGap(gap: CoverageGap, accepted: boolean): string
   const n = gap.files;
   const other: Record<Exclude<CoverageGapId, `${string}-sast`>, string> = {
     "sast-parse-errors": `${n} file(s) have code Opengrep's parsers could not read, so SAST rules did not see that code`,
-    "third-party-bundles": `${n} vendored or minified bundle file(s) were skipped by the Opengrep taint rules, which cannot finish on them ` +
-      `(the Synvoya PHP and Node packs and the taint-mode baseline rules: ${OPENGREP_BUNDLE_SKIPPING_RULES_LABEL}); ` +
-      "the other baseline Opengrep rules still scanned them",
+    "third-party-bundles": `${n} vendored, minified or identified third-party library file(s) were skipped by the Opengrep taint rules ` +
+      `(the Synvoya PHP and Node packs and the taint-mode baseline rules: ${OPENGREP_BUNDLE_SKIPPING_RULES_LABEL}), ` +
+      "which are slow or time out on such code; the other baseline Opengrep rules still scanned them",
     "native-parse-errors": `${n} file(s) the native packs' bounded parsers could not read, so native AI and SAST checks skipped them`,
     "oversized-files": `${n} file(s) exceed a native per-file size or call-count bound (often vendored or minified bundles), so native checks skipped them`,
     "native-token-budget": `${n} file(s) come after the native JavaScript/TypeScript project token budget was spent, so native checks skipped them`,

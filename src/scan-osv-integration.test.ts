@@ -153,7 +153,10 @@ describe("scan orchestrator osv-scanner integration", () => {
 
     const result = await scan(root);
 
-    expect(scanResultSchema.parse(result)).toEqual(result);
+    // Rescan proof (engine_unchecked) is stored-scan only, outside the tool output schema.
+    const { engine_unchecked: unchecked, ...shown } = result;
+    expect(unchecked).toEqual({ "osv-scanner": { files: [], ecosystems: [] } });
+    expect(scanResultSchema.parse(result)).toEqual(shown);
     expect(vi.mocked(runOsvScanner)).toHaveBeenCalledWith(root, expect.any(String));
     const osv = result.findings.filter((finding) => finding.engines.includes("osv-scanner"));
     expect(osv.map((finding) => `${finding.rule_id} ${finding.package?.name}`).sort()).toEqual([
@@ -297,6 +300,37 @@ describe("scan orchestrator osv-scanner integration", () => {
     expect(osvCoverage(result)[0]!.note).toBe("no packages extracted from package-lock.json (empty lockfile or unsupported format)");
     expect(result.warnings.filter((warning) => /osv|lockfile|npm/i.test(warning))).toEqual([]);
     expect(aggregate(result)).toBe("partial");
+  });
+
+  // M6 fix round 2: a lockfile osv-scanner found but could not extract proves nothing about its findings.
+  it("a finding at a lockfile the rescan could not extract is not_rechecked; one at an extracted lockfile resolves", async () => {
+    const { diffRescan } = await import("./rescan.js");
+    const signatures = { ...SIGNATURES, "osv-scanner:vulnerability-db:npm": "sha256:npm-db" };
+    const root = await project({ "package-lock.json": "{}\n", "requirements.txt": "requests==2.19.0\n" });
+    const npm = osvFinding("package-lock.json", "npm", "lodash", "4.17.4", "CVE-2026-1000");
+    const pypi = osvFinding("requirements.txt", "PyPI", "requests", "2.19.0", "CVE-2026-2000");
+    vi.mocked(runOsvScanner).mockResolvedValueOnce(osvResult({
+      findings: [npm, pypi], coverage: [coverage("npm"), coverage("PyPI")], componentSignatures: signatures,
+    }));
+    const prior = await scan(root);
+    expect(prior.findings.map((finding) => finding.location.file).sort()).toEqual(["package-lock.json", "requirements.txt"]);
+    // The rescan: package-lock.json is now unreadable for osv-scanner (listed nothing); requirements.txt is fixed.
+    vi.mocked(runOsvScanner).mockResolvedValueOnce(osvResult({
+      coverage: [coverage("npm"), coverage("PyPI")], lockfiles: ["requirements.txt"], componentSignatures: signatures,
+    }));
+    const fresh = await scan(root);
+    expect(fresh.engine_unchecked?.["osv-scanner"]).toEqual({ files: ["package-lock.json"], ecosystems: [] });
+    const diff = diffRescan(prior, fresh);
+    expect(diff.not_rechecked.map((finding) => finding.location.file)).toEqual(["package-lock.json"]);
+    expect(diff.resolved.map((finding) => finding.location.file)).toEqual(["requirements.txt"]);
+  });
+
+  it("an ecosystem osv-scanner checked only partially without naming files is recorded as gated", async () => {
+    const root = await project({ "requirements.txt": "requests==2.19.0\n" });
+    vi.mocked(runOsvScanner).mockResolvedValueOnce(osvResult({
+      coverage: [coverage("PyPI", { state: "partial", note: "database without an install record" })], lockfiles: ["requirements.txt"], componentSignatures: SIGNATURES,
+    }));
+    expect((await scan(root)).engine_unchecked?.["osv-scanner"]).toEqual({ files: [], ecosystems: ["PyPI"] });
   });
 
   it("Ruling 31: an empty second lockfile is noted even when osv-scanner listed its ecosystem from another one", async () => {

@@ -290,7 +290,7 @@ function finding(file: string, secret: HardcodedSecret): Finding {
   return makeAiFinding({
     ruleId: PYTHON_HARDCODED_SIGNING_SECRET_RULE_ID,
     title: "Hardcoded Python signing secret",
-    severity: "high",
+    severity: "low", // 4.1 M9 fresh-set gate: 2 hits, 1 true (Ruling 3)
     cwe: ["CWE-798", "CWE-321"],
     owasp_web: ["A02:2021"],
     file,
@@ -312,7 +312,7 @@ function finding(file: string, secret: HardcodedSecret): Finding {
         "https://www.starlette.io/middleware/",
       ],
     },
-    confidence: "high",
+    confidence: "low",
     isSecret: true,
     secretValueHash: hashSecret(secret.value),
   });

@@ -8,8 +8,9 @@ codeinspectus export SCAN_ID --format csv --output findings.csv
 ```
 
 The file is UTF-8 RFC 4180 CSV with CRLF record endings and every cell quoted. It always contains
-one `scan` row followed by zero or more `finding` rows sorted by finding ID, fingerprint, file and
-line. The scan row preserves aggregate coverage and the complete coverage-evidence array even when
+one `scan` row followed by zero or more `finding` rows sorted by severity (critical first), file, line,
+finding ID and fingerprint. (Before 4.1 rows were sorted by finding ID first; ids then followed severity
+order, and since 4.1 they derive from the fingerprint, so ordering by id would scatter the rows.) The scan row preserves aggregate coverage and the complete coverage-evidence array even when
 there are no findings. A partial or unknown scan therefore cannot become an empty, apparently clean
 spreadsheet.
 

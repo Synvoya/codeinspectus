@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { compareAgainstBaseline, evaluateNewFindingPolicy } from "./baseline.js";
 import { assessAggregateCoverage } from "./export/model.js";
 import { listNativePacks } from "./packs/registry.js";
+import { DEDUP_COMPONENT, staticComponentSignatures } from "./provenance.js";
 import type { Finding } from "./types.js";
 import type { StoredScanResult } from "./store.js";
 
@@ -120,6 +121,68 @@ describe("baseline matching cannot be satisfied by location alone", () => {
     const result = compareAgainstBaseline(scan(1, [secret("s1", "sha256:aaa")]), scan(2, [secret("s2", "sha256:bbb")]));
 
     expect(result.summary).toMatchObject({ New: 1, Existing: 0 });
+  });
+});
+
+describe("baseline comparison across the 4.1 one-finding-per-secret merge", () => {
+  // A scan made by 4.1 carries the dedup marker; scans without it predate 4.1.
+  const v41 = { component_signatures: { "rule:a": "v1", "rule:new": "v1", ...staticComponentSignatures([DEDUP_COMPONENT]) } };
+  const key = (fp: string, engine: Finding["engine"], start: number, end: number, rule = "private-key"): Finding => ({
+    ...finding(fp), engine, engines: [engine], rule_id: rule, cwe: ["CWE-798"], is_secret: true, finding_kind: "secret",
+    location: { file: "keys/server.pem", start_line: start, end_line: end },
+  });
+
+  test("a baseline holding only the absorbed Trivy finding reads the merged survivor Existing", () => {
+    // Only the containment match can pair these: different fingerprints, rules ranges and representatives.
+    const trivy = key("fp-trivy", "trivy", 2, 29);
+    const survivor: Finding = { ...key("fp-gitleaks", "gitleaks", 1, 30), engines: ["gitleaks", "trivy"] };
+    const result = compareAgainstBaseline(scan(1, [trivy]), scan(2, [survivor], v41));
+    expect(result.summary).toEqual({ New: 0, Existing: 1, "Not rechecked / unknown": 0 });
+    expect(evaluateNewFindingPolicy(result, "low").exit_code).toBe(0);
+  });
+
+  test("two 4.0 scans never use the containment match (fix round 3)", () => {
+    const trivy = key("fp-trivy", "trivy", 2, 29);
+    const survivor: Finding = { ...key("fp-gitleaks", "gitleaks", 1, 30), engines: ["gitleaks", "trivy"] };
+    const result = compareAgainstBaseline(scan(1, [trivy]), scan(2, [survivor]));
+    expect(result.summary).toEqual({ New: 1, Existing: 0, "Not rechecked / unknown": 0 });
+  });
+
+  test("4.0 baseline block 10-40, 4.1 scan with a new multi-engine token at 15: New (fix round 3)", () => {
+    const block = key("fp-block", "gitleaks", 10, 40);
+    const token: Finding = { ...key("fp-token", "gitleaks", 15, 15, "aws-access-token"), engines: ["gitleaks", "trivy"] };
+    const result = compareAgainstBaseline(scan(1, [block]), scan(2, [block, token], v41));
+    expect(result.summary).toEqual({ New: 1, Existing: 1, "Not rechecked / unknown": 0 });
+  });
+
+  test("a new, unmerged secret inside a baselined key block is New", () => {
+    const block = key("fp-block", "gitleaks", 10, 40);
+    const token = key("fp-token", "gitleaks", 15, 15, "aws-access-token");
+    const result = compareAgainstBaseline(scan(1, [block]), scan(2, [block, token]));
+    expect(result.summary).toEqual({ New: 1, Existing: 1, "Not rechecked / unknown": 0 });
+  });
+
+  // M5 fix round 2: a 4.1 baseline (it carries the dedup marker) never uses the containment match.
+
+  test("4.1 baseline with a multi-engine key block 10-40: a new Gitleaks token at line 15 is New", () => {
+    const block: Finding = { ...key("fp-block", "gitleaks", 10, 40), engines: ["gitleaks", "trivy"] };
+    const token = key("fp-token", "gitleaks", 15, 15, "aws-access-token");
+    const result = compareAgainstBaseline(scan(1, [block], v41), scan(2, [block, token], v41));
+    expect(result.summary).toEqual({ New: 1, Existing: 1, "Not rechecked / unknown": 0 });
+  });
+
+  test("4.1 baseline with a multi-engine key block 10-40: a new multi-engine token at line 15 is New", () => {
+    const block: Finding = { ...key("fp-block", "gitleaks", 10, 40), engines: ["gitleaks", "trivy"] };
+    const token: Finding = { ...key("fp-token", "gitleaks", 15, 15, "aws-access-token"), engines: ["gitleaks", "trivy"] };
+    const result = compareAgainstBaseline(scan(1, [block], v41), scan(2, [block, token], v41));
+    expect(result.summary).toEqual({ New: 1, Existing: 1, "Not rechecked / unknown": 0 });
+  });
+
+  test("a 4.1 baseline never uses containment, even for the absorbed-Trivy shape", () => {
+    const trivy = key("fp-trivy", "trivy", 2, 29);
+    const survivor: Finding = { ...key("fp-gitleaks", "gitleaks", 1, 30), engines: ["gitleaks", "trivy"] };
+    const result = compareAgainstBaseline(scan(1, [trivy], v41), scan(2, [survivor], v41));
+    expect(result.summary).toEqual({ New: 1, Existing: 0, "Not rechecked / unknown": 0 });
   });
 });
 

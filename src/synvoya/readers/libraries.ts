@@ -22,12 +22,12 @@ import { join } from "node:path";
 
 import type { Declaration, LibraryTable, ReaderOptions, ReaderResult } from "../types.js";
 
-import { walkCandidates, type WalkMatcher } from "./walk.js";
+import { reportedPath, reportedSkips, walkCandidates, type WalkMatcher } from "./walk.js";
 
 type Source = "banner" | "file-name" | "cdn-url";
 
-/** Banner comments are looked for here only. */
-const HEAD_BYTES = 4096;
+/** Banner comments are looked for here only (shared with the Opengrep pack routing, engines/opengrep-libraries.ts). */
+export const LIBRARY_HEAD_BYTES = 4096;
 const MAX_BANNER_COMMENTS = 8;
 const MAX_COMMENT_LINES = 64;
 const MAX_COMMENT_CHARS = 1024;
@@ -110,6 +110,9 @@ function classify(raw: string | undefined): { spec: string; precision: "exact" |
   if (/^\d+(?:\.\d+)?(?:\.[xX*])*$/.test(spec)) return { spec, precision: "floating" };
   return { spec, precision: "unresolved" };
 }
+
+/** The reader's version test: `exact` (x.y.z, a known pre-release), `floating` (x, x.y) or `unresolved`; shared with bundle routing. */
+export const classifyLibraryVersion = classify;
 
 function emit(ctx: Ctx, npm: string, raw: string | undefined, line: number, source: Source): void {
   if (ctx.stop) return;
@@ -214,18 +217,39 @@ function lineStartComments(head: string, truncated: boolean): Comment[] {
   return comments;
 }
 
-function readBanners(ctx: Ctx, head: string, headTruncated: boolean, table: Compiled): void {
-  if (table.banners.length === 0) return;
+export interface BannerMatch {
+  npm: string;
+  /** The banner's captured version as written. */
+  raw: string | undefined;
+  line: number;
+}
+
+/**
+ * For each line-start comment of `head` (the first LIBRARY_HEAD_BYTES of a file, `headTruncated` when the
+ * file goes on), the first table banner, in table order, that matches it.
+ */
+export function bannerMatches(head: string, headTruncated: boolean, table: LibraryTable): BannerMatch[] {
+  return compiledBannerMatches(head, headTruncated, compile(table));
+}
+
+function compiledBannerMatches(head: string, headTruncated: boolean, table: Compiled): BannerMatch[] {
+  const matches: BannerMatch[] = [];
+  if (table.banners.length === 0) return matches;
   for (const comment of lineStartComments(head, headTruncated)) {
     if (comment.text === "") continue;
     for (const banner of table.banners) {
       const match = banner.re.exec(comment.text);
       if (match !== null) {
-        emit(ctx, banner.npm, match[1], comment.line, "banner");
+        matches.push({ npm: banner.npm, raw: match[1], line: comment.line });
         break;
       }
     }
   }
+  return matches;
+}
+
+function readBanners(ctx: Ctx, head: string, headTruncated: boolean, table: Compiled): void {
+  for (const match of compiledBannerMatches(head, headTruncated, table)) emit(ctx, match.npm, match.raw, match.line, "banner");
 }
 
 // ---- file names ----
@@ -240,6 +264,24 @@ function readFileName(ctx: Ctx, base: string, table: Compiled): void {
   if (npm === undefined) return;
   // A pre-release part may have swallowed a variant suffix (1.0.0-rc.1.min).
   emit(ctx, npm, match[2]!.replace(/(?:\.(?:min|slim|bundle))+$/, ""), 1, "file-name");
+}
+
+/**
+ * `<stem>(-|.)<version>(.min|.slim)*.js` or `.mjs`, the version optional (M6 bundle routing). The reader's own
+ * FILE_NAME rule (version required) is separate and unchanged.
+ */
+const LIBRARY_FILE_NAME = /^(.+?)(?:[-.](\d+(?:\.\d+){0,3}(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?))?((?:\.(?:min|slim))*)\.m?js$/;
+
+/** The table library a file name names, with the version it carries; undefined for a name that is no table stem. */
+export function libraryStem(base: string, table: LibraryTable): { npm: string; version?: string } | undefined {
+  if (base.length > MAX_NAME_CHARS) return undefined;
+  const match = LIBRARY_FILE_NAME.exec(base);
+  if (match === null) return undefined;
+  const npm = compile(table).stems.get(match[1]!.toLowerCase());
+  if (npm === undefined) return undefined;
+  // A pre-release part may have swallowed a variant suffix (3.7.1-rc.1.min).
+  const version = match[2]?.replace(/(?:\.(?:min|slim))+$/, "");
+  return version === undefined ? { npm } : { npm, version };
 }
 
 // ---- CDN URLs ----
@@ -359,7 +401,7 @@ function readUrls(ctx: Ctx, text: string, table: Compiled): void {
 
 interface Bounded {
   text: string;
-  /** The first HEAD_BYTES bytes, decoded. */
+  /** The first LIBRARY_HEAD_BYTES bytes, decoded. */
   head: string;
   /** The file goes on past the head. */
   headTruncated: boolean;
@@ -387,8 +429,8 @@ async function readBounded(target: string, rel: string, max: number): Promise<Bo
     const text = buffer.toString("utf8", 0, filled);
     return {
       text,
-      head: buffer.toString("utf8", 0, Math.min(filled, HEAD_BYTES)).replace(/^\uFEFF/, ""),
-      headTruncated: filled > HEAD_BYTES,
+      head: buffer.toString("utf8", 0, Math.min(filled, LIBRARY_HEAD_BYTES)).replace(/^\uFEFF/, ""),
+      headTruncated: filled > LIBRARY_HEAD_BYTES,
       bytes: filled,
       truncated: info.size > max,
     };
@@ -417,13 +459,15 @@ export async function readLibraries(target: string, table: LibraryTable, options
   const result: ReaderResult = { declarations: [], parsed: [], skipped: [], notes: [] };
   try {
     const walked = await walkCandidates(target, MATCHERS, { maxFileBytes: WALK_MAX_BYTES }, { vendor: VENDOR_WALK, vendorNames: ["vendor", "vendors"], signal: options.signal, only: options.only });
-    for (const entry of walked.skipped) result.skipped.push(entry);
+    for (const entry of reportedSkips(walked.skipped, options)) result.skipped.push(entry);
     const tables = compile(table);
 
     let consumed = 0;
     let scanFull = false;
-    for (const file of walked.files) {
-      if (!wanted(file)) continue;
+    for (const walkedFile of walked.files) {
+      if (!wanted(walkedFile)) continue;
+      // Dispatch reads the walked path; everything reported names the file as the scan shows it (onlyAs).
+      const file = reportedPath(walkedFile, options);
       if (scanFull) {
         // Past the per-scan declaration cap: not read, and never reported as checked.
         result.skipped.push({ file, reason: "capped" });
@@ -442,7 +486,7 @@ export async function readLibraries(target: string, table: LibraryTable, options
         result.skipped.push({ file, reason: "budget" });
         continue;
       }
-      const read = await readBounded(target, file, MAX_READ_BYTES);
+      const read = await readBounded(target, walkedFile, MAX_READ_BYTES);
       if (read === undefined) {
         result.skipped.push({ file, reason: "unreadable" });
         continue;
@@ -450,7 +494,7 @@ export async function readLibraries(target: string, table: LibraryTable, options
       consumed += read.bytes;
       const ctx: Ctx = { file, out: [], notes: [], seen: new Set(), stop: false, capped: read.truncated, unjudged: false };
       try {
-        const base = file.slice(file.lastIndexOf("/") + 1);
+        const base = walkedFile.slice(walkedFile.lastIndexOf("/") + 1);
         if (/\.m?js$/i.test(base)) {
           readBanners(ctx, read.head, read.headTruncated, tables);
           readFileName(ctx, base, tables);

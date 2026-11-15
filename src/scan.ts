@@ -26,6 +26,7 @@ import type {
   Severity,
   SeveritySummary,
   SecretSuppressionMetadata,
+  EngineUnchecked,
 } from "./types.js";
 import { createUnavailableRepositoryTrust } from "./repository-trust/schemas.js";
 import { scanRepositoryTrust } from "./repository-trust/index.js";
@@ -36,8 +37,9 @@ import { saveScan } from "./store.js";
 import { runOpengrep } from "./engines/opengrep.js";
 import { runGitleaks } from "./engines/gitleaks.js";
 import { runTrivy, type TrivyScanner } from "./engines/trivy.js";
+import { relocateTrivyPackageFindings } from "./engines/trivy-package-line.js";
 import { runOsvScanner } from "./engines/osv-scanner.js";
-import { osvContribution } from "./osv/contribution.js";
+import { emptyLockfiles, osvContribution } from "./osv/contribution.js";
 import { detectOsvLockfiles } from "./osv/ecosystems.js";
 import type { EngineOutput } from "./engines/types.js";
 import { runAiChecks } from "./ai-checks/index.js";
@@ -47,6 +49,9 @@ import { normalizeEngineOutput, splitMagentoPatchFixed, type MagentoPatchSuppres
 import { routeScanFindings, type RouteStats } from "./file-routing.js";
 import { detectGitSafety } from "./git-safety.js";
 import { dedupFindings } from "./dedup.js";
+import { applyDependencyScope, buildScopeIndex, scopeEvidence } from "./dependency-scope.js";
+import { markDeclaredMinimums } from "./declared-minimum.js";
+import { assignDisplayIds, displayIdBasis } from "./display-id.js";
 import { withEngineFamily } from "./synvoya/family.js";
 import { isConfigurationFile, scrubCredentialContext } from "./redact.js";
 import { tagFindings } from "./compliance/mapper.js";
@@ -55,11 +60,12 @@ import { hasUnverifiedSecretCoverage, secretSuppressionWarnings } from "./gitlea
 import { detectTrivyInlineIgnores, trivyInlineIgnoreWarning } from "./trivy-suppression.js";
 import { escapeScanDisplayText } from "./display-path.js";
 import { nativeGaps } from "./native-gaps.js";
-import { PIPELINE_COMPONENT, staticComponentSignatures } from "./provenance.js";
+import { DEDUP_COMPONENT, PIPELINE_COMPONENT, staticComponentSignatures, synvoyaProducerComponent } from "./provenance.js";
 import { trivyDbProvenanceSignal } from "./trivy-db-provenance.js";
+import { upgradeActions } from "./upgrade-actions.js";
 import { inspectEngineSetup } from "./engine-health.js";
 import { runPubScan } from "./pub/scanner.js";
-import { runSynvoyaScan, synvoyaUpstreamInputs } from "./synvoya/scanner.js";
+import { runSynvoyaScan, startSynvoyaReaders, synvoyaUpstreamInputs, type SynvoyaScanResult } from "./synvoya/scanner.js";
 import { enrichUpstream, foldSbomDuplicates } from "./synvoya/enrich.js";
 import { PROMOTED_OPENGREP_RULE_IDS, reconcileNativeSast } from "./native-sast-reconciliation.js";
 import { requireSafeScanTarget } from "./path-safety.js";
@@ -70,6 +76,9 @@ function wants(input: ScanInput, scanner: string): boolean {
 }
 
 /** The coverage note a scan carries when licence findings were left out because nobody asked for them. */
+/** Beyond this many files the native unchecked set is recorded as "all" (rescan then resolves no native finding). */
+const MAX_UNCHECKED_FILES = 10_000;
+
 export const LICENSES_NOT_REQUESTED_NOTE: CoverageNote = {
   component: "scanner:license",
   detail: "Licence findings were not requested (use include_licenses / --licenses).",
@@ -120,13 +129,51 @@ function magentoPatchNote(suppressed: readonly MagentoPatchSuppression[]): strin
     `that Magento ordering shows fixed at the installed release; ${count === 1 ? "it is" : "they are"} not reported: ${shown.join("; ")}${more}.`;
 }
 
-function sortFindings(findings: Finding[]): Finding[] {
-  return [...findings].sort((a, b) => {
-    const sev = SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity];
-    if (sev !== 0) return sev;
-    if (a.location.file !== b.location.file) return a.location.file < b.location.file ? -1 : 1;
-    return a.location.start_line - b.location.start_line;
-  });
+/**
+ * The stored per-subject proof for image files (4.1 M8 Ruling 3): the blocked map as the scanner gave it, and the
+ * subject key of every final finding the image producer made. A key is recorded only for a finding that reached
+ * the canonical set under the scanner's own fingerprint; if any image finding was folded or merged away (dedup,
+ * upstream enrichment, routing), no key is recorded, so every image finding falls back to the file rule.
+ */
+function synvoyaSubjects(synvoya: SynvoyaScanResult, canonical: readonly Finding[]): Pick<ScanResult, "synvoya_subjects"> {
+  const images = synvoya.evidence.subjects?.images;
+  if (!images) return {};
+  const component = synvoyaProducerComponent("images");
+  const final = new Set(canonical.map((finding) => finding.fingerprint));
+  const absorbed = synvoya.findings.some((finding) => finding.producer_components?.includes(component) && !final.has(finding.fingerprint));
+  const keys = images.findings;
+  const findings = keys && !absorbed
+    ? Object.fromEntries(canonical
+      .filter((finding) => finding.producer_components?.includes(component) && Object.hasOwn(keys, finding.fingerprint))
+      .map((finding) => [finding.fingerprint, keys[finding.fingerprint]!]))
+    : undefined;
+  return { synvoya_subjects: { images: { ...(images.blocked ? { blocked: images.blocked } : {}), ...(findings ? { findings } : {}) } } };
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/**
+ * The canonical finding order: severity first, then a total order (file, lines, rule, fingerprint, package), so
+ * the array order never depends on engine output order. Ids are assigned separately and never follow it.
+ */
+export function sortFindings(findings: readonly Finding[]): Finding[] {
+  return [...findings].sort((a, b) =>
+    SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] ||
+    compareText(a.location.file, b.location.file) ||
+    a.location.start_line - b.location.start_line ||
+    a.location.end_line - b.location.end_line ||
+    compareText(a.rule_id, b.rule_id) ||
+    compareText(a.fingerprint, b.fingerprint) ||
+    compareText(displayIdBasis(a), displayIdBasis(b)));
+}
+
+/** Sorts the canonical set and gives every finding its fingerprint-derived display id (4.1). */
+export function orderAndIdentifyFindings(findings: readonly Finding[]): Finding[] {
+  const sorted = sortFindings(findings);
+  assignDisplayIds(sorted);
+  return sorted;
 }
 
 function inactivePubCoverage(
@@ -215,7 +262,7 @@ export async function projectScanForDisplay(
   const totalBeforeLimit = visible.length;
   const limited = visible.slice(0, input.max_findings ?? DEFAULT_MAX_FINDINGS);
   // Rescan proof data only; kept out of the agent-facing view to protect its context window.
-  const { synvoya_checked: _checked, ...shown } = canonical;
+  const { synvoya_checked: _checked, synvoya_subjects: _subjects, engine_unchecked: _unchecked, ...shown } = canonical;
   const display: ScanResult = {
     ...shown,
     summary: summarize(visible),
@@ -240,6 +287,11 @@ export async function executeScan(
   const target = targetInspection.canonical_path;
 
   const warnings: string[] = [];
+  // 4.1 M6: the Synvoya readers run first and alone, before every probe, engine and native pack, so nothing
+  // else in the scan can push them past their deadline (under load inside the scan they did: cap-collectif lost
+  // 3-7 findings). Their deadline and hard cap still bound this wait.
+  const synvoyaReading = wants(input, "vuln") ? startSynvoyaReaders(target) : undefined;
+  if (synvoyaReading) await synvoyaReading;
   // CG-41 git-safety rail (READ-ONLY): detect the target's git state concurrently with the
   // engines. Never mutates git or the repo — only reads (rev-parse / status --porcelain).
   const gitSafetyProbe = detectGitSafety(target);
@@ -262,7 +314,7 @@ export async function executeScan(
     const runAi = wants(input, "ai");
     const runVuln = wants(input, "vuln");
 
-    // Run everything concurrently.
+    // Run everything else concurrently.
     const tasks: Array<Promise<EngineOutput | (EngineOutput & { trivyDbDate?: string })>> = [];
     if (runSast) tasks.push(runOpengrep(target, tmpDir));
     if (runSecret) tasks.push(runGitleaks(target, tmpDir));
@@ -290,14 +342,17 @@ export async function executeScan(
     const osvTask = runVuln ? runOsvScanner(target, tmpDir) : undefined;
     // Bounded, name-only walk, run alongside the engines; used only to reconcile an osv-scanner run that happened.
     const osvLockfilesTask = runVuln ? detectOsvLockfiles(target) : undefined;
-    // Synvoya gap layer (same gate as Pub): its readers start now, alongside the engines; evaluation
-    // waits for the package inventory osv-scanner and Trivy produce in this scan (design §8 item 2).
+    // Synvoya gap layer (same gate as Pub): its readers already ran (above); evaluation waits for the package
+    // inventory osv-scanner and Trivy produce in this scan (design §8 item 2).
     const synvoyaUpstream = runVuln
       ? Promise.all([trivyTask, osvTask]).then(([trivy, osv]) =>
           synvoyaUpstreamInputs({ trivy, trivyVulnerabilityScan: trivyScanners.includes("vuln"), osv }))
       : undefined;
     const synvoyaTask = synvoyaUpstream
-      ? runSynvoyaScan(target, synvoyaUpstream.then((inputs) => inputs.inventory), synvoyaUpstream.then((inputs) => inputs.dates), { tmpDir })
+      ? runSynvoyaScan(target, synvoyaUpstream.then((inputs) => inputs.inventory), synvoyaUpstream.then((inputs) => inputs.dates), {
+        tmpDir,
+        ...(synvoyaReading ? { reading: synvoyaReading } : {}),
+      })
       : undefined;
 
     const [engineOutputs, nativeResult, technologyDetection, pubResult, repositoryTrust, osvResult, osvLockfiles, synvoyaResult] = await Promise.all([
@@ -383,22 +438,42 @@ export async function executeScan(
       dependencyCoverage.push(...osv.coverage);
       warnings.push(...osv.warnings);
     }
+    // Rescan proof (M6 fix round 2): what a run that happened could not extract or fully check.
+    // A lockfile that lists no dependency (a root-only package-lock.json, an empty composer.lock) is a real fix.
+    const osvUnchecked = osv?.include && osv.info.ran && osv.unchecked
+      ? await (async (unchecked) => {
+        const empty = await emptyLockfiles(target, unchecked.files);
+        return { ...unchecked, files: unchecked.files.filter((file) => !empty.has(file)) };
+      })(osv.unchecked)
+      : undefined;
 
     // Normalize engine SARIF → findings; track per-engine raw counts.
     let allFindings: Finding[] = [];
     const engineDetails: EngineRunInfo[] = [];
     const engineGaps: CoverageGap[] = nativeGaps(nativeGapEntries);
     const engineNotes: CoverageNote[] = [];
+    // Rescan proof (M6 fix round 1): per pass, the files an engine could not fully analyze in this scan.
+    const engineUnchecked: EngineUnchecked = {};
+    if (osvUnchecked) {
+      engineUnchecked["osv-scanner"] = osvUnchecked.files.length > MAX_UNCHECKED_FILES ? "all" : osvUnchecked;
+    }
+    if (nativeResult) {
+      const nativeFiles = [...new Set(nativeResult.gapRecords.map((record) => record.path))].sort();
+      engineUnchecked.native = nativeFiles.length > MAX_UNCHECKED_FILES ? "all" : { files: nativeFiles };
+    }
     let trivyDbDate: string | undefined;
     let secretCoverage: "verified" | "unverified" | undefined;
     let secretSuppression: SecretSuppressionMetadata | undefined;
     let trivyVulnerabilityScanRan = false;
-    const componentSignatures: Record<string, string> = staticComponentSignatures([PIPELINE_COMPONENT]);
+    const componentSignatures: Record<string, string> = staticComponentSignatures([PIPELINE_COMPONENT, DEDUP_COMPONENT]);
 
     let opengrepFindings: Finding[] = [];
     let opengrepRan = false;
     for (const out of engineOutputs) {
-      const normalized = out.ran ? normalizeEngineOutput(out, target) : [];
+      let normalized = out.ran ? normalizeEngineOutput(out, target) : [];
+      // Trivy gives pnpm, go.mod and uv.lock findings line 1: point them at the package's entry. The
+      // fingerprint was computed from Trivy's own line and is unchanged (4.1 M5, Ruling 4).
+      if (out.engine === "trivy" && normalized.length) normalized = (await relocateTrivyPackageFindings(normalized, target)).findings;
       if (out.engine === "opengrep") {
         opengrepFindings = normalized;
         opengrepRan = out.ran;
@@ -430,6 +505,7 @@ export async function executeScan(
       });
       if (!out.ran && out.note) warnings.push(`${out.engine} did not run: ${out.note}`);
       if (out.ran) {
+        Object.assign(engineUnchecked, out.uncheckedFiles ?? {});
         warnings.push(...(out.coverageWarnings ?? []));
         engineGaps.push(...(out.coverageGaps ?? []));
         for (const detail of out.coverageNotes ?? []) engineNotes.push({ component: `engine:${out.engine}`, detail });
@@ -547,7 +623,17 @@ export async function executeScan(
     // Dedup (global + secret overlap), then compliance-tag.
     const { findings: dedupedRaw, stats } = dedupFindings(routed);
     // Display family only: runs once, after dedup, so no key, fingerprint or id ever sees it.
-    const deduped = dedupedRaw.map(withEngineFamily);
+    const familied = dedupedRaw.map(withEngineFamily);
+    // Dependency scope and the one-level dev lowering run after dedup, so they can never change which finding
+    // survives a merge (severity is dedup's first key). Fail closed: no known-exploited list, nothing lowered.
+    const trivyOutput = trivyTask ? await trivyTask : undefined;
+    const dependencyScope = applyDependencyScope(familied, {
+      scopes: buildScopeIndex(scopeEvidence(trivyOutput?.ran ? trivyOutput.packages : undefined, osvResult?.packages)),
+      exploited: synvoyaResult?.exploitedIdentities,
+    });
+    // requirements*.txt `>=`/`~=` versions are declared minimums: low confidence, also after dedup (confidence
+    // is a dedup tiebreak).
+    const deduped = (await markDeclaredMinimums(dependencyScope.findings, target)).findings;
     if (synvoyaRow) synvoyaRow.finding_count = deduped.filter((finding) => finding.engines.includes("synvoya")).length;
     if (stats.merged > 0) log.debug(`dedup merged ${stats.merged} overlapping findings`);
     // Single chokepoint before persistence and every presentation surface: context windows can
@@ -563,12 +649,11 @@ export async function executeScan(
 
     // The canonical set is sorted and assigned stable display ids before ANY presentation
     // filtering. Severity/max are views only; persistence/export/history retain every finding.
-    const sorted = sortFindings(deduped);
-    sorted.forEach((f, i) => {
-      f.id = `CI-${String(i + 1).padStart(4, "0")}`;
-    });
+    // An id derives from the finding's fingerprint and package, never from its position (4.1).
+    const sorted = orderAndIdentifyFindings(deduped);
 
     const summary = summarize(sorted);
+    const upgrades = upgradeActions(sorted);
     const max = input.max_findings ?? DEFAULT_MAX_FINDINGS;
 
     const enginesRun = engineDetails
@@ -615,6 +700,7 @@ export async function executeScan(
     for (const detail of synvoyaResult?.notes ?? []) coverageNotes.push({ component: "engine:synvoya", detail: scrubCredentialContext(detail) });
     if (magentoPatch.suppressed.length) coverageNotes.push({ component: "engine:trivy", detail: magentoPatchNote(magentoPatch.suppressed) });
     coverageNotes.push(...routingNotes(routeStats));
+    if (dependencyScope.note) coverageNotes.push(dependencyScope.note);
     const engineSetup = await inspectEngineSetup();
     // Fix round 3: notes and warnings that can embed repository paths are escaped once, here.
     const canonical: ScanResult = escapeScanDisplayText({
@@ -632,6 +718,7 @@ export async function executeScan(
       dependency_coverage: dependencyCoverage,
       ...(trivyDbDate ? { trivy_db_date: trivyDbDate } : {}),
       summary,
+      ...(upgrades.length ? { upgrade_actions: upgrades } : {}),
       findings: sorted,
       truncated: false,
       total_findings_before_limit: sorted.length,
@@ -644,6 +731,8 @@ export async function executeScan(
       ...(coverageNotes.length ? { coverage_notes: coverageNotes } : {}),
       component_signatures: componentSignatures,
       ...(synvoyaResult?.info.ran ? { synvoya_checked: synvoyaResult.evidence.checked } : {}),
+      ...(synvoyaResult?.info.ran ? synvoyaSubjects(synvoyaResult, sorted) : {}),
+      ...(Object.keys(engineUnchecked).length ? { engine_unchecked: engineUnchecked } : {}),
       ...(nativeResult?.securityControlEvidence.length
         ? { security_control_evidence: nativeResult.securityControlEvidence }
         : {}),

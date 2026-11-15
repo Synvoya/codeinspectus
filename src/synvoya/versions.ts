@@ -7,7 +7,10 @@
 
 import type { OsvEvent, SynvoyaAdvisory } from "./types.js";
 
-export type VersionScheme = "semver" | "php" | "pep440" | "go" | "ruby" | "dotnet" | "java" | "maven" | "magento" | "generic";
+/** A tag or version without its leading `v` (`v4.2.0` → `4.2.0`); shared by the Actions matcher and upgrade_actions. */
+export const stripV = (version: string): string => version.trim().replace(/^v(?=\d)/i, "");
+
+export type VersionScheme = "semver" | "php" | "pep440" | "go" | "ruby" | "dotnet" | "java" | "maven" | "magento" | "minio-release" | "generic";
 
 type Token = number | string;
 
@@ -237,6 +240,23 @@ const parseMagento: Parser = (s) => {
   return { epoch: 0, rel, tail: [1, patch] };
 };
 
+/**
+ * MinIO server images are tagged `RELEASE.<UTC timestamp>Z` (4.1 M8 Ruling 1): exact and case-sensitive, nothing
+ * before or after (no `-cpuv1`, `.fips` or hotfix suffix), and only a real UTC instant. Chronological order; two
+ * tags are equal exactly when the strings are equal.
+ */
+const parseMinioRelease: Parser = (s) => {
+  const m = /^RELEASE\.(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z$/.exec(s);
+  if (!m) return undefined;
+  const rel = m.slice(1, 7).map(Number);
+  const [year, month, day, hour, minute, second] = rel as [number, number, number, number, number, number];
+  const at = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const real =
+    at.getUTCFullYear() === year && at.getUTCMonth() === month - 1 && at.getUTCDate() === day &&
+    at.getUTCHours() === hour && at.getUTCMinutes() === minute && at.getUTCSeconds() === second;
+  return real ? { epoch: 0, rel, tail: [] } : undefined;
+};
+
 const parseGeneric: Parser = (s) => {
   if (!/^\d+(?:\.\d+)*$/.test(s)) return undefined;
   const rel = toInts(s.split("."));
@@ -253,6 +273,7 @@ const PARSERS: Record<VersionScheme, Parser> = {
   java: parseJava,
   maven: parseMaven,
   magento: parseMagento,
+  "minio-release": parseMinioRelease,
   generic: parseGeneric,
 };
 
@@ -428,6 +449,7 @@ const RUNTIME_SCHEMES: Record<string, VersionScheme> = {
 const PRODUCT_SCHEMES: Record<string, VersionScheme> = {
   "adobe-commerce": "magento",
   "magento-open-source": "magento",
+  minio: "minio-release",
 };
 
 const ECOSYSTEM_SCHEMES: Record<string, VersionScheme> = {

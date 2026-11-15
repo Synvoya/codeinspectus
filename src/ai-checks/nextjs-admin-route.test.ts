@@ -93,6 +93,19 @@ describe("Next.js admin route authentication and authorization", () => {
     ]));
   });
 
+  // 4.1 M9: the custom-exit-guard declared gap was removed (fix round 2); every fixture written for it fires.
+  test.each([
+    ["tp/app/api/admin/custom-result-ignored/route.ts", 1],
+    ["tp/app/api/admin/custom-error-no-exit/route.ts", 1],
+    ["tp/app/api/admin/custom-guard-after-write/route.ts", 1],
+    ["tp/app/api/admin/custom-guard-inverted/route.ts", 2],
+    ["tp/app/api/admin/custom-lookup-not-found/route.ts", 1],
+    ["tp/app/api/admin/custom-parse-body-error/route.ts", 1],
+    ["tp/app/api/admin/custom-input-predicates/route.ts", 2],
+  ])("imported-guard shape %s still fires", (file, count) => {
+    expect(atFile(analysis.findings, file as string)).toHaveLength(count as number);
+  });
+
   test("compatibility wrapper returns the analysis findings", async () => {
     expect(await runNextjsAdminRouteCheck(CORPUS)).toEqual(analysis.findings);
   });
@@ -103,7 +116,7 @@ describe("Next.js admin route authentication and authorization", () => {
   });
 
   test("emits exactly the planted handler findings", () => {
-    expect(analysis.findings).toHaveLength(81);
+    expect(analysis.findings).toHaveLength(90);
   });
 
   test.each([

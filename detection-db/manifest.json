@@ -1,7 +1,7 @@
 {
   "name": "CodeInspectus Detection Database",
-  "version": "2.0.0",
-  "date": "2026-11-05",
+  "version": "2.1.0",
+  "date": "2026-11-15",
   "description": "CodeInspectus's curated first-party detections. Native packs cover bounded AI/framework checks plus selected reconciled SAST rules; separately downloaded external engines remain additive fallbacks and broader scanners.",
   "engine_versions": {
     "opengrep": "1.33.1",
@@ -221,17 +221,6 @@
       "source": "codeinspectus-custom"
     },
     {
-      "id": "ci-ai-sensitive-api-response",
-      "engine": "codeinspectus-ai",
-      "pack_id": "javascript-typescript",
-      "name": "Sensitive field explicitly returned in an API response",
-      "kind": "ai",
-      "cwe": ["CWE-201"],
-      "owasp_web": ["A01:2021"],
-      "owasp_api": ["API3:2023"],
-      "source": "codeinspectus-custom"
-    },
-    {
       "id": "ci-ai-unvalidated-request-write",
       "engine": "codeinspectus-ai",
       "pack_id": "javascript-typescript",
@@ -240,17 +229,6 @@
       "cwe": ["CWE-915"],
       "owasp_web": ["A01:2021"],
       "owasp_api": ["API3:2023"],
-      "source": "codeinspectus-custom"
-    },
-    {
-      "id": "ci-ai-sensitive-log",
-      "engine": "codeinspectus-ai",
-      "pack_id": "javascript-typescript",
-      "name": "Sensitive request data written to application logs",
-      "kind": "ai",
-      "cwe": ["CWE-532"],
-      "owasp_web": ["A09:2021"],
-      "owasp_api": ["API8:2023"],
       "source": "codeinspectus-custom"
     },
     {
@@ -325,7 +303,7 @@
       "pack_id": "flutter",
       "name": "Flutter TLS certificate verification disabled",
       "kind": "ai",
-      "severity": "high",
+      "severity": "low",
       "cwe": ["CWE-295"],
       "source": "codeinspectus-custom"
     },
@@ -525,7 +503,7 @@
       "pack_id": "python-ai-api",
       "name": "Hardcoded Python framework signing secret",
       "kind": "ai",
-      "severity": "high",
+      "severity": "low",
       "cwe": ["CWE-798", "CWE-321"],
       "source": "codeinspectus-custom"
     },
@@ -545,7 +523,7 @@
       "pack_id": "python-ai-api",
       "name": "Request-controlled path reaches a Python file response",
       "kind": "ai",
-      "severity": "high",
+      "severity": "low",
       "cwe": ["CWE-22", "CWE-73"],
       "source": "codeinspectus-custom"
     },
@@ -782,14 +760,6 @@
       "source": "codeinspectus-custom"
     },
     {
-      "id": "ci-baseline-eval-python",
-      "engine": "opengrep",
-      "name": "Dynamic eval/exec of non-literal (Python)",
-      "kind": "sast",
-      "cwe": ["CWE-94"],
-      "source": "codeinspectus-custom"
-    },
-    {
       "id": "ci-baseline-nosql-injection",
       "engine": "opengrep",
       "name": "NoSQL injection from request data",
@@ -837,14 +807,6 @@
       "pack_id": "javascript-baseline",
       "fallback_engine": "opengrep",
       "name": "Deprecated createCipher or weak cipher (DES/RC4/3DES)",
-      "kind": "sast",
-      "cwe": ["CWE-327"],
-      "source": "codeinspectus-custom"
-    },
-    {
-      "id": "ci-baseline-weak-hash-python",
-      "engine": "opengrep",
-      "name": "Weak hash algorithm (MD5/SHA1) (Python)",
       "kind": "sast",
       "cwe": ["CWE-327"],
       "source": "codeinspectus-custom"

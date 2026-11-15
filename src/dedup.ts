@@ -20,12 +20,25 @@
  * same file (Brotli and brotlicffi share CVE-2026-111497 in one requirements.txt); those are two
  * findings. The ecosystem is never part of the key, so Trivy's best-effort ecosystem cannot keep it
  * from merging with osv-scanner's.
+ *
+ * Version-aware (4.1): when the package's version is known, it is part of the key too, so one advisory on
+ * two locked versions of one package (semver 5.7.1 nested under a dev tool, 7.5.1 at the top level) is two
+ * findings with their own location, remediation and dependency scope. A finding without a version joins the
+ * package's one known version in that file (several known versions: it stays apart). A leading `v` before a
+ * digit is ignored. Cross-scan identity keys stay version-free, so an upgraded package that still has the
+ * advisory reads remaining, as before.
+ *
+ * One finding per secret (4.1): after the key pass, a secret candidate whose line range lies inside a
+ * private-key block's range in the same file is the same secret as that block (Gitleaks 1-30 and Trivy 2-29
+ * on one PEM key; a native check on a line of a Gitleaks key block), unless both carry a known value hash and
+ * they differ. Clusters are formed by union-find; the survivor is the `preferred()` maximum.
  */
 
-import type { Finding, Engine } from "./types.js";
+import { mergeFixedVersions } from "./upgrade-actions.js";
+import type { Finding, Engine, FindingPackage } from "./types.js";
 import { SEVERITY_RANK } from "./types.js";
 import { normalizePackageName } from "./osv/ecosystems.js";
-import { devScopeCarriedInto } from "./engines/trivy-dev-scope.js";
+import { DEDUP_COMPONENT } from "./provenance.js";
 
 const CONFIDENCE_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
 const SECRET_ENGINE_PREFERENCE: Record<string, number> = {
@@ -77,6 +90,50 @@ export function dedupKey(f: Finding): string {
   }
   const cweKey = [...f.cwe].sort().join(",");
   return `general|${range}|${cweKey}`;
+}
+
+const normalizeVersion = (version: string): string => version.replace(/^v(?=\d)/, "");
+
+/**
+ * Per finding index, the version part of its vulnerability scope: its own normalized version, or for a finding
+ * without one the single version other findings know for that package in that file ("" when none or several).
+ * Only findings that name a package get one.
+ */
+function versionTags(findings: readonly Finding[]): Map<number, string> {
+  const known = new Map<string, Set<string>>();
+  findings.forEach((finding) => {
+    if (finding.finding_kind !== "vulnerability" || !finding.package?.name || !finding.package.version) return;
+    const scope = vulnerabilityScope(finding);
+    known.set(scope, (known.get(scope) ?? new Set()).add(normalizeVersion(finding.package.version)));
+  });
+  const tags = new Map<number, string>();
+  findings.forEach((finding, index) => {
+    if (finding.finding_kind !== "vulnerability" || !finding.package?.name) return;
+    if (finding.package.version) {
+      tags.set(index, normalizeVersion(finding.package.version));
+      return;
+    }
+    const versions = known.get(vulnerabilityScope(finding));
+    tags.set(index, versions?.size === 1 ? [...versions][0]! : "");
+  });
+  return tags;
+}
+
+/**
+ * Packages (other than the survivor's own) a merged finding absorbed, kept for the dependency-scope pass: a
+ * merged finding is development-only only if every package version it absorbed is. An enumerable symbol, so
+ * object spreads keep it while JSON (storage, MCP and CLI output) never carries it. Set only when an absorbed
+ * package differs from the survivor's (name or version after normalization).
+ */
+const ABSORBED_PACKAGES = Symbol("codeinspectus.dedup.absorbedPackages");
+type WithAbsorbed = Finding & { [ABSORBED_PACKAGES]?: FindingPackage[] };
+
+export function absorbedPackages(finding: Finding): readonly FindingPackage[] {
+  return (finding as WithAbsorbed)[ABSORBED_PACKAGES] ?? [];
+}
+
+function packageIdentity(pkg: FindingPackage): string {
+  return `${normalizePackageName(pkg.name)}\0${normalizeVersion(pkg.version)}`;
 }
 
 function vulnerabilityIdentities(f: Finding): string[] {
@@ -155,6 +212,11 @@ function identityRank(identity: string): number {
  * makes both bridge cases deterministic.
  */
 function vulnerabilityGroupKeys(findings: readonly Finding[]): Map<number, string> {
+  const tags = versionTags(findings);
+  const scopeOf = (index: number): string => {
+    const tag = tags.get(index);
+    return tag === undefined ? vulnerabilityScope(findings[index]!) : `${vulnerabilityScope(findings[index]!)}\0v=${tag}`;
+  };
   const parent = new Map<string, string>();
   const find = (value: string): string => {
     const current = parent.get(value);
@@ -179,8 +241,9 @@ function vulnerabilityGroupKeys(findings: readonly Finding[]): Map<number, strin
   const tokensByFinding = new Map<number, string[]>();
   findings.forEach((finding, index) => {
     if (finding.finding_kind !== "vulnerability") return;
-    // `<vulnerabilityScope> \0 identity`: the same scope the dedup key uses.
-    const tokens = vulnerabilityIdentities(finding).map((identity) => `${vulnerabilityScope(finding)}\0${identity}`);
+    // `<vulnerabilityScope> [\0 v=<version>] \0 identity`: package-aware and version-aware.
+    const scope = scopeOf(index);
+    const tokens = vulnerabilityIdentities(finding).map((identity) => `${scope}\0${identity}`);
     if (!tokens.length) return;
     tokensByFinding.set(index, tokens);
     for (const token of tokens) find(token);
@@ -203,7 +266,7 @@ function vulnerabilityGroupKeys(findings: readonly Finding[]): Map<number, strin
     const identities = [...(identitiesByRoot.get(root) ?? [])].sort(
       (left, right) => identityRank(left) - identityRank(right) || left.localeCompare(right),
     );
-    keys.set(index, `vuln|${vulnerabilityScope(findings[index]!)}|${identities[0]}`);
+    keys.set(index, `vuln|${scopeOf(index)}|${identities[0]}`);
   }
   return keys;
 }
@@ -257,6 +320,156 @@ function unionVulnerabilityAliases(a: Finding, b: Finding): string[] | undefined
   return aliases.length ? aliases : undefined;
 }
 
+/** Merge `other` into `keep` (the `preferred()` of `existing` and `incoming`): the one merge body both passes use. */
+function mergeFindings(keep: Finding, other: Finding, existing: Finding, incoming: Finding): Finding {
+  const mergedCwe = unionCwes(keep, other);
+  const producerComponents = unionProducerComponents(existing, incoming);
+  const vulnerabilityAliases = unionVulnerabilityAliases(existing, incoming);
+  const pkg = keep.package ?? other.package;
+  // Fix round 2: per release line, the highest of each engine's minimum fix.
+  const fixedVersions = mergeFixedVersions(pkg?.ecosystem ?? "", keep.fixed_versions ?? [], other.fixed_versions ?? []);
+  const merged: Finding = {
+    ...keep,
+    engines: mergeEngines(existing, incoming),
+    cwe: mergedCwe.length ? mergedCwe : keep.cwe,
+    ...(producerComponents ? { producer_components: producerComponents } : {}),
+    ...(vulnerabilityAliases ? { vulnerability_aliases: vulnerabilityAliases } : {}),
+    ...(pkg ? { package: pkg } : {}),
+    ...(fixedVersions.length ? { fixed_versions: fixedVersions } : {}),
+  };
+  const own = pkg ? packageIdentity(pkg) : undefined;
+  const absorbed = new Map<string, FindingPackage>();
+  for (const candidate of [existing.package, incoming.package, ...absorbedPackages(existing), ...absorbedPackages(incoming)]) {
+    if (!candidate) continue;
+    const identity = packageIdentity(candidate);
+    if (identity !== own && !absorbed.has(identity)) absorbed.set(identity, candidate);
+  }
+  if (absorbed.size) (merged as WithAbsorbed)[ABSORBED_PACKAGES] = [...absorbed.values()];
+  else delete (merged as WithAbsorbed)[ABSORBED_PACKAGES];
+  return merged;
+}
+
+/** A finding about a hard-coded secret: `is_secret`, or CWE-798 outside dependency and licence findings. */
+export function isSecretCandidate(f: Finding): boolean {
+  return f.is_secret === true ||
+    (f.cwe.includes("CWE-798") && f.finding_kind !== "vulnerability" && f.finding_kind !== "license");
+}
+
+/** A secret candidate that spans a private key's lines (Gitleaks/Trivy `private-key`, ...). */
+export function isPrivateKeyBlock(f: Finding): boolean {
+  return isSecretCandidate(f) && /private[-_]?key/i.test(f.rule_id) && f.location.end_line > f.location.start_line;
+}
+
+function within(inner: Finding, block: Finding): boolean {
+  return inner.location.start_line >= block.location.start_line && inner.location.end_line <= block.location.end_line;
+}
+
+/**
+ * Whether two secret candidates in one file are the same secret: one is a private-key block whose line range
+ * contains the other's, and their value hashes, when both are known, are equal.
+ */
+export function sameSecretByContainment(a: Finding, b: Finding): boolean {
+  if (a === b || a.location.file !== b.location.file) return false;
+  if (!isSecretCandidate(a) || !isSecretCandidate(b)) return false;
+  if (a.secret_value_hash && b.secret_value_hash && a.secret_value_hash !== b.secret_value_hash) return false;
+  return (isPrivateKeyBlock(a) && within(b, a)) || (isPrivateKeyBlock(b) && within(a, b));
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/** A canonical order of findings, so the cluster pass never depends on input order. */
+function canonicalOrder(left: Finding, right: Finding): number {
+  return compareText(left.fingerprint, right.fingerprint) ||
+    left.location.start_line - right.location.start_line ||
+    left.location.end_line - right.location.end_line ||
+    compareText(left.rule_id, right.rule_id) ||
+    compareText(left.engine, right.engine) ||
+    compareText(left.secret_value_hash ?? "", right.secret_value_hash ?? "") ||
+    compareText(left.title, right.title) ||
+    compareText(left.message, right.message);
+}
+
+/**
+ * The containment pass. Per file, candidates are unioned with each private-key block that contains them, in a
+ * canonical order; a union that would join two different known values (through a hash-less block) is skipped,
+ * so one block never ties two different secrets together. Each cluster folds into its `preferred()` maximum.
+ */
+function mergeContainedSecrets(findings: Finding[]): Finding[] {
+  const byFile = new Map<string, Finding[]>();
+  for (const finding of findings) {
+    if (!isSecretCandidate(finding)) continue;
+    const list = byFile.get(finding.location.file);
+    if (list) list.push(finding);
+    else byFile.set(finding.location.file, [finding]);
+  }
+  const parent = new Map<Finding, Finding>();
+  const hashes = new Map<Finding, Set<string>>();
+  const find = (finding: Finding): Finding => {
+    let root = finding;
+    while (parent.get(root) !== root) root = parent.get(root)!;
+    parent.set(finding, root);
+    return root;
+  };
+  let joined = false;
+  for (const candidates of byFile.values()) {
+    if (candidates.length < 2 || !candidates.some(isPrivateKeyBlock)) continue;
+    candidates.sort(canonicalOrder);
+    for (const finding of candidates) {
+      parent.set(finding, finding);
+      hashes.set(finding, new Set(finding.secret_value_hash ? [finding.secret_value_hash] : []));
+    }
+    for (const block of candidates.filter(isPrivateKeyBlock)) {
+      for (const other of candidates) {
+        if (!sameSecretByContainment(block, other)) continue;
+        const left = find(block);
+        const right = find(other);
+        if (left === right) continue;
+        const merged = new Set([...hashes.get(left)!, ...hashes.get(right)!]);
+        if (merged.size > 1) continue;
+        // The root is the earlier finding in canonical order, so roots never depend on input order.
+        const [root, child] = canonicalOrder(left, right) <= 0 ? [left, right] : [right, left];
+        parent.set(child, root);
+        hashes.set(root, merged);
+        joined = true;
+      }
+    }
+  }
+  if (!joined) return findings;
+
+  const clusters = new Map<Finding, Finding[]>();
+  for (const finding of findings) {
+    if (!parent.has(finding)) continue;
+    const root = find(finding);
+    const members = clusters.get(root);
+    if (members) members.push(finding);
+    else clusters.set(root, [finding]);
+  }
+  const result: Finding[] = [];
+  for (const finding of findings) {
+    if (!parent.has(finding)) {
+      result.push(finding);
+      continue;
+    }
+    const members = clusters.get(find(finding))!;
+    if (members[0] !== finding) continue; // emitted once, where its first member stood
+    if (members.length === 1) {
+      result.push(finding);
+      continue;
+    }
+    const ordered = [...members].sort(canonicalOrder);
+    const survivor = ordered.reduce((best, candidate) => preferred(best, candidate));
+    let merged: Finding = { ...survivor, engines: [...survivor.engines] };
+    for (const other of ordered) {
+      if (other === survivor) continue;
+      merged = mergeFindings(merged, other, merged, other);
+    }
+    result.push(merged);
+  }
+  return result;
+}
+
 export interface DedupStats {
   before: number;
   after: number;
@@ -275,27 +488,50 @@ export function dedupFindings(findings: Finding[]): { findings: Finding[]; stats
     }
     const keep = preferred(existing, f);
     const other = keep === existing ? f : existing;
-    const mergedCwe = unionCwes(keep, other);
-    const producerComponents = unionProducerComponents(existing, f);
-    const vulnerabilityAliases = unionVulnerabilityAliases(existing, f);
-    const pkg = keep.package ?? other.package;
-    const merged: Finding = {
-      ...keep,
-      engines: mergeEngines(existing, f),
-      cwe: mergedCwe.length ? mergedCwe : keep.cwe,
-      ...(producerComponents ? { producer_components: producerComponents } : {}),
-      ...(vulnerabilityAliases ? { vulnerability_aliases: vulnerabilityAliases } : {}),
-      ...(pkg ? { package: pkg } : {}),
-      // Title and message are not fingerprint inputs; only the scope text Trivy alone knows is carried.
-      ...devScopeCarriedInto(keep, other),
-    };
-    map.set(key, merged);
+    map.set(key, mergeFindings(keep, other, existing, f));
   }
-  const result = [...map.values()];
+  const result = mergeContainedSecrets([...map.values()]);
   return {
     findings: result,
     stats: { before: findings.length, after: result.length, merged: findings.length - result.length },
   };
+}
+
+export interface FindingsMatchOptions {
+  /**
+   * Allow the private-key containment match (a pre-4.1 older scan held separately what 4.1 merged). Off by
+   * default; callers derive it from both scans with `secretContainmentAgainst(older, newer)`.
+   */
+  secretContainment?: boolean;
+}
+
+type SignedScan = { component_signatures?: Readonly<Record<string, string>> };
+
+/**
+ * The match options for comparing `newer` against `older`: containment only when the older scan predates the
+ * 4.1 dedup marker and the newer one carries it (only a 4.1 scan holds the merged survivors it bridges).
+ */
+export function secretContainmentAgainst(older: SignedScan, newer: SignedScan): FindingsMatchOptions {
+  return { secretContainment: !older.component_signatures?.[DEDUP_COMPONENT] && Boolean(newer.component_signatures?.[DEDUP_COMPONENT]) };
+}
+
+/**
+ * A pre-4.1 scan stored a private key twice (Gitleaks 1-30, Trivy 2-29) where 4.1 keeps one merged survivor.
+ * The older finding matches only when it is a single-engine private-key finding, the newer one is a merged
+ * survivor carrying its engine, both are secret candidates in one file with compatible value hashes, and one
+ * range contains the other: the survivor's lines contain the older finding's (Trivy 2-29 absorbed by Gitleaks
+ * 1-30), or the older key block's lines contain the survivor's (a Gitleaks block 645-648 absorbed by a native
+ * finding at 645). The reverse direction also needs the survivor's own value hash (a native secret finding), so
+ * an engine-only token that merely sits inside an old key block never matches it.
+ */
+function absorbedKeyBlock(older: Finding, newer: Finding): boolean {
+  if (older.location.file !== newer.location.file) return false;
+  if (!isSecretCandidate(older) || !isSecretCandidate(newer)) return false;
+  if (older.engines.length !== 1 || !/private[-_]?key/i.test(older.rule_id)) return false;
+  if (newer.engines.length < 2 || !newer.engines.includes(older.engines[0]!)) return false;
+  const contains = (outer: Finding, inner: Finding) =>
+    outer.location.start_line <= inner.location.start_line && outer.location.end_line >= inner.location.end_line;
+  return contains(newer, older) || (contains(older, newer) && Boolean(newer.secret_value_hash));
 }
 
 /**
@@ -304,9 +540,12 @@ export function dedupFindings(findings: Finding[]): { findings: Finding[]; stats
  * when it cannot hide a different issue: two known secret values must be equal, and a location key
  * also needs a producing engine in common (the dedup-survivor flip keeps its merged engines).
  */
-export function findingsMatch(left: Finding, right: Finding): boolean {
+export function findingsMatch(left: Finding, right: Finding, options: FindingsMatchOptions = {}): boolean {
   if (left.fingerprint === right.fingerprint) return true;
   if (left.secret_value_hash && right.secret_value_hash && left.secret_value_hash !== right.secret_value_hash) return false;
+  // `left` is the older finding. A pre-4.1 scan that held a key-block duplicate separately reads it as still
+  // present in the 4.1 survivor (M5 fix round 2: only then, and only in that direction).
+  if (options.secretContainment && absorbedKeyBlock(left, right)) return true;
   // A scan stored before vulnerability findings named their package keys on path + identity only;
   // comparing that with a package-aware key would read every such finding as resolved + introduced.
   const packageAware = Boolean(left.package?.name) === Boolean(right.package?.name);

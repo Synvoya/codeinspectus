@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { opengrepFileCoverage } from "./opengrep-coverage.js";
+import { opengrepFileCoverage, opengrepIncompleteFiles } from "./opengrep-coverage.js";
 
 const TARGET = "/work/my-repo";
 
@@ -206,5 +206,39 @@ describe("Opengrep file-level coverage", () => {
     }), TARGET)).toEqual({ parseErrors: { id: "sast-parse-errors", files: 1, examples: [] } });
     expect(opengrepFileCoverage(report({ errors: [{ type: "Timeout", path: evil }] }), TARGET))
       .toEqual({ warning: "Opengrep SAST coverage partial: 1 with a timeout, memory limit or engine error." });
+  });
+});
+
+// M6 fix round 1: what a pass could not fully analyze, recorded for rescan proof (fail closed).
+describe("opengrepIncompleteFiles", () => {
+  const timeout = (path?: string, rule = "x.y.ci-baseline-xss") => ({ type: "Timeout", level: "warn", code: 3, ...(path ? { path } : {}), rule_id: rule, message: "Timeout" });
+
+  test("file-scoped errors and non-policy skips inside the target: only those files, sorted", () => {
+    expect(opengrepIncompleteFiles(report({
+      errors: [timeout(`${TARGET}/lib/d3.js`), partialParse(`${TARGET}/src/new.ts`)],
+      skipped: [
+        { path: `${TARGET}/tests`, reason: "semgrepignore_patterns_match" },
+        { path: `${TARGET}/data/big.php`, reason: "exceeded_size_limit" },
+        { path: `${TARGET}/lib/d3.js`, reason: "analysis_failed_parser_or_internal_error" },
+        { path: `${TARGET}/a.go`, reason: "wrong_language" },
+      ],
+    }), TARGET)).toEqual({ files: ["data/big.php", "lib/d3.js", "src/new.ts"], rules: [] });
+  });
+
+  test("a rule-scoped error (a rule id, no file) names only that rule, by the id findings carry", () => {
+    expect(opengrepIncompleteFiles(report({ errors: [{ type: "InvalidRuleSchemaError", level: "error", code: 7, rule_id: "a.b.ci-baseline-xss", message: "bad rule" }] }), TARGET))
+      .toEqual({ files: [], rules: ["ci-baseline-xss"] });
+  });
+
+  test("fail closed: a pathless error with no rule, a path outside the target, an outside skip, a malformed report", () => {
+    expect(opengrepIncompleteFiles(report({ errors: [{ type: "Fatal", level: "error", code: 2, message: "no path" }] }), TARGET)).toBe("all");
+    expect(opengrepIncompleteFiles(report({ errors: [timeout("/elsewhere/x.js")] }), TARGET)).toBe("all");
+    expect(opengrepIncompleteFiles(report({ skipped: [{ path: "/elsewhere/big.js", reason: "exceeded_size_limit" }] }), TARGET)).toBe("all");
+    expect(opengrepIncompleteFiles({ errors: "x" }, TARGET)).toBe("all");
+    expect(opengrepIncompleteFiles(undefined, TARGET)).toBe("all");
+  });
+
+  test("a clean report records nothing", () => {
+    expect(opengrepIncompleteFiles(report(), TARGET)).toEqual({ files: [], rules: [] });
   });
 });

@@ -11,10 +11,11 @@
  */
 
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
-import { randomBytes } from "node:crypto";
+import { chmod, cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { runOpengrepShadowParity } from "../src/shadow/opengrep-parity.js";
 import {
   buildOpengrepArgs,
@@ -26,12 +27,14 @@ import {
   runOpengrep,
 } from "../src/engines/opengrep.js";
 import { resolveEngine } from "../src/engines/resolve.js";
+import { opengrepIncompleteFiles } from "../src/engines/opengrep-coverage.js";
 import { execBinary } from "../src/engines/exec.js";
 import { normalizeEngineOutput } from "../src/sarif/normalize.js";
 
 const FIXTURE = resolve(process.cwd(), "fixtures/vulnerable-app");
 const CORS_FIXTURE = resolve(process.cwd(), "fixtures/cors-corpus");
 const API_BOUNDARY_FIXTURE = resolve(process.cwd(), "fixtures/api-boundary-corpus");
+const API_BOUNDARY_PUBLIC_ERRORS_FIXTURE = resolve(process.cwd(), "fixtures/api-boundary-public-errors/23-app-error-literal-message");
 const SECURITY_CONTROLS_FIXTURE = resolve(process.cwd(), "fixtures/security-controls-corpus");
 const SUPABASE_EDGE_AUTH_FIXTURE = resolve(process.cwd(), "fixtures/supabase-edge-auth-corpus");
 const NEXTJS_ADMIN_ROUTE_FIXTURE = resolve(process.cwd(), "fixtures/nextjs-admin-route-corpus");
@@ -113,7 +116,7 @@ const FLUTTER_RULES = [
   {
     file: "lib/01_tls_verification.dart",
     id: "ci-flutter-tls-verification-disabled",
-    severity: "high",
+    severity: "low", // 4.1 M9 fresh-set gate (Ruling 3): low severity, low confidence
     cwe: ["CWE-295"],
     component: "ai:flutter-tls-verification",
   },
@@ -223,9 +226,9 @@ const REACT_NATIVE_EXPO_RULES = [
 ] as const;
 
 const PYTHON_AI_API_RULES = [
-  { file: "config/settings.py", id: "ci-python-hardcoded-signing-secret", severity: "high", kind: "secret", cwe: ["CWE-798", "CWE-321"], confidence: "high", component: "ai:python-hardcoded-signing-secret" },
+  { file: "config/settings.py", id: "ci-python-hardcoded-signing-secret", severity: "low", kind: "secret", cwe: ["CWE-798", "CWE-321"], confidence: "low", component: "ai:python-hardcoded-signing-secret" },
   { file: "src/02_credentialed_cors.py", id: "ci-python-credentialed-cors-all-origins", severity: "high", kind: "ai", cwe: ["CWE-942", "CWE-346"], confidence: "high", component: "ai:python-credentialed-cors" },
-  { file: "src/03_file_response.py", id: "ci-python-untrusted-file-response", severity: "high", kind: "ai", cwe: ["CWE-22", "CWE-73"], confidence: "high", component: "ai:python-untrusted-file-response" },
+  { file: "src/03_file_response.py", id: "ci-python-untrusted-file-response", severity: "low", kind: "ai", cwe: ["CWE-22", "CWE-73"], confidence: "low", component: "ai:python-untrusted-file-response" },
   { file: "src/04_redirect.py", id: "ci-python-untrusted-redirect", severity: "medium", kind: "ai", cwe: ["CWE-601"], confidence: "high", component: "ai:python-untrusted-redirect" },
   { file: "src/05_template_source.py", id: "ci-python-untrusted-template-source", severity: "high", kind: "ai", cwe: ["CWE-1336", "CWE-94"], confidence: "high", component: "ai:python-untrusted-template-source" },
   { file: "src/06_llm_html.py", id: "ci-python-llm-output-dangerous-html", severity: "high", kind: "ai", cwe: ["CWE-79", "CWE-116"], confidence: "high", component: "ai:python-llm-output-dangerous-html" },
@@ -248,10 +251,10 @@ const FLUTTER_COMPONENT_SIGNATURES: Readonly<Record<string, string>> = {
   "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
   "pack:flutter:dispatch": "sha256:dd7a82ca5ce49accb0f5d903aaca56bf9785388b3e58c352466a9bd729233f4b",
   "flutter:dart-structural-parser": "sha256:87cb980e5c38f12d8413ecd826a16a00b00662efe7ef6fc5f358d492e5296a9f",
-  "ai:flutter-tls-verification": "sha256:722e83e70e16b98875482d3dabde531562e85b2953970f7917d6ed5253e4972a",
+  "ai:flutter-tls-verification": "sha256:bc40a5a229ec0010c2f47430e26c1eed76d0eb4d46906e127630d24ce6740762",
   "ai:flutter-sensitive-preferences": "sha256:9050cea99534ada1789015c48c7e9dffcdcb7ed3e942694e488eaa2c7f0f166a",
   "ai:flutter-webview-untrusted-content": "sha256:60c6f2c59bf27a7481fc37992530776c3e27f7f985f9e6b46398cff5e68de8ac",
-  "ai:flutter-sensitive-log": "sha256:d29aa52f8d9be52e5c5c23d01450c880d64fb131cb670552ce8f6417a1145b3a",
+  "ai:flutter-sensitive-log": "sha256:576fa03fad0cb220ca55b7b7de15a211c03677b09681f1ab16883e357f55213d",
   "ai:flutter-supabase-privileged-key": "sha256:a6e842c74dd651af3cc82d5a81a493eecd0fc250bfc70250dcd3500c571de586",
   "ai:flutter-cleartext-network": "sha256:84d344056e50ef21f7cd0f16d183d31dcf1af9927c4376afa62ac3f0c476cbc2",
 };
@@ -338,9 +341,9 @@ const PYTHON_AI_API_COMPONENT_SIGNATURES: Readonly<Record<string, string>> = {
   "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
   "pack:python-ai-api:dispatch": "sha256:25fc9425b3ffcf2bc1f15178e39000687fb2e261d1cb938f0a77a59828a1b9dd",
   "python:lezer-structural-parser": "sha256:9de9056123c716b9615c231183379140d60e3805f6d6be6709159eeb0839dea5",
-  "ai:python-hardcoded-signing-secret": "sha256:9381fb56d3598c1f478fba84a9b0db960f879d0b6aa8bda021a57c016d601c3a",
+  "ai:python-hardcoded-signing-secret": "sha256:616a69538ec14fd8479ec3b4c8df098cb9fbc943434acff67a778061e583a197",
   "ai:python-credentialed-cors": "sha256:46477b8b3f9abff6ce4e771aaf3830721e26c31481ccce82751278930b584adf",
-  "ai:python-untrusted-file-response": "sha256:f77122fe93de07f380fca77b64f72cd7860c61c5a5255e48e928cb269e186d54",
+  "ai:python-untrusted-file-response": "sha256:7ced0f77b2cd9974eea95abad264ad855fb9170766b206de4380823b89414246",
   "ai:python-untrusted-redirect": "sha256:ab6e8662a4039b7138c0468d779db948a1ef40271b0d6d700fb569166275b3b5",
   "ai:python-untrusted-template-source": "sha256:0592921975193cdb4ca77cf885051efad80b327bc78fc2cbaa90c19e4524806e",
   "ai:python-llm-output-dangerous-html": "sha256:c0ad9bab6d078faf4f2946b384ad8ce31c44729fee65049d38d41d26271da1d4",
@@ -571,7 +574,7 @@ const GITHUB_ACTIONS_COMPONENT_SIGNATURES: Readonly<Record<string, string>> = {
   "codeinspectus:pipeline": "sha256:76b7a7b37408ced23a6511a77a757a1c058171e26eb41f842cb7203a5ca5c73d",
   "pack:github-actions:dispatch": "sha256:4c6d22343e56aed91e1e60bf8bed705215611289ee544be2469f955eacfa2277",
   "github-actions:yaml-workflow-parser": "sha256:0dd39cf27e0ea7e5a74307c358d5331277c0487b37ffb1c3a4a7c1688f979508",
-  "ai:github-actions-expression-injection": "sha256:9ce6f791745bca7b121eb230a1fb5953348b3bcf94b933286ed5a7820dc0bcbc",
+  "ai:github-actions-expression-injection": "sha256:8f3eb45f8008e89e1def2013cfee183044f9d5aa045071f8a25d0af2e532e2a8",
   "ai:github-actions-pwn-request": "sha256:b9edf2d17656fe46595ed64e77e978e69c6fc9901ed0146ed9c7050c92e4f15e",
 };
 
@@ -699,8 +702,8 @@ function assertFlutterExecutionEnvelope(
     `${label}: JavaScript/TypeScript analyzer coverage was not 12/12`,
   );
   assert(
-    javascript.rules.registered === 29 && javascript.rules.ran === 29,
-    `${label}: JavaScript/TypeScript rule coverage was not 29/29`,
+    javascript.rules.registered === 27 && javascript.rules.ran === 27,
+    `${label}: JavaScript/TypeScript rule coverage was not 27/27 (29 minus 2 experimental, 4.1 M9 Ruling 4)`,
   );
 
   if (!expectEngineDetails) return;
@@ -731,11 +734,11 @@ function assertFlutterTpScan(result: any, label: string): void {
   assert(
     result.summary?.total === 6 &&
       result.summary.critical === 1 &&
-      result.summary.high === 2 &&
+      result.summary.high === 1 &&
       result.summary.medium === 3 &&
-      result.summary.low === 0 &&
+      result.summary.low === 1 &&
       result.summary.info === 0,
-    `${label}: expected severity totals 1 critical / 2 high / 3 medium`,
+    `${label}: expected severity totals 1 critical / 1 high / 3 medium / 1 low`,
   );
 
   for (const expected of FLUTTER_RULES) {
@@ -749,7 +752,7 @@ function assertFlutterTpScan(result: any, label: string): void {
     assert(finding.engine === "codeinspectus-ai", `${label}: ${expected.id} engine changed`);
     assertExactJson(finding.engines, ["codeinspectus-ai"], `${label}: ${expected.id} producer engines changed`);
     assert(finding.finding_kind === "ai", `${label}: ${expected.id} finding kind changed`);
-    assert(finding.confidence === "high", `${label}: ${expected.id} confidence changed`);
+    assert(finding.confidence === (expected.id === "ci-flutter-tls-verification-disabled" ? "low" : "high"), `${label}: ${expected.id} confidence changed`);
     assert(
       typeof finding.remediation?.summary === "string" && finding.remediation.summary.length > 0 &&
         Array.isArray(finding.remediation.steps) && finding.remediation.steps.length > 0 &&
@@ -843,7 +846,7 @@ function assertMobileExecutionEnvelope(
   assert(
     javascript?.state === "ran" &&
       javascript.analyzers.ran === 12 &&
-      javascript.rules.ran === 29,
+      javascript.rules.ran === 27,
     `${label}: unconditional JavaScript/TypeScript pack coverage changed`,
   );
   if (!expectEngineDetails) return;
@@ -988,7 +991,7 @@ function assertReactNativeExpoExecutionEnvelope(
   assert(
     javascript?.state === "ran" &&
       javascript.analyzers.ran === 12 &&
-      javascript.rules.ran === 29,
+      javascript.rules.ran === 27,
     `${label}: JavaScript/TypeScript pack coverage changed`,
   );
   for (const packId of ["flutter", "android", "ios"]) {
@@ -1152,9 +1155,9 @@ function assertPythonAiApiTpScan(result: any, label: string): void {
   const findings: any[] = result.findings ?? [];
   assertExactPythonAiApiRuleIds(findings, label);
   assert(
-    result.summary?.total === 10 && result.summary.high === 9 && result.summary.medium === 1 &&
-      result.summary.critical === 0 && result.summary.low === 0 && result.summary.info === 0,
-    `${label}: expected severity totals 9 high / 1 medium`,
+    result.summary?.total === 10 && result.summary.high === 7 && result.summary.medium === 1 &&
+      result.summary.critical === 0 && result.summary.low === 2 && result.summary.info === 0,
+    `${label}: expected severity totals 7 high / 1 medium / 2 low`,
   );
   for (const expected of PYTHON_AI_API_RULES) {
     const matches = findings.filter((finding) =>
@@ -2144,7 +2147,7 @@ async function main() {
         const nativePack = scan.pack_coverage.find((pack: any) => pack.pack_id === "javascript-typescript");
         assert(nativePack?.state === "ran", `expected JavaScript/TypeScript pack to run, got ${nativePack?.state}`);
         assert(nativePack.analyzers.registered === 12 && nativePack.analyzers.ran === 12, "native analyzer execution counts are wrong");
-        assert(nativePack.rules.registered === 29 && nativePack.rules.ran === 29, "native rule execution counts are wrong");
+        assert(nativePack.rules.registered === 27 && nativePack.rules.ran === 27, "native rule execution counts are wrong");
         const flutterPack = scan.pack_coverage.find((pack: any) => pack.pack_id === "flutter");
         assert(flutterPack?.state === "not_applicable", `expected Flutter pack to be not_applicable, got ${flutterPack?.state}`);
         assert(flutterPack.analyzers.registered === 6 && flutterPack.analyzers.ran === 0, "non-applicable Flutter analyzer counts are wrong");
@@ -2292,7 +2295,7 @@ async function main() {
         assert(re.summary.remaining > 0, "expected findings to remain");
         assert(re.detected_technologies.some((technology: any) => technology.id === "typescript"), "rescan lost detected technologies");
         const coverage = re.pack_coverage.find((pack: any) => pack.pack_id === "javascript-typescript");
-        assert(coverage?.state === "ran" && coverage.analyzers.ran === 12 && coverage.rules.ran === 29, "rescan lost native-pack execution coverage");
+        assert(coverage?.state === "ran" && coverage.analyzers.ran === 12 && coverage.rules.ran === 27, "rescan lost native-pack execution coverage");
         const flutterCoverage = re.pack_coverage.find((pack: any) => pack.pack_id === "flutter");
         assert(flutterCoverage?.state === "not_applicable" && flutterCoverage.rules.ran === 0, "rescan lost non-applicable Flutter-pack coverage");
         for (const packId of ["react-native", "expo"]) {
@@ -2305,15 +2308,16 @@ async function main() {
       id: "E14 list_rules exposes the AI-code moat rules + DB version",
       fn: async () => {
         const lr = (await client.callTool("codeinspectus_list_rules", {})).structuredContent;
-        assert(lr.custom_rule_count === 126, `expected 126 custom rules, got ${lr.custom_rule_count}`);
-        assert(lr.detection_db_version === "2.0.0", `expected detection DB 2.0.0, got ${lr.detection_db_version}`);
-        assert(lr.detection_db_date === "2026-11-05", `unexpected detection DB date ${lr.detection_db_date}`);
+        // 4.1 M9: two native rules (Ruling 4) and two Python baseline Opengrep rules are experimental.
+        assert(lr.custom_rule_count === 122, `expected 122 custom rules, got ${lr.custom_rule_count}`);
+        assert(lr.detection_db_version === "2.1.0", `expected detection DB 2.1.0, got ${lr.detection_db_version}`);
+        assert(lr.detection_db_date === "2026-11-15", `unexpected detection DB date ${lr.detection_db_date}`);
         assert(lr.custom_rules.some((r: any) => r.id === "ci-ai-rls-using-true"), "missing ci-ai-rls-using-true in list_rules");
         const boundary = lr.custom_rules.find((r: any) => r.id === "ci-ai-client-error-leak");
         assert(boundary?.owasp_web?.includes("A05:2021") && boundary?.owasp_api?.includes("API8:2023"), "new rules must expose OWASP Web/API mappings");
         const nativeRules = lr.custom_rules.filter((rule: any) => rule.engine === "codeinspectus-ai");
-        assert(nativeRules.length === 72, `expected 72 native rules, got ${nativeRules.length}`);
-        assert(nativeRules.filter((rule: any) => rule.pack_id === "javascript-typescript").length === 29, "JavaScript/TypeScript native rule ownership is wrong");
+        assert(nativeRules.length === 70, `expected 70 native rules, got ${nativeRules.length}`);
+        assert(nativeRules.filter((rule: any) => rule.pack_id === "javascript-typescript").length === 27, "JavaScript/TypeScript native rule ownership is wrong");
         const unsafeTool = nativeRules.find((rule: any) => rule.id === "ci-ai-llm-tool-argument-command-execution");
         assert(unsafeTool?.owasp_llm?.includes("LLM05:2025") && unsafeTool?.owasp_llm?.includes("LLM06:2025"), "unsafe tool execution rule metadata is missing");
         const dynamicExecution = nativeRules.find((rule: any) => rule.id === "ci-ai-llm-output-dynamic-execution");
@@ -2339,7 +2343,7 @@ async function main() {
         }
         const nativePack = lr.native_packs.find((pack: any) => pack.id === "javascript-typescript");
         assert(nativePack?.version === "1.10.0", "expected JavaScript/TypeScript pack 1.10.0");
-        assert(nativePack?.analyzer_count === 12 && nativePack.rule_count === 29, "list_rules JavaScript/TypeScript pack inventory is wrong");
+        assert(nativePack?.analyzer_count === 12 && nativePack.rule_count === 27, "list_rules JavaScript/TypeScript pack inventory is wrong");
         const baselinePack = lr.native_packs.find((pack: any) => pack.id === "javascript-baseline");
         assert(baselinePack?.scanner_kind === "sast" && baselinePack.analyzer_count === 1 && baselinePack.rule_count === 2, "list_rules JavaScript baseline pack inventory is wrong");
         const promotedRules = nativeRules.filter((rule: any) => rule.pack_id === "javascript-baseline");
@@ -2618,17 +2622,25 @@ async function main() {
         const boundaryScan = (await client.callTool("codeinspectus_scan", { path: API_BOUNDARY_FIXTURE, scanners: ["ai"] })).structuredContent;
         const boundaryFindings: any[] = boundaryScan.findings;
         const counts = (ruleId: string) => boundaryFindings.filter((x) => x.rule_id === ruleId).length;
-        assert(boundaryFindings.length === 18, `expected 18 API-boundary findings, got ${boundaryFindings.length}`);
-        assert(counts("ci-ai-client-error-leak") === 8, "expected eight internal-error findings");
-        assert(counts("ci-ai-sensitive-api-response") === 1, "expected one sensitive-response finding");
-        assert(counts("ci-ai-unvalidated-request-write") === 6, "expected six unsafe-write findings");
-        assert(counts("ci-ai-sensitive-log") === 3, "expected three sensitive-log findings");
+        // 4.1 M9 Task 3 added three error, four response and four log true positives next to its fp fixtures;
+        // addendum A1 added two error and five response true positives, A4 three error true positives.
+        // 4.1 M9 Ruling 4: sensitive-api-response and sensitive-log are experimental, so their 29 + 12 tp fixtures
+        // report nothing through the scan (the analyzer unit tests still find them).
+        assert(boundaryFindings.length === 38, `expected 38 API-boundary findings, got ${boundaryFindings.length}`);
+        assert(counts("ci-ai-client-error-leak") === 32, "expected 32 internal-error findings");
+        assert(counts("ci-ai-sensitive-api-response") === 0, "experimental sensitive-response rule must not report");
+        assert(counts("ci-ai-unvalidated-request-write") === 6, "expected 6 unsafe-write findings");
+        assert(counts("ci-ai-sensitive-log") === 0, "experimental sensitive-log rule must not report");
         assert(boundaryFindings.every((x) => x.location.file.startsWith("tp/")), "API-boundary safe near-miss produced a finding");
         assert(boundaryFindings.every((x) => x.owasp_api?.length > 0), "API-boundary finding missing OWASP API mapping");
         assert(boundaryFindings.every((x) => x.producer_components?.some((component: string) => component.startsWith("ai:"))), "API-boundary finding missing detector provenance");
         const serialized = JSON.stringify(boundaryScan);
         assert(!serialized.includes("provider failure") && !serialized.includes("database unavailable"), "API-boundary output leaked planted internal detail");
         assert(boundaryScan.engine_details.some((x: any) => x.engine === "codeinspectus-ai" && x.version === "5.20.0"), "AI engine version was not bumped for expanded multi-pack coverage");
+        // M9 fix round 4: literal-message error classes stay public only in a repository with no message write, so
+        // that case is its own repository (the corpus holds the message-write true positives).
+        const publicErrors = (await client.callTool("codeinspectus_scan", { path: API_BOUNDARY_PUBLIC_ERRORS_FIXTURE, scanners: ["ai"] })).structuredContent;
+        assert(publicErrors.findings.length === 0, `literal-message error classes produced ${publicErrors.findings.length} findings`);
       },
     },
     {
@@ -3219,7 +3231,7 @@ async function main() {
           runOpengrepShadowParity(resolve(OPENGREP_SHADOW_FIXTURE, "tp")),
           runOpengrepShadowParity(resolve(OPENGREP_SHADOW_FIXTURE, "fp")),
           runOpengrepShadowParity(resolve(OPENGREP_SHADOW_FIXTURE, "fixed")),
-          runOpengrepShadowParity(resolve(OPENGREP_SHADOW_FIXTURE, "tp", "01_hash.js")),
+          runOpengrepShadowParity(resolve(OPENGREP_SHADOW_FIXTURE, "tp", "05_hash_credential_update.js")),
         ]);
         assert(tp.passed, `shadow TP parity failed: ${JSON.stringify(tp.comparison)}`);
         assert(fp.passed, `shadow FP parity failed: ${JSON.stringify(fp.comparison)}`);
@@ -3826,7 +3838,8 @@ async function main() {
         const findings = result.findings.filter(
           (finding: any) => finding.rule_id === "ci-ai-nextjs-admin-route-no-authz",
         );
-        assert(findings.length === 81, `expected 81 Next.js admin-route findings, got ${findings.length}`);
+        // 4.1 M9: nine imported-guard true positives added; the custom-guard declared gap was removed (fix round 2).
+        assert(findings.length === 90, `expected 90 Next.js admin-route findings, got ${findings.length}`);
         assert(
           findings.every(
             (finding: any) =>
@@ -3850,7 +3863,7 @@ async function main() {
         // Pre-release field validation item 3: the deliberate limits are declared, acceptable gaps.
         const gapFiles = (id: string) => result.coverage_gaps?.find((gap: any) => gap.id === id)?.files;
         assert(
-          pack?.state === "ran" && pack.analyzers.ran === 12 && pack.rules.ran === 29 &&
+          pack?.state === "ran" && pack.analyzers.ran === 12 && pack.rules.ran === 27 &&
             gapFiles("nextjs-routes-unresolved") === 5 && gapFiles("native-parse-errors") === 2,
           "Next.js adversarial corpus did not expose its deliberate JavaScript/TypeScript coverage limits",
         );
@@ -4592,7 +4605,7 @@ async function main() {
       },
     },
     {
-      // Task 5 (Hibi, 2026-10-31): declared gaps are partial coverage with stable ids; accept_gaps is
+      // Task 5 (maintainer, 2026-10-31): declared gaps are partial coverage with stable ids; accept_gaps is
       // an explicit opt-in that keeps them listed, and an unknown id is an input error.
       id: "E73 declared coverage gaps are listed by stable id and can only be accepted by name",
       fn: async () => {
@@ -4771,20 +4784,37 @@ async function main() {
     {
       // Pre-release field validation item 1: without --include-dev-deps Trivy dropped devDependencies
       // and Composer packages-dev with no trace (a Nuxt app declaring everything as dev read 0 findings).
-      id: "E78 [engine] development dependencies are analysed and named as such",
+      // 4.1 M5 Rulings 5-6: dependency_scope on the finding, and dev-only vulnerabilities one severity level lower.
+      id: "E78 [engine] development dependencies are analysed, named as such, scoped and lowered one level",
       engineDep: "trivy-vuln",
       fn: async () => {
         const result = (await client.callTool("codeinspectus_scan", { path: join(COVERAGE_HONESTY_FIXTURE, "dev-deps"), scanners: ["vuln"] })).structuredContent;
         const trivy = result.findings.filter((x: any) => x.engines.includes("trivy"));
         const about = (name: string) => trivy.filter((x: any) => x.title.includes(`(${name}@`));
+        const lowering = /\nSeverity lowered from (critical|high|medium) to (high|medium|low): development-only dependency\.$/;
+        const kept = /\nSeverity not lowered: (malicious package|known to be exploited|Synvoya advisory)\.$/;
+        const order = ["info", "low", "medium", "high", "critical"];
         for (const name of ["handlebars", "phpunit/phpunit"]) {
           assert(about(name).length > 0, `no finding for the development dependency ${name}`);
-          assert(about(name).every((x: any) => x.title.endsWith(", dev dependency)") && x.message.includes("Dependency scope: development only")),
-            `${name} findings are not named as a development dependency`);
+          for (const x of about(name)) {
+            assert(x.title.endsWith(", dev dependency)") && x.message.includes("Dependency scope: development only"),
+              `${name} ${x.rule_id} is not named as a development dependency`);
+            assert(x.dependency_scope === "dev", `${name} ${x.rule_id} dependency_scope ${x.dependency_scope}`);
+            const lowered = lowering.exec(x.message);
+            if (lowered) {
+              assert(order.indexOf(lowered[1]!) === order.indexOf(lowered[2]!) + 1 && x.severity === lowered[2], `${name} ${x.rule_id}: ${x.severity} after "${lowered[0]!.trim()}"`);
+            } else {
+              assert(kept.test(x.message) || x.severity === "low" || x.severity === "info", `${name} ${x.rule_id} (${x.severity}) was neither lowered nor kept by the never-list`);
+            }
+          }
         }
         for (const name of ["lodash", "guzzlehttp/guzzle"]) {
           assert(about(name).length > 0, `no finding for the production dependency ${name}`);
-          assert(about(name).every((x: any) => !x.title.includes("dev dependency")), `${name} is production but was named dev`);
+          for (const x of about(name)) {
+            assert(!x.title.includes("dev dependency"), `${name} is production but was named dev`);
+            assert(x.dependency_scope === "prod", `${name} ${x.rule_id} dependency_scope ${x.dependency_scope}`);
+            assert(!/Severity (lowered|not lowered)/.test(x.message), `${name} ${x.rule_id} carries a lowering line`);
+          }
         }
       },
     },
@@ -5525,9 +5555,11 @@ async function main() {
           const timing = JSON.parse(await readFile(report, "utf8")).time;
           const ran = (file: string): string[] => (timing.targets.find((entry: any) => entry.path.endsWith(file))?.match_times ?? [])
             .map(([rule]: [string, number]) => rule.split(".").pop());
-          if (process.platform === "win32" && timing.targets.every((entry: any) => !entry.match_times?.length)) {
+          if (process.platform === "win32") {
             // CI 2026-11-05: Opengrep's Windows build lists the targets but no per-rule match times, so the
-            // prefilter cannot be observed here. The rules are the same files on every platform; Linux and macOS prove it.
+            // prefilter cannot be observed here. CI 2026-11-15: it can also list match times for only some rules,
+            // so its timing report is not a reliable record on Windows at all. The rules are the same files on every
+            // platform; Linux and macOS prove the prefilter.
             for (const file of ["sink.js", "plain.js"]) {
               assert(timing.targets.some((entry: any) => entry.path.endsWith(file)), `the Windows timing report does not list ${file}`);
             }
@@ -5736,6 +5768,46 @@ async function main() {
       },
     },
     {
+      // 4.1 M9 addendum A2 (mailflare): in a UUID-keyed identifier map with one entry per line, Gitleaks' generic
+      // rule read the previous label's tail as a keyword and the next UUID key as a secret. The map is silent; a
+      // Heroku key, a cross-line identifier keyword, a same-line pair, a UUID after "api_key", after `token:` and
+      // after a credential-word label still fire. Values are assembled here.
+      id: "E170 [engine] Gitleaks UUID keys after display-name entries of an identifier map are not secrets; controls still fire",
+      engineDep: "gitleaks",
+      fn: async () => {
+        const temporaryRoot = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e170-"));
+        const j = (...parts: string[]) => parts.join("");
+        const u1 = j("ea9b8d66-4d01-1d21-", "3ce4-b6b48cb575d4");
+        const u2 = j("adce0002-35bc-c60a-", "648b-0b25f1f05503");
+        const u3 = j("fbfc3007-154e-4ecc-", "8c0b-6e020557d7bd");
+        const u4 = j("cb69481e-8ff7-4039-", "93ec-0a2729a154a8");
+        const files: Record<string, string> = {
+          "src/authenticators.ts": "export const AUTHENTICATOR_NAMES: Record<string, string> = {\n" +
+            `\t"${u1}": "Google Password Manager",\n\t"${u2}": "YubiKey",\n\t"${u3}": "iCloud Keychain",\n\t"${u4}": "YubiKey",\n};\n`,
+          "src/heroku.ts": `export const HEROKU_API_KEY = "${j("4f9c2b1e-7d3a-4c8e-", "9b6f-1a2d3e4f5a6b")}";\n`,
+          "src/cross-line.ts": `export const cfg = {\n\tapiKey:\n\t\t"${j("8e1d2c3b-4a5f-4e6d-", "8c7b-9a0b1c2d3e4f")}",\n};\n`,
+          "src/pair.ts": `export const pair = ["secret_token", "${j("c0ffee12-3456-4789-", "abcd-ef0123456789")}"];\n`,
+          "src/list.ts": `export const creds = [\n\t"api_key",\n\t"${u1}",\n];\n`,
+          "src/token.ts": `export const cfg = {\n\ttoken: \n\t\t"${u2}",\n};\n`,
+          "src/credential-label.ts": `export const M = {\n\t"${u3}": "api_key",\n\t"${u4}": "x",\n};\n`,
+        };
+        try {
+          for (const [file, text] of Object.entries(files)) {
+            await mkdir(dirname(join(temporaryRoot, file)), { recursive: true });
+            await writeFile(join(temporaryRoot, file), text, "utf8");
+          }
+          const result = (await client.callTool("codeinspectus_scan", { path: temporaryRoot, scanners: ["secret"] })).structuredContent;
+          const reported = new Set(result.findings.filter((x: any) => x.engines.includes("gitleaks")).map((x: any) => x.location.file));
+          assert(!reported.has("src/authenticators.ts"), "Gitleaks still reports the AAGUID map");
+          for (const file of Object.keys(files).filter((name) => name !== "src/authenticators.ts")) {
+            assert(reported.has(file), `Gitleaks no longer reports the control in ${file}: ${JSON.stringify([...reported])}`);
+          }
+        } finally {
+          await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
       // Design 4.6 with real Gitleaks output (--redact=100, so the SARIF never carries the value): a generic
       // secret in a test file that is also used in application code keeps its severity; a test-only one is
       // lowered. Values are assembled at run time so this source file holds no secret-shaped literal.
@@ -5768,6 +5840,623 @@ async function main() {
           assert(!text.includes(shared) && !text.includes(testOnly), "a secret value appears in the scan result");
         } finally {
           await rm(temporaryRoot, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // 4.1 M2: a due database update prompt reaches the agent in scan output, and nothing touches the network.
+      // An isolated HOME holds a Trivy DB stamped 3 days old (an empty placeholder: no engine reads it here) and a
+      // copy of the verified Trivy binary (an update refreshes databases only, so the prompt needs a ready engine;
+      // the scan never runs it). A preload replaces fetch with a recorder that fails, so any network attempt shows.
+      id: "E138 [engine] a due database update prompt appears in scan output with no network use; snoozing silences it",
+      fn: async () => {
+        const trivy = await resolveEngine("trivy").catch(() => undefined);
+        if (!trivy) throw new EvalSkip("trivy not installed (setup); the prompt needs a ready engine");
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e138-"));
+        const home = join(root, "home");
+        const project = join(root, "project");
+        const marker = join(root, "network-attempts.log");
+        const guard = join(root, "no-network.mjs");
+        const statePath = join(home, ".codeinspectus", "update-prompt.json");
+        const dbDir = join(home, ".codeinspectus", "trivy-cache", "db");
+        const downloadedAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000).toISOString();
+        await mkdir(dbDir, { recursive: true });
+        await mkdir(project, { recursive: true });
+        await mkdir(join(home, ".codeinspectus", "bin"), { recursive: true });
+        await cp(trivy.path, join(home, ".codeinspectus", "bin", basename(trivy.path)), { preserveTimestamps: true });
+        await writeFile(join(dbDir, "trivy.db"), "", "utf8");
+        await writeFile(join(dbDir, "metadata.json"), JSON.stringify({ Version: 2, DownloadedAt: downloadedAt, UpdatedAt: downloadedAt }), "utf8");
+        await writeFile(join(project, "app.js"), "export const answer = 42;\n", "utf8");
+        await writeFile(guard, [
+          'import { appendFileSync } from "node:fs";',
+          `const marker = ${JSON.stringify(marker)};`,
+          "globalThis.fetch = async (input) => { appendFileSync(marker, `${String(input)}\\n`); throw new Error(\"network blocked by E138\"); };",
+          "",
+        ].join("\n"), "utf8");
+        const server = new McpClient({ ...isolatedHome(home), NODE_OPTIONS: `--import=${pathToFileURL(guard).href}` });
+        const networkAttempts = async (): Promise<string> => readFile(marker, "utf8").catch(() => "");
+        try {
+          await server.init();
+          const due = (await server.callTool("codeinspectus_scan", { path: project, scanners: ["ai"] })).structuredContent;
+          const prompt = due.database_update;
+          assert(prompt?.due === true, `no database_update in a due scan: ${JSON.stringify(prompt)}`);
+          assert(prompt.question.startsWith("Security databases were last updated 3 days ago. Check for updates and download them now?"),
+            `unexpected question: ${prompt.question}`);
+          assert(prompt.question.includes("CodeInspectus uses the network only after you say yes, only to public update sources, and never sends your code."),
+            `question does not state the network rule: ${prompt.question}`);
+          // The Trivy DB is over 100 MB: the question names it, and the yes never pre-approves it (a separate yes does).
+          assert(/ This includes trivy-db \(~[\d.]+ MiB\), each over 100 MB\.$/.test(prompt.question),
+            `question does not name the large download: ${prompt.question}`);
+          assertExactJson(prompt.databases.map((database: any) => database.id), ["trivy-db"], "prompt databases");
+          assertExactJson(prompt.answers.map((answer: any) => answer.answer), ["yes", "not_now", "not_for_a_week"], "prompt answers");
+          assert(!prompt.answers[0].call.includes("confirm_large_downloads"), `the yes call pre-approves a large download: ${prompt.answers[0].call}`);
+          const rules = (await server.callTool("codeinspectus_list_rules", {})).structuredContent;
+          assert(rules.database_update?.due === true, "list_rules does not carry the due prompt");
+          assert((await networkAttempts()) === "", `scan or list_rules tried the network: ${await networkAttempts()}`);
+          assert((await readFile(statePath, "utf8").catch(() => undefined)) === undefined, "showing the prompt wrote an answer");
+
+          const snoozed = (await server.callTool("codeinspectus_setup", { action: "snooze", snooze: "not_now" })).structuredContent;
+          assert(snoozed.outcome === "snoozed", `snooze outcome ${snoozed.outcome}`);
+          const state = JSON.parse(await readFile(statePath, "utf8"));
+          assert(state.last_answer === "not_now" && Date.parse(state.next_prompt_at) > Date.now(), `snooze state wrong: ${JSON.stringify(state)}`);
+          const quiet = (await server.callTool("codeinspectus_scan", { path: project, scanners: ["ai"] })).structuredContent;
+          assert(quiet.database_update === undefined, "the prompt still appears after not_now");
+          assert((await networkAttempts()) === "", `the update flow tried the network: ${await networkAttempts()}`);
+        } finally {
+          server.close();
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // 4.1 M3: `init --dry-run --json` from the built CLI against an isolated HOME with fake assistants. It plans each
+      // client's exact step (a fake `claude` on PATH that records any run, Codex, Cursor with another server, Windsurf
+      // with a commented file), the four engines and the project's OSV npm database, and changes no file at all.
+      id: "E139 init --dry-run --json plans every detected assistant, engine, OSV database and large download, echoes no config content and changes nothing",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e139-"));
+        const home = join(root, "home");
+        const project = join(root, "project");
+        const bin = join(root, "bin");
+        const ran = join(root, "client-cli-ran.log");
+        try {
+          await mkdir(project, { recursive: true });
+          await mkdir(bin, { recursive: true });
+          await mkdir(join(home, ".codex"), { recursive: true });
+          await mkdir(join(home, ".cursor"), { recursive: true });
+          await mkdir(join(home, ".codeium", "windsurf"), { recursive: true });
+          await writeFile(join(home, ".cursor", "mcp.json"), '{\n  "mcpServers": { "other": { "command": "other" } }\n}\n', "utf8");
+          await writeFile(join(home, ".codeium", "windsurf", "mcp_config.json"), '{\n  // mine\n  "mcpServers": { "gh": { "env": { "T": \'SECRET-E139\' } } }\n}\n', "utf8");
+          await writeFile(join(project, "package-lock.json"), '{"lockfileVersion":3,"packages":{}}\n', "utf8");
+          if (process.platform === "win32") {
+            await writeFile(join(bin, "claude.cmd"), `@echo ran>> "${ran}"\r\n`, "utf8");
+          } else {
+            await writeFile(join(bin, "claude"), `#!/bin/sh\necho ran >> '${ran}'\n`, "utf8");
+            await chmod(join(bin, "claude"), 0o755);
+          }
+          const snapshot = async (): Promise<string> => {
+            const entries = (await readdir(root, { recursive: true })).map(String).sort();
+            const rows: string[] = [];
+            for (const entry of entries) {
+              const info = await stat(join(root, entry));
+              rows.push(`${entry} ${info.isFile() ? `${info.size} ${info.mtimeMs} ${await readFile(join(root, entry), "utf8")}` : "dir"}`);
+            }
+            return rows.join("\n");
+          };
+          const before = await snapshot();
+          const stdout = execFileSync(process.execPath, [resolve("dist/index.js"), "init", "--dry-run", "--json"], {
+            cwd: project,
+            encoding: "utf8",
+            env: { ...process.env, ...isolatedHome(home), PATH: bin, APPDATA: join(home, "AppData", "Roaming") },
+            stdio: ["ignore", "pipe", "pipe"],
+          });
+          const document = JSON.parse(stdout);
+          assert(document.dry_run === true, "not a dry run");
+          const steps = Object.fromEntries(document.plan.clients.map((step: any) => [step.client, step]));
+          assertExactJson(Object.keys(steps).sort(), ["claude", "codex", "cursor", "windsurf"], "detected clients");
+          // On Windows npx is a .cmd shim, so the registered entry runs it through cmd /c (src/init/clients.ts).
+          const claudeEntry = process.platform === "win32"
+            ? '{"command":"cmd","args":["/c","npx","-y","codeinspectus"]}'
+            : '{"command":"npx","args":["-y","codeinspectus"]}';
+          assertExactJson(steps.claude.argv, ["claude", "mcp", "add-json", "--scope", "user", "codeinspectus", claudeEntry], "Claude Code argv");
+          assert(steps.claude.kind === "command" && steps.claude.status === "add", `Claude Code step: ${JSON.stringify(steps.claude)}`);
+          assert(steps.codex.path === join(home, ".codex", "config.toml") && steps.codex.status === "add" && steps.codex.create === true,
+            `Codex step: ${JSON.stringify(steps.codex)}`);
+          assert(steps.cursor.path === join(home, ".cursor", "mcp.json") && steps.cursor.status === "add" && steps.cursor.create === false,
+            `Cursor step: ${JSON.stringify(steps.cursor)}`);
+          assert(steps.windsurf.status === "unparseable" && steps.windsurf.detail.includes('"codeinspectus"'),
+            `Windsurf step: ${JSON.stringify(steps.windsurf)}`);
+          assertExactJson(document.plan.engines.components.map((item: any) => item.id), ["opengrep", "gitleaks", "trivy", "osv-scanner"], "engines");
+          assert(document.plan.engines.components.every((item: any) => typeof item.license === "string" && item.license.length > 0), "an engine has no licence");
+          assert(document.plan.target === project, `target ${document.plan.target}`);
+          assert(document.plan.engines.osv_databases.some((database: any) => database.ecosystem === "npm"), "the project's npm database is not offered");
+          assert(document.plan.estimated_download_bytes > 0, "no total download");
+          const large = document.plan.large_downloads.map((item: any) => item.id);
+          assert(large.includes("trivy-db") && large.includes("osv:npm"), `downloads over 100 MB not listed: ${JSON.stringify(large)}`);
+          assert(!stdout.includes("SECRET"), "dry-run output echoed config content");
+          assert((await snapshot()) === before, "init --dry-run changed a file");
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // 4.1 M5 Ruling 1: a display id derives from the finding's fingerprint (and package), so it never moves
+      // when another finding appears. Engine-free: native AI checks only.
+      id: "E140 display ids are derived from fingerprints: rescans keep them, an added finding moves none, explain_finding resolves one",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e140-"));
+        const corpus = resolve(process.cwd(), "fixtures/llm-dynamic-execution-corpus/tp");
+        try {
+          await writeFile(join(root, "package.json"), "{}\n", "utf8");
+          for (const name of ["01-direct-eval.ts", "02-split-function.ts", "03-child-process-exec.ts"]) await cp(join(corpus, name), join(root, name));
+          const scanIds = async () => {
+            const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["ai"] })).structuredContent;
+            return { result, pairs: new Map<string, string>(result.findings.map((x: any) => [x.fingerprint, x.id])) };
+          };
+          const first = await scanIds();
+          assert(first.pairs.size === 3, `expected three native findings, got ${first.pairs.size}`);
+          for (const id of first.pairs.values()) assert(/^CI-[0-9a-f]{10}(?:-[1-9][0-9]*)?$/.test(id), `id ${id} does not match the display-id pattern`);
+          const second = await scanIds();
+          assertExactJson([...second.pairs].sort(), [...first.pairs].sort(), "a repeated scan changed the (fingerprint, id) pairs");
+          await cp(join(corpus, "04-anthropic-exec-sync.ts"), join(root, "00-planted.ts"));
+          const third = await scanIds();
+          assert(third.pairs.size === 4, `expected four findings after planting one, got ${third.pairs.size}`);
+          for (const [fingerprint, id] of first.pairs) assert(third.pairs.get(fingerprint) === id, `an added finding moved ${id} to ${third.pairs.get(fingerprint)}`);
+          assert(new Set(third.pairs.values()).size === 4, "ids are not unique");
+          const target = third.result.findings[0];
+          const explained = (await client.callTool("codeinspectus_explain_finding", { scan_id: third.result.scan_id, finding_id: target.id })).structuredContent;
+          assert(explained.finding.fingerprint === target.fingerprint, "explain_finding did not resolve the new id");
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // 4.1 M5 Ruling 7: Gitleaks (whole block) and Trivy (inner lines) report one PEM key with different ranges;
+      // it is one finding. The key is generated at run time and never committed.
+      id: "E141 [engine] a private key Gitleaks and Trivy both report is one finding carrying both engines",
+      engineDep: "gitleaks",
+      fn: async () => {
+        if (!engineRan("trivy")) throw new EvalSkip("trivy did not run (repair-engines)");
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e141-"));
+        try {
+          const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+          await mkdir(join(root, "deploy"), { recursive: true });
+          await writeFile(join(root, "deploy", "server.key"), privateKey.export({ type: "pkcs1", format: "pem" }).toString(), "utf8");
+          const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["secret"] })).structuredContent;
+          const secrets = result.findings.filter((x: any) => x.location.file === "deploy/server.key" && (x.is_secret || x.cwe.includes("CWE-798")));
+          assert(secrets.length === 1, `expected one secret finding for the key, got ${secrets.length}: ${JSON.stringify(secrets.map((x: any) => [x.engine, x.rule_id, x.location.start_line, x.location.end_line]))}`);
+          const engines = new Set(secrets[0].engines);
+          assert(engines.has("gitleaks") && engines.has("trivy"), `engines ${[...engines].join(", ")} do not include both Gitleaks and Trivy`);
+          assert(!JSON.stringify(result).includes("MII"), "key material reached the scan output");
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // 4.1 M5 Ruling 9: osv-scanner reads requirements.txt `>=` lower bounds as the installed version.
+      id: "E143 [engine] requirements.txt >= and ~= versions read as a declared minimum with low confidence; == pins do not",
+      engineDep: "osv-pypi",
+      fn: async () => {
+        const result = (await client.callTool("codeinspectus_scan", { path: resolve(process.cwd(), "fixtures/output-quality/python"), scanners: ["vuln"] })).structuredContent;
+        const about = (name: string) => result.findings.filter((x: any) => x.package?.name?.toLowerCase() === name);
+        assert(about("urllib3").length > 0, "no finding for urllib3>=2.2.2");
+        for (const x of about("urllib3")) {
+          assert(x.confidence === "low" && x.title.endsWith(", declared minimum)") && x.message.includes("is the lowest version it allows"),
+            `urllib3 ${x.rule_id} does not read as a declared minimum: ${x.confidence} ${x.title}`);
+        }
+        for (const x of about("requests")) {
+          assert(!x.title.includes("declared minimum") && !x.message.includes("lowest version it allows"), `requests==2.31.0 ${x.rule_id} read as a declared minimum`);
+        }
+      },
+    },
+    {
+      // 4.1 M5 Ruling 4: Trivy reports no Locations for pnpm-lock.yaml; its findings now point at the package entry.
+      id: "E142 [engine] Trivy pnpm-lock.yaml findings point at the package's entry, not line 1",
+      engineDep: "trivy-vuln",
+      fn: async () => {
+        const root = resolve(process.cwd(), "fixtures/output-quality/pnpm");
+        const lines = (await readFile(join(root, "pnpm-lock.yaml"), "utf8")).split(/\r?\n/);
+        const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["vuln"] })).structuredContent;
+        const trivy = result.findings.filter((x: any) => x.engines.includes("trivy") && x.finding_kind === "vulnerability" && x.package);
+        assert(trivy.length > 0, "no Trivy vulnerability finding for the pnpm fixture");
+        for (const finding of trivy) {
+          assert(finding.location.start_line > 1, `${finding.rule_id} (${finding.package.name}) still reads line 1`);
+          const line = lines[finding.location.start_line - 1] ?? "";
+          assert(line.includes(`${finding.package.name}@`), `${finding.rule_id}: line ${finding.location.start_line} ("${line}") does not name ${finding.package.name}`);
+        }
+      },
+    },
+    {
+      // 4.1 M6: identified third-party libraries leave the bundle-skipping pass (Composer packages of a renamed
+      // vendor tree, from installed.json; a JS file whose name and banner name the same table library). A
+      // Composer `path` package, first-party PHP and a banner-less bootstrap.js stay in it; the baseline rules
+      // still scan the library copy; the gap and a coverage note name what was skipped. Security review: name and
+      // banner alone never suffice (the copy must be minified or of a sourced release size, with no risky code),
+      // so a fake jquery-1.7.1.js over first-party code stays in the pack pass; Gitleaks and the native checks
+      // never see the pack skip list.
+      id: "E144 [engine] identified libraries leave the Synvoya pack pass, first-party code stays",
+      engineDep: "opengrep",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e144-"));
+        try {
+          const put = async (rel: string, content: string): Promise<void> => {
+            await mkdir(join(root, rel, ".."), { recursive: true });
+            await writeFile(join(root, rel), content, "utf8");
+          };
+          const tls = "<?php\nfunction fetch($u) { $c = curl_init($u); curl_setopt($c, CURLOPT_SSL_VERIFYPEER, false); return curl_exec($c); }\n";
+          await put("lib/pdf/autoload.php", "<?php // generated\n");
+          await put("lib/pdf/composer/ClassLoader.php", "<?php // generated\n");
+          await put("lib/pdf/composer/installed.json", JSON.stringify({ packages: [
+            { name: "acme/pdf", version: "v1.0.0", type: "library", dist: { type: "zip", url: "https://example.invalid/pdf.zip" }, "install-path": "../acme/pdf" },
+            { name: "acme/local", version: "dev-main", type: "library", dist: { type: "path", url: "../../packages/local" }, "install-path": "../acme/local" },
+          ] }));
+          await put("lib/pdf/acme/pdf/src/Out.php", tls);
+          await put("lib/pdf/acme/local/src/Out.php", tls);
+          await put("app/Http.php", tls);
+          // Readable handler code, padded past the 1,000-byte size under which routing reads no file.
+          const body = [
+            'const cp = require("child_process");',
+            "exports.ping = (req, res) => {",
+            '  const cmd = "ping -c 1 " + req.query.host;',
+            "  cp.exec(cmd, (err, out) => res.send(out));",
+            "};",
+            'exports.user = (req, res) => db.query("SELECT * FROM users WHERE id = " + req.query.id);',
+            ...Array.from({ length: 30 }, (_, index) => `var setting${index} = { name: "setting-${index}", enabled: ${index % 2 === 0} };`),
+            "exports.run = (code) => eval(code);",
+            "",
+          ].join("\n");
+          // A minified library copy: a DOM XSS sink (baseline Opengrep), a weak cipher (native check) and a secret (Gitleaks).
+          const filler = Array.from({ length: 40 }, (_, index) => `function a${index}(e,t){return e&&t?e.call(t,n[${index}]):void 0};`).join("");
+          // One signal per line, so no two findings share a line; the dense filler lines keep the file minified.
+          const library = [filler, 'document.getElementById("out").innerHTML = location.hash;', 'var c = require("crypto").createCipher("aes192", k);',
+            `var stripeKey = "${RAW_SECRET}";`, filler].join("\n");
+          await put("public/js/knockout.js", `/*!\n * Knockout JavaScript library v3.5.1\n * License: MIT\n */\n${library}\n`);
+          await put("public/js/bootstrap.js", body);
+          // The right name and banner over readable first-party code that spawns a shell: not a library.
+          await put("public/js/jquery-1.7.1.js",
+            `/*!\n * jQuery JavaScript Library v1.7.1\n * http://jquery.com/\n */\n${body}const child_process = require("child_process");\nexports.shell = (req, res) => child_process.exec(req.query.cmd);\n`);
+
+          const first = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["sast", "secret"], accept_gaps: ["third-party-bundles"] })).structuredContent;
+          assert(first.engine_details.some((engine: any) => engine.engine === "opengrep" && engine.ran), "Opengrep did not run");
+          const where = (rule: string) => first.findings.filter((x: any) => x.rule_id === rule).map((x: any) => x.location.file).sort();
+          const tlsFiles = where("syn-php-tls-verification-disabled");
+          assert(tlsFiles.includes("app/Http.php") && tlsFiles.includes("lib/pdf/acme/local/src/Out.php") && !tlsFiles.includes("lib/pdf/acme/pdf/src/Out.php"),
+            `the TLS pack rule should fire on first-party and the path package only: ${JSON.stringify(tlsFiles)}`);
+          const command = where("syn-node-command-injection");
+          assert(command.includes("public/js/bootstrap.js") && command.includes("public/js/jquery-1.7.1.js"),
+            `the command-injection pack rule should fire on bootstrap.js and the fake jquery-1.7.1.js: ${JSON.stringify(command)}`);
+          assert(!first.findings.some((x: any) => /^syn-/.test(x.rule_id) && x.location.file === "public/js/knockout.js"), "the pack pass scanned the identified library");
+          // Every other check still reads the identified library.
+          const inLibrary = first.findings.filter((x: any) => x.location.file === "public/js/knockout.js");
+          assert(inLibrary.some((x: any) => x.rule_id === "ci-baseline-dom-xss-innerhtml" && x.engines.includes("opengrep")),
+            `the baseline Opengrep rules no longer scan the identified library: ${JSON.stringify(inLibrary.map((x: any) => [x.rule_id, x.engines]))}`);
+          assert(inLibrary.some((x: any) => x.engines.includes("codeinspectus-ai")),
+            `the native checks no longer scan the identified library: ${JSON.stringify(inLibrary.map((x: any) => [x.rule_id, x.engines]))}`);
+          if (first.engine_details.some((engine: any) => engine.engine === "gitleaks" && engine.ran)) {
+            assert(inLibrary.some((x: any) => x.engines.includes("gitleaks")), "Gitleaks no longer scans the identified library");
+          }
+          assertExactJson(first.coverage_gaps?.find((gap: any) => gap.id === "third-party-bundles"),
+            { id: "third-party-bundles", files: 2, examples: ["lib/pdf/acme/pdf/src/Out.php (identified by Composer installed.json)", "public/js/knockout.js (identified by name and banner)"] },
+            "the skipped library files are not the declared gap");
+          assert(first.accepted_gaps?.includes("third-party-bundles"), "third-party-bundles could not be accepted");
+          assert(!first.warnings.some((warning: string) => warning.startsWith("Opengrep SAST coverage partial")),
+            `the pack pass left a coverage warning: ${JSON.stringify(first.warnings)}`);
+          const note = "Bundle routing identified 2 third-party libraries by name and version; the bundle-skipping Opengrep pass " +
+            "(syn-php-*, syn-node-*, ci-baseline-sql-injection-string-build) skipped their 2 file(s), part of third-party-bundles " +
+            "(the other baseline rules still scanned them): acme/pdf v1.0.0 (lib/pdf/acme/pdf/), knockout 3.5.1 (public/js/knockout.js).";
+          const notes = (first.coverage_notes ?? []).filter((entry: any) => entry.component === "engine:opengrep").map((entry: any) => entry.detail);
+          assert(notes.includes(note), `the identified-libraries note is missing or different: ${JSON.stringify(notes)}`);
+
+          const rescan = (await client.callTool("codeinspectus_rescan", { path: root, prior_scan_id: first.scan_id })).structuredContent;
+          assert(!rescan.resolved.some((x: any) => /^syn-/.test(x.rule_id)),
+            `a pack finding resolved on an unchanged tree: ${JSON.stringify(rescan.resolved.map((x: any) => x.rule_id))}`);
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // 4.1 M6 fix round 2: rescan proof records, per Opengrep pass, the files it could not fully analyze. The
+      // recorded path must be the one findings carry, or a timeout on such a file would still let its findings
+      // resolve. A per-file engine error is forced with Opengrep's own --max-memory=1 (a real report), on file
+      // names with a space and non-ASCII characters; the findings come from a normal scan of the same tree.
+      id: "E145 [engine] files Opengrep could not analyze are recorded under the same path as their findings (spaces, non-ASCII)",
+      engineDep: "opengrep",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e145-"));
+        try {
+          const target = join(root, "target");
+          const scratch = join(root, "scratch");
+          const names = ["a b/x.js", "\u00fc/\u00f1.js"];
+          for (const name of names) {
+            await mkdir(join(target, dirname(name)), { recursive: true });
+            await writeFile(join(target, name), "exports.run = (code) => eval(code);\n", "utf8");
+          }
+          await mkdir(scratch);
+          const scan = (await client.callTool("codeinspectus_scan", { path: target, scanners: ["sast"] })).structuredContent;
+          const findingFiles = [...new Set(scan.findings.filter((x: any) => x.rule_id === "ci-baseline-dangerous-eval").map((x: any) => x.location.file))].sort();
+          assert(findingFiles.length === 2, `expected a dangerous-eval finding in each file: ${JSON.stringify(scan.findings.map((x: any) => [x.rule_id, x.location.file]))}`);
+
+          await writeFile(join(scratch, OPENGREP_EFFECTIVE_IGNORE_NAME), effectiveOpengrepIgnoreList(await readFile(OPENGREP_IGNORE_FILE, "utf8")), "utf8");
+          const bin = await resolveEngine("opengrep");
+          const report = join(scratch, "report.json");
+          const args = buildOpengrepArgs(target, join(scratch, "report.sarif"), report, (await opengrepRuleSets()).baseline);
+          args.splice(args.length - 1, 0, "--max-memory=1");
+          await execBinary(bin.path, args, { cwd: target, offline: true, env: opengrepExecEnvironment(scratch) });
+          const unchecked = opengrepIncompleteFiles(JSON.parse(await readFile(report, "utf8")), target);
+          if (unchecked === "all") throw new Error("the forced per-file errors were not attributed to files (pass recorded as all)");
+          assertExactJson(unchecked.files, findingFiles, "the recorded unchecked paths differ from the findings' location.file");
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // 4.1 M8 Ruling 1: MinIO RELEASE.<timestamp> tags compare; the fix tag is clean; `latest` is a note only.
+      id: "E146 MinIO RELEASE tags: an affected tag is SYN-2026-268 and SYN-2026-276, the fix tag resolves both, latest is a note",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e146-"));
+        const compose = (tag: string) => `services:\n  s3:\n    image: minio/minio:${tag}\n`;
+        const MINIO_FIX = "RELEASE.2023-03-20T20-16-18Z";
+        try {
+          await writeFile(join(root, "compose.yaml"), compose("RELEASE.2023-03-13T19-46-17Z"), "utf8");
+          const prior = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["vuln"] })).structuredContent;
+          const found = synvoyaFindings(prior.findings).filter((finding: any) => ["SYN-2026-268", "SYN-2026-276"].includes(finding.rule_id));
+          assertExactJson(found.map((finding: any) => finding.rule_id).sort(), ["SYN-2026-268", "SYN-2026-276"], "the affected MinIO tag did not give both advisories");
+          for (const finding of found) {
+            assert(finding.confidence === "high" && finding.location.file === "compose.yaml" && finding.location.start_line === 3, `${finding.rule_id} confidence or location wrong`);
+            assert(finding.title.includes("MinIO RELEASE.2023-03-13T19-46-17Z declared in compose.yaml"), `${finding.rule_id} title wrong: ${finding.title}`);
+            assert(finding.remediation.summary.includes(MINIO_FIX), `${finding.rule_id} fix does not name ${MINIO_FIX}: ${finding.remediation.summary}`);
+          }
+          await writeFile(join(root, "compose.yaml"), compose(MINIO_FIX), "utf8");
+          const fixed = (await client.callTool("codeinspectus_rescan", { path: root, prior_scan_id: prior.scan_id, scanners: ["vuln"] })).structuredContent;
+          assertExactJson(synvoyaFindings(fixed.resolved).map((finding: any) => finding.rule_id).sort(), ["SYN-2026-268", "SYN-2026-276"], `the fix tag did not resolve both: ${JSON.stringify(fixed.summary)} ${fixed.not_rechecked_note ?? ""}`);
+          await writeFile(join(root, "compose.yaml"), compose("latest"), "utf8");
+          const latest = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["vuln"] })).structuredContent;
+          assert(synvoyaFindings(latest.findings).length === 0, "minio/minio:latest produced a Synvoya finding");
+          assert((latest.coverage_notes ?? []).some((note: any) => note.component === "engine:synvoya" && note.detail.includes("compose.yaml:3") && note.detail.includes("is tagged latest")),
+            `no note for minio/minio:latest: ${JSON.stringify(latest.coverage_notes)}`);
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // 4.1 M8 Ruling 3: a multi-stage Dockerfile with a private-mirror stage still confirms a fix in another stage;
+      // a private mirror of the same image does not.
+      id: "E147 a node fix in a multi-stage Dockerfile resolves while a private php stage stays a note; a private node mirror reads not_rechecked",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e147-"));
+        const dockerfile = (node: string) => `FROM registry.internal/php:8.1 AS php\nFROM ${node}\n`;
+        try {
+          await writeFile(join(root, "Dockerfile"), dockerfile("node:22.1.0"), "utf8");
+          const prior = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["vuln"] })).structuredContent;
+          const node = synvoyaFindings(prior.findings).filter((finding: any) => finding.location.file === "Dockerfile" && finding.location.start_line === 2);
+          assert(node.length > 0, "the node:22.1.0 stage produced no Synvoya finding");
+          assert(!("synvoya_subjects" in prior), "the scan output shows the stored per-subject evidence");
+          const fingerprints = node.map((finding: any) => finding.fingerprint).sort();
+          await writeFile(join(root, "Dockerfile"), dockerfile("registry.internal/node:22"), "utf8");
+          const mirrored = (await client.callTool("codeinspectus_rescan", { path: root, prior_scan_id: prior.scan_id, scanners: ["vuln"] })).structuredContent;
+          assertExactJson(synvoyaFindings(mirrored.not_rechecked).map((finding: any) => finding.fingerprint).sort(), fingerprints, "a private node mirror did not leave the node findings not_rechecked");
+          assert(synvoyaFindings(mirrored.resolved).length === 0, "a private node mirror confirmed a fix");
+          await writeFile(join(root, "Dockerfile"), dockerfile("node:22.23.4"), "utf8");
+          const fixed = (await client.callTool("codeinspectus_rescan", { path: root, prior_scan_id: prior.scan_id, scanners: ["vuln"] })).structuredContent;
+          assertExactJson(synvoyaFindings(fixed.resolved).map((finding: any) => finding.fingerprint).sort(), fingerprints, `the node fix did not resolve: ${JSON.stringify(fixed.summary)} ${fixed.not_rechecked_note ?? ""}`);
+          const fresh = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["vuln"] })).structuredContent;
+          assert((fresh.coverage_notes ?? []).some((note: any) => note.detail.includes("Dockerfile:1") && note.detail.includes("private registry")), "the private php stage is no longer a note");
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // 4.1 M8 Ruling 2: PHP, .NET, Python, Ruby and PostgreSQL end-of-life tables list every line between their oldest
+      // and newest cycle, so a range across lines is judged; one that reaches a supported line is not end-of-life.
+      id: "E148 end-of-life ranges across complete release lines: PHP >=7.4 <8.1 and postgres:9 are end-of-life; ^7.4 || ^8.3 and postgres:17 are not",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e148-"));
+        try {
+          await writeFile(join(root, "composer.json"), '{\n  "require": {\n    "php": ">=7.4 <8.1"\n  }\n}\n', "utf8");
+          await writeFile(join(root, "Dockerfile"), "FROM postgres:9\n", "utf8");
+          const tp = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["vuln"] })).structuredContent;
+          const found = synvoyaFindings(tp.findings);
+          const postgres = found.find((finding: any) => finding.rule_id === "SYN-EOL-postgres-9.6");
+          assert(postgres?.title === "postgres 9.0/9.1/9.2/9.3/9.4/9.5/9.6 is end-of-life (declared in Dockerfile)", `postgres:9 EOL finding wrong: ${postgres?.title ?? found.map((x: any) => x.rule_id).join(", ")}`);
+          // PHP's own end-of-life advisory takes the place of SYN-EOL-php-*; every line of the range is end-of-life now.
+          const php = found.find((finding: any) => finding.rule_id === "SYN-2026-015");
+          assert(php?.confidence === "high" && php.location.file === "composer.json", `PHP >=7.4 <8.1 end-of-life finding wrong: ${JSON.stringify(php && { confidence: php.confidence, file: php.location.file })}`);
+          assert(php.message.includes("Every release line it can resolve to is end-of-life"), `PHP finding is not an every-line end-of-life judgement: ${php.message}`);
+          await writeFile(join(root, "composer.json"), '{\n  "require": {\n    "php": "^7.4 || ^8.3"\n  }\n}\n', "utf8");
+          await writeFile(join(root, "Dockerfile"), "FROM postgres:17\n", "utf8");
+          const fp = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["vuln"] })).structuredContent;
+          const eol = synvoyaFindings(fp.findings).filter((finding: any) => finding.rule_id.startsWith("SYN-EOL-") || finding.rule_id === "SYN-2026-015");
+          assert(eol.length === 0, `a range reaching a supported line was called end-of-life: ${eol.map((x: any) => x.rule_id).join(", ")}`);
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // 4.1 M8 Ruling 4 and Task 6: a single workflow file is shown by its bare name, as the other engines show a file
+      // target, and a fix in it resolves.
+      id: "E149 a single workflow file scan shows Synvoya findings, notes and gap examples at ci.yml and resolves a fix in it",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e149-"));
+        const workflow = join(root, ".github", "workflows", "ci.yml");
+        const body = (version: string) => `on: push\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/setup-node@v4\n        with:\n          node-version: ${version}\n`;
+        try {
+          await mkdir(join(root, ".github", "workflows"), { recursive: true });
+          await writeFile(workflow, body("20.1.0"), "utf8");
+          const prior = (await client.callTool("codeinspectus_scan", { path: workflow, scanners: ["vuln"] })).structuredContent;
+          // The Synvoya dataset's runtime findings (an installed Actions database may add GHSA findings for the action itself).
+          const found = synvoyaFindings(prior.findings).filter((finding: any) => finding.rule_id.startsWith("SYN-"));
+          assert(found.length > 0, "node-version 20.1.0 in a single workflow file produced no Synvoya finding");
+          for (const finding of found) {
+            assert(finding.location.file === "ci.yml", `${finding.rule_id} is at ${finding.location.file}, not ci.yml`);
+            assert(!finding.title.includes(".github/workflows/") && !finding.message.includes(".github/workflows/"), `${finding.rule_id} names the walked path`);
+          }
+          const notes = (prior.coverage_notes ?? []).filter((note: any) => note.component === "engine:synvoya").map((note: any) => note.detail);
+          assert(notes.every((detail: string) => !detail.includes(".github/workflows/")), `a Synvoya note names the walked path: ${JSON.stringify(notes)}`);
+          const gap = (prior.coverage_gaps ?? []).find((entry: any) => entry.id === "actions-unchecked");
+          assert(gap === undefined || gap.examples.every((example: string) => example.endsWith("(ci.yml)")), `actions-unchecked examples do not name ci.yml: ${JSON.stringify(gap)}`);
+          await writeFile(workflow, body("22.23.4"), "utf8");
+          const fixed = (await client.callTool("codeinspectus_rescan", { path: workflow, prior_scan_id: prior.scan_id, scanners: ["vuln"] })).structuredContent;
+          assertExactJson(synvoyaFindings(fixed.resolved).map((finding: any) => finding.fingerprint).sort(), found.map((finding: any) => finding.fingerprint).sort(),
+            `the fix did not resolve the single-file findings: ${JSON.stringify(fixed.summary)} ${fixed.not_rechecked_note ?? ""}`);
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // 4.1 M7 (Ruling 10): both implementations report MD5/SHA-1 only in a credential context. The parity
+      // runner proves the native rule and the Opengrep rule (the fallback) agree exactly on each folder.
+      id: "E150 [engine] weak hash fires only in a credential context, natively and in Opengrep alike",
+      engineDep: "opengrep",
+      fn: async () => {
+        const dir = resolve(OPENGREP_RULES_FIXTURE, "ci-baseline-weak-hash");
+        const [tp, fp, gap] = await Promise.all([
+          runOpengrepShadowParity(resolve(dir, "tp")),
+          runOpengrepShadowParity(resolve(dir, "fp")),
+          runOpengrepShadowParity(resolve(dir, "known-gap")),
+        ]);
+        for (const [kind, report] of [["tp", tp], ["fp", fp], ["known-gap", gap]] as const) {
+          assert(report.passed, `weak-hash ${kind} parity failed: ${JSON.stringify(report.comparison)}`);
+        }
+        assert(tp.comparison.reference_count === 5 && tp.comparison.candidate_count === 5 && tp.comparison.matched_count === 5,
+          `weak-hash credential contexts changed: ${JSON.stringify(tp.comparison)}`);
+        assert(fp.comparison.reference_count === 0 && gap.comparison.reference_count === 0,
+          "weak-hash fired outside a credential context");
+        const scan = (await client.callTool("codeinspectus_scan", { path: dir, scanners: ["sast"], max_findings: 200 })).structuredContent;
+        const hits = scan.findings.filter((finding: any) => finding.rule_id === "ci-baseline-weak-hash");
+        assert(hits.length === 5 && hits.every((finding: any) => finding.location.file.startsWith("tp/") && finding.engine === "codeinspectus-ai"),
+          `weak-hash scan findings were not the five native credential-context hits: ${JSON.stringify(hits.map((x: any) => [x.location.file, x.location.start_line, x.engine]))}`);
+      },
+    },
+    {
+      // 4.1 M9 Task 10: the precision classes Tasks 2-6 fixed stay fixed through the whole MCP scan, the real variants
+      // still fire, and each experimental native rule (Ruling 4) is not reported and is disclosed. Engine-free.
+      id: "E151 native AI precision classes",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e151-"));
+        const scanAi = async (path: string): Promise<any> =>
+          (await client.callTool("codeinspectus_scan", { path, scanners: ["ai"], max_findings: 500 })).structuredContent;
+        const API_RULES = ["ci-ai-client-error-leak", "ci-ai-sensitive-api-response", "ci-ai-unvalidated-request-write", "ci-ai-sensitive-log"];
+        try {
+          // FP classes (Tasks 3-4 and A1): socket/XHR receivers, issued credentials, constant messages, logged metadata,
+          // destructured rest, nested call arguments, id-shaped keys.
+          const apiFp = join(root, "api-fp");
+          await mkdir(apiFp);
+          for (const name of (await readdir(join(API_BOUNDARY_FIXTURE, "fp"))).filter((entry) => /^(1[3-7]|19|2[0-25])-/.test(entry) || entry === "billing")) {
+            await cp(join(API_BOUNDARY_FIXTURE, "fp", name), join(apiFp, name), { recursive: true });
+          }
+          const fpScan = await scanAi(apiFp);
+          const apiHits = fpScan.findings.filter((finding: any) => API_RULES.includes(finding.rule_id));
+          assert(apiHits.length === 0, `API-boundary FP classes fired: ${JSON.stringify(apiHits.map((x: any) => [x.rule_id, x.location.file]))}`);
+          // Task 6: event text used only as a boolean operand; Flutter literal log text.
+          const actionsFp = await scanAi(GITHUB_ACTIONS_FP_FIXTURE);
+          assert(!actionsFp.findings.some((finding: any) => finding.rule_id === "ci-github-actions-untrusted-expression-command"),
+            "Actions boolean-operand FP fixture fired");
+          const flutterFp = await scanAi(resolve(FLUTTER_FIXTURE, "fp"));
+          assert(!flutterFp.findings.some((finding: any) => finding.rule_id === "ci-flutter-sensitive-log"), "Flutter literal-log FP fixture fired");
+
+          // The real variants still fire.
+          const actionsTp = await scanAi(GITHUB_ACTIONS_TP_FIXTURE);
+          assert(actionsTp.findings.some((finding: any) => finding.rule_id === "ci-github-actions-untrusted-expression-command"),
+            "Actions untrusted-expression TP no longer fires");
+          // Task 2: a copy in e2e/ is reported and lowered, a cypress/ copy is skipped, src/ keeps its severity.
+          const routed = join(root, "routed");
+          const write = await readFile(join(API_BOUNDARY_FIXTURE, "tp", "13-request-spread-write.ts"), "utf8");
+          const leak = await readFile(join(API_BOUNDARY_FIXTURE, "tp", "01-error-message-response.ts"), "utf8");
+          for (const dir of ["src", "e2e", "cypress"]) {
+            await mkdir(join(routed, dir), { recursive: true });
+            await writeFile(join(routed, dir, "write.ts"), write, "utf8");
+          }
+          await writeFile(join(routed, "src", "leak.ts"), leak, "utf8");
+          const routedScan = await scanAi(routed);
+          const writes = routedScan.findings.filter((finding: any) => finding.rule_id === "ci-ai-unvalidated-request-write");
+          const at = (dir: string) => writes.filter((finding: any) => finding.location.file === `${dir}/write.ts`);
+          assert(at("src").length === 1 && at("src")[0].severity === "high", "src/ unvalidated write lost its finding or severity");
+          assert(at("e2e").length === 1 && at("e2e")[0].severity === "low" && at("e2e")[0].title.startsWith("Test/example context"),
+            "e2e/ copy was not reported at low severity");
+          assert(at("cypress").length === 0, "cypress/ copy was reported");
+          const leaks = routedScan.findings.filter((finding: any) => finding.rule_id === "ci-ai-client-error-leak");
+          assert(leaks.length === 1 && leaks[0].severity === "low" && leaks[0].confidence === "low",
+            "client-error-leak must fire at low severity and low confidence (fresh-set gate)");
+
+          // Ruling 4: one assertion per experimental native rule (not reported, limitation present).
+          const experimental = join(root, "experimental");
+          await mkdir(experimental);
+          await cp(join(API_BOUNDARY_FIXTURE, "tp", "04-sensitive-response.ts"), join(experimental, "04-sensitive-response.ts"));
+          await cp(join(API_BOUNDARY_FIXTURE, "tp", "07-sensitive-log.ts"), join(experimental, "07-sensitive-log.ts"));
+          // On a client-reachable path (src/), where the client-secrets analyzer reads it.
+          await mkdir(join(experimental, "src"));
+          await cp(join(FIXTURE, "src", "config.ts"), join(experimental, "src", "config.ts"));
+          const experimentalScan = await scanAi(experimental);
+          const lr = (await client.callTool("codeinspectus_list_rules", {})).structuredContent;
+          const limitations: string[] = lr.native_packs.find((pack: any) => pack.id === "javascript-typescript")?.limitations ?? [];
+          const coverage = experimentalScan.pack_coverage.find((pack: any) => pack.pack_id === "javascript-typescript");
+          // Maintainer decision (2026-11-15): ci-ai-client-hardcoded-secret failed the gate but ships as in 4.0.
+          const secret = experimentalScan.findings.filter((finding: any) => finding.rule_id === "ci-ai-client-hardcoded-secret");
+          assert(secret.length === 1 && secret[0].location.file === "src/config.ts" && secret[0].severity === "critical",
+            "ci-ai-client-hardcoded-secret must be reported at critical on experimental/src/config.ts (owner override)");
+          for (const [rule, precision] of [
+            ["ci-ai-sensitive-api-response", "0/5"],
+            ["ci-ai-sensitive-log", "6/17"],
+          ] as const) {
+            const line = `${rule} is experimental in 4.1 and not reported (fresh-set precision ${precision} triaged hits).`;
+            assert(!experimentalScan.findings.some((finding: any) => finding.rule_id === rule) &&
+              !lr.custom_rules.some((entry: any) => entry.id === rule) &&
+              limitations.includes(line) && coverage?.limitations?.includes(line),
+              `${rule} must be unreported, absent from list_rules and disclosed in the pack limitations`);
+          }
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      // 4.1 M9 Task 10: Python baseline precision through the real Opengrep binary.
+      id: "E152 [engine] Python baseline precision",
+      engineDep: "opengrep",
+      fn: async () => {
+        const root = await mkdtemp(join(await realpath(tmpdir()), "codeinspectus-e152-"));
+        const sql = resolve(OPENGREP_RULES_FIXTURE, "ci-baseline-sql-injection-python");
+        try {
+          // Constant-only SQL (module literals, Alembic/Django migrations) is silent; a mixed f-string fires (low/low).
+          await cp(resolve(sql, "fp"), join(root, "constant"), { recursive: true });
+          await mkdir(join(root, "mixed"));
+          await cp(resolve(sql, "tp", "02_mixed_fstring.py"), join(root, "mixed", "02_mixed_fstring.py"));
+          // Task 2: a deserialization in test_main.py is reported at low, not dropped.
+          await mkdir(join(root, "service"));
+          await cp(resolve(OPENGREP_RULES_FIXTURE, "ci-baseline-insecure-deserialization-python", "tp", "01_pickle.py"), join(root, "service", "test_main.py"));
+          // The experimental rules are not loaded: an md5 password hash and an eval of request text report nothing.
+          await mkdir(join(root, "experimental"));
+          // Written inline (the bodies of fixtures/security-baseline-experimental/…/tp/02_md5_password.py and
+          // 01_eval.py): that folder is dev-only and absent from the public projection, where this eval also runs.
+          await writeFile(join(root, "experimental", "hash.py"),
+            "import hashlib\n\n\ndef store(pw: bytes) -> str:\n    return hashlib.md5(pw).hexdigest()\n\n\n" +
+            "def legacy(pw: bytes) -> str:\n    return hashlib.sha1(pw, usedforsecurity=True).hexdigest()\n", "utf8");
+          await writeFile(join(root, "experimental", "evaluate.py"), "def run(expr):\n    return eval(expr)\n", "utf8");
+          await writeFile(join(root, "experimental", "digest.py"), "import hashlib\n\ndef etag(body):\n    return hashlib.md5(body, usedforsecurity=False).hexdigest()\n", "utf8");
+          const result = (await client.callTool("codeinspectus_scan", { path: root, scanners: ["sast"], max_findings: 500 })).structuredContent;
+          const sqlHits = result.findings.filter((finding: any) => finding.rule_id === "ci-baseline-sql-injection-python");
+          assert(sqlHits.length >= 1 && sqlHits.every((finding: any) => finding.location.file.startsWith("mixed/")),
+            `Python SQL constant-only queries fired or the mixed f-string did not: ${JSON.stringify(sqlHits.map((x: any) => x.location.file))}`);
+          assert(sqlHits.every((finding: any) => finding.severity === "low"), "Python SQL rule must report at low severity (fresh-set gate)");
+          const pickle = result.findings.filter((finding: any) => finding.rule_id === "ci-baseline-insecure-deserialization-python");
+          // Routing reports a test_main.py finding at low, never drops it; the rule is already low/low after the gate, so
+          // routing has nothing left to lower and adds no context prefix.
+          assert(pickle.length === 1 && pickle[0].location.file === "service/test_main.py" && pickle[0].severity === "low" &&
+            pickle[0].confidence === "low", "test_main.py deserialization was not reported at low severity");
+          for (const rule of ["ci-baseline-weak-hash-python", "ci-baseline-eval-python"]) {
+            assert(!result.findings.some((finding: any) => finding.rule_id === rule), `${rule} is experimental and must not report`);
+          }
+        } finally {
+          await rm(root, { recursive: true, force: true });
         }
       },
     },

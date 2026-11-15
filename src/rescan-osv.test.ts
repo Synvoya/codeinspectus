@@ -28,6 +28,15 @@ const PYPI_RECORD = vi.hoisted((): OsvDbRecord => ({
   recorded_at: "2026-10-30T10:00:00.000Z",
 }));
 
+const NPM_RECORD = vi.hoisted((): OsvDbRecord => ({
+  component: "osv-scanner:vulnerability-db:npm",
+  ecosystem: "npm",
+  signature: `sha256:${"c".repeat(64)}`,
+  source_url: "https://osv-vulnerabilities.storage.googleapis.com/npm/all.zip",
+  bytes: 4,
+  recorded_at: "2026-10-30T10:00:00.000Z",
+}));
+
 vi.mock("./config.js", async (importOriginal) => {
   const root = join(tmpdir(), `codeinspectus-rescan-osv-test-${process.pid}`);
   return {
@@ -47,7 +56,7 @@ vi.mock("./engines/trivy.js", () => ({
 }));
 vi.mock("./osv/database.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./osv/database.js")>()),
-  readOsvDbRecord: vi.fn(async (ecosystem: string) => (ecosystem === "PyPI" ? PYPI_RECORD : undefined)),
+  readOsvDbRecord: vi.fn(async (ecosystem: string) => (ecosystem === "PyPI" ? PYPI_RECORD : ecosystem === "npm" ? NPM_RECORD : undefined)),
 }));
 
 vi.mock("./synvoya/dataset.js", async (importOriginal) => {
@@ -188,5 +197,60 @@ describe("rescan with osv-scanner", () => {
     expect(rescan.resolved.map((finding) => finding.fingerprint)).not.toContain(malware.fingerprint);
     expect(rescan.summary.resolved).toBe(0);
     expect(rescan.remaining.map((finding) => finding.rule_id)).toContain("SYN-2026-001");
+  });
+
+  // M6 final cleanup: a lockfile reduced to its root entry is a real fix (osv-scanner then lists no source for
+  // it, as real 2.7.0 does); any other lockfile it lists nothing from proves nothing.
+  describe("a lockfile osv-scanner lists no packages from in the rescan", () => {
+    const LOCK = (packages: Record<string, unknown>) => `${JSON.stringify({ name: "app", version: "1.0.0", lockfileVersion: 3, requires: true, packages })}\n`;
+    const ADVISORIES = [1, 2, 3, 4, 5].map((index) => `GHSA-lod${index}-aaaa-bbbb`);
+    const vulnerable = (root: string): string => JSON.stringify({
+      results: [{
+        source: { path: join(root, "package-lock.json"), type: "lockfile" },
+        packages: [{
+          package: { name: "lodash", version: "4.17.4", ecosystem: "npm", purl: "pkg:npm/lodash@4.17.4" },
+          groups: ADVISORIES.map((id) => ({ ids: [id], aliases: [id], max_severity: "7.5" })),
+          vulnerabilities: ADVISORIES.map((id) => ({
+            id, aliases: [], summary: `lodash advisory ${id}`, details: "Prototype pollution.",
+            affected: [{ package: { ecosystem: "npm", name: "lodash", purl: "pkg:npm/lodash" }, ranges: [{ type: "SEMVER", events: [{ introduced: "0" }, { fixed: "4.17.21" }] }] }],
+            database_specific: { severity: "HIGH" },
+          })),
+        }],
+      }],
+      experimental_config: {},
+    });
+    async function prepare(): Promise<string> {
+      const root = await realpath(await mkdtemp(join(tmpdir(), "ci-rescan-osv-lock-")));
+      roots.push(root);
+      await writeFile(join(root, "package-lock.json"), LOCK({ "": { name: "app", version: "1.0.0" }, "node_modules/lodash": { version: "4.17.4" } }), "utf8");
+      await mkdir(join(osvDbZipPath("npm"), ".."), { recursive: true });
+      await writeFile(osvDbZipPath("npm"), ARCHIVE, "utf8");
+      execBinary.mockImplementation(async (_binary: string, args: string[]) => {
+        const lock = await readFile(join(root, "package-lock.json"), "utf8");
+        const listed = lock.includes("node_modules/lodash");
+        await writeFile(args[args.indexOf("--output-file") + 1]!, listed ? vulnerable(root) : JSON.stringify({ results: [], experimental_config: {} }), "utf8");
+        return { code: listed ? 1 : 0, stdout: "", stderr: listed ? "" : "No package sources found", timedOut: false };
+      });
+      return root;
+    }
+
+    it("a package-lock.json reduced to its root entry resolves every finding it held", async () => {
+      const root = await prepare();
+      const prior = await runScan({ path: root, scanners: ["vuln"] });
+      const lodash = prior.findings.filter((finding) => finding.package?.name === "lodash");
+      expect(lodash).toHaveLength(5);
+      await writeFile(join(root, "package-lock.json"), LOCK({ "": { name: "app", version: "1.0.0" } }), "utf8");
+      const rescan = await runRescan({ path: root, prior_scan_id: prior.scan_id });
+      expect(rescan.summary).toMatchObject({ resolved: 5, not_rechecked: 0 });
+    });
+
+    it("an unreadable package-lock.json reads not re-checked, with its own reason", async () => {
+      const root = await prepare();
+      const prior = await runScan({ path: root, scanners: ["vuln"] });
+      await writeFile(join(root, "package-lock.json"), "{ not json", "utf8");
+      const rescan = await runRescan({ path: root, prior_scan_id: prior.scan_id });
+      expect(rescan.summary).toMatchObject({ resolved: 0, not_rechecked: 5 });
+      expect(rescan.not_rechecked_note).toContain("osv-scanner listed no packages from this lockfile (unreadable or unsupported layout)");
+    });
   });
 });

@@ -191,7 +191,8 @@ export const repositoryArtifactSchema = z
         message: "protected records cannot be remediation eligible",
       });
     }
-  });
+  })
+  .meta({ id: "RepositoryArtifact" });
 
 const repositoryTrustCapabilityCoverageSchema = z
   .object({
@@ -271,7 +272,8 @@ export const repositoryTrustDocumentSchema = z
         message: "documents with artifacts require ran or partial coverage",
       });
     }
-  });
+  })
+  .meta({ id: "RepositoryTrustDocument" });
 
 export type RepositoryArtifact = z.infer<typeof repositoryArtifactSchema>;
 export type RepositoryArtifactState = z.infer<typeof repositoryArtifactStateSchema>;

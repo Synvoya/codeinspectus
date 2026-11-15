@@ -165,13 +165,33 @@ export function isSafeDerivedValue(expression: DartExpression): boolean {
   });
 }
 
-export function sensitiveCredentialLabels(expression: DartExpression): string[] {
+/** Identifiers inside a string's interpolations (`$name`, `${a.b(c)}`); literal text is never read. */
+function interpolatedIdentifiers(token: DartToken): string[] {
+  if (token.kind !== "string" || token.rawString) return [];
+  const values: string[] = [];
+  for (const match of token.value.matchAll(/(?<!\\)\$(?:\{([^}]*)\}|([A-Za-z_][\w]*))/g)) {
+    const inner = match[1] ?? match[2] ?? "";
+    for (const identifier of inner.match(/[A-Za-z_$][\w$]*/g) ?? []) values.push(identifier);
+  }
+  return values;
+}
+
+/**
+ * Sensitive labels for an expression. `literalText: false` (4.1 M9, the log rule) takes sensitivity only from
+ * values: identifiers, `['key']` selectors and interpolated expressions, never words in a string's literal text.
+ */
+export function sensitiveCredentialLabels(
+  expression: DartExpression,
+  options: { literalText?: boolean } = {},
+): string[] {
+  const literalText = options.literalText ?? true;
   if (isSafeDerivedValue(expression)) return [];
   const labels = new Set<string>();
   const names = identifiers(expression);
+  // Fix round 1: on the value-only path (logs), literal text never clears a token label; only names do.
   const context = [
     ...names,
-    ...expression.tokens.filter((token) => token.kind === "string").map((token) => token.value),
+    ...(literalText ? expression.tokens.filter((token) => token.kind === "string").map((token) => token.value) : []),
   ].map(normalizedWord).join(" ");
   for (const identifier of names) {
     const label = sensitiveWord(identifier);
@@ -196,6 +216,15 @@ export function sensitiveCredentialLabels(expression: DartExpression): string[] 
 
   for (const token of expression.tokens) {
     if (token.kind !== "string" || token.rawString || !token.value.includes("$")) continue;
+    if (!literalText) {
+      for (const identifier of interpolatedIdentifiers(token)) {
+        const label = sensitiveWord(identifier);
+        if (label && !(label === "token" && NON_CREDENTIAL_TOKEN_CONTEXT.some((safe) => context.includes(safe)))) {
+          labels.add(label);
+        }
+      }
+      continue;
+    }
     const normalized = normalizedWord(token.value);
     const label = SENSITIVE_WORDS.find((candidate) => normalized.includes(candidate));
     if (

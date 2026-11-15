@@ -1,0 +1,13 @@
+name: Release flag from the pull request title
+on:
+  pull_request:
+    types: [opened, edited]
+jobs:
+  flag:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "IS_RELEASE=${{ github.event_name == 'pull_request' && contains(github.event.pull_request.title, 'release:') && 'yes' || 'no' }}" >> "$GITHUB_ENV"
+      - run: echo "DRAFT=${{ startsWith(github.event.pull_request.title, '[draft]') && 1 || 0 }}" >> "$GITHUB_ENV"
+      - run: echo "SAME=${{ github.head_ref == 'main' }}" >> "$GITHUB_ENV"
+      - run: echo "KNOWN=${{ contains(fromJSON('["docs", "chore"]'), github.event.pull_request.head.ref) && 'known' || 'other' }}"
+      - run: echo "EMPTY=${{ !github.event.pull_request.body }}"

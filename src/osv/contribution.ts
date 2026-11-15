@@ -3,6 +3,12 @@
  * it adds, and how detected lockfiles reconcile against the structured output. Never reads stderr.
  */
 
+import { constants } from "node:fs";
+import { lstat, open } from "node:fs/promises";
+import { join } from "node:path";
+
+import { parseDocument } from "yaml";
+
 import type { OsvScanResult } from "../engines/osv-scanner.js";
 import type { DependencyCoverage, EngineRunInfo } from "../types.js";
 import { OSV_ECOSYSTEMS, type OsvEcosystem, type OsvLockfile } from "./ecosystems.js";
@@ -15,6 +21,12 @@ export interface OsvContribution {
   info: EngineRunInfo;
   coverage: DependencyCoverage[];
   warnings: string[];
+  /**
+   * Rescan proof (M6 fix round 2): lockfiles found by name that osv-scanner listed no packages from, and
+   * ecosystems it checked only partially or not at all without naming the files (`partial` or `unavailable`
+   * from the run itself, not only through those lockfiles).
+   */
+  unchecked?: { files: string[]; ecosystems: string[] };
 }
 
 /**
@@ -98,6 +110,9 @@ export function osvContribution(
   if (!osv.info.ran && !osv.coverage.length) return { include: true, info: osv.info, coverage: [], warnings: osv.warnings };
 
   const warnings = [...osv.warnings];
+  // Ecosystems the run itself reported partial or unavailable: their findings are not provable either way.
+  const gated = [...new Set(osv.coverage.filter((entry) => entry.state === "partial" || entry.state === "unavailable").map((entry) => entry.ecosystem))].sort();
+  const unextracted: string[] = [];
   let pubNoted = false;
   const coverage = osv.coverage.map((entry) => {
     if (!nativePubCovers || entry.ecosystem !== "Pub" || entry.state !== "unavailable" || !entry.note) return entry;
@@ -118,10 +133,107 @@ export function osvContribution(
       .filter((lockfile) => lockfile.ecosystem === ecosystem && !extracted.has(lockfile.path))
       .map((lockfile) => lockfile.path);
     if (!missed.length) continue;
+    unextracted.push(...missed);
     const index = coverage.findIndex((entry) => entry.ecosystem === ecosystem);
     if (index < 0) coverage.push(withUnextracted(ecosystem, undefined, missed));
     else coverage[index] = withUnextracted(ecosystem, coverage[index], missed);
   }
   coverage.sort((left, right) => osvCoverageOrder(left) - osvCoverageOrder(right));
-  return { include: osv.applicable || coverage.length > 0, info, coverage, warnings };
+  return {
+    include: osv.applicable || coverage.length > 0, info, coverage, warnings,
+    unchecked: { files: [...new Set(unextracted)].sort(), ecosystems: gated },
+  };
+}
+
+/** A YAML mapping parsed strictly (YAML 1.2, unique keys) with no error or warning, else undefined. */
+function strictYamlMap(text: string): Record<string, unknown> | undefined {
+  try {
+    const document = parseDocument(text, { prettyErrors: false, strict: true, uniqueKeys: true, version: "1.2" });
+    if (document.errors.length > 0 || document.warnings.length > 0) return undefined;
+    const value: unknown = document.toJS({ maxAliasCount: 0 });
+    return isRecord(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A yarn Berry descriptor `name@range` (scoped names start with `@`) whose own range is a workspace. */
+function workspaceDescriptor(descriptor: string): boolean {
+  const at = descriptor.indexOf("@", descriptor.startsWith("@") ? 1 : 0);
+  return at > 0 && descriptor.slice(at + 1).startsWith("workspace:");
+}
+
+/** Lockfiles larger than this are never read for the empty-lockfile test (they then stay unchecked). */
+const EMPTY_LOCKFILE_MAX_BYTES = 8 * 1024 * 1024;
+
+const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
+const emptyCollection = (value: unknown): boolean =>
+  value === undefined || value === null || (Array.isArray(value) ? value.length === 0 : isRecord(value) && Object.keys(value).length === 0);
+
+/**
+ * Whether a lockfile lists no dependency at all, so osv-scanner listing no packages from it is a real "nothing
+ * to check" (M6 final cleanup), recognised for the cheap cases only: an npm `package-lock.json` or
+ * `npm-shrinkwrap.json` whose `packages` holds only the root `""` entry and with no `dependencies`; a
+ * `composer.lock` with empty `packages` and `packages-dev`; a yarn Berry `yarn.lock` (strict YAML) whose keys are
+ * `__metadata` and workspace descriptors only; a `pnpm-lock.yaml` (strict YAML) with no `packages`, `snapshots` or
+ * importer dependencies. Anything else (unreadable, yarn v1, a YAML error or warning, an unknown layout) is not
+ * empty: the lockfile then stays unchecked.
+ */
+export function isEmptyLockfile(name: string, text: string): boolean {
+  if (name === "package-lock.json" || name === "npm-shrinkwrap.json" || name === "composer.lock") {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return false;
+    }
+    if (!isRecord(parsed)) return false;
+    if (name === "composer.lock") {
+      return Array.isArray(parsed.packages) && parsed.packages.length === 0 && emptyCollection(parsed["packages-dev"]);
+    }
+    const packages = parsed.packages;
+    const rootOnly = packages === undefined || (isRecord(packages) && Object.keys(packages).every((key) => key === ""));
+    return "lockfileVersion" in parsed && rootOnly && emptyCollection(parsed.dependencies);
+  }
+  if (name === "yarn.lock") {
+    // Berry only: strict YAML whose every top-level key but `__metadata` lists workspace descriptors only.
+    // yarn v1 (not YAML) and anything that does not parse cleanly are never empty (security review: fail closed).
+    const lock = strictYamlMap(text);
+    if (!lock || !("__metadata" in lock)) return false;
+    return Object.keys(lock).every((key) => key === "__metadata" || key.split(",").every((descriptor) => workspaceDescriptor(descriptor.trim())));
+  }
+  if (name === "pnpm-lock.yaml") {
+    const lock = strictYamlMap(text);
+    if (!lock || !("lockfileVersion" in lock)) return false;
+    const dependencyMaps = ["dependencies", "devDependencies", "optionalDependencies"];
+    if (!emptyCollection(lock.packages) || !emptyCollection(lock.snapshots)) return false;
+    if (dependencyMaps.some((key) => !emptyCollection(lock[key]))) return false;
+    if (lock.importers === undefined || lock.importers === null) return true;
+    if (!isRecord(lock.importers)) return false;
+    return Object.values(lock.importers).every((importer) =>
+      importer === null || (isRecord(importer) && dependencyMaps.every((key) => emptyCollection(importer[key]))));
+  }
+  return false;
+}
+
+/** The target-relative lockfiles among `files` that list no dependency (isEmptyLockfile); bounded, no link followed. */
+export async function emptyLockfiles(target: string, files: readonly string[]): Promise<Set<string>> {
+  const empty = new Set<string>();
+  for (const rel of files) {
+    const path = join(target, ...rel.split("/"));
+    let handle;
+    try {
+      if (!(await lstat(path)).isFile()) continue;
+      handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+      const info = await handle.stat();
+      if (!info.isFile() || info.size > EMPTY_LOCKFILE_MAX_BYTES) continue;
+      const text = (await handle.readFile()).toString("utf8");
+      if (isEmptyLockfile(rel.slice(rel.lastIndexOf("/") + 1), text)) empty.add(rel);
+    } catch {
+      // Unreadable: it stays unchecked.
+    } finally {
+      await handle?.close().catch(() => undefined);
+    }
+  }
+  return empty;
 }

@@ -91,6 +91,8 @@ export interface SynvoyaDataset {
   /** image repo → product */
   productImages: Record<string, string>;
   eol: EolEntry[];
+  /** Products whose EOL table lists every release line between its oldest and newest cycle (eol.json `complete`). */
+  eolComplete: string[];
   libraries: LibraryTable;
 }
 
@@ -138,4 +140,9 @@ export interface ReaderOptions {
   signal?: AbortSignal;
   /** A single-file scan: read only this target-relative path (forward slashes), if the reader reads it. */
   only?: string;
+  /**
+   * With `only`: the path every result names that file by (4.1 M8: its bare name, as the other engines report a
+   * file target). The reader still dispatches on `only`, so it knows a workflow or `wp-includes/version.php`.
+   */
+  onlyAs?: string;
 }

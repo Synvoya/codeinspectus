@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { OPENGREP_RULES_DIR } from "../config.js";
+import { log } from "../logger.js";
 
 interface Call { args: string[]; ignoreList: string; logFile: string }
 const seen = vi.hoisted(() => ({
@@ -13,6 +14,28 @@ const seen = vi.hoisted(() => ({
   /** Target-relative files the fake pack pass also skips, beyond the anchored lines of its ignore list. */
   extraPackSkips: [] as string[],
 }));
+
+const signatures = vi.hoisted(() => ({ elements: [] as string[][] }));
+vi.mock("../provenance.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../provenance.js")>();
+  return {
+    ...original,
+    invocationSignature: (engine: string, elements: string[]) => {
+      signatures.elements.push(elements);
+      return original.invocationSignature(engine as Parameters<typeof original.invocationSignature>[0], elements);
+    },
+  };
+});
+
+const dataset = vi.hoisted(() => ({ unavailable: false }));
+vi.mock("../synvoya/dataset.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../synvoya/dataset.js")>();
+  return {
+    ...original,
+    loadSynvoyaDataset: async (...args: Parameters<typeof original.loadSynvoyaDataset>) =>
+      dataset.unavailable ? { ok: false as const, reason: "manifest.json is missing or unreadable." } : original.loadSynvoyaDataset(...args),
+  };
+});
 
 vi.mock("./resolve.js", () => ({
   EngineUnavailableError: class EngineUnavailableError extends Error {},
@@ -48,12 +71,19 @@ beforeEach(() => {
   seen.failPack = false;
   seen.packReport = undefined;
   seen.extraPackSkips = [];
+  signatures.elements = [];
+  dataset.unavailable = false;
 });
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 const minified = "!" + "function(e,t){return e&&t?e.call(t,n[r]):void 0},".repeat(600);
+/** A minified Knockout copy: its name and banner name the same Synvoya library-table entry (4.1 M6). */
+const knockout = `/*!\n * Knockout JavaScript library v3.5.1\n * License: MIT\n */\n${minified}\n`;
+const LIBRARY_NOTE = "Bundle routing identified 1 third-party library by name and version; the bundle-skipping Opengrep pass " +
+  "(syn-php-*, syn-node-*, ci-baseline-sql-injection-string-build) skipped their 1 file(s), part of third-party-bundles " +
+  "(the other baseline rules still scanned them): knockout 3.5.1 (public/js/knockout.js).";
 
 async function fixture(files: Record<string, string>): Promise<{ target: string; scratch: string }> {
   const target = await mkdtemp(join(tmpdir(), "ci-opengrep-passes-"));
@@ -153,6 +183,26 @@ describe("Opengrep baseline and Synvoya pack passes", () => {
     expect(output.coverageGaps).toBeUndefined();
   });
 
+  // M6 fix round 1: the files each pass could not fully analyze are recorded for rescan proof.
+  test("records, per pass, the files Opengrep could not fully analyze", async () => {
+    const { target, scratch } = await fixture({ "src/Chart.tsx": "export const x = 1;\n", "src/ok.ts": "export const y = 1;\n" });
+    const file = join(target, "src/Chart.tsx");
+    seen.packReport = {
+      errors: [{ type: "Timeout", level: "warn", code: 3, path: file, rule_id: "x.syn-node-zip-slip", message: "Timeout" }],
+      paths: { scanned: [file], skipped: [{ path: file, reason: "analysis_failed_parser_or_internal_error" }] },
+      results: [],
+    };
+
+    const output = await runOpengrep(target, scratch);
+    expect(output.uncheckedFiles).toEqual({ "opengrep:baseline": { files: [], rules: [] }, "opengrep:pack": { files: ["src/Chart.tsx"], rules: [] } });
+
+    seen.packReport = { errors: "malformed" };
+    expect((await runOpengrep(target, (await fixture({})).scratch)).uncheckedFiles?.["opengrep:pack"]).toBe("all");
+    seen.packReport = undefined;
+    seen.failPack = true;
+    expect((await runOpengrep(target, (await fixture({})).scratch)).uncheckedFiles?.["opengrep:pack"]).toBe("all");
+  });
+
   // Review item 2 (fail closed): the pack pass must skip exactly the files routing chose.
   test("a pack-pass skip routing did not choose is a warning, and the pack invocation is not recorded", async () => {
     const { target, scratch } = await fixture({ "src/c.js": minified, "src/cX.js": "module.exports = 1;\n" });
@@ -188,5 +238,99 @@ describe("Opengrep baseline and Synvoya pack passes", () => {
 
     expect(output.coverageGaps).toBeUndefined();
     expect(output.componentSignatures?.["opengrep:pack-invocation"]).toMatch(/^sha256:/);
+  });
+
+  describe("identified third-party libraries (4.1 M6)", () => {
+    test("a library file the pack pass skipped is in the gap, after the 4.0 files, and named in a coverage note", async () => {
+      const { target, scratch } = await fixture({ "public/js/knockout.js": knockout, "src/c.js": minified, "src/app.js": "module.exports = 1;\n" });
+
+      const output = await runOpengrep(target, scratch);
+
+      const pack = seen.calls[1]!;
+      expect(pack.ignoreList.split("\n")).toEqual(expect.arrayContaining(["/public/js/knockout.js", "/src/c.js"]));
+      expect(seen.calls[0]!.ignoreList).not.toContain("knockout");
+      expect(output.coverageGaps).toEqual([{ id: "third-party-bundles", files: 2, examples: ["src/c.js", "public/js/knockout.js (identified by name and banner)"] }]);
+      expect(output.coverageNotes).toEqual([LIBRARY_NOTE]);
+      expect(output.coverageWarnings).toBeUndefined();
+      expect(output.componentSignatures?.["opengrep:pack-invocation"]).toMatch(/^sha256:/);
+    });
+
+    test("a chosen library file the pack pass did not skip is in neither the gap nor the note", async () => {
+      const { target, scratch } = await fixture({ "public/js/knockout.js": knockout });
+      seen.packReport = { errors: [], paths: { scanned: [join(target, "public/js/knockout.js")], skipped: [] }, results: [] };
+
+      const output = await runOpengrep(target, scratch);
+
+      expect(output.coverageGaps).toBeUndefined();
+      expect(output.coverageNotes).toBeUndefined();
+    });
+
+    test("a skip routing did not choose still warns and withholds the pack signature, next to a library", async () => {
+      const { target, scratch } = await fixture({ "public/js/knockout.js": knockout, "src/cX.js": "module.exports = 1;\n" });
+      seen.extraPackSkips = ["src/cX.js"];
+
+      const output = await runOpengrep(target, scratch);
+
+      expect(output.componentSignatures).not.toHaveProperty("opengrep:pack-invocation");
+      expect(output.coverageWarnings).toEqual([
+        "Opengrep SAST coverage partial: the bundle-skipping pass (syn-php-*, syn-node-*, ci-baseline-sql-injection-string-build) also skipped 1 file(s) bundle routing did not choose, so findings of that pass are unknown there: src/cX.js.",
+      ]);
+      expect(output.coverageGaps).toEqual([{ id: "third-party-bundles", files: 1, examples: ["public/js/knockout.js (identified by name and banner)"] }]);
+    });
+
+    test("a failed pack pass reports neither the gap nor the note", async () => {
+      const { target, scratch } = await fixture({ "public/js/knockout.js": knockout });
+      seen.failPack = true;
+
+      const output = await runOpengrep(target, scratch);
+
+      expect(output.coverageGaps).toBeUndefined();
+      expect(output.coverageNotes).toBeUndefined();
+    });
+
+    test("without the Synvoya library table the JS library rule is off, with one warning", async () => {
+      const { target, scratch } = await fixture({ "public/js/knockout.js": knockout, "src/c.js": minified });
+      dataset.unavailable = true;
+      const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
+
+      const output = await runOpengrep(target, scratch);
+
+      // The minified copy is then a 4.0 "minified" file: skipped, unlabelled, named in no note.
+      expect(output.coverageGaps).toEqual([{ id: "third-party-bundles", files: 2, examples: ["public/js/knockout.js", "src/c.js"] }]);
+      expect(output.coverageNotes).toBeUndefined();
+      expect(output.coverageWarnings).toBeUndefined();
+      expect(warn.mock.calls.filter(([message]) => String(message).includes("library table did not load"))).toHaveLength(1);
+      warn.mockRestore();
+    });
+
+    test("the pack invocation signature carries the new classifier revision; the baseline's does not", async () => {
+      const { target, scratch } = await fixture({ "src/app.js": "module.exports = 1;\n" });
+
+      await runOpengrep(target, scratch);
+
+      expect(signatures.elements).toHaveLength(2);
+      const [baseline, pack] = signatures.elements as [string[], string[]];
+      expect(pack).toContain("bundle-classifier:3:minified-80pct-code-bytes-dense-lines-open-no-comment+composer-installed+js-library-name-banner");
+      expect(baseline.some((element) => element.startsWith("bundle-classifier:"))).toBe(false);
+    });
+
+    // Fix round 2, ruling 3: the cap note, like the libraries note, only on a verified pack pass.
+    test("the skip-list cap note appears only when the pack pass was verified", async () => {
+      const files: Record<string, string> = {
+        "lib/pdf/autoload.php": "<?php\n", "lib/pdf/composer/ClassLoader.php": "<?php\n",
+        "lib/pdf/composer/installed.json": JSON.stringify({ packages: [{ name: "acme/pdf", version: "v1.0.0", dist: { type: "zip" }, "install-path": "../acme/pdf" }] }),
+      };
+      for (let index = 0; index < 5_003; index++) files[`lib/pdf/acme/pdf/src/F${index}.php`] = "<?php\n";
+      const { target, scratch } = await fixture(files);
+
+      const verified = await runOpengrep(target, scratch);
+      expect(verified.coverageNotes?.filter((note) => note.includes("more third-party library file(s) than"))).toEqual([
+        "Bundle routing identified 3 more third-party library file(s) than the bundle-skipping Opengrep pass can skip (at most 5000 files); those files stayed in that pass.",
+      ]);
+
+      seen.failPack = true;
+      const failed = await runOpengrep(target, (await fixture({})).scratch);
+      expect(failed.coverageNotes ?? []).toEqual([]);
+    }, 60_000);
   });
 });

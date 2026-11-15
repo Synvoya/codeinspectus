@@ -141,6 +141,7 @@ describe("compareVersions order properties", () => {
     java: ["1.7.0_80", "8", "8u391", "8u401", "11.0.1", "17.0.9", "17.0.12", "21-ea", "21", "21.0.4", "21.1"],
     maven: ["0.9", "1.0-alpha-1", "1.0-beta-1", "1.0-m1", "1.0-rc1", "1.0-snapshot", "1.0", "1.0-sp1", "1.0.1", "1.2.17", "1.9.0", "1.10.0", "2.0.0-M1", "2.0.0-RC1", "2.0.0", "2.14.1", "5.2.9.RELEASE", "5.3.39", "6.0.0"],
     magento: ["2.4.6-p13", "2.4.7-beta1", "2.4.7-rc1", "2.4.7", "2.4.7-p1", "2.4.7-p2", "2.4.7-p10", "2.4.8"],
+    "minio-release": ["RELEASE.2019-12-31T23-59-59Z", "RELEASE.2023-03-13T19-46-17Z", "RELEASE.2023-03-20T20-16-17Z", "RELEASE.2023-03-20T20-16-18Z", "RELEASE.2023-03-20T20-16-19Z", "RELEASE.2023-03-20T20-17-00Z", "RELEASE.2023-03-21T00-00-00Z", "RELEASE.2023-10-01T00-00-00Z", "RELEASE.2025-01-01T00-00-00Z"],
     generic: ["0.1", "1", "1.0.1", "1.2", "1.10", "2"],
   };
 
@@ -349,6 +350,11 @@ describe("schemeFor", () => {
     expect(schemeFor({ type: "product", product: "adobe-commerce" })).toBe("magento");
     expect(schemeFor({ type: "product", product: "magento-open-source" })).toBe("magento");
     expect(schemeFor({ type: "product", product: "wordpress" })).toBe("generic");
+    expect(schemeFor({ type: "product", product: "minio" })).toBe("minio-release");
+    // No other product uses the MinIO scheme.
+    for (const product of ["mongodb", "grafana", "httpd", "gitlab", "minio-console", "bitnami-minio"]) {
+      expect(schemeFor({ type: "product", product }), product).toBe("generic");
+    }
   });
 
   test("package ecosystems", () => {
@@ -358,6 +364,62 @@ describe("schemeFor", () => {
     ];
     for (const [ecosystem, scheme] of cases) {
       expect(schemeFor({ type: "package", ecosystem, name: "x" }), ecosystem).toBe(scheme);
+    }
+  });
+});
+
+describe("minio-release (MinIO RELEASE.<timestamp> tags, 4.1 M8)", () => {
+  const FIX = "RELEASE.2023-03-20T20-16-18Z";
+  const RANGE: Affected = [{ events: [{ introduced: "0" }, { fixed: FIX }] }];
+
+  test("orders chronologically; a tag equals only itself", () => {
+    expect(compareVersions("minio-release", FIX, FIX)).toBe(0);
+    expect(compareVersions("minio-release", "RELEASE.2023-03-20T20-16-17Z", FIX)).toBe(-1);
+    expect(compareVersions("minio-release", "RELEASE.2023-03-20T20-16-19Z", FIX)).toBe(1);
+    expect(compareVersions("minio-release", "RELEASE.2022-12-31T23-59-59Z", "RELEASE.2023-01-01T00-00-00Z")).toBe(-1);
+    expect(compareVersions("minio-release", "RELEASE.2023-10-01T00-00-00Z", "RELEASE.2023-09-30T23-59-59Z")).toBe(1);
+  });
+
+  test("an earlier tag is affected, the fix tag and later ones are not", () => {
+    expect(isAffected("minio-release", "RELEASE.2023-03-13T19-46-17Z", RANGE)).toBe(true);
+    expect(isAffected("minio-release", "RELEASE.2023-03-20T20-16-17Z", RANGE)).toBe(true);
+    expect(isAffected("minio-release", FIX, RANGE)).toBe(false);
+    expect(isAffected("minio-release", "RELEASE.2024-01-01T00-00-00Z", RANGE)).toBe(false);
+  });
+
+  test.each([
+    "release.2023-03-20T20-16-18Z",
+    "RELEASE.2023-03-20T20-16-18Z-cpuv1",
+    "RELEASE.2023-03-20T20-16-18Z.fips",
+    "RELEASE.2023-03-20T20-16-18Z.hotfix.abc",
+    "vRELEASE.2023-03-20T20-16-18Z",
+    "RELEASE.2023-03-20T20-16-18",
+    "RELEASE.2023-03-20T20:16:18Z",
+    "RELEASE.2023-02-30T00-00-00Z",
+    "RELEASE.2023-13-01T00-00-00Z",
+    "RELEASE.2023-00-10T00-00-00Z",
+    "RELEASE.2023-03-00T00-00-00Z",
+    "RELEASE.2023-03-20T24-00-00Z",
+    "RELEASE.2023-03-20T23-59-60Z",
+    "RELEASE.2023-03-20T23-60-00Z",
+    "2023.3.20",
+    "latest",
+    "edge",
+    "",
+    `RELEASE.${"9".repeat(200)}`,
+  ])("%j is not a MinIO release tag (unknown)", (tag) => {
+    expect(compareVersions("minio-release", tag, tag)).toBeUndefined();
+    expect(isAffected("minio-release", tag, RANGE)).toBeUndefined();
+  });
+
+  test("a leap day is a real instant", () => {
+    expect(compareVersions("minio-release", "RELEASE.2024-02-29T00-00-00Z", "RELEASE.2024-03-01T00-00-00Z")).toBe(-1);
+    expect(compareVersions("minio-release", "RELEASE.2023-02-29T00-00-00Z", "RELEASE.2023-02-29T00-00-00Z")).toBeUndefined();
+  });
+
+  test("other schemes never read a MinIO tag", () => {
+    for (const scheme of ["semver", "generic", "php", "go"] as VersionScheme[]) {
+      expect(compareVersions(scheme, FIX, FIX), scheme).toBeUndefined();
     }
   });
 });

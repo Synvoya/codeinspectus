@@ -1,6 +1,7 @@
 import { partialOnlyThroughAcceptedGaps } from "./ci-policy.js";
 import { assessAggregateCoverage } from "./export/model.js";
 import { findingAbsenceProvableAgainst, findingsMatch } from "./scan-history.js";
+import { secretContainmentAgainst } from "./dedup.js";
 import { pairMovedFindings } from "./dedup.js";
 import { SEVERITY_RANK, type Finding, type Severity } from "./types.js";
 import type { StoredScanResult } from "./store.js";
@@ -65,12 +66,13 @@ export function compareAgainstBaseline(
       "a finding in input the baseline did not analyze reads New.");
   }
 
+  const matchOptions = secretContainmentAgainst(baseline, fresh);
   const moved = pairMovedFindings(
-    baseline.findings.filter((candidate) => !fresh.findings.some((finding) => findingsMatch(candidate, finding))),
-    fresh.findings.filter((finding) => !baseline.findings.some((candidate) => findingsMatch(candidate, finding))),
+    baseline.findings.filter((candidate) => !fresh.findings.some((finding) => findingsMatch(candidate, finding, matchOptions))),
+    fresh.findings.filter((finding) => !baseline.findings.some((candidate) => findingsMatch(candidate, finding, matchOptions))),
   );
   const items: BaselineItem[] = fresh.findings.map((finding) => {
-    const existing = baseline.findings.find((candidate) => findingsMatch(candidate, finding)) ?? moved.get(finding);
+    const existing = baseline.findings.find((candidate) => findingsMatch(candidate, finding, matchOptions)) ?? moved.get(finding);
     if (existing) return {
       state: "Existing", finding, baseline_finding_id: existing.id,
       evidence: "The finding exists in the baseline by fingerprint, stable dedup identity, or unchanged moved content.",

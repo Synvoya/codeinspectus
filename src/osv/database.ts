@@ -30,7 +30,7 @@ import { osvDatabaseComponent, sha256FileStreaming } from "../provenance.js";
 import type { OsvDatabaseHealth } from "../types.js";
 import { isOsvEcosystem, OSV_DB_SIZE_ESTIMATES, OSV_ECOSYSTEMS, type OsvEcosystem } from "./ecosystems.js";
 
-const OSV_DB_BASE_URL = "https://osv-vulnerabilities.storage.googleapis.com";
+export const OSV_DB_BASE_URL = "https://osv-vulnerabilities.storage.googleapis.com";
 const MIN_DOWNLOAD_LIMIT_BYTES = 1024 ** 3;
 
 export interface OsvDbRecord {

@@ -29,8 +29,20 @@ export function synvoyaReaderDeadlineMs(environment: Record<string, string | und
   return raw !== undefined && /^\d{1,9}$/.test(raw) ? Number(raw) : DEFAULT_READER_DEADLINE_MS;
 }
 
+/**
+ * Verification-only switch (like the deadline one): the named reader (`runtime`, `image`, `product`, `library`
+ * or `actions`) awaits a promise that never settles, so a test can show the hard cap ends the run.
+ */
+export const INTERNAL_SYNVOYA_HANG_READER_ENV = "CODEINSPECTUS_INTERNAL_SYNVOYA_HANG_READER";
+
 /** Wall-clock budget shared by every Synvoya reader in one scan; past it no new file is started. */
 export const SYNVOYA_READER_DEADLINE_MS = synvoyaReaderDeadlineMs();
+
+/**
+ * After the deadline, readers get this long to stop at their next file or folder; one still running then is
+ * abandoned and declared as not finished (the hard cap: deadline + grace), so a hung read never holds the scan.
+ */
+export const SYNVOYA_READER_GRACE_MS = 5_000;
 
 /** Synvoya notes carried into one scan's coverage notes; priority notes are always kept beyond it. */
 export const SYNVOYA_MAX_COVERAGE_NOTES = 50;

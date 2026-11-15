@@ -54,7 +54,7 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# CI runs only in the public repo (free Actions); the private dev repo never runs it (Hibi, 2026-11-02).
+# CI runs only in the public repo (free Actions); the private dev repo never runs it (maintainer, 2026-11-02).
 jobs:
   dco:
     name: contributor sign-off (DCO)

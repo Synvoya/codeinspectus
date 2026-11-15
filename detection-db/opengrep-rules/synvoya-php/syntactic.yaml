@@ -107,51 +107,158 @@ rules:
       confidence: HIGH
       synvoya_pack: synvoya-php
       frameworks: [php, laravel, symfony, wordpress]
-    patterns:
-      - pattern-either:
-          - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYPEER, false)
-          - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYPEER, 0)
-          - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYHOST, false)
-          - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYHOST, 0)
-          - pattern: |
-              [..., CURLOPT_SSL_VERIFYPEER => false, ...]
-          - pattern: |
-              [..., CURLOPT_SSL_VERIFYPEER => 0, ...]
-          - pattern: |
-              [..., CURLOPT_SSL_VERIFYHOST => false, ...]
-          - pattern: |
-              [..., CURLOPT_SSL_VERIFYHOST => 0, ...]
-          - pattern: |
-              [..., "sslverify" => false, ...]
-          - pattern: |
-              [..., "verify_peer" => false, ...]
-          - pattern: |
-              [..., "verify_peer_name" => false, ...]
-          - pattern: |
-              new $CLIENT([..., "verify" => false, ...])
-          - pattern: |
-              $CLIENT->$METHOD($M, $U, [..., "verify" => false, ...])
-          - pattern: |
-              $HTTP::withOptions([..., "verify" => false, ...])
-          - pattern: $HTTP::withoutVerifying()
-          - pattern: $PENDING->withoutVerifying()
-
-      # Verification switched off only for local development (App::environment('local'), isLocal(),
-      # a debug flag) is a developer setting, not a deployed one.
-      - pattern-not-inside: |
-          if (<... $APP::environment(...) ...>) { ... }
-      - pattern-not-inside: |
-          if (<... app()->environment(...) ...>) { ... }
-      - pattern-not-inside: |
-          if (<... $APP->environment(...) ...>) { ... }
-      - pattern-not-inside: |
-          if (<... $APP::isLocal() ...>) { ... }
-      - pattern-not-inside: |
-          if (<... $APP->isLocal() ...>) { ... }
-      - pattern-not-inside: |
-          if (<... app()->isLocal() ...>) { ... }
-      - pattern-not-inside: |
-          if (<... WP_DEBUG ...>) { ... }
+    # 4.1 (M7): a disable set only inside an if whose condition reads a variable, property or method result
+    # (an opt-in configuration flag such as if ($this->config->allowUnsafeSsl)) is not reported. A condition
+    # made only of literals and constants (if (true), if (DEBUG === DEBUG)) still is, and so is a disable in
+    # an if that has an else branch (Opengrep's PHP `if (c) { ... }` never matches one: probed). Two
+    # branches with the same shapes: outside every if, or inside an if with a constant-only condition, or (a third)
+    # inside an if whose condition reads request input.
+    pattern-either:
+      - patterns:
+          - pattern-either:
+              - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYPEER, false)
+              - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYPEER, 0)
+              - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYHOST, false)
+              - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYHOST, 0)
+              - pattern: |
+                  [..., CURLOPT_SSL_VERIFYPEER => false, ...]
+              - pattern: |
+                  [..., CURLOPT_SSL_VERIFYPEER => 0, ...]
+              - pattern: |
+                  [..., CURLOPT_SSL_VERIFYHOST => false, ...]
+              - pattern: |
+                  [..., CURLOPT_SSL_VERIFYHOST => 0, ...]
+              - pattern: |
+                  [..., "sslverify" => false, ...]
+              - pattern: |
+                  [..., "verify_peer" => false, ...]
+              - pattern: |
+                  [..., "verify_peer_name" => false, ...]
+              - pattern: |
+                  new $CLIENT([..., "verify" => false, ...])
+              - pattern: |
+                  $CLIENT->$METHOD($M, $U, [..., "verify" => false, ...])
+              - pattern: |
+                  $HTTP::withOptions([..., "verify" => false, ...])
+              - pattern: $HTTP::withoutVerifying()
+              - pattern: $PENDING->withoutVerifying()
+          - pattern-not-inside: |
+              if ($COND) { ... }
+          # Verification switched off only for local development (App::environment('local'), isLocal(),
+          # a debug flag) is a developer setting, not a deployed one.
+          - pattern-not-inside: |
+              if (<... $APP::environment(...) ...>) { ... }
+          - pattern-not-inside: |
+              if (<... app()->environment(...) ...>) { ... }
+          - pattern-not-inside: |
+              if (<... $APP->environment(...) ...>) { ... }
+          - pattern-not-inside: |
+              if (<... $APP::isLocal() ...>) { ... }
+          - pattern-not-inside: |
+              if (<... $APP->isLocal() ...>) { ... }
+          - pattern-not-inside: |
+              if (<... app()->isLocal() ...>) { ... }
+          - pattern-not-inside: |
+              if (<... WP_DEBUG ...>) { ... }
+      - patterns:
+          - pattern-either:
+              - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYPEER, false)
+              - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYPEER, 0)
+              - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYHOST, false)
+              - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYHOST, 0)
+              - pattern: |
+                  [..., CURLOPT_SSL_VERIFYPEER => false, ...]
+              - pattern: |
+                  [..., CURLOPT_SSL_VERIFYPEER => 0, ...]
+              - pattern: |
+                  [..., CURLOPT_SSL_VERIFYHOST => false, ...]
+              - pattern: |
+                  [..., CURLOPT_SSL_VERIFYHOST => 0, ...]
+              - pattern: |
+                  [..., "sslverify" => false, ...]
+              - pattern: |
+                  [..., "verify_peer" => false, ...]
+              - pattern: |
+                  [..., "verify_peer_name" => false, ...]
+              - pattern: |
+                  new $CLIENT([..., "verify" => false, ...])
+              - pattern: |
+                  $CLIENT->$METHOD($M, $U, [..., "verify" => false, ...])
+              - pattern: |
+                  $HTTP::withOptions([..., "verify" => false, ...])
+              - pattern: $HTTP::withoutVerifying()
+              - pattern: $PENDING->withoutVerifying()
+          - pattern-inside: |
+              if ($COND) { ... }
+          - metavariable-regex:
+              metavariable: $COND
+              regex: ^[\s()!&|=<>]*(?:(?:true|false|null|TRUE|FALSE|NULL|\d+|'[^'$]*'|"[^"$]*"|[A-Z_][A-Z0-9_]*|[A-Za-z_\\][\w\\]*::[A-Z_][A-Z0-9_]*)[\s()!&|=<>]*)+$
+          # Verification switched off only for local development (App::environment('local'), isLocal(),
+          # a debug flag) is a developer setting, not a deployed one.
+          - pattern-not-inside: |
+              if (<... $APP::environment(...) ...>) { ... }
+          - pattern-not-inside: |
+              if (<... app()->environment(...) ...>) { ... }
+          - pattern-not-inside: |
+              if (<... $APP->environment(...) ...>) { ... }
+          - pattern-not-inside: |
+              if (<... $APP::isLocal() ...>) { ... }
+          - pattern-not-inside: |
+              if (<... $APP->isLocal() ...>) { ... }
+          - pattern-not-inside: |
+              if (<... app()->isLocal() ...>) { ... }
+          - pattern-not-inside: |
+              if (<... WP_DEBUG ...>) { ... }
+      # 4.1 (M7, adversarial pass): an if whose condition reads request input is no opt-in; still reported.
+      - patterns:
+          - pattern-either:
+              - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYPEER, false)
+              - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYPEER, 0)
+              - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYHOST, false)
+              - pattern: curl_setopt($C, CURLOPT_SSL_VERIFYHOST, 0)
+              - pattern: |
+                  [..., CURLOPT_SSL_VERIFYPEER => false, ...]
+              - pattern: |
+                  [..., CURLOPT_SSL_VERIFYPEER => 0, ...]
+              - pattern: |
+                  [..., CURLOPT_SSL_VERIFYHOST => false, ...]
+              - pattern: |
+                  [..., CURLOPT_SSL_VERIFYHOST => 0, ...]
+              - pattern: |
+                  [..., "sslverify" => false, ...]
+              - pattern: |
+                  [..., "verify_peer" => false, ...]
+              - pattern: |
+                  [..., "verify_peer_name" => false, ...]
+              - pattern: |
+                  new $CLIENT([..., "verify" => false, ...])
+              - pattern: |
+                  $CLIENT->$METHOD($M, $U, [..., "verify" => false, ...])
+              - pattern: |
+                  $HTTP::withOptions([..., "verify" => false, ...])
+              - pattern: $HTTP::withoutVerifying()
+              - pattern: $PENDING->withoutVerifying()
+          - pattern-inside: |
+              if ($COND) { ... }
+          - metavariable-regex:
+              metavariable: $COND
+              regex: (?:\$_(?:GET|POST|REQUEST|COOKIE|SERVER)\b|\$(?:this->)?request\b|\brequest\(\)|\bInput::|\$_FILES)
+          # Verification switched off only for local development (App::environment('local'), isLocal(),
+          # a debug flag) is a developer setting, not a deployed one.
+          - pattern-not-inside: |
+              if (<... $APP::environment(...) ...>) { ... }
+          - pattern-not-inside: |
+              if (<... app()->environment(...) ...>) { ... }
+          - pattern-not-inside: |
+              if (<... $APP->environment(...) ...>) { ... }
+          - pattern-not-inside: |
+              if (<... $APP::isLocal() ...>) { ... }
+          - pattern-not-inside: |
+              if (<... $APP->isLocal() ...>) { ... }
+          - pattern-not-inside: |
+              if (<... app()->isLocal() ...>) { ... }
+          - pattern-not-inside: |
+              if (<... WP_DEBUG ...>) { ... }
 
   - id: syn-php-insecure-random-token
     languages:
@@ -200,3 +307,20 @@ rules:
       # uniqid() with a non-empty descriptive prefix names an internal identifier (cache or query
       # scope); an empty prefix ('') is no mitigation and is still reported.
       - pattern-not: $T = uniqid("=~/^.+$/", ...);
+      # 4.1 (M7): an expression that also draws from a CSPRNG (random_bytes, random_int,
+      # openssl_random_pseudo_bytes) is unpredictable: hash('sha256', uniqid() . random_bytes(32)).
+      - pattern-not: $T = <... random_bytes(...) ...>;
+      - pattern-not: $T .= <... random_bytes(...) ...>;
+      - pattern-not: return <... random_bytes(...) ...>;
+      - pattern-not: $T = <... random_int(...) ...>;
+      - pattern-not: $T .= <... random_int(...) ...>;
+      - pattern-not: return <... random_int(...) ...>;
+      - pattern-not: $T = <... openssl_random_pseudo_bytes(...) ...>;
+      - pattern-not: $T .= <... openssl_random_pseudo_bytes(...) ...>;
+      - pattern-not: return <... openssl_random_pseudo_bytes(...) ...>;
+      - pattern-not-inside: |
+          [..., $K => <... random_bytes(...) ...>, ...]
+      - pattern-not-inside: |
+          [..., $K => <... random_int(...) ...>, ...]
+      - pattern-not-inside: |
+          [..., $K => <... openssl_random_pseudo_bytes(...) ...>, ...]

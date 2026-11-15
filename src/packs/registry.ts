@@ -24,6 +24,47 @@ import type {
   RegisteredNativeAnalyzer,
 } from "./types.js";
 
+/**
+ * 4.1 M9 Ruling 4: native rules that failed the fresh-set precision gate (fresh-set precision: true over triaged hits).
+ * An experimental rule is not reported, not counted and disclosed: the registry drops it from its analyzer's
+ * `ruleIds` (so from every inventory and rule count), drops its findings, and adds one line to the owning pack's
+ * `limitations` (`pack_coverage`, `list_rules`). The analyzer code and its unit tests stay. No opt-in in 4.1.
+ */
+// `ci-ai-client-hardcoded-secret` failed the gate too (0/7) but ships as in 4.0 by maintainer decision
+// (2026-11-15) for detection coverage; its false-positive classes are fixed and re-measured in 4.2.
+const EXPERIMENTAL_NATIVE_RULES: Readonly<Record<string, string>> = {
+  "ci-ai-sensitive-api-response": "0/5",
+  "ci-ai-sensitive-log": "6/17",
+};
+export const EXPERIMENTAL_NATIVE_RULE_IDS: ReadonlySet<string> = new Set(Object.keys(EXPERIMENTAL_NATIVE_RULES));
+
+/** The pack with its experimental rules held back (unchanged when it owns none). */
+function withExperimentalRulesHeldBack(pack: NativeDetectorPack): NativeDetectorPack {
+  const held = [...new Set(pack.createAnalyzers("").flatMap((analyzer) => analyzer.ruleIds))]
+    .filter((ruleId) => EXPERIMENTAL_NATIVE_RULE_IDS.has(ruleId))
+    .sort();
+  if (!held.length) return pack;
+  return {
+    ...pack,
+    limitations: [
+      ...pack.limitations,
+      ...held.map((ruleId) =>
+        `${ruleId} is experimental in 4.1 and not reported (fresh-set precision ${EXPERIMENTAL_NATIVE_RULES[ruleId]} triaged hits).`),
+    ],
+    createAnalyzers: (target) => pack.createAnalyzers(target).map((analyzer) => {
+      if (!analyzer.ruleIds.some((ruleId) => EXPERIMENTAL_NATIVE_RULE_IDS.has(ruleId))) return analyzer;
+      return {
+        ...analyzer,
+        ruleIds: analyzer.ruleIds.filter((ruleId) => !EXPERIMENTAL_NATIVE_RULE_IDS.has(ruleId)),
+        run: async () => {
+          const result = await analyzer.run();
+          return { ...result, findings: result.findings.filter((finding) => !EXPERIMENTAL_NATIVE_RULE_IDS.has(finding.rule_id)) };
+        },
+      };
+    }),
+  };
+}
+
 /** Static registry only: no remote or target-provided code is ever loaded. */
 const NATIVE_PACKS: readonly NativeDetectorPack[] = [
   javascriptPack,
@@ -42,7 +83,7 @@ const NATIVE_PACKS: readonly NativeDetectorPack[] = [
   rubyAiPack,
   firebasePack,
   githubActionsPack,
-];
+].map(withExperimentalRulesHeldBack);
 
 export function listNativePacks(): readonly NativeDetectorPack[] {
   return NATIVE_PACKS;

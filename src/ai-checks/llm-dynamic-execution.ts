@@ -5,6 +5,7 @@
  * Function lookalikes are suppressed when visibly shadowed. Cross-file flows, custom model
  * wrappers, callback/stream accumulation, and indirect sink aliases are documented false negatives.
  */
+import { maskCommentsFromParser } from "../packs/react-native/javascript-parse.js";
 import type { Finding } from "../types.js";
 import { makeAiFinding } from "./finding.js";
 import { collectFiles, lineOf, lineText } from "./walk.js";
@@ -286,7 +287,7 @@ function makeFinding(file: string, original: string, sink: Sink): Finding {
 export async function runLlmDynamicExecutionCheck(target: string): Promise<Finding[]> {
   const findings: Finding[] = [];
   for (const file of await collectFiles(target, { exts: CODE_EXTS, includeBuilt: false })) {
-    const source = maskComments(file.content);
+    const source = maskCommentsFromParser(file.content, file.rel) ?? maskComments(file.content);
     if (!MODEL_CALL_RE.test(source)) continue;
     const tainted = collectModelTaint(source);
     if (tainted.size === 0) continue;

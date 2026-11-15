@@ -185,7 +185,26 @@ const eolEntrySchema = z
   })
   .strict();
 
-const eolFileSchema = z.object({ entries: z.array(eolEntrySchema).min(1) }).strict();
+/**
+ * `complete` (4.1 M8): products whose table names every release line the vendor shipped between its oldest and
+ * newest listed cycle, so the evaluator may drop the interior gaps of a range. Sorted, unique, and each product
+ * has at least two cycles in `entries` (an unknown product has none).
+ */
+const eolFileSchema = z
+  .object({ entries: z.array(eolEntrySchema).min(1), complete: z.array(z.string().min(1)).optional() })
+  .strict()
+  .superRefine((file, ctx) => {
+    const complete = file.complete ?? [];
+    complete.forEach((product, index) => {
+      const previous = complete[index - 1];
+      if (previous !== undefined && !(previous < product)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `complete must be sorted and unique (${previous}, ${product}).`, path: ["complete", index] });
+      }
+      if (file.entries.filter((entry) => entry.product === product).length < 2) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `complete names ${product}, which has fewer than two cycles.`, path: ["complete", index] });
+      }
+    });
+  });
 
 /** Anchored, one capture group, no unbounded repeated group (a ReDoS shape); matched only against bounded comment text. */
 const bannerSchema = z
@@ -339,6 +358,16 @@ function parseJson<S extends z.ZodTypeAny>(name: string, bytes: Buffer, schema: 
   return parsed.data;
 }
 
+/**
+ * The known-exploited list (4.1 dev-scope rule): upper-cased ids and aliases of every advisory marked
+ * `exploited: true`, the only offline source of known exploitation.
+ */
+export function exploitedIdentities(dataset: SynvoyaDataset): Set<string> {
+  return new Set(dataset.advisories.filter((advisory) => advisory.exploited)
+    .flatMap((advisory) => [advisory.id, ...advisory.aliases])
+    .map((identity) => identity.toUpperCase()));
+}
+
 export async function loadSynvoyaDataset(dir: string = SYNVOYA_DATASET_DIR): Promise<SynvoyaLoadResult> {
   try {
     const manifestBytes = await readCapped(dir, "manifest.json");
@@ -370,6 +399,7 @@ export async function loadSynvoyaDataset(dir: string = SYNVOYA_DATASET_DIR): Pro
         imageAliases: aliases.imageAliases,
         productImages: aliases.productImages,
         eol: eol.entries,
+        eolComplete: eol.complete ?? [],
         libraries,
       },
     };

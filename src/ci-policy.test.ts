@@ -39,7 +39,7 @@ describe("CI policy exit contract", () => {
     expect(evaluateCiPolicy(document("partial", ["critical"]), "high")).toMatchObject({ exit_code: 2, findings_at_or_above_threshold: 1 });
   });
 
-  // Task 5 (Hibi, 2026-10-31): declared gaps make coverage partial; a named opt-in lets CI pass them.
+  // Task 5 (maintainer, 2026-10-31): declared gaps make coverage partial; a named opt-in lets CI pass them.
   describe("accepted coverage gaps", () => {
     const evidence = (...items: Array<[string, "partial" | "unknown" | "excluded" | "covered" | "informational"]>) =>
       items.map(([component, state]) => ({ category: "declared_scope" as const, component, state, detail: "d" }));

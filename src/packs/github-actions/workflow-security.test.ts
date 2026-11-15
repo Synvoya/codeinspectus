@@ -58,6 +58,29 @@ describe("GitHub Actions frozen corpus", () => {
   });
 });
 
+describe("GitHub Actions expression injection: boolean-only operands (4.1 M9)", () => {
+  test("the corpus boolean-operand workflow is silent", async () => {
+    const result = await runGithubActionsSecurity(join(CORPUS, "fp"));
+    expect(result.findings).toEqual([]);
+  });
+
+  test.each([
+    ["a direct interpolation elsewhere on the line",
+      `echo "\${{ contains(github.event.pull_request.title, 'x') && 'TRUE' || 'FALSE' }} \${{ github.event.pull_request.title }}"`, 1],
+    ["format() of the title", `echo "\${{ format('{0}', github.event.pull_request.title) }}"`, 1],
+    ["a title fallback branch", `echo "\${{ contains(github.event.pull_request.title, 'x') && 'TRUE' || github.event.pull_request.title }}"`, 1],
+    ["a title as the && result", `echo "\${{ github.event_name == 'pull_request' && github.event.pull_request.title }}"`, 1],
+    ["the issue title beside contains()", `echo "\${{ contains(github.event.issue.body, 'x') && github.event.issue.title || 'n' }}"`, 1],
+    ["toJSON of the title", `echo "\${{ toJSON(github.event.pull_request.title) }}"`, 1],
+    ["an unparsable expression", `echo "\${{ contains(github.event.issue.title, 'x' }}"`, 1],
+  ])("%s still fires", async (_label, run, count) => {
+    const root = await temporaryRoot();
+    await put(root, ".github/workflows/w.yml", `on: pull_request\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: ${JSON.stringify(run)}\n`);
+    const result = await runGithubActionsSecurity(root);
+    expect(result.findings.filter((f) => f.rule_id === GITHUB_ACTIONS_EXPRESSION_INJECTION_RULE_ID)).toHaveLength(count as number);
+  });
+});
+
 describe("GitHub Actions expression injection precision", () => {
   test("covers scalar and block run scripts but ignores env, with, and shell-comment usage", async () => {
     const root = await temporaryRoot();

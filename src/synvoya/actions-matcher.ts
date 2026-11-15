@@ -29,6 +29,7 @@ import type { Finding, Severity } from "../types.js";
 import { fingerprint as makeFingerprint } from "../util/hash.js";
 import { judgeDeclaredVersion } from "./evaluate.js";
 import type { ActionDeclaration } from "./readers/actions.js";
+import { stripV } from "./versions.js";
 import type { OsvEvent, SynvoyaAdvisory } from "./types.js";
 
 /** Scan-time bounds on the archive (about 100 KB, 57 records when measured on 2026-11-04). */
@@ -91,7 +92,6 @@ export type ActionsDbLoad =
   | { state: "ready"; db: ActionsDb; warning?: string };
 
 const clip = (text: string, max = MAX_SHOWN_CHARS): string => (text.length > max ? `${text.slice(0, max)}…` : text);
-const stripV = (version: string): string => version.trim().replace(/^v(?=\d)/i, "");
 
 /** `v41` → `41.0.0`, `v4.4` → `4.4.0`: the semver scheme needs three components. */
 function normalizeVersion(version: string): string {
@@ -447,6 +447,7 @@ function finding(advisory: ActionAdvisory, decl: ActionDeclaration, basis: "exac
     producer_components: advisory.origin === "dataset" ? synvoyaActionsDatasetFindingComponents() : synvoyaActionsFindingComponents(),
     finding_kind: "vulnerability",
     package: { ecosystem: "GitHub Actions", name, version: action.ref },
+    ...(fix && advisory.advisory.fixed.length ? { fixed_versions: [...advisory.advisory.fixed] } : {}),
   };
 }
 

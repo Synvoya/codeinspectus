@@ -6,7 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { loadSynvoyaDataset } from "../dataset.js";
 import type { Declaration, LibraryTable } from "../types.js";
 
-import { readLibraries } from "./libraries.js";
+import { bannerMatches, LIBRARY_HEAD_BYTES, libraryStem, readLibraries } from "./libraries.js";
 
 const FIXTURES = join(process.cwd(), "fixtures", "synvoya", "libraries");
 
@@ -516,5 +516,48 @@ describe("readLibraries: hostile inputs", { timeout: 20_000 }, () => {
       }
     }
     expect(Date.now() - started).toBeLessThan(500);
+  });
+});
+
+describe("shared banner matching and library file names (M6 bundle routing)", () => {
+  it("bannerMatches returns the table library, raw version and line of a line-start banner", () => {
+    expect(bannerMatches("/*!\n * jQuery JavaScript Library v1.7.1\n * http://jquery.com/\n */\nvar a;\n", false, table))
+      .toEqual([{ npm: "jquery", raw: "1.7.1", line: 1 }]);
+  });
+
+  it("bannerMatches finds nothing after byte 4096 or mid-line", () => {
+    const late = `/* ${"x".repeat(LIBRARY_HEAD_BYTES)} */\n/*! jQuery v3.1.1 */\n`;
+    expect(bannerMatches(late.slice(0, LIBRARY_HEAD_BYTES), true, table)).toEqual([]);
+    expect(bannerMatches("var a = 1; /*! jQuery v3.1.1 */\n", false, table)).toEqual([]);
+  });
+
+  it("bannerMatches returns one entry per banner comment, in order", () => {
+    expect(bannerMatches("/*! jQuery v3.1.1 | (c) JS Foundation */\n/*!\n * Bootstrap v4.3.1 (https://getbootstrap.com/)\n */\n", false, table))
+      .toEqual([{ npm: "jquery", raw: "3.1.1", line: 1 }, { npm: "bootstrap", raw: "4.3.1", line: 2 }]);
+  });
+
+  it("LIBRARY_HEAD_BYTES is the reader's 4 KiB head", () => {
+    expect(LIBRARY_HEAD_BYTES).toBe(4096);
+  });
+
+  it.each([
+    ["jquery-1.7.1.js", { npm: "jquery", version: "1.7.1" }],
+    ["knockout.js", { npm: "knockout" }],
+    ["jquery-ui-1.8.20.js", { npm: "jquery-ui", version: "1.8.20" }],
+    ["jquery-3.6.0.slim.js", { npm: "jquery", version: "3.6.0" }],
+    ["jquery.plainoverlay.js", undefined],
+    ["jquery-1.7.1.intellisense.js", undefined],
+    ["jquery-3.7.1-rc.1.js", { npm: "jquery", version: "3.7.1-rc.1" }],
+    ["jquery-3.7.1-rc.1.min.js", { npm: "jquery", version: "3.7.1-rc.1" }],
+    ["jquery.min.js", { npm: "jquery" }],
+    ["jquery.1.7.1.js", { npm: "jquery", version: "1.7.1" }],
+    ["JQuery.js", { npm: "jquery" }],
+    ["knockout.mjs", { npm: "knockout" }],
+    ["jquery.datatables.js", { npm: "datatables.net" }],
+    ["bootstrap.ts", undefined],
+    ["app.js", undefined],
+    ["d3.js", undefined],
+  ])("libraryStem(%s)", (base, expected) => {
+    expect(libraryStem(base, table)).toEqual(expected);
   });
 });

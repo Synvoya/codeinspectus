@@ -12,9 +12,10 @@
 import { Composer, isAlias, isMap, isScalar, isSeq, LineCounter, Parser, type Document, type Node as YamlNode } from "yaml";
 
 import type { Declaration, ReaderOptions, ReaderResult, RuntimeId, SynvoyaDataset } from "../types.js";
+import { compareVersions, schemeFor } from "../versions.js";
 
 import { yamlText } from "./runtime.js";
-import { matchesCandidate, readCandidate, walkCandidates, type WalkMatcher } from "./walk.js";
+import { matchesCandidate, readCandidate, reportedPath, reportedSkips, walkCandidates, type WalkMatcher } from "./walk.js";
 
 type ImageTables = Pick<SynvoyaDataset, "imageAliases" | "productImages" | "eol">;
 type Precision = Declaration["precision"];
@@ -64,7 +65,7 @@ function note(ctx: Ctx, text: string): void {
 
 // ---- image tables ----
 
-const RUNTIME_IMAGES: ReadonlyMap<string, RuntimeId> = new Map<string, RuntimeId>([
+export const RUNTIME_IMAGES: ReadonlyMap<string, RuntimeId> = new Map<string, RuntimeId>([
   ["node", "node"],
   ["php", "php"],
   ["python", "python"],
@@ -84,6 +85,8 @@ interface Target {
   sdk: boolean;
   /** Java tags may carry an update number (8u402). */
   java: boolean;
+  /** A product whose tags are MinIO `RELEASE.<timestamp>Z` strings (scheme `minio-release`), taken verbatim. */
+  releaseTag: boolean;
 }
 
 type Lookup = ((repo: string) => Target | undefined) & {
@@ -103,6 +106,7 @@ function buildLookup(dataset: ImageTables): Lookup {
     subject,
     sdk,
     java: subject.type === "runtime" && subject.runtime === "java",
+    releaseTag: subject.type === "product" && schemeFor(subject) === "minio-release",
   });
   const lookup = (repo: string): Target | undefined => {
     // `bitnami/<name>` maps like `<name>`; an exact table entry for the full repo still wins.
@@ -274,6 +278,12 @@ function tagVersion(ref: ParsedRef, target: Target, missing: readonly string[]):
   }
   if (tag.length > MAX_TAG_CHARS) return unresolved(tag, "has a tag too long to read");
   if (tag.toLowerCase() === "latest") return unresolved(tag, "is tagged latest");
+  if (target.releaseTag) {
+    // MinIO: the whole tag is the version, exactly when the scheme reads it; anything else is never a finding.
+    return compareVersions("minio-release", tag, tag) === undefined
+      ? unresolved(tag, `has tag "${tag.slice(0, 40)}", which is not a MinIO RELEASE.<timestamp> tag`)
+      : { spec: tag, precision: "exact", resolved: tag };
+  }
   if (target.java) tag = tag.replace(/^(?:jdk|jre)-(?=\d)/i, "");
   // Products publish `v0.49.1`; runtime images use bare versions, so a `v` there is not a version.
   if (target.subject.type !== "runtime") tag = tag.replace(/^v(?=\d)/i, "");
@@ -600,10 +610,12 @@ function readOne(ctx: Ctx, kind: Kind, text: string): boolean {
 
 export async function readImageTags(target: string, dataset: ImageTables, options: ReaderOptions = {}): Promise<ReaderResult> {
   const walked = await walkCandidates(target, MATCHERS, {}, { signal: options.signal, only: options.only });
-  const result: ReaderResult = { declarations: [], parsed: [], skipped: [...walked.skipped], notes: [] };
+  const result: ReaderResult = { declarations: [], parsed: [], skipped: reportedSkips(walked.skipped, options), notes: [] };
   const lookup = buildLookup(dataset);
   let consumed = 0;
-  for (const file of walked.files) {
+  for (const walkedFile of walked.files) {
+    // Dispatch reads the walked path; everything reported names the file as the scan shows it (onlyAs).
+    const file = reportedPath(walkedFile, options);
     if (options.signal?.aborted) {
       result.skipped.push({ file, reason: "deadline" });
       continue;
@@ -615,7 +627,7 @@ export async function readImageTags(target: string, dataset: ImageTables, option
       result.skipped.push({ file, reason: "budget" });
       continue;
     }
-    const text = await readCandidate(target, file);
+    const text = await readCandidate(target, walkedFile);
     if (text === undefined) {
       result.skipped.push({ file, reason: "unreadable" });
       continue;
@@ -624,7 +636,7 @@ export async function readImageTags(target: string, dataset: ImageTables, option
     let scanFull = false;
     try {
       const ctx: Ctx = { file, out: [], notes: [], full: false, lookup };
-      if (!readOne(ctx, kindOf(file), text)) continue;
+      if (!readOne(ctx, kindOf(walkedFile), text)) continue;
       // Appended in loops, never spread: the arrays are bounded, but a spread's argument limit is not ours to rely on.
       for (const declaration of ctx.out) {
         if (result.declarations.length >= MAX_DECLARATIONS_PER_SCAN) {
